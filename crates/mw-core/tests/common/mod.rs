@@ -7,11 +7,16 @@ use std::fmt::Debug;
 use std::sync::Arc;
 
 use chrono::{TimeZone, Utc};
-use mw_core::{Actor, Core, CoreError, FixedClock};
-use mw_db::entity::{audit_log, role, status};
+use mw_core::{
+    Actor, ClientRef, Core, CoreError, FixedClock, NewClient, NewOrder, OrderFilter, OrderPatch,
+    OrderSort,
+};
+use mw_db::entity::{audit_log, order, role, status};
 use mw_domain::permission::Permission;
 use mw_domain::status::StatusKind;
-use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Set,
+};
 
 pub struct TestCore {
     pub label: &'static str,
@@ -64,6 +69,12 @@ pub trait HasId {
 }
 
 impl HasId for mw_core::Client {
+    fn id(&self) -> i64 {
+        self.id
+    }
+}
+
+impl HasId for mw_core::OrderListItem {
     fn id(&self) -> i64 {
         self.id
     }
@@ -182,4 +193,135 @@ pub fn sample_new_order() -> mw_core::NewOrder {
         malfunction: "Разбит экран".into(),
         ..Default::default()
     }
+}
+
+pub struct Seed {
+    pub a: i64,
+    pub b: i64,
+    pub c: i64,
+    pub d: i64,
+    pub a_barcode: String,
+}
+
+fn at(day: u32, hour: u32) -> chrono::DateTime<Utc> {
+    Utc.with_ymd_and_hms(2026, 11, day, hour, 0, 0).unwrap()
+}
+
+/// Четыре заказа для проверки списка; часы на время каждого приёма, в конце снова 2026-11-11T09:00:00Z.
+/// A: диагностика, 06.11; B: «Готов», need_call, 10.11; C: выдан, 11.11 08:00; D: удалён, 11.11 09:00.
+pub async fn seed_orders(t: &TestCore) -> Seed {
+    let client = |name: &str, phone: &str| {
+        ClientRef::New(NewClient {
+            full_name: name.into(),
+            phone: phone.into(),
+            ..Default::default()
+        })
+    };
+    let a_order = |client, brand: &str, model: &str, device: &str| NewOrder {
+        client,
+        device_type: device.into(),
+        brand: brand.into(),
+        model: model.into(),
+        malfunction: "Не включается".into(),
+        ..Default::default()
+    };
+    let core = &t.core;
+
+    t.clock.set(at(6, 9));
+    let a = core
+        .create_order(&admin(), sample_new_order())
+        .await
+        .unwrap();
+
+    t.clock.set(at(10, 9));
+    let b = core
+        .create_order(
+            &admin(),
+            NewOrder {
+                need_call: true,
+                ..a_order(
+                    client("Анна Ким", "8 911 000-00-00"),
+                    "Apple",
+                    "MacBook",
+                    "Ноутбук",
+                )
+            },
+        )
+        .await
+        .unwrap();
+    let ready = status_id_by_name(core, "Готов").await;
+    core.change_status(&admin(), b.id, 1, ready).await.unwrap();
+
+    t.clock.set(at(11, 8));
+    let c = core
+        .create_order(
+            &admin(),
+            a_order(
+                client("Олег Сидоров", "+7 999 555-44-33"),
+                "Xiaomi",
+                "Note 10",
+                "Телефон",
+            ),
+        )
+        .await
+        .unwrap();
+    core.update_order(
+        &admin(),
+        c.id,
+        1,
+        OrderPatch {
+            master: Some("Мастер".into()),
+            work_done: Some("Заменён экран".into()),
+            final_price: Some(Some(mw_domain::money::Money::from_kopecks(500_000))),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    core.issue_order(&admin(), c.id, 2).await.unwrap();
+
+    t.clock.set(at(11, 9));
+    let d = core
+        .create_order(
+            &admin(),
+            a_order(
+                client("Иван Удалённый", "+7 900 000-00-01"),
+                "Nokia",
+                "3310",
+                "Телефон",
+            ),
+        )
+        .await
+        .unwrap();
+    core.delete_order(&admin(), d.id, 1).await.unwrap();
+
+    Seed {
+        a: a.id,
+        b: b.id,
+        c: c.id,
+        d: d.id,
+        a_barcode: a.barcode,
+    }
+}
+
+/// Идентификаторы заказов по фильтру: сортировка по умолчанию, не больше 50.
+pub async fn list_ids(t: &TestCore, filter: OrderFilter) -> Vec<i64> {
+    ids(t
+        .core
+        .list_orders(&admin(), &filter, OrderSort::default(), 50, 0)
+        .await
+        .unwrap()
+        .items)
+}
+
+/// Записывает штрихкод в обход `Core` (имитация старых кодов-дублей).
+pub async fn set_barcode_directly(t: &TestCore, order_id: i64, code: &str) {
+    order::ActiveModel {
+        id: Set(order_id),
+        barcode: Set(code.to_owned()),
+        ..Default::default()
+    }
+    .update(t.core.db())
+    .await
+    .unwrap();
 }

@@ -1,8 +1,6 @@
 //! Нумерация: номер заказа = `orders.id`, поэтому «следующий номер» — это последовательность таблицы.
 
-use sea_orm::{
-    ConnectionTrait, DatabaseBackend, DatabaseConnection, DbErr, Statement, TransactionTrait,
-};
+use sea_orm::{ConnectionTrait, DatabaseBackend, DbErr, Statement};
 
 /// Таблицы с управляемой нумерацией. Имя таблицы берётся только отсюда.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -21,7 +19,7 @@ impl IdTable {
 }
 
 /// Наибольший `id` таблицы; 0 для пустой.
-pub async fn max_id(db: &DatabaseConnection, table: IdTable) -> Result<i64, DbErr> {
+pub async fn max_id<C: ConnectionTrait>(db: &C, table: IdTable) -> Result<i64, DbErr> {
     let sql = format!("SELECT COALESCE(MAX(id), 0) FROM {}", table.table());
     let row = db
         .query_one_raw(Statement::from_string(db.get_database_backend(), sql))
@@ -34,7 +32,12 @@ pub async fn max_id(db: &DatabaseConnection, table: IdTable) -> Result<i64, DbEr
 ///
 /// Если в таблице уже есть строки с `id >= next`, SQLite всё равно выдаст `max(id) + 1`,
 /// PostgreSQL же упрётся в дубликат: вызывающий обязан выбирать `next` выше `max_id`.
-pub async fn set_next_id(db: &DatabaseConnection, table: IdTable, next: i64) -> Result<(), DbErr> {
+/// Принимает и соединение, и транзакцию: внутри открытой транзакции не открывает новых соединений.
+pub async fn set_next_id<C: ConnectionTrait>(
+    db: &C,
+    table: IdTable,
+    next: i64,
+) -> Result<(), DbErr> {
     if next < 1 {
         return Err(DbErr::Custom(
             "следующий номер должен быть не меньше 1".to_owned(),
@@ -43,9 +46,8 @@ pub async fn set_next_id(db: &DatabaseConnection, table: IdTable, next: i64) -> 
     let name = table.table();
     match db.get_database_backend() {
         DatabaseBackend::Sqlite => {
-            let txn = db.begin().await?;
             let backend = DatabaseBackend::Sqlite;
-            let updated = txn
+            let updated = db
                 .execute_raw(Statement::from_sql_and_values(
                     backend,
                     "UPDATE sqlite_sequence SET seq = ? WHERE name = ?",
@@ -53,14 +55,14 @@ pub async fn set_next_id(db: &DatabaseConnection, table: IdTable, next: i64) -> 
                 ))
                 .await?;
             if updated.rows_affected() == 0 {
-                txn.execute_raw(Statement::from_sql_and_values(
+                db.execute_raw(Statement::from_sql_and_values(
                     backend,
                     "INSERT INTO sqlite_sequence (name, seq) VALUES (?, ?)",
                     [name.into(), (next - 1).into()],
                 ))
                 .await?;
             }
-            txn.commit().await
+            Ok(())
         }
         DatabaseBackend::Postgres => {
             db.execute_raw(Statement::from_sql_and_values(

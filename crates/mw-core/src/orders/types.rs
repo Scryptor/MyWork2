@@ -20,7 +20,7 @@ impl Default for ClientRef {
 }
 
 /// Данные приёма устройства.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct NewOrder {
     pub client: ClientRef,
     pub service_point_id: Option<i64>,
@@ -45,7 +45,7 @@ pub struct NewOrder {
 }
 
 /// Частичная правка заказа: `None` — поле не меняется; `Some(None)` очищает необязательное поле.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Clone, Default, PartialEq)]
 pub struct OrderPatch {
     pub client_id: Option<i64>,
     pub service_point_id: Option<Option<i64>>,
@@ -75,7 +75,7 @@ pub struct OrderPatch {
 }
 
 /// Заказ (все колонки, кроме `search_text`). Номер заказа = `id`.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub struct Order {
     pub id: i64,
     pub client_id: i64,
@@ -153,6 +153,111 @@ impl From<order::Model> for Order {
     }
 }
 
+/// Пароль устройства в логи не попадает.
+impl std::fmt::Debug for NewOrder {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NewOrder")
+            .field("client", &self.client)
+            .field("service_point_id", &self.service_point_id)
+            .field("status_id", &self.status_id)
+            .field("device_type", &self.device_type)
+            .field("brand", &self.brand)
+            .field("model", &self.model)
+            .field("serial", &self.serial)
+            .field("color", &self.color)
+            .field("device_password", &"***")
+            .field("completeness", &self.completeness)
+            .field("device_condition", &self.device_condition)
+            .field("malfunction", &self.malfunction)
+            .field("internal_comment", &self.internal_comment)
+            .field("master", &self.master)
+            .field("estimate_from", &self.estimate_from)
+            .field("estimate_to", &self.estimate_to)
+            .field("prepayment", &self.prepayment)
+            .field("warranty_days", &self.warranty_days)
+            .field("need_call", &self.need_call)
+            .field("need_parts", &self.need_parts)
+            .finish()
+    }
+}
+
+/// Пароль устройства в логи не попадает.
+impl std::fmt::Debug for OrderPatch {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OrderPatch")
+            .field("client_id", &self.client_id)
+            .field("service_point_id", &self.service_point_id)
+            .field("received_at", &self.received_at)
+            .field("issued_at", &self.issued_at)
+            .field("device_type", &self.device_type)
+            .field("brand", &self.brand)
+            .field("model", &self.model)
+            .field("serial", &self.serial)
+            .field("color", &self.color)
+            .field(
+                "device_password",
+                &self.device_password.as_ref().map(|_| "***"),
+            )
+            .field("completeness", &self.completeness)
+            .field("device_condition", &self.device_condition)
+            .field("malfunction", &self.malfunction)
+            .field("work_done", &self.work_done)
+            .field("internal_comment", &self.internal_comment)
+            .field("master", &self.master)
+            .field("estimate_from", &self.estimate_from)
+            .field("estimate_to", &self.estimate_to)
+            .field("final_price", &self.final_price)
+            .field("prepayment", &self.prepayment)
+            .field("extra_costs", &self.extra_costs)
+            .field("discount", &self.discount)
+            .field("warranty_days", &self.warranty_days)
+            .field("need_call", &self.need_call)
+            .field("need_parts", &self.need_parts)
+            .finish()
+    }
+}
+
+/// Пароль устройства в логи не попадает.
+impl std::fmt::Debug for Order {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Order")
+            .field("id", &self.id)
+            .field("client_id", &self.client_id)
+            .field("service_point_id", &self.service_point_id)
+            .field("status_id", &self.status_id)
+            .field("received_at", &self.received_at)
+            .field("issued_at", &self.issued_at)
+            .field("prepaid_at", &self.prepaid_at)
+            .field("device_type", &self.device_type)
+            .field("brand", &self.brand)
+            .field("model", &self.model)
+            .field("serial", &self.serial)
+            .field("color", &self.color)
+            .field("device_password", &"***")
+            .field("completeness", &self.completeness)
+            .field("device_condition", &self.device_condition)
+            .field("malfunction", &self.malfunction)
+            .field("work_done", &self.work_done)
+            .field("internal_comment", &self.internal_comment)
+            .field("master", &self.master)
+            .field("barcode", &self.barcode)
+            .field("estimate_from", &self.estimate_from)
+            .field("estimate_to", &self.estimate_to)
+            .field("final_price", &self.final_price)
+            .field("prepayment", &self.prepayment)
+            .field("extra_costs", &self.extra_costs)
+            .field("discount", &self.discount)
+            .field("warranty_days", &self.warranty_days)
+            .field("need_call", &self.need_call)
+            .field("need_parts", &self.need_parts)
+            .field("created_at", &self.created_at)
+            .field("updated_at", &self.updated_at)
+            .field("deleted_at", &self.deleted_at)
+            .field("version", &self.version)
+            .finish()
+    }
+}
+
 /// Текст для поиска по заказу (без данных клиента: поиск соединяет таблицы).
 pub(crate) fn order_search_text(m: &order::Model) -> String {
     index_text(&[
@@ -165,4 +270,70 @@ pub(crate) fn order_search_text(m: &order::Model) -> String {
         &m.malfunction,
         &m.color,
     ])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SECRET: &str = "s3cr3t-pass-9137";
+
+    #[test]
+    fn debug_output_masks_device_password() {
+        let new = NewOrder {
+            device_password: SECRET.into(),
+            brand: "Samsung".into(),
+            ..Default::default()
+        };
+        let patch = OrderPatch {
+            device_password: Some(SECRET.into()),
+            brand: Some("Apple".into()),
+            ..Default::default()
+        };
+        let order = Order::from(order::Model {
+            id: 1,
+            client_id: 1,
+            service_point_id: None,
+            status_id: 1,
+            received_at: NaiveDateTime::default(),
+            issued_at: None,
+            prepaid_at: None,
+            device_type: String::new(),
+            brand: "Nokia".into(),
+            model: String::new(),
+            serial: String::new(),
+            color: String::new(),
+            device_password: SECRET.into(),
+            completeness: String::new(),
+            device_condition: String::new(),
+            malfunction: String::new(),
+            work_done: String::new(),
+            internal_comment: String::new(),
+            master: String::new(),
+            barcode: String::new(),
+            estimate_from: None,
+            estimate_to: None,
+            final_price: None,
+            prepayment: 0,
+            extra_costs: 0,
+            discount: 0,
+            warranty_days: None,
+            need_call: false,
+            need_parts: false,
+            created_at: NaiveDateTime::default(),
+            updated_at: NaiveDateTime::default(),
+            deleted_at: None,
+            version: 1,
+            search_text: String::new(),
+        });
+        for (text, brand) in [
+            (format!("{new:?}"), "Samsung"),
+            (format!("{patch:?}"), "Apple"),
+            (format!("{order:?}"), "Nokia"),
+        ] {
+            assert!(!text.contains(SECRET), "пароль попал в Debug: {text}");
+            assert!(text.contains("\"***\""), "{text}");
+            assert!(text.contains(brand), "{text}");
+        }
+    }
 }

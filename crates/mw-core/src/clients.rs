@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 
 use crate::page::validate_limit;
+use crate::sql::text_sort;
 use crate::{Actor, Core, CoreError, NewAuditEntry, Page, write_audit};
 
 const ENTITY: &str = "клиент";
@@ -288,7 +289,10 @@ impl Core {
         }
         let total = select.clone().count(&self.db).await?;
         let items = select
-            .order_by_asc(client::Column::SearchText)
+            .order_by_asc(text_sort(
+                self.db.get_database_backend(),
+                client::Column::SearchText.into_expr(),
+            ))
             .order_by_asc(client::Column::Id)
             .limit(limit)
             .offset(offset)
@@ -313,7 +317,10 @@ impl Core {
         Ok(client::Entity::find()
             .filter(client::Column::DeletedAt.is_null())
             .filter(client::Column::PhoneKey.eq(key))
-            .order_by_asc(client::Column::SearchText)
+            .order_by_asc(text_sort(
+                self.db.get_database_backend(),
+                client::Column::SearchText.into_expr(),
+            ))
             .order_by_asc(client::Column::Id)
             .all(&self.db)
             .await?

@@ -11,6 +11,7 @@ mod orders;
 mod page;
 mod service_points;
 mod settings;
+mod sql;
 mod statuses;
 
 pub use actor::Actor;
@@ -19,7 +20,10 @@ pub use clock::{Clock, FixedClock, SystemClock};
 pub use core::Core;
 pub use dictionaries::DictionaryItem;
 pub use error::CoreError;
-pub use orders::{ClientRef, NewOrder, Order, OrderPatch};
+pub use orders::{
+    ClientRef, IssuedFilter, NewOrder, Order, OrderFilter, OrderListItem, OrderPatch, OrderSort,
+    OrderSortField,
+};
 pub use page::Page;
 pub use service_points::ServicePoint;
 pub use settings::{AppSettings, SettingsPatch};
