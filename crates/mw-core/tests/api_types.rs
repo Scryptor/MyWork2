@@ -269,3 +269,74 @@ fn request_bodies_require_every_field() {
         "prepayment": 0, "warranty_days": null, "need_call": false, "need_parts": false
     }));
 }
+
+/// Коды перечисления одинаковы в serde, TypeScript и OpenAPI, в порядке объявления.
+fn check_code_enum<T>(all: &[T], codes: &[&str])
+where
+    T: serde::Serialize + TS + utoipa::ToSchema + Copy,
+{
+    let name = <T as utoipa::ToSchema>::name();
+    let schema = serde_json::to_value(<T as utoipa::PartialSchema>::schema()).unwrap();
+    println!("{name}: {schema}");
+    assert_eq!(schema["enum"], json!(codes), "{name}: OpenAPI");
+    assert_eq!(schema["type"], json!("string"), "{name}: OpenAPI type");
+    let wire: Vec<_> = all
+        .iter()
+        .map(|v| serde_json::to_value(v).unwrap())
+        .collect();
+    assert_eq!(
+        wire,
+        json!(codes).as_array().unwrap().clone(),
+        "{name}: serde"
+    );
+    let union = codes
+        .iter()
+        .map(|c| format!("\"{c}\""))
+        .collect::<Vec<_>>()
+        .join(" | ");
+    assert_eq!(
+        T::decl(&cfg()),
+        format!("type {name} = {union};"),
+        "{name}: TS"
+    );
+}
+
+#[test]
+fn code_enums_use_wire_codes_everywhere() {
+    use mw_domain::dictionary::DictionaryKind as K;
+    let permissions: Vec<&str> = Permission::ALL.iter().map(|p| p.as_str()).collect();
+    check_code_enum(&Permission::ALL, &permissions);
+    check_code_enum(
+        &[
+            StatusKind::Open,
+            StatusKind::Diagnostics,
+            StatusKind::Ready,
+            StatusKind::Issued,
+        ],
+        &["open", "diagnostics", "ready", "issued"],
+    );
+    check_code_enum(
+        &[
+            K::DeviceType,
+            K::Brand,
+            K::Color,
+            K::Completeness,
+            K::Condition,
+            K::Malfunction,
+            K::WorkDone,
+            K::Master,
+            K::ClientSource,
+        ],
+        &[
+            "device_type",
+            "brand",
+            "color",
+            "completeness",
+            "condition",
+            "malfunction",
+            "work_done",
+            "master",
+            "client_source",
+        ],
+    );
+}
