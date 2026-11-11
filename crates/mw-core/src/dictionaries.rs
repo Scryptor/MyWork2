@@ -7,12 +7,14 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, NotSet, QueryFilter, QueryOrder,
     Set,
 };
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::statuses::check_permutation;
 use crate::{Actor, Core, CoreError, NewAuditEntry, write_audit};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Значение справочника.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
 pub struct DictionaryItem {
     pub id: i64,
     pub kind: DictionaryKind,

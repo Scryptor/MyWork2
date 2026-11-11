@@ -13,7 +13,7 @@ use crate::page::validate_page;
 use crate::{Actor, Core, CoreError, Page};
 
 /// Запись журнала для чтения. `details` — разобранный JSON; `None`, если его нет или он повреждён.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
 pub struct AuditEntry {
     pub id: i64,
     pub at: NaiveDateTime,

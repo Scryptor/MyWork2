@@ -7,11 +7,13 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, NotSet, QueryFilter, QueryOrder,
     Set,
 };
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::{Actor, Core, CoreError, NewAuditEntry, write_audit};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Статус заказа.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
 pub struct Status {
     pub id: i64,
     pub name: String,
@@ -21,7 +23,9 @@ pub struct Status {
     pub archived: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Данные нового статуса.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, ts_rs::TS, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct NewStatus {
     pub name: String,
     pub kind: StatusKind,
@@ -29,11 +33,21 @@ pub struct NewStatus {
 }
 
 /// Частичное изменение статуса; `None` — не менять.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, ts_rs::TS, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+#[ts(optional_fields)]
 pub struct StatusPatch {
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
     pub name: Option<String>,
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
     pub kind: Option<StatusKind>,
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
     pub color: Option<String>,
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
     pub archived: Option<bool>,
 }
 

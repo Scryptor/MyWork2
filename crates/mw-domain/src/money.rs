@@ -7,7 +7,19 @@ use thiserror::Error;
 
 /// Сумма денег в копейках.
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Default,
+    Serialize,
+    Deserialize,
+    ts_rs::TS,
+    utoipa::ToSchema,
 )]
 #[serde(transparent)]
 pub struct Money(i64);

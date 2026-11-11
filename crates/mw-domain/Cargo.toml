@@ -11,6 +11,8 @@ workspace = true
 [dependencies]
 serde = { workspace = true }
 thiserror = { workspace = true }
+utoipa = { workspace = true }
+ts-rs = { workspace = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }

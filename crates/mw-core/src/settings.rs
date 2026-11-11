@@ -4,6 +4,7 @@ use mw_domain::permission::Permission;
 use mw_domain::validation::FieldError;
 use sea_orm::sea_query::OnConflict;
 use sea_orm::{ConnectionTrait, EntityTrait, Set};
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::core::begin_write_on;
@@ -11,7 +12,7 @@ use crate::{Actor, Core, CoreError, NewAuditEntry, write_audit};
 
 /// Настройки предприятия. Хранятся по строке на поле в таблице `settings` (ключ — имя поля,
 /// значение — JSON).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
 pub struct AppSettings {
     pub currency_symbol: String,
     pub master_percent: u8,
@@ -35,13 +36,26 @@ impl Default for AppSettings {
 }
 
 /// Частичное изменение настроек; `None` — не менять. Гарантия: `Some(None)` — «без гарантии».
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, ts_rs::TS, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+#[ts(optional_fields)]
 pub struct SettingsPatch {
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
     pub currency_symbol: Option<String>,
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
     pub master_percent: Option<u8>,
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
     pub diagnostics_overdue_days: Option<u16>,
+    #[serde(default, deserialize_with = "crate::patch::nullable")]
     pub default_warranty_days: Option<Option<u16>>,
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
     pub intake_required_fields: Option<bool>,
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
     pub timezone: Option<String>,
 }
 

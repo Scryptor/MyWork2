@@ -11,6 +11,7 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, NotSet, PaginatorTrait,
     QueryFilter, QueryOrder, Set,
 };
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, json};
 
 use crate::{Actor, Core, CoreError, NewAuditEntry, write_audit};
@@ -22,7 +23,7 @@ use super::{MIN_PASSWORD_CHARS, PasswordScheme};
 const ENTITY: &str = "пользователь";
 
 /// Пользователь без хэша пароля.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
 pub struct User {
     pub id: i64,
     pub login: String,
@@ -47,7 +48,9 @@ impl From<user::Model> for User {
     }
 }
 
-#[derive(Clone)]
+/// Данные нового пользователя; пароль в логи не попадает.
+#[derive(Clone, Deserialize, ts_rs::TS, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct NewUser {
     pub login: String,
     pub display_name: String,
@@ -66,10 +69,19 @@ impl fmt::Debug for NewUser {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+/// Частичное изменение пользователя; отсутствующее поле не меняется.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, ts_rs::TS, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+#[ts(optional_fields)]
 pub struct UserPatch {
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
     pub display_name: Option<String>,
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
     pub role_id: Option<i64>,
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
     pub active: Option<bool>,
 }
 

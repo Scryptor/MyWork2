@@ -19,7 +19,8 @@ use crate::{Actor, Core, CoreError, NewAuditEntry, Page, write_audit};
 
 const ENTITY: &str = "клиент";
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Клиент.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
 pub struct Client {
     pub id: i64,
     pub full_name: String,
@@ -50,7 +51,11 @@ impl From<client::Model> for Client {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+/// Данные нового клиента.
+#[derive(
+    Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema,
+)]
+#[serde(deny_unknown_fields)]
 pub struct NewClient {
     pub full_name: String,
     pub phone: String,
@@ -60,13 +65,28 @@ pub struct NewClient {
     pub blacklisted: bool,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+/// Частичное изменение клиента; отсутствующее поле не меняется.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, ts_rs::TS, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+#[ts(optional_fields)]
 pub struct ClientPatch {
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
     pub full_name: Option<String>,
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
     pub phone: Option<String>,
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
     pub address: Option<String>,
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
     pub note: Option<String>,
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
     pub source: Option<String>,
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
     pub blacklisted: Option<bool>,
 }
 

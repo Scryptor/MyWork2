@@ -3,6 +3,7 @@ use mw_domain::permission::{Permission, PermissionSet};
 use mw_domain::search::normalize_search;
 use mw_domain::validation::FieldError;
 use sea_orm::{ActiveModelTrait, ConnectionTrait, EntityTrait, NotSet, QueryOrder, Set};
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, json};
 
 use crate::{Actor, Core, CoreError, NewAuditEntry, write_audit};
@@ -11,7 +12,8 @@ use super::users;
 
 const ENTITY: &str = "роль";
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Роль: набор прав.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
 pub struct Role {
     pub id: i64,
     pub name: String,
@@ -30,15 +32,24 @@ impl From<role::Model> for Role {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+/// Данные новой роли.
+#[derive(Debug, Clone, Default, Deserialize, ts_rs::TS, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct NewRole {
     pub name: String,
     pub permissions: PermissionSet,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+/// Частичное изменение роли; отсутствующее поле не меняется.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, ts_rs::TS, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+#[ts(optional_fields)]
 pub struct RolePatch {
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
     pub name: Option<String>,
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
     pub permissions: Option<PermissionSet>,
 }
 

@@ -7,7 +7,8 @@ use serde::{Deserialize, Serialize};
 use crate::NewClient;
 
 /// Клиент заказа: существующий или новый (создаётся в той же транзакции).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum ClientRef {
     Existing(i64),
     New(NewClient),
@@ -20,7 +21,8 @@ impl Default for ClientRef {
 }
 
 /// Данные приёма устройства.
-#[derive(Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Default, PartialEq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct NewOrder {
     pub client: ClientRef,
     pub service_point_id: Option<i64>,
@@ -45,37 +47,83 @@ pub struct NewOrder {
 }
 
 /// Частичная правка заказа: `None` — поле не меняется; `Some(None)` очищает необязательное поле.
-#[derive(Clone, Default, PartialEq)]
+#[derive(Clone, Default, PartialEq, Deserialize, ts_rs::TS, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+#[ts(optional_fields)]
 pub struct OrderPatch {
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
     pub client_id: Option<i64>,
+    #[serde(default, deserialize_with = "crate::patch::nullable")]
     pub service_point_id: Option<Option<i64>>,
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
     pub received_at: Option<NaiveDateTime>,
+    #[serde(default, deserialize_with = "crate::patch::nullable")]
     pub issued_at: Option<Option<NaiveDateTime>>,
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
     pub device_type: Option<String>,
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
     pub brand: Option<String>,
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
     pub model: Option<String>,
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
     pub serial: Option<String>,
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
     pub color: Option<String>,
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
     pub device_password: Option<String>,
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
     pub completeness: Option<String>,
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
     pub device_condition: Option<String>,
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
     pub malfunction: Option<String>,
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
     pub work_done: Option<String>,
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
     pub internal_comment: Option<String>,
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
     pub master: Option<String>,
+    #[serde(default, deserialize_with = "crate::patch::nullable")]
     pub estimate_from: Option<Option<Money>>,
+    #[serde(default, deserialize_with = "crate::patch::nullable")]
     pub estimate_to: Option<Option<Money>>,
+    #[serde(default, deserialize_with = "crate::patch::nullable")]
     pub final_price: Option<Option<Money>>,
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
     pub prepayment: Option<Money>,
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
     pub extra_costs: Option<Money>,
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
     pub discount: Option<Money>,
+    #[serde(default, deserialize_with = "crate::patch::nullable")]
     pub warranty_days: Option<Option<u16>>,
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
     pub need_call: Option<bool>,
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
     pub need_parts: Option<bool>,
 }
 
 /// Заказ (все колонки, кроме `search_text`). Номер заказа = `id`.
-#[derive(Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
 pub struct Order {
     pub id: i64,
     pub client_id: i64,

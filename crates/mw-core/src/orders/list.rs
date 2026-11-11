@@ -14,6 +14,7 @@ use sea_orm::sea_query::{
     SelectStatement, SimpleExpr,
 };
 use sea_orm::{ConnectionTrait, FromQueryResult, StatementBuilder};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::page::validate_page;
@@ -21,7 +22,10 @@ use crate::sql::text_sort;
 use crate::{Actor, Core, CoreError, NewAuditEntry, Page, write_audit};
 
 /// Фильтр по тому, выдан ли заказ (по виду его статуса).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema,
+)]
+#[serde(rename_all = "snake_case")]
 pub enum IssuedFilter {
     #[default]
     Any,
@@ -48,7 +52,11 @@ pub struct OrderFilter {
     pub include_deleted: bool,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+/// Поле, по которому сортируется список заказов.
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema,
+)]
+#[serde(rename_all = "snake_case")]
 pub enum OrderSortField {
     Id,
     #[default]
@@ -83,7 +91,7 @@ impl Default for OrderSort {
 }
 
 /// Строка списка заказов.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
 pub struct OrderListItem {
     pub id: i64,
     pub received_at: NaiveDateTime,

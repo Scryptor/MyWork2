@@ -70,7 +70,7 @@ impl Permission {
 }
 
 /// Упорядоченное (по порядку объявления) множество прав.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, ts_rs::TS, utoipa::ToSchema)]
 pub struct PermissionSet(BTreeSet<Permission>);
 
 impl PermissionSet {

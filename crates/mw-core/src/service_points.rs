@@ -6,12 +6,14 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, NotSet, QueryFilter, QueryOrder,
     Set,
 };
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::statuses::check_permutation;
 use crate::{Actor, Core, CoreError, NewAuditEntry, write_audit};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Точка обслуживания.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
 pub struct ServicePoint {
     pub id: i64,
     pub name: String,
@@ -31,9 +33,15 @@ impl From<service_point::Model> for ServicePoint {
 }
 
 /// Частичное изменение точки обслуживания; `None` — не менять.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, ts_rs::TS, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+#[ts(optional_fields)]
 pub struct ServicePointPatch {
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
     pub name: Option<String>,
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
     pub archived: Option<bool>,
 }
 

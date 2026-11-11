@@ -33,6 +33,8 @@ sha2 = "0.11"
 hex = "0.4"
 getrandom = "0.4"
 tracing = "0.1"
+utoipa = { version = "6", default-features = false, features = ["macros", "chrono"] }
+ts-rs = { version = "12", features = ["chrono-impl", "serde-json-impl", "no-serde-warnings"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

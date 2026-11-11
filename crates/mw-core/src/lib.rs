@@ -10,6 +10,7 @@ mod dictionaries;
 mod error;
 mod orders;
 mod page;
+mod patch;
 mod service_points;
 mod settings;
 mod sql;
