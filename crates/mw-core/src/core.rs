@@ -2,7 +2,8 @@ use std::sync::{Arc, RwLock};
 
 use chrono::{NaiveDateTime, SubsecRound, TimeZone};
 use sea_orm::{
-    DatabaseBackend, DatabaseConnection, DatabaseTransaction, TransactionOptions, TransactionTrait,
+    ConnectionTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction, TransactionOptions,
+    TransactionTrait,
 };
 
 use crate::settings::{self, AppSettings};
@@ -58,11 +59,16 @@ impl Core {
     }
 }
 
+/// Глобальная блокировка единственного писателя в PostgreSQL: снимается сама при commit/rollback,
+/// повторяет поведение SQLite, где писатель всегда один.
+const WRITE_LOCK_KEY: i64 = 0x6D77_0001;
+
 /// Единственный способ открыть транзакцию записи.
 ///
 /// В SQLite транзакция начинается в режиме IMMEDIATE: в WAL-режиме с пулом соединений
 /// «прочитать, затем записать» в обычной (отложенной) транзакции даёт `SQLITE_BUSY`,
-/// который `busy_timeout` не гасит. В PostgreSQL — обычная транзакция.
+/// который `busy_timeout` не гасит. В PostgreSQL сразу после BEGIN берётся advisory-блокировка
+/// `WRITE_LOCK_KEY`, поэтому писатели идут строго по одному, как в SQLite.
 pub(crate) async fn begin_write_on(
     db: &DatabaseConnection,
 ) -> Result<DatabaseTransaction, CoreError> {
@@ -74,7 +80,45 @@ pub(crate) async fn begin_write_on(
             })
             .await?
         }
+        DatabaseBackend::Postgres => {
+            let tx = db.begin().await?;
+            tx.execute_unprepared(&format!("SELECT pg_advisory_xact_lock({WRITE_LOCK_KEY})"))
+                .await?;
+            tx
+        }
         _ => db.begin().await?,
     };
     Ok(tx)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use tokio::time::timeout;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn second_writer_waits_for_first_to_finish() {
+        for (label, db) in mw_db::testing::all_backends().await {
+            let first = begin_write_on(&db).await.unwrap();
+            let db2 = db.clone();
+            let mut second = tokio::spawn(async move {
+                let tx = begin_write_on(&db2).await.unwrap();
+                tx.commit().await.unwrap();
+            });
+            assert!(
+                timeout(Duration::from_millis(300), &mut second)
+                    .await
+                    .is_err(),
+                "{label}: второй писатель не должен начать, пока открыта первая транзакция"
+            );
+            first.commit().await.unwrap();
+            timeout(Duration::from_secs(10), second)
+                .await
+                .unwrap_or_else(|_| panic!("{label}: второй писатель завис"))
+                .unwrap();
+        }
+    }
 }

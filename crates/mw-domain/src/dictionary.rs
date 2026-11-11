@@ -13,6 +13,23 @@ code_enum! {
     }
 }
 
+impl DictionaryKind {
+    /// Название справочника для людей.
+    pub fn label_ru(self) -> &'static str {
+        match self {
+            Self::DeviceType => "Типы устройств",
+            Self::Brand => "Бренды",
+            Self::Color => "Цвета",
+            Self::Completeness => "Комплектность",
+            Self::Condition => "Состояние",
+            Self::Malfunction => "Неисправности",
+            Self::WorkDone => "Выполненные работы",
+            Self::Master => "Мастера",
+            Self::ClientSource => "Откуда узнали",
+        }
+    }
+}
+
 /// Значения справочников по умолчанию (справочник мастеров заполняется пользователями).
 pub const DEFAULT_DICTIONARY: &[(DictionaryKind, &[&str])] = &[
     (
@@ -109,6 +126,37 @@ pub const DEFAULT_DICTIONARY: &[(DictionaryKind, &[&str])] = &[
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dictionary_kind_labels_are_russian() {
+        let labels: Vec<_> = [
+            DictionaryKind::DeviceType,
+            DictionaryKind::Brand,
+            DictionaryKind::Color,
+            DictionaryKind::Completeness,
+            DictionaryKind::Condition,
+            DictionaryKind::Malfunction,
+            DictionaryKind::WorkDone,
+            DictionaryKind::Master,
+            DictionaryKind::ClientSource,
+        ]
+        .map(DictionaryKind::label_ru)
+        .to_vec();
+        assert_eq!(
+            labels,
+            [
+                "Типы устройств",
+                "Бренды",
+                "Цвета",
+                "Комплектность",
+                "Состояние",
+                "Неисправности",
+                "Выполненные работы",
+                "Мастера",
+                "Откуда узнали"
+            ]
+        );
+    }
 
     #[test]
     fn dictionary_kinds_roundtrip_and_defaults_are_unique() {

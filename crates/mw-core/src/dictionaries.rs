@@ -114,7 +114,7 @@ impl Core {
                 action: "dictionary.added",
                 order_id: None,
                 client_id: None,
-                summary: format!("Справочник «{}»: добавлено «{value}»", kind.as_str()),
+                summary: format!("Справочник «{}»: добавлено «{value}»", kind.label_ru()),
                 details: Some(json!({ "id": model.id, "kind": kind.as_str(), "value": value })),
             },
         )
@@ -158,7 +158,7 @@ impl Core {
                 client_id: None,
                 summary: format!(
                     "Справочник «{}»: «{old}» переименовано в «{value}»",
-                    kind.as_str()
+                    kind.label_ru()
                 ),
                 details: Some(json!({ "id": id, "kind": kind.as_str(), "old": old, "new": value })),
             },
@@ -178,6 +178,10 @@ impl Core {
                 entity: "значение справочника",
                 id,
             })?;
+        let kind = current
+            .kind
+            .parse::<DictionaryKind>()
+            .map_err(|e| DbErr::Custom(format!("справочник №{id}: {e:?}")))?;
         dictionary_item::Entity::delete_by_id(id).exec(&tx).await?;
         write_audit(
             &tx,
@@ -187,7 +191,11 @@ impl Core {
                 action: "dictionary.deleted",
                 order_id: None,
                 client_id: None,
-                summary: format!("Справочник «{}»: удалено «{}»", current.kind, current.value),
+                summary: format!(
+                    "Справочник «{}»: удалено «{}»",
+                    kind.label_ru(),
+                    current.value
+                ),
                 details: Some(json!({ "id": id, "kind": current.kind, "value": current.value })),
             },
         )
@@ -224,7 +232,7 @@ impl Core {
                 action: "dictionary.reordered",
                 order_id: None,
                 client_id: None,
-                summary: format!("Изменён порядок справочника «{}»", kind.as_str()),
+                summary: format!("Изменён порядок справочника «{}»", kind.label_ru()),
                 details: Some(json!({ "kind": kind.as_str(), "ordered_ids": ordered_ids })),
             },
         )
