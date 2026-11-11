@@ -16,6 +16,9 @@ use crate::{Actor, ClientRef, Core, CoreError, NewAuditEntry, NewOrder, Order, w
 
 const ENTITY: &str = "заказ";
 
+/// Гарантия не больше десяти лет.
+pub(super) const MAX_WARRANTY_DAYS: u16 = 3650;
+
 fn trimmed(s: &str) -> String {
     s.trim().to_owned()
 }
@@ -59,6 +62,18 @@ impl Core {
                     errors.push(FieldError::required(field));
                 }
             }
+        }
+        for (field, value) in [
+            ("estimate_from", new.estimate_from.map(|m| m.kopecks())),
+            ("estimate_to", new.estimate_to.map(|m| m.kopecks())),
+            ("prepayment", Some(new.prepayment.kopecks())),
+        ] {
+            if value.is_some_and(|v| v < 0) {
+                errors.push(FieldError::new(field, "out_of_range"));
+            }
+        }
+        if new.warranty_days.is_some_and(|d| d > MAX_WARRANTY_DAYS) {
+            errors.push(FieldError::new("warranty_days", "out_of_range"));
         }
         if let (Some(from), Some(to)) = (new.estimate_from, new.estimate_to)
             && from > to

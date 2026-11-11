@@ -138,3 +138,39 @@ async fn new_client_needs_name_or_phone_and_rights_are_checked() -> Result<(), C
     }
     Ok(())
 }
+
+#[tokio::test]
+async fn negative_money_and_absurd_warranty_are_rejected() -> Result<(), CoreError> {
+    for t in cores().await {
+        let bad = NewOrder {
+            prepayment: Money::from_rubles(-500),
+            estimate_from: Some(Money::from_kopecks(-1)),
+            ..sample_new_order()
+        };
+        assert_validation(
+            t.core.create_order(&admin(), bad).await,
+            &[
+                ("estimate_from", "out_of_range"),
+                ("prepayment", "out_of_range"),
+            ],
+        );
+        let long = NewOrder {
+            warranty_days: Some(3651),
+            ..sample_new_order()
+        };
+        assert_validation(
+            t.core.create_order(&admin(), long).await,
+            &[("warranty_days", "out_of_range")],
+        );
+        let ok = NewOrder {
+            warranty_days: Some(3650),
+            ..sample_new_order()
+        };
+        assert!(
+            t.core.create_order(&admin(), ok).await.is_ok(),
+            "{}",
+            t.label
+        );
+    }
+    Ok(())
+}

@@ -10,6 +10,7 @@ use sea_orm::{
 };
 use serde_json::{Map, Value, json};
 
+use super::create::MAX_WARRANTY_DAYS;
 use super::types::{OrderPatch, order_search_text};
 use crate::clients::find_live;
 use crate::{Actor, Core, CoreError, NewAuditEntry, Order, write_audit};
@@ -221,6 +222,26 @@ impl Core {
             if !ok {
                 errors.push(FieldError::new("service_point_id", "invalid"));
             }
+        }
+        // Значения вне диапазона проверяем только у полей, которые правка действительно меняет:
+        // уже сохранённые старые значения не мешают посторонним правкам.
+        for (field, value) in [
+            ("estimate_from", m.estimate_from),
+            ("estimate_to", m.estimate_to),
+            ("prepayment", Some(m.prepayment)),
+            ("extra_costs", Some(m.extra_costs)),
+            ("discount", Some(m.discount)),
+            ("final_price", m.final_price),
+        ] {
+            if d.changes.contains_key(field) && value.is_some_and(|v| v < 0) {
+                errors.push(FieldError::new(field, "out_of_range"));
+            }
+        }
+        if d.changes.contains_key("warranty_days")
+            && m.warranty_days
+                .is_some_and(|days| days < 0 || days > i32::from(MAX_WARRANTY_DAYS))
+        {
+            errors.push(FieldError::new("warranty_days", "out_of_range"));
         }
         if let (Some(from), Some(to)) = (m.estimate_from, m.estimate_to)
             && from > to

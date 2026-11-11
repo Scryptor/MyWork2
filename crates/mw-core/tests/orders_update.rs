@@ -218,3 +218,42 @@ async fn delete_is_soft_and_blocks_edits() -> Result<(), CoreError> {
     }
     Ok(())
 }
+
+#[tokio::test]
+async fn negative_money_and_absurd_warranty_are_rejected_on_update() -> Result<(), CoreError> {
+    use mw_domain::money::Money;
+    for t in cores().await {
+        let o = t.core.create_order(&admin(), sample_new_order()).await?;
+        let a = admin();
+        let patch = |p: OrderPatch| t.core.update_order(&a, o.id, 1, p);
+        assert_validation(
+            patch(OrderPatch {
+                discount: Some(Money::from_kopecks(-1)),
+                ..Default::default()
+            })
+            .await,
+            &[("discount", "out_of_range")],
+        );
+        assert_validation(
+            patch(OrderPatch {
+                extra_costs: Some(Money::from_kopecks(-1)),
+                final_price: Some(Some(Money::from_kopecks(-5))),
+                warranty_days: Some(Some(3651)),
+                ..Default::default()
+            })
+            .await,
+            &[
+                ("extra_costs", "out_of_range"),
+                ("final_price", "out_of_range"),
+                ("warranty_days", "out_of_range"),
+            ],
+        );
+        let u = patch(OrderPatch {
+            warranty_days: Some(Some(3650)),
+            ..Default::default()
+        })
+        .await?;
+        assert_eq!(u.warranty_days, Some(3650), "{}", t.label);
+    }
+    Ok(())
+}
