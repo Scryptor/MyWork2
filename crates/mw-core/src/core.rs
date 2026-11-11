@@ -2,8 +2,8 @@ use std::sync::{Arc, RwLock};
 
 use chrono::{NaiveDateTime, SubsecRound, TimeZone};
 use sea_orm::{
-    ConnectionTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction, TransactionOptions,
-    TransactionTrait,
+    ConnectionTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction, IsolationLevel,
+    TransactionOptions, TransactionTrait,
 };
 
 use crate::settings::{self, AppSettings};
@@ -81,7 +81,11 @@ pub(crate) async fn begin_write_on(
             .await?
         }
         DatabaseBackend::Postgres => {
-            let tx = db.begin().await?;
+            // READ COMMITTED явно: при REPEATABLE READ снимок берётся самим запросом блокировки
+            // ДО её получения, и писатель не увидит коммит предыдущего владельца блокировки.
+            let tx = db
+                .begin_with_config(Some(IsolationLevel::ReadCommitted), None)
+                .await?;
             tx.execute_unprepared(&format!("SELECT pg_advisory_xact_lock({WRITE_LOCK_KEY})"))
                 .await?;
             tx
@@ -120,5 +124,31 @@ mod tests {
                 .unwrap_or_else(|_| panic!("{label}: второй писатель завис"))
                 .unwrap();
         }
+    }
+
+    #[tokio::test]
+    async fn postgres_write_transaction_is_read_committed_even_if_server_default_differs() {
+        use sea_orm::{ConnectOptions, Database, DbBackend, Statement};
+        let Ok(url) = std::env::var("MW_TEST_PG_URL") else {
+            return;
+        };
+        let mut options = ConnectOptions::new(url);
+        options.max_connections(1).sqlx_logging(false);
+        options.map_sqlx_postgres_opts(|o| {
+            o.options([("default_transaction_isolation", "repeatable read")])
+        });
+        let db = Database::connect(options).await.unwrap();
+        let tx = begin_write_on(&db).await.unwrap();
+        let row = tx
+            .query_one_raw(Statement::from_string(
+                DbBackend::Postgres,
+                "SHOW transaction_isolation",
+            ))
+            .await
+            .unwrap()
+            .unwrap();
+        let level: String = row.try_get_by_index(0).unwrap();
+        assert_eq!(level, "read committed");
+        tx.commit().await.unwrap();
     }
 }
