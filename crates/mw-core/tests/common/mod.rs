@@ -168,3 +168,18 @@ pub async fn role_id_by_name(core: &Core, name: &str) -> i64 {
         .unwrap_or_else(|| panic!("нет роли {name}"))
         .id
 }
+
+pub fn sample_new_order() -> mw_core::NewOrder {
+    mw_core::NewOrder {
+        client: mw_core::ClientRef::New(mw_core::NewClient {
+            full_name: "Пётр Иванов".into(),
+            phone: "+7 921 123-45-67".into(),
+            ..Default::default()
+        }),
+        device_type: "Телефон".into(),
+        brand: "Samsung".into(),
+        model: "A52".into(),
+        malfunction: "Разбит экран".into(),
+        ..Default::default()
+    }
+}

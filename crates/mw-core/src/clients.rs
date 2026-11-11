@@ -10,6 +10,7 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, NotSet, PaginatorTrait,
     QueryFilter, QueryOrder, QuerySelect, Set,
 };
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 
 use crate::page::validate_limit;
@@ -48,7 +49,7 @@ impl From<client::Model> for Client {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NewClient {
     pub full_name: String,
     pub phone: String,
@@ -106,7 +107,7 @@ pub(crate) async fn insert_client(
     .await?)
 }
 
-async fn find_live(
+pub(crate) async fn find_live(
     conn: &impl ConnectionTrait,
     id: i64,
 ) -> Result<Option<client::Model>, CoreError> {
