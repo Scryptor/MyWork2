@@ -308,3 +308,34 @@ async fn malformed_login_requests_are_bad_requests() {
         assert_eq!(t.request(broken).await.status, 400);
     }
 }
+
+#[tokio::test]
+async fn concurrent_wrong_passwords_cannot_exceed_the_limit() {
+    for t in apis(Listen::Network).await {
+        t.create_admin_user("Ирина").await;
+        let wrong = json!({ "login": "ирина", "password": "не тот", "device_label": "" });
+        let responses = futures::future::join_all((0..10).map(|_| {
+            t.send_from(
+                [10, 0, 0, 7],
+                Method::POST,
+                "/api/v1/auth/login",
+                None,
+                Some(wrong.clone()),
+            )
+        }))
+        .await;
+        let count = |code: u16| responses.iter().filter(|r| r.status == code).count();
+        assert_eq!((count(401), count(429)), (5, 5), "{}", t.label);
+        let ok = json!({ "login": "ирина", "password": TEST_PASSWORD, "device_label": "" });
+        let r = t
+            .send_from(
+                [10, 0, 0, 8],
+                Method::POST,
+                "/api/v1/auth/login",
+                None,
+                Some(ok),
+            )
+            .await;
+        assert_eq!(r.status, 429, "{}", t.label);
+    }
+}

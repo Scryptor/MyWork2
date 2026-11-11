@@ -14,29 +14,48 @@ use crate::state::AppState;
 /// Наибольшая часть логина в ключе ограничителя (длинные логины не раздувают память).
 const LOGIN_KEY_CHARS: usize = 64;
 
-/// Блокировка по любому из ключей: берётся наибольший срок.
-fn check_limits(state: &AppState, account_key: Option<&str>, ip_key: &str) -> Result<(), ApiError> {
+/// Засчитывает попытку по обоим ключам. Если любой заблокирован — отменяет уже
+/// засчитанную и отвечает 429 с наибольшим сроком.
+fn begin_attempt(
+    state: &AppState,
+    account_key: Option<&str>,
+    ip_key: &str,
+) -> Result<(), ApiError> {
     let now = state.core.now_utc();
     let account = match account_key {
-        Some(key) => state.limits.accounts.check(key, now),
+        Some(key) => state.limits.accounts.begin(key, now),
         None => Ok(()),
     };
-    let ip = state.limits.ips.check(ip_key, now);
-    match (account, ip) {
-        (Ok(()), Ok(())) => Ok(()),
-        (a, b) => {
-            let secs = a.err().into_iter().chain(b.err()).max().unwrap_or(1);
-            Err(ApiError::too_many_attempts(secs))
-        }
+    let ip = state.limits.ips.begin(ip_key, now);
+    if account.is_ok() && ip.is_ok() {
+        return Ok(());
     }
+    if account.is_ok()
+        && let Some(key) = account_key
+    {
+        state.limits.accounts.forgive(key);
+    }
+    if ip.is_ok() {
+        state.limits.ips.forgive(ip_key);
+    }
+    let secs = account.err().into_iter().chain(ip.err()).max().unwrap_or(1);
+    Err(ApiError::too_many_attempts(secs))
 }
 
-fn record_failure(state: &AppState, account_key: Option<&str>, ip_key: &str) {
-    let now = state.core.now_utc();
+/// Исход не считается неудачей: отменяет попытки по обоим ключам.
+fn forgive_attempt(state: &AppState, account_key: Option<&str>, ip_key: &str) {
     if let Some(key) = account_key {
-        state.limits.accounts.record_failure(key, now);
+        state.limits.accounts.forgive(key);
     }
-    state.limits.ips.record_failure(ip_key, now);
+    state.limits.ips.forgive(ip_key);
+}
+
+/// Успех: счётчик учётной записи очищается, попытка с адреса не считается.
+fn succeed_attempt(state: &AppState, account_key: Option<&str>, ip_key: &str) {
+    if let Some(key) = account_key {
+        state.limits.accounts.reset(key);
+    }
+    state.limits.ips.forgive(ip_key);
 }
 
 /// Вход по логину и паролю. Выдаёт токен для заголовка `Authorization: Bearer`.
@@ -65,25 +84,25 @@ pub(super) async fn login(
         normalized.chars().take(LOGIN_KEY_CHARS).collect::<String>()
     );
     let ip_key = format!("ip:{ip}");
-    check_limits(&state, Some(&login_key), &ip_key)?;
+    begin_attempt(&state, Some(&login_key), &ip_key)?;
     match state
         .core
         .login(&req.login, &req.password, &req.device_label)
         .await
     {
         Ok(session) => {
-            state.limits.accounts.reset(&login_key);
+            succeed_attempt(&state, Some(&login_key), &ip_key);
             Ok(Json(LoginResponse {
                 token: session.token,
                 user: session.user,
                 permissions: session.permissions,
             }))
         }
-        Err(CoreError::InvalidCredentials) => {
-            record_failure(&state, Some(&login_key), &ip_key);
-            Err(CoreError::InvalidCredentials.into())
+        Err(CoreError::InvalidCredentials) => Err(CoreError::InvalidCredentials.into()),
+        Err(e) => {
+            forgive_attempt(&state, Some(&login_key), &ip_key);
+            Err(e.into())
         }
-        Err(e) => Err(e.into()),
     }
 }
 
@@ -146,19 +165,25 @@ pub(super) async fn change_password(
 ) -> Result<StatusCode, ApiError> {
     let user_key = actor.user_id().map(|id| format!("user:{id}"));
     let ip_key = format!("ip:{ip}");
-    check_limits(&state, user_key.as_deref(), &ip_key)?;
+    begin_attempt(&state, user_key.as_deref(), &ip_key)?;
     match state
         .core
         .change_own_password(&actor, &req.current_password, &req.new_password)
         .await
     {
-        Ok(()) => Ok(StatusCode::NO_CONTENT),
+        Ok(()) => {
+            succeed_attempt(&state, user_key.as_deref(), &ip_key);
+            Ok(StatusCode::NO_CONTENT)
+        }
         Err(CoreError::Validation(fields)) => {
-            if fields.iter().any(|f| f.field == "current_password") {
-                record_failure(&state, user_key.as_deref(), &ip_key);
+            if !fields.iter().any(|f| f.field == "current_password") {
+                forgive_attempt(&state, user_key.as_deref(), &ip_key);
             }
             Err(CoreError::Validation(fields).into())
         }
-        Err(e) => Err(e.into()),
+        Err(e) => {
+            forgive_attempt(&state, user_key.as_deref(), &ip_key);
+            Err(e.into())
+        }
     }
 }
