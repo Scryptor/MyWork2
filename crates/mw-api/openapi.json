@@ -1,0 +1,233 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "MyWork 3 API",
+    "description": "HTTP API учёта сервисного центра MyWork 3.\n\n**Вход.** `POST /api/v1/auth/login` выдаёт токен; дальше он передаётся в заголовке `Authorization: Bearer <токен>`. Если сервер слушает только локальный адрес и в базе нет активных пользователей, вход не нужен (режим без входа): запросы без токена выполняются с полными правами. Узнать это можно по `GET /api/v1/server-info` (`auth_required`).\n\n**Форматы.** Поля JSON — `snake_case`. Деньги — целое число копеек. Даты и время — местное время предприятия без смещения, `YYYY-MM-DDTHH:MM:SS` (в схемах помечены `date-time`, но смещения в них нет).\n\n**Правки.** В теле `PATCH` непереданное поле не меняется; `null` очищает только те поля, которые бывают пустыми; `null` у остальных полей и неизвестные поля — ошибка 400.\n\n**Версия записи.** Изменение заказов, клиентов, пользователей и ролей принимает параметр `version` — версию записи, которую видел клиент; устаревшая даёт 409 с `current_version`.\n\n**Ошибки.** Любая ошибка — JSON `ErrorBody` с полями `code`, `message` (по-русски), `fields`, `current_version`, `permission`, `retry_after_secs`. Коды: `bad_request` (400, 405, 415), `unauthenticated` и `invalid_credentials` (401), `forbidden` (403), `not_found` (404), `conflict` (409), `validation` (422), `too_many_attempts` (429), `unavailable` (503), `internal` (500).",
+    "license": {
+      "name": "MIT",
+      "identifier": "MIT"
+    },
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/v1/openapi.json": {
+      "get": {
+        "tags": [
+          "Сервер"
+        ],
+        "summary": "Описание API в формате OpenAPI 3.1. Вход не требуется.",
+        "operationId": "openapi_json",
+        "responses": {
+          "200": {
+            "description": "Документ OpenAPI",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/server-info": {
+      "get": {
+        "tags": [
+          "Сервер"
+        ],
+        "summary": "Сведения о сервере: версия и нужен ли вход. Вход не требуется.",
+        "operationId": "server_info",
+        "responses": {
+          "200": {
+            "description": "Сведения о сервере",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerInfo"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ErrorBody": {
+        "type": "object",
+        "description": "Тело любого ответа с ошибкой.",
+        "required": [
+          "code",
+          "message",
+          "fields"
+        ],
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/ErrorCode"
+          },
+          "current_version": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Текущая версия записи (только для `conflict`)."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ErrorField"
+            },
+            "description": "Ошибки полей (только для `validation`)."
+          },
+          "message": {
+            "type": "string",
+            "description": "Сообщение по-русски, пригодное для показа человеку."
+          },
+          "permission": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Permission",
+                "description": "Недостающее право (только для `forbidden`)."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "retry_after_secs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Через сколько секунд повторить (только для `too_many_attempts`).",
+            "minimum": 0
+          }
+        }
+      },
+      "ErrorCode": {
+        "type": "string",
+        "description": "Машинный код ошибки.",
+        "enum": [
+          "bad_request",
+          "unauthenticated",
+          "invalid_credentials",
+          "forbidden",
+          "not_found",
+          "conflict",
+          "validation",
+          "too_many_attempts",
+          "unavailable",
+          "internal"
+        ]
+      },
+      "ErrorField": {
+        "type": "object",
+        "description": "Ошибка в поле формы.",
+        "required": [
+          "field",
+          "code",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "Машинный код (`required`, `invalid`, …)."
+          },
+          "field": {
+            "type": "string",
+            "description": "Имя поля."
+          },
+          "message": {
+            "type": "string",
+            "description": "Сообщение по-русски."
+          }
+        }
+      },
+      "Permission": {
+        "type": "string",
+        "enum": [
+          "orders_create",
+          "orders_edit",
+          "orders_delete",
+          "order_dates_edit",
+          "reports_view",
+          "stock_view",
+          "stock_create",
+          "stock_edit",
+          "stock_delete",
+          "clients_view",
+          "clients_create",
+          "clients_edit",
+          "clients_delete",
+          "clients_merge",
+          "settings_manage",
+          "users_manage",
+          "audit_view"
+        ]
+      },
+      "ServerInfo": {
+        "type": "object",
+        "description": "Сведения о сервере; доступны без входа.",
+        "required": [
+          "app",
+          "version",
+          "api_version",
+          "auth_required",
+          "has_users"
+        ],
+        "properties": {
+          "api_version": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Версия API (путь `/api/v{N}`).",
+            "minimum": 0
+          },
+          "app": {
+            "type": "string",
+            "description": "Всегда `mw`."
+          },
+          "auth_required": {
+            "type": "boolean",
+            "description": "Нужен ли вход: `false` только в режиме без входа на локальном адресе."
+          },
+          "has_users": {
+            "type": "boolean",
+            "description": "Есть ли в базе активные пользователи."
+          },
+          "version": {
+            "type": "string",
+            "description": "Версия сервера."
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  }
+}

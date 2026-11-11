@@ -1,0 +1,131 @@
+//! Контракт API: `openapi.json` и `bindings/*.ts` должны совпадать с кодом.
+//! `MW_UPDATE_CONTRACT=1` перезаписывает их вместо сравнения.
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
+use std::collections::BTreeMap;
+use std::fs;
+use std::path::{Path, PathBuf};
+
+const STALE: &str = "контракт API устарел: выполните `MW_UPDATE_CONTRACT=1 cargo test -p mw-api --test contract` и закоммитьте openapi.json и bindings/";
+
+fn manifest_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+}
+
+fn updating() -> bool {
+    std::env::var("MW_UPDATE_CONTRACT").is_ok_and(|v| v == "1")
+}
+
+/// Новая пустая папка во временном каталоге.
+fn temp_dir(tag: &str) -> PathBuf {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!("mw-api-{tag}-{}-{nanos}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+fn check_or_update_file(path: &Path, expected: String) {
+    if updating() {
+        fs::write(path, expected).unwrap();
+        return;
+    }
+    let actual = fs::read_to_string(path).unwrap_or_default();
+    assert!(actual == expected, "{STALE} ({})", path.display());
+}
+
+/// Все `*.ts` папки: относительный путь (через `/`) -> содержимое.
+fn read_tree(dir: &Path) -> BTreeMap<String, String> {
+    fn walk(root: &Path, dir: &Path, out: &mut BTreeMap<String, String>) {
+        let Ok(entries) = fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                walk(root, &path, out);
+            } else if path.extension().is_some_and(|e| e == "ts") {
+                let rel = path
+                    .strip_prefix(root)
+                    .unwrap()
+                    .components()
+                    .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                    .collect::<Vec<_>>()
+                    .join("/");
+                out.insert(rel, fs::read_to_string(&path).unwrap());
+            }
+        }
+    }
+    let mut out = BTreeMap::new();
+    walk(dir, dir, &mut out);
+    out
+}
+
+fn check_or_update_tree(committed: &Path, fresh: &Path) {
+    if updating() {
+        let _ = fs::remove_dir_all(committed);
+        for (rel, text) in read_tree(fresh) {
+            let target = committed.join(&rel);
+            fs::create_dir_all(target.parent().unwrap()).unwrap();
+            fs::write(target, text).unwrap();
+        }
+        return;
+    }
+    let (old, new) = (read_tree(committed), read_tree(fresh));
+    let missing: Vec<_> = new.keys().filter(|k| !old.contains_key(*k)).collect();
+    let extra: Vec<_> = old.keys().filter(|k| !new.contains_key(*k)).collect();
+    let changed: Vec<_> = new
+        .iter()
+        .filter(|(k, v)| old.get(*k).is_some_and(|o| o != *v))
+        .map(|(k, _)| k)
+        .collect();
+    assert!(
+        missing.is_empty() && extra.is_empty() && changed.is_empty(),
+        "{STALE}\nнет в bindings/: {missing:?}\nлишние в bindings/: {extra:?}\nизменились: {changed:?}"
+    );
+}
+
+#[test]
+fn openapi_json_is_up_to_date() {
+    check_or_update_file(
+        &manifest_dir().join("openapi.json"),
+        mw_api::openapi().to_pretty_json().unwrap() + "\n",
+    );
+}
+
+#[test]
+fn typescript_bindings_are_up_to_date() {
+    let fresh = temp_dir("bindings");
+    mw_api::export_typescript(&fresh).unwrap();
+    check_or_update_tree(&manifest_dir().join("bindings"), &fresh);
+    let _ = fs::remove_dir_all(&fresh);
+}
+
+#[test]
+fn every_openapi_schema_has_a_typescript_type() {
+    let bindings = manifest_dir().join("bindings");
+    for name in mw_api::openapi().components.unwrap().schemas.keys() {
+        assert!(
+            bindings.join(format!("{name}.ts")).exists(),
+            "нет TS-типа для схемы {name}"
+        );
+    }
+}
+
+#[test]
+fn every_schema_reference_resolves() {
+    // utoipa-axum собирает схемы из тел и ответов, но не из параметров пути и запроса:
+    // такие схемы (DictionaryKind, IssuedFilter, OrderSortField) регистрируются в #[openapi(components(schemas(…)))].
+    let text = mw_api::openapi().to_json().unwrap();
+    let api: serde_json::Value = serde_json::from_str(&text).unwrap();
+    let schemas = api["components"]["schemas"].as_object().unwrap();
+    for (i, m) in text.match_indices("#/components/schemas/") {
+        let name = text[i + m.len()..].split('"').next().unwrap();
+        assert!(
+            schemas.contains_key(name),
+            "ссылка на несуществующую схему {name}"
+        );
+    }
+}

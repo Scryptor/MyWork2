@@ -1,5 +1,6 @@
 //! HTTP API MyWork2: Axum-роутер поверх `mw-core`.
 
+mod contract;
 mod dto;
 mod error;
 mod extract;
@@ -19,6 +20,7 @@ use utoipa::openapi::{
 };
 use utoipa::{Modify, OpenApi as _, ToSchema};
 
+pub use contract::export_typescript;
 pub use dto::ServerInfo;
 pub use error::{ErrorBody, ErrorCode, ErrorField};
 pub use state::ApiConfig;
