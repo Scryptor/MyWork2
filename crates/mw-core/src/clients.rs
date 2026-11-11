@@ -22,15 +22,25 @@ const ENTITY: &str = "клиент";
 /// Клиент.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
 pub struct Client {
+    /// Номер клиента.
     pub id: i64,
+    /// ФИО клиента.
     pub full_name: String,
+    /// Телефон.
     pub phone: String,
+    /// Адрес.
     pub address: String,
+    /// Заметка.
     pub note: String,
+    /// Откуда клиент узнал о сервисе.
     pub source: String,
+    /// Клиент в чёрном списке.
     pub blacklisted: bool,
+    /// Когда создано (местное время предприятия).
     pub created_at: NaiveDateTime,
+    /// Когда изменено (местное время предприятия).
     pub updated_at: NaiveDateTime,
+    /// Версия записи для проверки конфликтов правок.
     pub version: i64,
 }
 
@@ -57,11 +67,17 @@ impl From<client::Model> for Client {
 )]
 #[serde(deny_unknown_fields)]
 pub struct NewClient {
+    /// ФИО клиента.
     pub full_name: String,
+    /// Телефон.
     pub phone: String,
+    /// Адрес.
     pub address: String,
+    /// Заметка.
     pub note: String,
+    /// Откуда клиент узнал о сервисе.
     pub source: String,
+    /// Клиент в чёрном списке.
     pub blacklisted: bool,
 }
 
@@ -70,21 +86,27 @@ pub struct NewClient {
 #[serde(deny_unknown_fields)]
 #[ts(optional_fields)]
 pub struct ClientPatch {
+    /// ФИО клиента.
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub full_name: Option<String>,
+    /// Телефон.
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub phone: Option<String>,
+    /// Адрес.
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub address: Option<String>,
+    /// Заметка.
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub note: Option<String>,
+    /// Откуда клиент узнал о сервисе.
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub source: Option<String>,
+    /// Клиент в чёрном списке.
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub blacklisted: Option<bool>,

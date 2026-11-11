@@ -16,9 +16,13 @@ use crate::{Actor, Core, CoreError, NewAuditEntry, write_audit};
 /// Значение справочника.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
 pub struct DictionaryItem {
+    /// Номер значения.
     pub id: i64,
+    /// Вид справочника.
     pub kind: DictionaryKind,
+    /// Текст значения.
     pub value: String,
+    /// Порядковый номер в списке.
     pub sort_order: i32,
 }
 

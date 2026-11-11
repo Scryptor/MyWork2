@@ -15,9 +15,13 @@ const ENTITY: &str = "роль";
 /// Роль: набор прав.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
 pub struct Role {
+    /// Номер роли.
     pub id: i64,
+    /// Название роли.
     pub name: String,
+    /// Набор прав.
     pub permissions: PermissionSet,
+    /// Версия записи для проверки конфликтов правок.
     pub version: i64,
 }
 
@@ -36,7 +40,9 @@ impl From<role::Model> for Role {
 #[derive(Debug, Clone, Default, Deserialize, ts_rs::TS, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct NewRole {
+    /// Название роли.
     pub name: String,
+    /// Набор прав.
     pub permissions: PermissionSet,
 }
 
@@ -45,9 +51,11 @@ pub struct NewRole {
 #[serde(deny_unknown_fields)]
 #[ts(optional_fields)]
 pub struct RolePatch {
+    /// Название роли.
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub name: Option<String>,
+    /// Набор прав.
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub permissions: Option<PermissionSet>,

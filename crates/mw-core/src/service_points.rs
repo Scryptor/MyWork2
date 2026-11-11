@@ -15,9 +15,13 @@ use crate::{Actor, Core, CoreError, NewAuditEntry, write_audit};
 /// Точка обслуживания.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
 pub struct ServicePoint {
+    /// Номер точки обслуживания.
     pub id: i64,
+    /// Название.
     pub name: String,
+    /// Порядковый номер в списке.
     pub sort_order: i32,
+    /// Скрыт из выбора (в архиве).
     pub archived: bool,
 }
 
@@ -37,9 +41,11 @@ impl From<service_point::Model> for ServicePoint {
 #[serde(deny_unknown_fields)]
 #[ts(optional_fields)]
 pub struct ServicePointPatch {
+    /// Название.
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub name: Option<String>,
+    /// Скрыт из выбора (в архиве).
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub archived: Option<bool>,

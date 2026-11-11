@@ -14,11 +14,17 @@ use crate::{Actor, Core, CoreError, NewAuditEntry, write_audit};
 /// значение — JSON).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
 pub struct AppSettings {
+    /// Знак валюты.
     pub currency_symbol: String,
+    /// Процент мастера, 0–100.
     pub master_percent: u8,
+    /// Через сколько суток диагностика считается просроченной.
     pub diagnostics_overdue_days: u16,
+    /// Гарантия по умолчанию, в сутках; пусто — без гарантии.
     pub default_warranty_days: Option<u16>,
+    /// Требовать заполнения обязательных полей при приёме.
     pub intake_required_fields: bool,
+    /// Часовой пояс предприятия (имя IANA).
     pub timezone: String,
 }
 
@@ -40,20 +46,26 @@ impl Default for AppSettings {
 #[serde(deny_unknown_fields)]
 #[ts(optional_fields)]
 pub struct SettingsPatch {
+    /// Знак валюты.
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub currency_symbol: Option<String>,
+    /// Процент мастера, 0–100.
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub master_percent: Option<u8>,
+    /// Через сколько суток диагностика считается просроченной.
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub diagnostics_overdue_days: Option<u16>,
+    /// Гарантия по умолчанию, в сутках; пусто — без гарантии.
     #[serde(default, deserialize_with = "crate::patch::nullable")]
     pub default_warranty_days: Option<Option<u16>>,
+    /// Требовать заполнения обязательных полей при приёме.
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub intake_required_fields: Option<bool>,
+    /// Часовой пояс предприятия (имя IANA).
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub timezone: Option<String>,

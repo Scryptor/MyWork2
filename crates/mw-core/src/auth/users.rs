@@ -25,12 +25,19 @@ const ENTITY: &str = "пользователь";
 /// Пользователь без хэша пароля.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
 pub struct User {
+    /// Номер пользователя.
     pub id: i64,
+    /// Логин.
     pub login: String,
+    /// Отображаемое имя.
     pub display_name: String,
+    /// Номер роли.
     pub role_id: i64,
+    /// Учётная запись активна.
     pub active: bool,
+    /// Когда создан (местное время предприятия).
     pub created_at: NaiveDateTime,
+    /// Версия записи для проверки конфликтов правок.
     pub version: i64,
 }
 
@@ -52,9 +59,13 @@ impl From<user::Model> for User {
 #[derive(Clone, Deserialize, ts_rs::TS, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct NewUser {
+    /// Логин.
     pub login: String,
+    /// Отображаемое имя.
     pub display_name: String,
+    /// Номер роли.
     pub role_id: i64,
+    /// Пароль.
     pub password: String,
 }
 
@@ -74,12 +85,15 @@ impl fmt::Debug for NewUser {
 #[serde(deny_unknown_fields)]
 #[ts(optional_fields)]
 pub struct UserPatch {
+    /// Отображаемое имя.
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub display_name: Option<String>,
+    /// Номер роли.
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub role_id: Option<i64>,
+    /// Учётная запись активна.
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub active: Option<bool>,

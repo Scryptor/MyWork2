@@ -10,7 +10,9 @@ use crate::NewClient;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum ClientRef {
+    /// Существующий клиент: его номер.
     Existing(i64),
+    /// Новый клиент: данные для создания.
     New(NewClient),
 }
 
@@ -24,25 +26,55 @@ impl Default for ClientRef {
 #[derive(Clone, Default, PartialEq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct NewOrder {
+    /// Клиент заказа: существующий или новый.
     pub client: ClientRef,
+    /// Номер точки обслуживания; пусто — не указана.
+    #[serde(deserialize_with = "crate::patch::required_nullable")]
+    #[schema(required = true)]
     pub service_point_id: Option<i64>,
+    /// Номер статуса; пусто — статус по умолчанию.
+    #[serde(deserialize_with = "crate::patch::required_nullable")]
+    #[schema(required = true)]
     pub status_id: Option<i64>,
+    /// Тип устройства.
     pub device_type: String,
+    /// Бренд.
     pub brand: String,
+    /// Модель.
     pub model: String,
+    /// Серийный номер.
     pub serial: String,
+    /// Цвет.
     pub color: String,
+    /// Пароль устройства.
     pub device_password: String,
+    /// Комплектность.
     pub completeness: String,
+    /// Внешнее состояние устройства.
     pub device_condition: String,
+    /// Неисправность со слов клиента.
     pub malfunction: String,
+    /// Внутренний комментарий.
     pub internal_comment: String,
+    /// Мастер.
     pub master: String,
+    /// Оценка стоимости: нижняя граница, в копейках.
+    #[serde(deserialize_with = "crate::patch::required_nullable")]
+    #[schema(required = true)]
     pub estimate_from: Option<Money>,
+    /// Оценка стоимости: верхняя граница, в копейках.
+    #[serde(deserialize_with = "crate::patch::required_nullable")]
+    #[schema(required = true)]
     pub estimate_to: Option<Money>,
+    /// Предоплата, в копейках.
     pub prepayment: Money,
+    /// Гарантия, в сутках; пусто — без гарантии.
+    #[serde(deserialize_with = "crate::patch::required_nullable")]
+    #[schema(required = true)]
     pub warranty_days: Option<u16>,
+    /// Нужно позвонить клиенту.
     pub need_call: bool,
+    /// Нужны запчасти.
     pub need_parts: bool,
 }
 
@@ -51,72 +83,97 @@ pub struct NewOrder {
 #[serde(deny_unknown_fields)]
 #[ts(optional_fields)]
 pub struct OrderPatch {
+    /// Номер клиента.
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub client_id: Option<i64>,
+    /// Номер точки обслуживания; пусто — не указана.
     #[serde(default, deserialize_with = "crate::patch::nullable")]
     pub service_point_id: Option<Option<i64>>,
+    /// Когда принят (местное время предприятия).
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub received_at: Option<NaiveDateTime>,
+    /// Когда выдан (местное время предприятия); пусто, если не выдан.
     #[serde(default, deserialize_with = "crate::patch::nullable")]
     pub issued_at: Option<Option<NaiveDateTime>>,
+    /// Тип устройства.
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub device_type: Option<String>,
+    /// Бренд.
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub brand: Option<String>,
+    /// Модель.
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub model: Option<String>,
+    /// Серийный номер.
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub serial: Option<String>,
+    /// Цвет.
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub color: Option<String>,
+    /// Пароль устройства.
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub device_password: Option<String>,
+    /// Комплектность.
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub completeness: Option<String>,
+    /// Внешнее состояние устройства.
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub device_condition: Option<String>,
+    /// Неисправность со слов клиента.
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub malfunction: Option<String>,
+    /// Выполненные работы.
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub work_done: Option<String>,
+    /// Внутренний комментарий.
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub internal_comment: Option<String>,
+    /// Мастер.
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub master: Option<String>,
+    /// Оценка стоимости: нижняя граница, в копейках.
     #[serde(default, deserialize_with = "crate::patch::nullable")]
     pub estimate_from: Option<Option<Money>>,
+    /// Оценка стоимости: верхняя граница, в копейках.
     #[serde(default, deserialize_with = "crate::patch::nullable")]
     pub estimate_to: Option<Option<Money>>,
+    /// Итоговая цена, в копейках.
     #[serde(default, deserialize_with = "crate::patch::nullable")]
     pub final_price: Option<Option<Money>>,
+    /// Предоплата, в копейках.
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub prepayment: Option<Money>,
+    /// Дополнительные расходы, в копейках.
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub extra_costs: Option<Money>,
+    /// Скидка, в копейках.
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub discount: Option<Money>,
+    /// Гарантия, в сутках; пусто — без гарантии.
     #[serde(default, deserialize_with = "crate::patch::nullable")]
     pub warranty_days: Option<Option<u16>>,
+    /// Нужно позвонить клиенту.
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub need_call: Option<bool>,
+    /// Нужны запчасти.
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub need_parts: Option<bool>,
@@ -125,38 +182,71 @@ pub struct OrderPatch {
 /// Заказ (все колонки, кроме `search_text`). Номер заказа = `id`.
 #[derive(Clone, PartialEq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
 pub struct Order {
+    /// Номер заказа (он же номер квитанции).
     pub id: i64,
+    /// Номер клиента.
     pub client_id: i64,
+    /// Номер точки обслуживания; пусто — не указана.
     pub service_point_id: Option<i64>,
+    /// Номер статуса.
     pub status_id: i64,
+    /// Когда принят (местное время предприятия).
     pub received_at: NaiveDateTime,
+    /// Когда выдан (местное время предприятия); пусто, если не выдан.
     pub issued_at: Option<NaiveDateTime>,
+    /// Когда внесена предоплата (местное время предприятия).
     pub prepaid_at: Option<NaiveDateTime>,
+    /// Тип устройства.
     pub device_type: String,
+    /// Бренд.
     pub brand: String,
+    /// Модель.
     pub model: String,
+    /// Серийный номер.
     pub serial: String,
+    /// Цвет.
     pub color: String,
+    /// Пароль устройства.
     pub device_password: String,
+    /// Комплектность.
     pub completeness: String,
+    /// Внешнее состояние устройства.
     pub device_condition: String,
+    /// Неисправность со слов клиента.
     pub malfunction: String,
+    /// Выполненные работы.
     pub work_done: String,
+    /// Внутренний комментарий.
     pub internal_comment: String,
+    /// Мастер.
     pub master: String,
+    /// Штрихкод заказа.
     pub barcode: String,
+    /// Оценка стоимости: нижняя граница, в копейках.
     pub estimate_from: Option<Money>,
+    /// Оценка стоимости: верхняя граница, в копейках.
     pub estimate_to: Option<Money>,
+    /// Итоговая цена, в копейках.
     pub final_price: Option<Money>,
+    /// Предоплата, в копейках.
     pub prepayment: Money,
+    /// Дополнительные расходы, в копейках.
     pub extra_costs: Money,
+    /// Скидка, в копейках.
     pub discount: Money,
+    /// Гарантия, в сутках; пусто — без гарантии.
     pub warranty_days: Option<u16>,
+    /// Нужно позвонить клиенту.
     pub need_call: bool,
+    /// Нужны запчасти.
     pub need_parts: bool,
+    /// Когда создано (местное время предприятия).
     pub created_at: NaiveDateTime,
+    /// Когда изменено (местное время предприятия).
     pub updated_at: NaiveDateTime,
+    /// Когда удалено (местное время предприятия); пусто, если не удалено.
     pub deleted_at: Option<NaiveDateTime>,
+    /// Версия записи для проверки конфликтов правок.
     pub version: i64,
 }
 

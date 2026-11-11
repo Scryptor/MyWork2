@@ -17,3 +17,11 @@ pub(crate) fn nullable<'de, D: Deserializer<'de>, T: Deserialize<'de>>(
 ) -> Result<Option<Option<T>>, D::Error> {
     Option::<T>::deserialize(deserializer).map(Some)
 }
+
+/// Обязательное поле, у которого допустим `null`: ключ обязан быть в теле запроса
+/// (без `#[serde(default)]` отсутствие ключа — ошибка), `null` даёт `None`.
+pub(crate) fn required_nullable<'de, D: Deserializer<'de>, T: Deserialize<'de>>(
+    deserializer: D,
+) -> Result<Option<T>, D::Error> {
+    Option::<T>::deserialize(deserializer)
+}

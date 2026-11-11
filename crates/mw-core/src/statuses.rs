@@ -15,11 +15,17 @@ use crate::{Actor, Core, CoreError, NewAuditEntry, write_audit};
 /// Статус заказа.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
 pub struct Status {
+    /// Номер статуса.
     pub id: i64,
+    /// Название.
     pub name: String,
+    /// Вид статуса: от него зависят правила заказа.
     pub kind: StatusKind,
+    /// Цвет.
     pub color: String,
+    /// Порядковый номер в списке.
     pub sort_order: i32,
+    /// Скрыт из выбора (в архиве).
     pub archived: bool,
 }
 
@@ -27,8 +33,11 @@ pub struct Status {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, ts_rs::TS, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct NewStatus {
+    /// Название.
     pub name: String,
+    /// Вид.
     pub kind: StatusKind,
+    /// Цвет.
     pub color: String,
 }
 
@@ -37,15 +46,19 @@ pub struct NewStatus {
 #[serde(deny_unknown_fields)]
 #[ts(optional_fields)]
 pub struct StatusPatch {
+    /// Название.
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub name: Option<String>,
+    /// Вид.
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub kind: Option<StatusKind>,
+    /// Цвет.
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub color: Option<String>,
+    /// Скрыт из выбора (в архиве).
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub archived: Option<bool>,

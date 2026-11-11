@@ -27,10 +27,12 @@ use crate::{Actor, Core, CoreError, NewAuditEntry, Page, write_audit};
 )]
 #[serde(rename_all = "snake_case")]
 pub enum IssuedFilter {
+    /// Все заказы.
     #[default]
     Any,
     /// В работе: вид статуса не `issued`.
     InService,
+    /// Выданные: вид статуса `issued`.
     Issued,
 }
 
@@ -58,16 +60,26 @@ pub struct OrderFilter {
 )]
 #[serde(rename_all = "snake_case")]
 pub enum OrderSortField {
+    /// Номер заказа.
     Id,
+    /// Дата приёма (по умолчанию).
     #[default]
     ReceivedAt,
+    /// Дата выдачи.
     IssuedAt,
+    /// Имя клиента.
     ClientName,
+    /// Тип устройства.
     DeviceType,
+    /// Бренд.
     Brand,
+    /// Модель.
     Model,
+    /// Название статуса.
     Status,
+    /// Мастер.
     Master,
+    /// Итоговая цена.
     FinalPrice,
 }
 
@@ -93,29 +105,53 @@ impl Default for OrderSort {
 /// Строка списка заказов.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
 pub struct OrderListItem {
+    /// Номер заказа.
     pub id: i64,
+    /// Когда принят (местное время предприятия).
     pub received_at: NaiveDateTime,
+    /// Когда выдан (местное время предприятия); пусто, если не выдан.
     pub issued_at: Option<NaiveDateTime>,
+    /// Номер клиента.
     pub client_id: i64,
+    /// Имя клиента.
     pub client_name: String,
+    /// Телефон клиента.
     pub client_phone: String,
+    /// Клиент в чёрном списке.
     pub client_blacklisted: bool,
+    /// Номер точки обслуживания; пусто — не указана.
     pub service_point_id: Option<i64>,
+    /// Номер статуса.
     pub status_id: i64,
+    /// Тип устройства.
     pub device_type: String,
+    /// Бренд.
     pub brand: String,
+    /// Модель.
     pub model: String,
+    /// Серийный номер.
     pub serial: String,
+    /// Неисправность со слов клиента.
     pub malfunction: String,
+    /// Мастер.
     pub master: String,
+    /// Оценка стоимости: нижняя граница, в копейках.
     pub estimate_from: Option<Money>,
+    /// Оценка стоимости: верхняя граница, в копейках.
     pub estimate_to: Option<Money>,
+    /// Предоплата, в копейках.
     pub prepayment: Money,
+    /// Итоговая цена, в копейках.
     pub final_price: Option<Money>,
+    /// Нужно позвонить клиенту.
     pub need_call: bool,
+    /// Нужны запчасти.
     pub need_parts: bool,
+    /// Штрихкод заказа.
     pub barcode: String,
+    /// Когда удалено (местное время предприятия); пусто, если не удалено.
     pub deleted_at: Option<NaiveDateTime>,
+    /// Версия записи для проверки конфликтов правок.
     pub version: i64,
 }
 

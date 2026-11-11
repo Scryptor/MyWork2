@@ -6,8 +6,9 @@ use std::fmt::Debug;
 
 use mw_core::{
     AppSettings, AuditEntry, Client, ClientPatch, ClientRef, DictionaryItem, IssuedFilter,
-    NewClient, Order, OrderListItem, OrderPatch, OrderSortField, Role, RolePatch, ServicePoint,
-    ServicePointPatch, SettingsPatch, Status, StatusPatch, User, UserPatch,
+    NewClient, NewOrder, NewRole, NewStatus, NewUser, Order, OrderListItem, OrderPatch,
+    OrderSortField, Role, RolePatch, ServicePoint, ServicePointPatch, SettingsPatch, Status,
+    StatusPatch, User, UserPatch,
 };
 use mw_domain::dictionary::DictionaryKind;
 use mw_domain::money::Money;
@@ -211,4 +212,60 @@ fn field_error_messages_are_russian() {
         FieldError::new("x", "что-то новое").message_ru(),
         "Недопустимое значение"
     );
+}
+
+/// У тела запроса все поля обязательны во всех трёх представлениях: serde, TS и OpenAPI.
+fn check_new<T>(complete: serde_json::Value)
+where
+    T: DeserializeOwned + TS + utoipa::ToSchema,
+{
+    let name = <T as utoipa::ToSchema>::name();
+    let schema = serde_json::to_value(<T as utoipa::PartialSchema>::schema()).unwrap();
+    let props: std::collections::BTreeSet<String> = schema["properties"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .cloned()
+        .collect();
+    let required: std::collections::BTreeSet<String> = schema["required"]
+        .as_array()
+        .unwrap_or_else(|| panic!("{name}: нет списка required"))
+        .iter()
+        .map(|v| v.as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(required, props, "{name}: required в OpenAPI");
+    assert!(!T::decl(&cfg()).contains("?:"), "{name}: TS");
+    let body = complete.as_object().unwrap();
+    let keys: std::collections::BTreeSet<String> = body.keys().cloned().collect();
+    assert_eq!(keys, props, "{name}: полное тело должно содержать все поля");
+    serde_json::from_value::<T>(complete.clone())
+        .unwrap_or_else(|e| panic!("{name}: полное тело не разобрано: {e}"));
+    for field in body.keys() {
+        let mut partial = body.clone();
+        partial.remove(field);
+        assert!(
+            serde_json::from_value::<T>(serde_json::Value::Object(partial)).is_err(),
+            "{name}.{field}: serde принял тело без поля"
+        );
+    }
+}
+
+#[test]
+fn request_bodies_require_every_field() {
+    check_new::<NewStatus>(json!({ "name": "А", "kind": "open", "color": "blue" }));
+    check_new::<NewClient>(
+        json!({ "full_name": "А", "phone": "", "address": "", "note": "",
+        "source": "", "blacklisted": false }),
+    );
+    check_new::<NewUser>(
+        json!({ "login": "a", "display_name": "А", "role_id": 1, "password": "pw12" }),
+    );
+    check_new::<NewRole>(json!({ "name": "А", "permissions": ["orders_create"] }));
+    check_new::<NewOrder>(json!({
+        "client": { "existing": 1 }, "service_point_id": null, "status_id": null,
+        "device_type": "", "brand": "", "model": "", "serial": "", "color": "",
+        "device_password": "", "completeness": "", "device_condition": "", "malfunction": "",
+        "internal_comment": "", "master": "", "estimate_from": null, "estimate_to": null,
+        "prepayment": 0, "warranty_days": null, "need_call": false, "need_parts": false
+    }));
 }
