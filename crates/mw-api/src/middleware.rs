@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 use axum::Router;
 use axum::extract::Request;
-use axum::http::{HeaderName, HeaderValue, Method, header};
+use axum::http::{HeaderMap, HeaderName, HeaderValue, Method, header};
 use axum::middleware::{Next, from_fn};
 use axum::response::{IntoResponse, Response};
 
@@ -88,15 +88,20 @@ pub(crate) async fn require_json_content_type(req: Request, next: Next) -> Respo
     next.run(req).await
 }
 
-/// `Cache-Control: no-store` и `X-Content-Type-Options: nosniff` у каждого ответа.
-pub(crate) async fn security_headers(req: Request, next: Next) -> Response {
-    let mut response = next.run(req).await;
-    let headers = response.headers_mut();
+/// Ставит `Cache-Control: no-store` и `X-Content-Type-Options: nosniff`.
+pub(crate) fn set_security_headers(headers: &mut HeaderMap) {
     headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     headers.insert(
         HeaderName::from_static("x-content-type-options"),
         HeaderValue::from_static("nosniff"),
     );
+}
+
+/// Заголовки безопасности у каждого ответа, прошедшего через слой.
+/// Ответы-отказы внешних слоёв получают их в `ApiError::into_response`.
+pub(crate) async fn security_headers(req: Request, next: Next) -> Response {
+    let mut response = next.run(req).await;
+    set_security_headers(response.headers_mut());
     response
 }
 
@@ -135,6 +140,8 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status().as_u16(), 503);
+        assert_eq!(resp.headers()["cache-control"], "no-store");
+        assert_eq!(resp.headers()["x-content-type-options"], "nosniff");
         let bytes = resp.into_body().collect().await.unwrap().to_bytes();
         let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(body["code"], "unavailable");

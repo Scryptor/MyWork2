@@ -224,6 +224,7 @@ impl IntoResponse for ApiError {
         let retry_after = self.body.retry_after_secs;
         let mut response = (status, axum::Json(self.body)).into_response();
         let headers = response.headers_mut();
+        crate::middleware::set_security_headers(headers);
         if status == StatusCode::UNAUTHORIZED {
             headers.insert(header::WWW_AUTHENTICATE, HeaderValue::from_static("Bearer"));
         }

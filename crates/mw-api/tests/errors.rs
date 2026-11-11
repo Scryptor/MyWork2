@@ -87,6 +87,8 @@ async fn changing_methods_need_json_content_type() {
             "{}",
             t.label
         );
+        assert_eq!(r.headers["cache-control"], "no-store", "{}", t.label);
+        assert_eq!(r.headers["x-content-type-options"], "nosniff");
         // с JSON доходит до роутера
         assert_eq!(
             t.send(Method::POST, "/api/v1/server-info", None, None)
@@ -124,6 +126,8 @@ async fn loopback_server_accepts_only_local_host_names() {
                 "{} {host}",
                 t.label
             );
+            assert_eq!(r.headers["cache-control"], "no-store", "{host}");
+            assert_eq!(r.headers["x-content-type-options"], "nosniff", "{host}");
         }
     }
     for t in apis(Listen::Network).await {
