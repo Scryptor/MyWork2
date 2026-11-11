@@ -1,8 +1,5 @@
 //! Начальная схема и стартовые данные (статусы, роль «Администратор», справочники).
 
-use mw_domain::dictionary::DEFAULT_DICTIONARY;
-use mw_domain::permission::PermissionSet;
-use mw_domain::status::DEFAULT_STATUSES;
 use sea_orm_migration::prelude::*;
 
 pub struct Migration;
@@ -255,7 +252,13 @@ impl MigrationTrait for Migration {
                 Restrict,
             ));
         m.create_table(orders.to_owned()).await?;
-        for column in ["client_id", "status_id", "barcode", "received_at"] {
+        for column in [
+            "client_id",
+            "status_id",
+            "barcode",
+            "received_at",
+            "service_point_id",
+        ] {
             m.create_index(index("orders", column)).await?;
         }
 
@@ -317,6 +320,7 @@ impl MigrationTrait for Migration {
         )
         .await?;
         m.create_index(unique("sessions", &["token_hash"])).await?;
+        m.create_index(index("sessions", "user_id")).await?;
 
         m.create_table(
             Table::create()
@@ -350,7 +354,7 @@ impl MigrationTrait for Migration {
                 .to_owned(),
         )
         .await?;
-        for column in ["order_id", "client_id", "at"] {
+        for column in ["order_id", "client_id", "at", "user_id"] {
             m.create_index(index("audit_log", column)).await?;
         }
 
@@ -358,37 +362,142 @@ impl MigrationTrait for Migration {
     }
 }
 
+// Начальные данные ЗАМОРОЖЕНЫ: это литералы, а не ссылки на константы `mw-domain`. Выпущенная
+// миграция не должна менять поведение при правке констант; новые данные — только новой миграцией.
+
+/// (название, вид, цвет); порядок = `sort_order`.
+const SEED_STATUSES: [(&str, &str, &str); 8] = [
+    ("Диагностика", "diagnostics", "amber"),
+    ("Согласование с клиентом", "open", "violet"),
+    ("Согласовано", "open", "indigo"),
+    ("Принят в работу", "open", "blue"),
+    ("Ждёт запчасть", "open", "red"),
+    ("Принят по гарантии", "open", "teal"),
+    ("Готов", "ready", "green"),
+    ("Выдан", "issued", "gray"),
+];
+
+/// Права роли «Администратор» (JSON-массив в порядке объявления).
+const SEED_ADMIN_PERMISSIONS: &str = r#"["orders_create","orders_edit","orders_delete","order_dates_edit","reports_view","stock_view","stock_create","stock_edit","stock_delete","clients_view","clients_create","clients_edit","clients_delete","clients_merge","settings_manage","users_manage","audit_view"]"#;
+
+/// (вид справочника, значения); порядок значений = `sort_order`.
+const SEED_DICTIONARY: &[(&str, &[&str])] = &[
+    (
+        "device_type",
+        &[
+            "Телефон",
+            "Планшет",
+            "Ноутбук",
+            "Компьютер",
+            "Телевизор",
+            "Игровая приставка",
+            "Часы",
+            "Наушники",
+        ],
+    ),
+    (
+        "brand",
+        &[
+            "Apple", "Samsung", "Xiaomi", "Huawei", "Honor", "Realme", "Lenovo", "Asus", "HP",
+            "Sony",
+        ],
+    ),
+    (
+        "color",
+        &[
+            "Чёрный",
+            "Белый",
+            "Серый",
+            "Серебристый",
+            "Золотой",
+            "Синий",
+            "Красный",
+            "Зелёный",
+        ],
+    ),
+    (
+        "completeness",
+        &[
+            "Устройство",
+            "Чехол",
+            "Зарядка",
+            "Кабель",
+            "Сим-карта",
+            "Карта памяти",
+            "Коробка",
+        ],
+    ),
+    (
+        "condition",
+        &[
+            "Без видимых повреждений",
+            "Царапины",
+            "Сколы",
+            "Трещина экрана",
+            "Следы влаги",
+        ],
+    ),
+    (
+        "malfunction",
+        &[
+            "Не включается",
+            "Не заряжается",
+            "Разбит экран",
+            "Залит",
+            "Нет звука",
+            "Не ловит сеть",
+            "Быстро разряжается",
+        ],
+    ),
+    (
+        "work_done",
+        &[
+            "Диагностика",
+            "Замена дисплея",
+            "Замена аккумулятора",
+            "Замена разъёма зарядки",
+            "Чистка",
+            "Прошивка",
+        ],
+    ),
+    ("master", &[]),
+    (
+        "client_source",
+        &[
+            "Рекомендация",
+            "Интернет",
+            "Авито",
+            "Вывеска",
+            "Повторное обращение",
+        ],
+    ),
+];
+
 async fn seed(m: &SchemaManager<'_>) -> Result<(), DbErr> {
-    for (order, status) in (0_i32..).zip(DEFAULT_STATUSES.iter()) {
+    for (order, (name, kind, color)) in (0_i32..).zip(SEED_STATUSES) {
         let mut insert = Query::insert();
         insert
             .into_table(a("statuses"))
             .columns([a("name"), a("kind"), a("color"), a("sort_order")])
-            .values([
-                status.name.into(),
-                status.kind.as_str().into(),
-                status.color.into(),
-                order.into(),
-            ])
+            .values([name.into(), kind.into(), color.into(), order.into()])
             .map_err(seed_err)?;
         m.exec_stmt(insert).await?;
     }
 
-    let permissions = serde_json::to_string(&PermissionSet::all()).map_err(seed_err)?;
     let mut role = Query::insert();
     role.into_table(a("roles"))
         .columns([a("name"), a("permissions")])
-        .values(["Администратор".into(), permissions.into()])
+        .values(["Администратор".into(), SEED_ADMIN_PERMISSIONS.into()])
         .map_err(seed_err)?;
     m.exec_stmt(role).await?;
 
-    for (kind, values) in DEFAULT_DICTIONARY {
+    for (kind, values) in SEED_DICTIONARY {
         for (order, value) in (0_i32..).zip(values.iter()) {
             let mut insert = Query::insert();
             insert
                 .into_table(a("dictionary_items"))
                 .columns([a("kind"), a("value"), a("sort_order")])
-                .values([kind.as_str().into(), (*value).into(), order.into()])
+                .values([(*kind).into(), (*value).into(), order.into()])
                 .map_err(seed_err)?;
             m.exec_stmt(insert).await?;
         }

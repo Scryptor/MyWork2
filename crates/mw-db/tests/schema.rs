@@ -6,8 +6,8 @@ use mw_db::entity::{client, dictionary_item, order, role, status};
 use mw_db::ids::IdTable;
 use mw_domain::permission::PermissionSet;
 use sea_orm::{
-    ActiveModelTrait, ConnectionTrait, DatabaseConnection, DbErr, EntityTrait, PaginatorTrait,
-    QueryOrder, Set, Statement,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbErr, EntityTrait,
+    PaginatorTrait, QueryFilter, QueryOrder, Set, Statement,
 };
 
 fn now() -> chrono::NaiveDateTime {
@@ -144,5 +144,61 @@ async fn set_next_id_continues_numbering_after_explicit_ids() {
             .await
             .unwrap();
         assert_eq!(insert_client_row(&db, None).await, 501, "{label}");
+    }
+}
+
+/// Начальные данные первой миграции заморожены литералами. Если константы `mw-domain` изменились,
+/// этот тест падает: нужна НОВАЯ миграция данных, а не правка выпущенной.
+#[tokio::test]
+async fn seed_data_equals_current_domain_constants() {
+    use mw_domain::dictionary::DEFAULT_DICTIONARY;
+    use mw_domain::status::DEFAULT_STATUSES;
+    for (label, db) in mw_db::testing::all_backends().await {
+        let statuses = status::Entity::find()
+            .order_by_asc(status::Column::SortOrder)
+            .all(&db)
+            .await
+            .unwrap();
+        let got: Vec<_> = statuses
+            .iter()
+            .map(|s| {
+                (
+                    s.name.as_str(),
+                    s.kind.as_str(),
+                    s.color.as_str(),
+                    s.sort_order,
+                )
+            })
+            .collect();
+        let want: Vec<_> = (0_i32..)
+            .zip(DEFAULT_STATUSES.iter())
+            .map(|(i, s)| (s.name, s.kind.as_str(), s.color, i))
+            .collect();
+        assert_eq!(got, want, "{label}: статусы");
+
+        let roles = role::Entity::find().all(&db).await.unwrap();
+        assert_eq!(roles.len(), 1, "{label}");
+        assert_eq!(
+            roles[0].permissions,
+            serde_json::to_string(&PermissionSet::all()).unwrap(),
+            "{label}: права администратора"
+        );
+
+        for (kind, values) in DEFAULT_DICTIONARY {
+            let items = dictionary_item::Entity::find()
+                .filter(dictionary_item::Column::Kind.eq(kind.as_str()))
+                .order_by_asc(dictionary_item::Column::SortOrder)
+                .all(&db)
+                .await
+                .unwrap();
+            let got: Vec<_> = items.iter().map(|i| i.value.as_str()).collect();
+            assert_eq!(got, values.to_vec(), "{label}: справочник {kind:?}");
+        }
+        let total: usize = DEFAULT_DICTIONARY.iter().map(|(_, v)| v.len()).sum();
+        assert_eq!(
+            dictionary_item::Entity::find().count(&db).await.unwrap() as usize,
+            total,
+            "{label}"
+        );
     }
 }
