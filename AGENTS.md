@@ -1,0 +1,15 @@
+# Правила для людей и нейросетей
+
+- Код и идентификаторы на английском; тексты для людей и документация на русском.
+- `mw-domain` без ввода-вывода. К БД обращаться только через `mw-db` и `mw-core`; права проверяет `mw-core`.
+- Сначала тест, потом код. Каждый тест с БД идёт по `all_backends()`.
+- Перед коммитом должно быть зелёным:
+  `cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace`.
+  PostgreSQL в тестах включается переменной `MW_TEST_PG_URL`
+  (локально: `docker run -d --name mw-pg -e POSTGRES_PASSWORD=postgres -p 55432:5432 postgres:17`,
+  `MW_TEST_PG_URL=postgres://postgres:postgres@localhost:55432/postgres`).
+- Деньги — только `Money`, время — только `Core::now()`, поиск без учёта регистра — только `mw_domain::search`.
+- Выпущенные миграции не меняются, только добавляются новые.
+- `legacy/` только для чтения.
+- Никаких секретов и реальных данных клиентов в коде и тестах.
+- Спецификация и планы лежат в `docs/superpowers/`.
