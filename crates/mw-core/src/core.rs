@@ -51,23 +51,30 @@ impl Core {
             .clone()
     }
 
-    /// Открывает транзакцию для изменения данных. ВСЕ записи в БД обязаны идти через неё.
-    ///
-    /// В SQLite транзакция начинается в режиме IMMEDIATE: в WAL-режиме с пулом соединений
-    /// «прочитать, затем записать» в обычной (отложенной) транзакции даёт `SQLITE_BUSY`,
-    /// который `busy_timeout` не гасит. В PostgreSQL — обычная транзакция.
+    /// Открывает транзакцию для изменения данных. ВСЕ записи в БД обязаны идти через неё
+    /// (или через `begin_write_on`, когда `Core` ещё не создан).
     pub(crate) async fn begin_write(&self) -> Result<DatabaseTransaction, CoreError> {
-        let tx = match self.db.get_database_backend() {
-            DatabaseBackend::Sqlite => {
-                self.db
-                    .begin_with_options(TransactionOptions {
-                        sqlite_transaction_mode: Some(sea_orm::SqliteTransactionMode::Immediate),
-                        ..Default::default()
-                    })
-                    .await?
-            }
-            _ => self.db.begin().await?,
-        };
-        Ok(tx)
+        begin_write_on(&self.db).await
     }
+}
+
+/// Единственный способ открыть транзакцию записи.
+///
+/// В SQLite транзакция начинается в режиме IMMEDIATE: в WAL-режиме с пулом соединений
+/// «прочитать, затем записать» в обычной (отложенной) транзакции даёт `SQLITE_BUSY`,
+/// который `busy_timeout` не гасит. В PostgreSQL — обычная транзакция.
+pub(crate) async fn begin_write_on(
+    db: &DatabaseConnection,
+) -> Result<DatabaseTransaction, CoreError> {
+    let tx = match db.get_database_backend() {
+        DatabaseBackend::Sqlite => {
+            db.begin_with_options(TransactionOptions {
+                sqlite_transaction_mode: Some(sea_orm::SqliteTransactionMode::Immediate),
+                ..Default::default()
+            })
+            .await?
+        }
+        _ => db.begin().await?,
+    };
+    Ok(tx)
 }

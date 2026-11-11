@@ -86,3 +86,23 @@ async fn update_settings_checks_rights_validates_and_audits() -> Result<(), Core
     }
     Ok(())
 }
+
+#[tokio::test]
+async fn reopening_keeps_single_timezone_row_with_first_value() -> Result<(), CoreError> {
+    use mw_db::entity::setting;
+    use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
+    for (label, db) in mw_db::testing::all_backends().await {
+        let clock = Arc::new(FixedClock::new(
+            Utc.with_ymd_and_hms(2026, 11, 11, 7, 30, 0).unwrap(),
+        ));
+        Core::open(db.clone(), clock.clone(), "Europe/Moscow").await?;
+        let second = Core::open(db.clone(), clock, "Asia/Tokyo").await?;
+        let rows = setting::Entity::find()
+            .filter(setting::Column::Key.eq("timezone"))
+            .count(&db)
+            .await?;
+        assert_eq!(rows, 1, "{label}");
+        assert_eq!(second.settings().timezone, "Europe/Moscow", "{label}");
+    }
+    Ok(())
+}

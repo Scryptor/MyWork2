@@ -2,9 +2,11 @@ use chrono_tz::Tz;
 use mw_db::entity::setting;
 use mw_domain::permission::Permission;
 use mw_domain::validation::FieldError;
-use sea_orm::{ActiveModelTrait, ConnectionTrait, EntityTrait, Set, TransactionTrait};
+use sea_orm::sea_query::OnConflict;
+use sea_orm::{ConnectionTrait, EntityTrait, Set};
 use serde_json::{Value, json};
 
+use crate::core::begin_write_on;
 use crate::{Actor, Core, CoreError, NewAuditEntry, write_audit};
 
 /// Настройки предприятия. Хранятся по строке на поле в таблице `settings` (ключ — имя поля,
@@ -70,22 +72,18 @@ async fn load(conn: &impl ConnectionTrait) -> Result<AppSettings, CoreError> {
 }
 
 async fn put(conn: &impl ConnectionTrait, key: &str, value: &Value) -> Result<(), CoreError> {
-    let text = value.to_string();
-    if setting::Entity::find_by_id(key).one(conn).await?.is_some() {
-        setting::ActiveModel {
-            key: Set(key.to_owned()),
-            value: Set(text),
-        }
-        .update(conn)
+    let row = setting::ActiveModel {
+        key: Set(key.to_owned()),
+        value: Set(value.to_string()),
+    };
+    setting::Entity::insert(row)
+        .on_conflict(
+            OnConflict::column(setting::Column::Key)
+                .update_column(setting::Column::Value)
+                .to_owned(),
+        )
+        .exec_without_returning(conn)
         .await?;
-    } else {
-        setting::ActiveModel {
-            key: Set(key.to_owned()),
-            value: Set(text),
-        }
-        .insert(conn)
-        .await?;
-    }
     Ok(())
 }
 
@@ -94,7 +92,7 @@ pub(crate) async fn ensure_timezone(
     db: &sea_orm::DatabaseConnection,
     system_timezone: &str,
 ) -> Result<AppSettings, CoreError> {
-    let tx = db.begin().await?;
+    let tx = begin_write_on(db).await?;
     if setting::Entity::find_by_id("timezone")
         .one(&tx)
         .await?
