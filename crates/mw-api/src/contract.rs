@@ -5,7 +5,8 @@ use std::path::Path;
 use ts_rs::TS;
 
 use crate::{
-    ChangePasswordRequest, CurrentUser, ErrorBody, LoginRequest, LoginResponse, ServerInfo,
+    ChangePasswordRequest, CurrentUser, DictionaryValue, ErrorBody, IncludeArchived, LoginRequest,
+    LoginResponse, NewServicePoint, ReorderRequest, ServerInfo,
 };
 
 /// Выгружает в `dir` TS-типы всех корневых типов API вместе с зависимостями
@@ -24,5 +25,18 @@ pub fn export_typescript(dir: &Path) -> Result<(), ts_rs::ExportError> {
     LoginResponse::export_all(&cfg)?;
     CurrentUser::export_all(&cfg)?;
     ChangePasswordRequest::export_all(&cfg)?;
+    IncludeArchived::export_all(&cfg)?;
+    ReorderRequest::export_all(&cfg)?;
+    DictionaryValue::export_all(&cfg)?;
+    NewServicePoint::export_all(&cfg)?;
+    mw_core::AppSettings::export_all(&cfg)?;
+    mw_core::SettingsPatch::export_all(&cfg)?;
+    mw_core::Status::export_all(&cfg)?;
+    mw_core::NewStatus::export_all(&cfg)?;
+    mw_core::StatusPatch::export_all(&cfg)?;
+    mw_core::DictionaryItem::export_all(&cfg)?;
+    mw_core::ServicePoint::export_all(&cfg)?;
+    mw_core::ServicePointPatch::export_all(&cfg)?;
+    mw_domain::dictionary::DictionaryKind::export_all(&cfg)?;
     Ok(())
 }

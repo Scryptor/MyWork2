@@ -197,6 +197,258 @@
         ]
       }
     },
+    "/api/v1/dictionaries/{kind}": {
+      "get": {
+        "tags": [
+          "Настройки и справочники"
+        ],
+        "summary": "Значения справочника в заданном порядке. Неизвестный вид — 400.",
+        "operationId": "list_dictionary",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "description": "Вид справочника",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/DictionaryKind"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Значения",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DictionaryItem"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Настройки и справочники"
+        ],
+        "summary": "Новое значение справочника; доступно и при приёме заказа.",
+        "operationId": "add_dictionary_item",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "description": "Вид справочника",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/DictionaryKind"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DictionaryValue"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Значение добавлено",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DictionaryItem"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/dictionaries/{kind}/order": {
+      "put": {
+        "tags": [
+          "Настройки и справочники"
+        ],
+        "summary": "Новый порядок значений справочника: нужны номера всех его значений.",
+        "operationId": "reorder_dictionary",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "description": "Вид справочника",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/DictionaryKind"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReorderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Порядок сохранён"
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/dictionary-items/{id}": {
+      "delete": {
+        "tags": [
+          "Настройки и справочники"
+        ],
+        "summary": "Удаление значения справочника (право `settings_manage`).",
+        "operationId": "delete_dictionary_item",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер значения",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Значение удалено"
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "Настройки и справочники"
+        ],
+        "summary": "Переименование значения справочника (право `settings_manage`).",
+        "operationId": "rename_dictionary_item",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер значения",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DictionaryValue"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Значение после изменения",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DictionaryItem"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/openapi.json": {
       "get": {
         "tags": [
@@ -256,10 +508,524 @@
           }
         }
       }
+    },
+    "/api/v1/service-points": {
+      "get": {
+        "tags": [
+          "Настройки и справочники"
+        ],
+        "summary": "Точки обслуживания в заданном порядке.",
+        "operationId": "list_service_points",
+        "parameters": [
+          {
+            "name": "include_archived",
+            "in": "path",
+            "description": "Показывать и архивные записи; по умолчанию `false`.",
+            "required": true,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Точки обслуживания",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ServicePoint"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Настройки и справочники"
+        ],
+        "summary": "Новая точка обслуживания (право `settings_manage`).",
+        "operationId": "create_service_point",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewServicePoint"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Точка создана",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServicePoint"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/service-points/order": {
+      "put": {
+        "tags": [
+          "Настройки и справочники"
+        ],
+        "summary": "Новый порядок точек: нужны номера всех точек, включая архивные.",
+        "operationId": "reorder_service_points",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReorderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Порядок сохранён"
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/service-points/{id}": {
+      "patch": {
+        "tags": [
+          "Настройки и справочники"
+        ],
+        "summary": "Изменение точки обслуживания: название, архивация (право `settings_manage`).",
+        "operationId": "update_service_point",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер точки",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ServicePointPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Точка после изменения",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServicePoint"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/settings": {
+      "get": {
+        "tags": [
+          "Настройки и справочники"
+        ],
+        "summary": "Настройки программы.",
+        "operationId": "get_settings",
+        "responses": {
+          "200": {
+            "description": "Настройки",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppSettings"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "Настройки и справочники"
+        ],
+        "summary": "Изменение настроек (право `settings_manage`).",
+        "operationId": "update_settings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Настройки после изменения",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppSettings"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/statuses": {
+      "get": {
+        "tags": [
+          "Настройки и справочники"
+        ],
+        "summary": "Список статусов заказов в заданном порядке.",
+        "operationId": "list_statuses",
+        "parameters": [
+          {
+            "name": "include_archived",
+            "in": "path",
+            "description": "Показывать и архивные записи; по умолчанию `false`.",
+            "required": true,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Статусы",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Status"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Настройки и справочники"
+        ],
+        "summary": "Новый статус (право `settings_manage`).",
+        "operationId": "create_status",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewStatus"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Статус создан",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/statuses/order": {
+      "put": {
+        "tags": [
+          "Настройки и справочники"
+        ],
+        "summary": "Новый порядок статусов: нужны номера всех статусов, включая архивные.",
+        "operationId": "reorder_statuses",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReorderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Порядок сохранён"
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/statuses/{id}": {
+      "patch": {
+        "tags": [
+          "Настройки и справочники"
+        ],
+        "summary": "Изменение статуса: название, цвет, архивация (право `settings_manage`).",
+        "operationId": "update_status",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер статуса",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StatusPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Статус после изменения",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
     }
   },
   "components": {
     "schemas": {
+      "AppSettings": {
+        "type": "object",
+        "description": "Настройки предприятия. Хранятся по строке на поле в таблице `settings` (ключ — имя поля,\nзначение — JSON).",
+        "required": [
+          "currency_symbol",
+          "master_percent",
+          "diagnostics_overdue_days",
+          "intake_required_fields",
+          "timezone"
+        ],
+        "properties": {
+          "currency_symbol": {
+            "type": "string",
+            "description": "Знак валюты."
+          },
+          "default_warranty_days": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Гарантия по умолчанию, в сутках; пусто — без гарантии.",
+            "minimum": 0
+          },
+          "diagnostics_overdue_days": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Через сколько суток диагностика считается просроченной.",
+            "minimum": 0
+          },
+          "intake_required_fields": {
+            "type": "boolean",
+            "description": "Требовать заполнения обязательных полей при приёме."
+          },
+          "master_percent": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Процент мастера, 0–100.",
+            "minimum": 0
+          },
+          "timezone": {
+            "type": "string",
+            "description": "Часовой пояс предприятия (имя IANA)."
+          }
+        }
+      },
       "ChangePasswordRequest": {
         "type": "object",
         "description": "Смена собственного пароля.",
@@ -309,6 +1075,64 @@
             "description": "Номер пользователя; пусто в режиме без входа."
           }
         }
+      },
+      "DictionaryItem": {
+        "type": "object",
+        "description": "Значение справочника.",
+        "required": [
+          "id",
+          "kind",
+          "value",
+          "sort_order"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Номер значения."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/DictionaryKind",
+            "description": "Вид справочника."
+          },
+          "sort_order": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Порядковый номер в списке."
+          },
+          "value": {
+            "type": "string",
+            "description": "Текст значения."
+          }
+        }
+      },
+      "DictionaryKind": {
+        "type": "string",
+        "enum": [
+          "device_type",
+          "brand",
+          "color",
+          "completeness",
+          "condition",
+          "malfunction",
+          "work_done",
+          "master",
+          "client_source"
+        ]
+      },
+      "DictionaryValue": {
+        "type": "object",
+        "description": "Значение справочника.",
+        "required": [
+          "value"
+        ],
+        "properties": {
+          "value": {
+            "type": "string",
+            "description": "Текст значения; крайние пробелы убираются."
+          }
+        },
+        "additionalProperties": false
       },
       "ErrorBody": {
         "type": "object",
@@ -449,6 +1273,44 @@
           }
         }
       },
+      "NewServicePoint": {
+        "type": "object",
+        "description": "Новая точка обслуживания.",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Название точки."
+          }
+        },
+        "additionalProperties": false
+      },
+      "NewStatus": {
+        "type": "object",
+        "description": "Данные нового статуса.",
+        "required": [
+          "name",
+          "kind",
+          "color"
+        ],
+        "properties": {
+          "color": {
+            "type": "string",
+            "description": "Цвет."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/StatusKind",
+            "description": "Вид."
+          },
+          "name": {
+            "type": "string",
+            "description": "Название."
+          }
+        },
+        "additionalProperties": false
+      },
       "Permission": {
         "type": "string",
         "enum": [
@@ -478,6 +1340,24 @@
         },
         "description": "Упорядоченное (по порядку объявления) множество прав.",
         "uniqueItems": true
+      },
+      "ReorderRequest": {
+        "type": "object",
+        "description": "Новый порядок записей: все их номера в нужной последовательности.",
+        "required": [
+          "ordered_ids"
+        ],
+        "properties": {
+          "ordered_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "Номера записей в новом порядке; должны совпадать с текущим набором."
+          }
+        },
+        "additionalProperties": false
       },
       "ServerInfo": {
         "type": "object",
@@ -513,6 +1393,163 @@
             "description": "Версия сервера."
           }
         }
+      },
+      "ServicePoint": {
+        "type": "object",
+        "description": "Точка обслуживания.",
+        "required": [
+          "id",
+          "name",
+          "sort_order",
+          "archived"
+        ],
+        "properties": {
+          "archived": {
+            "type": "boolean",
+            "description": "Скрыт из выбора (в архиве)."
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Номер точки обслуживания."
+          },
+          "name": {
+            "type": "string",
+            "description": "Название."
+          },
+          "sort_order": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Порядковый номер в списке."
+          }
+        }
+      },
+      "ServicePointPatch": {
+        "type": "object",
+        "description": "Частичное изменение точки обслуживания; `None` — не менять.",
+        "properties": {
+          "archived": {
+            "type": "boolean",
+            "description": "Скрыт из выбора (в архиве)."
+          },
+          "name": {
+            "type": "string",
+            "description": "Название."
+          }
+        },
+        "additionalProperties": false
+      },
+      "SettingsPatch": {
+        "type": "object",
+        "description": "Частичное изменение настроек; `None` — не менять. Гарантия: `Some(None)` — «без гарантии».",
+        "properties": {
+          "currency_symbol": {
+            "type": "string",
+            "description": "Знак валюты."
+          },
+          "default_warranty_days": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Гарантия по умолчанию, в сутках; пусто — без гарантии.",
+            "minimum": 0
+          },
+          "diagnostics_overdue_days": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Через сколько суток диагностика считается просроченной.",
+            "minimum": 0
+          },
+          "intake_required_fields": {
+            "type": "boolean",
+            "description": "Требовать заполнения обязательных полей при приёме."
+          },
+          "master_percent": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Процент мастера, 0–100.",
+            "minimum": 0
+          },
+          "timezone": {
+            "type": "string",
+            "description": "Часовой пояс предприятия (имя IANA)."
+          }
+        },
+        "additionalProperties": false
+      },
+      "Status": {
+        "type": "object",
+        "description": "Статус заказа.",
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "color",
+          "sort_order",
+          "archived"
+        ],
+        "properties": {
+          "archived": {
+            "type": "boolean",
+            "description": "Скрыт из выбора (в архиве)."
+          },
+          "color": {
+            "type": "string",
+            "description": "Цвет."
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Номер статуса."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/StatusKind",
+            "description": "Вид статуса: от него зависят правила заказа."
+          },
+          "name": {
+            "type": "string",
+            "description": "Название."
+          },
+          "sort_order": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Порядковый номер в списке."
+          }
+        }
+      },
+      "StatusKind": {
+        "type": "string",
+        "enum": [
+          "open",
+          "diagnostics",
+          "ready",
+          "issued"
+        ]
+      },
+      "StatusPatch": {
+        "type": "object",
+        "description": "Частичное изменение статуса; `None` — не менять.",
+        "properties": {
+          "archived": {
+            "type": "boolean",
+            "description": "Скрыт из выбора (в архиве)."
+          },
+          "color": {
+            "type": "string",
+            "description": "Цвет."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/StatusKind",
+            "description": "Вид."
+          },
+          "name": {
+            "type": "string",
+            "description": "Название."
+          }
+        },
+        "additionalProperties": false
       },
       "User": {
         "type": "object",

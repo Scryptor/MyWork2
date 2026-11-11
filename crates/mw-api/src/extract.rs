@@ -18,13 +18,11 @@ impl<T: Serialize> IntoResponse for Json<T> {
 }
 
 /// Параметры пути.
-#[allow(dead_code)] // используется обработчиками следующих задач
 #[derive(FromRequestParts)]
 #[from_request(via(axum::extract::Path), rejection(ApiError))]
 pub(crate) struct Path<T>(pub(crate) T);
 
 /// Параметры запроса; повторяющиеся параметры собираются в `Vec`.
-#[allow(dead_code)] // используется обработчиками следующих задач
 #[derive(FromRequestParts)]
 #[from_request(via(axum_extra::extract::Query), rejection(ApiError))]
 pub(crate) struct Query<T>(pub(crate) T);

@@ -6,7 +6,7 @@ use mw_core::User;
 use mw_domain::permission::PermissionSet;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
 
 /// Сведения о сервере; доступны без входа.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, ToSchema)]
@@ -96,4 +96,37 @@ impl fmt::Debug for ChangePasswordRequest {
             .field("new_password", &"***")
             .finish()
     }
+}
+
+/// Параметр списков с архивными записями.
+#[derive(Debug, Clone, Default, Deserialize, TS, IntoParams)]
+#[serde(deny_unknown_fields)]
+#[ts(optional_fields)]
+pub struct IncludeArchived {
+    /// Показывать и архивные записи; по умолчанию `false`.
+    pub include_archived: Option<bool>,
+}
+
+/// Новый порядок записей: все их номера в нужной последовательности.
+#[derive(Debug, Clone, Deserialize, TS, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ReorderRequest {
+    /// Номера записей в новом порядке; должны совпадать с текущим набором.
+    pub ordered_ids: Vec<i64>,
+}
+
+/// Значение справочника.
+#[derive(Debug, Clone, Deserialize, TS, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DictionaryValue {
+    /// Текст значения; крайние пробелы убираются.
+    pub value: String,
+}
+
+/// Новая точка обслуживания.
+#[derive(Debug, Clone, Deserialize, TS, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct NewServicePoint {
+    /// Название точки.
+    pub name: String,
 }

@@ -25,7 +25,10 @@ use utoipa::{Modify, OpenApi as _, ToSchema};
 
 pub use auth::{ACCOUNT_FAILURE_LIMIT, FAILURE_WINDOW_SECS, IP_FAILURE_LIMIT, OPEN_MODE_ACTOR};
 pub use contract::export_typescript;
-pub use dto::{ChangePasswordRequest, CurrentUser, LoginRequest, LoginResponse, ServerInfo};
+pub use dto::{
+    ChangePasswordRequest, CurrentUser, DictionaryValue, IncludeArchived, LoginRequest,
+    LoginResponse, NewServicePoint, ReorderRequest, ServerInfo,
+};
 pub use error::{ErrorBody, ErrorCode, ErrorField};
 pub use state::ApiConfig;
 
@@ -131,7 +134,7 @@ impl Modify for CommonDoc {
 }
 
 #[derive(utoipa::OpenApi)]
-#[openapi()]
+#[openapi(components(schemas(mw_domain::dictionary::DictionaryKind)))]
 struct ApiDoc;
 
 /// Маршруты и документ; единый источник для `router` и `openapi`.
