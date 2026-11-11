@@ -10,6 +10,193 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/api/v1/auth/login": {
+      "post": {
+        "tags": [
+          "Вход"
+        ],
+        "summary": "Вход по логину и паролю. Выдаёт токен для заголовка `Authorization: Bearer`.",
+        "description": "После 5 неудач для одного логина или 20 неудач с одного адреса за 15 минут вход\nблокируется (429 с `Retry-After`); пока блокировка действует, пароль не проверяется.",
+        "operationId": "login",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Вход выполнен",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Неверный логин или пароль",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Слишком много неудачных попыток",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "tags": [
+          "Вход"
+        ],
+        "summary": "Выход: сеанс с токеном из заголовка закрывается. Без токена ничего не делает; ответ всегда 204.",
+        "operationId": "logout",
+        "responses": {
+          "204": {
+            "description": "Готово"
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/auth/me": {
+      "get": {
+        "tags": [
+          "Вход"
+        ],
+        "summary": "Кто сейчас делает запросы и какие у него права.",
+        "operationId": "me",
+        "responses": {
+          "200": {
+            "description": "Текущий пользователь",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentUser"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/auth/password": {
+      "post": {
+        "tags": [
+          "Вход"
+        ],
+        "summary": "Смена собственного пароля. Все сеансы пользователя закрываются, нужен новый вход.",
+        "description": "Неверный текущий пароль считается неудачной попыткой: после 5 неудач за 15 минут\n(или 20 с одного адреса) приходит 429 с `Retry-After`.",
+        "operationId": "change_password",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Пароль изменён"
+          },
+          "422": {
+            "description": "Неверный текущий или слишком короткий новый пароль",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Слишком много неудачных попыток",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/openapi.json": {
       "get": {
         "tags": [
@@ -73,6 +260,56 @@
   },
   "components": {
     "schemas": {
+      "ChangePasswordRequest": {
+        "type": "object",
+        "description": "Смена собственного пароля.",
+        "required": [
+          "current_password",
+          "new_password"
+        ],
+        "properties": {
+          "current_password": {
+            "type": "string",
+            "description": "Текущий пароль."
+          },
+          "new_password": {
+            "type": "string",
+            "description": "Новый пароль (не короче `MIN_PASSWORD_CHARS` символов)."
+          }
+        },
+        "additionalProperties": false
+      },
+      "CurrentUser": {
+        "type": "object",
+        "description": "Кто делает запросы.",
+        "required": [
+          "name",
+          "permissions",
+          "open_mode"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Имя для показа и журнала действий."
+          },
+          "open_mode": {
+            "type": "boolean",
+            "description": "Работа без входа (сервер на локальном адресе, пользователей нет)."
+          },
+          "permissions": {
+            "$ref": "#/components/schemas/PermissionSet",
+            "description": "Права."
+          },
+          "user_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Номер пользователя; пусто в режиме без входа."
+          }
+        }
+      },
       "ErrorBody": {
         "type": "object",
         "description": "Тело любого ответа с ошибкой.",
@@ -165,6 +402,53 @@
           }
         }
       },
+      "LoginRequest": {
+        "type": "object",
+        "description": "Вход в программу.",
+        "required": [
+          "login",
+          "password",
+          "device_label"
+        ],
+        "properties": {
+          "device_label": {
+            "type": "string",
+            "description": "Название устройства для списка сеансов (например, «Касса»); может быть пустым."
+          },
+          "login": {
+            "type": "string",
+            "description": "Логин; регистр и крайние пробелы не важны."
+          },
+          "password": {
+            "type": "string",
+            "description": "Пароль."
+          }
+        },
+        "additionalProperties": false
+      },
+      "LoginResponse": {
+        "type": "object",
+        "description": "Результат входа. Токен показывается только один раз.",
+        "required": [
+          "token",
+          "user",
+          "permissions"
+        ],
+        "properties": {
+          "permissions": {
+            "$ref": "#/components/schemas/PermissionSet",
+            "description": "Права пользователя."
+          },
+          "token": {
+            "type": "string",
+            "description": "Токен для заголовка `Authorization: Bearer <токен>` (64 hex-символа)."
+          },
+          "user": {
+            "$ref": "#/components/schemas/User",
+            "description": "Пользователь."
+          }
+        }
+      },
       "Permission": {
         "type": "string",
         "enum": [
@@ -186,6 +470,14 @@
           "users_manage",
           "audit_view"
         ]
+      },
+      "PermissionSet": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/Permission"
+        },
+        "description": "Упорядоченное (по порядку объявления) множество прав.",
+        "uniqueItems": true
       },
       "ServerInfo": {
         "type": "object",
@@ -219,6 +511,53 @@
           "version": {
             "type": "string",
             "description": "Версия сервера."
+          }
+        }
+      },
+      "User": {
+        "type": "object",
+        "description": "Пользователь без хэша пароля.",
+        "required": [
+          "id",
+          "login",
+          "display_name",
+          "role_id",
+          "active",
+          "created_at",
+          "version"
+        ],
+        "properties": {
+          "active": {
+            "type": "boolean",
+            "description": "Учётная запись активна."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Когда создан (местное время предприятия)."
+          },
+          "display_name": {
+            "type": "string",
+            "description": "Отображаемое имя."
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Номер пользователя."
+          },
+          "login": {
+            "type": "string",
+            "description": "Логин."
+          },
+          "role_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Номер роли."
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Версия записи для проверки конфликтов правок."
           }
         }
       }

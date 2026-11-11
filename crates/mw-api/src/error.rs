@@ -115,6 +115,18 @@ impl ApiError {
         )
     }
 
+    /// Слишком много неудачных попыток; `secs` — через сколько повторить.
+    pub(crate) fn too_many_attempts(secs: u64) -> Self {
+        let minutes = secs.div_ceil(60).max(1);
+        let mut e = Self::new(
+            StatusCode::TOO_MANY_REQUESTS,
+            ErrorCode::TooManyAttempts,
+            format!("Слишком много неудачных попыток. Повторите через {minutes} мин."),
+        );
+        e.body.retry_after_secs = Some(secs);
+        e
+    }
+
     /// Отказ разбора запроса: статус отказа axum, но 422 → 400.
     fn rejection(status: StatusCode, text: String) -> Self {
         let status = if status == StatusCode::UNPROCESSABLE_ENTITY {

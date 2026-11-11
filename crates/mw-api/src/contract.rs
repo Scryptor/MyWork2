@@ -4,7 +4,9 @@ use std::path::Path;
 
 use ts_rs::TS;
 
-use crate::{ErrorBody, ServerInfo};
+use crate::{
+    ChangePasswordRequest, CurrentUser, ErrorBody, LoginRequest, LoginResponse, ServerInfo,
+};
 
 /// Выгружает в `dir` TS-типы всех корневых типов API вместе с зависимостями
 /// (по файлу на тип). `i64` выгружается как `number`: суммы и id меньше 2^53.
@@ -18,5 +20,9 @@ pub fn export_typescript(dir: &Path) -> Result<(), ts_rs::ExportError> {
     // свои типы тел, ответов и параметров запросов.
     ErrorBody::export_all(&cfg)?;
     ServerInfo::export_all(&cfg)?;
+    LoginRequest::export_all(&cfg)?;
+    LoginResponse::export_all(&cfg)?;
+    CurrentUser::export_all(&cfg)?;
+    ChangePasswordRequest::export_all(&cfg)?;
     Ok(())
 }

@@ -4,7 +4,7 @@
 #![allow(dead_code, clippy::unwrap_used, clippy::expect_used)]
 
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use axum::Router;
 use axum::body::Body;
@@ -13,10 +13,14 @@ use axum::http::{HeaderMap, Method, Request};
 use chrono::{TimeZone, Utc};
 use http_body_util::BodyExt;
 use mw_api::{ApiConfig, router};
-use mw_core::{Core, FixedClock};
+use mw_core::{Actor, Core, FixedClock, NewRole, NewUser, User};
 use mw_db::entity::{role, status};
+use mw_domain::permission::{Permission, PermissionSet};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use tower::ServiceExt;
+
+/// Пароль всех тестовых пользователей.
+pub const TEST_PASSWORD: &str = "пароль-1234";
 
 #[derive(Clone, Copy, Debug)]
 pub enum Listen {
@@ -149,4 +153,132 @@ pub async fn status_id_by_name(core: &Core, name: &str) -> i64 {
         .unwrap()
         .unwrap_or_else(|| panic!("нет статуса {name}"))
         .id
+}
+
+impl TestApi {
+    /// Пользователь с ролью «Администратор» и паролем `TEST_PASSWORD`.
+    pub async fn create_admin_user(&self, login: &str) -> User {
+        let role_id = role_id_by_name(&self.core, "Администратор").await;
+        self.core
+            .create_user(
+                &Actor::unrestricted("Тест"),
+                NewUser {
+                    login: login.into(),
+                    display_name: login.into(),
+                    role_id,
+                    password: TEST_PASSWORD.into(),
+                },
+            )
+            .await
+            .unwrap()
+    }
+
+    /// Пользователь с новой ролью «Роль {login}» из заданных прав.
+    pub async fn create_user_with(&self, login: &str, permissions: &[Permission]) -> User {
+        let system = Actor::unrestricted("Тест");
+        if self.core.is_open_mode().await.unwrap() {
+            self.create_admin_user("admin").await;
+        }
+        let mut set = PermissionSet::empty();
+        for p in permissions {
+            set.insert(*p);
+        }
+        let role = self
+            .core
+            .create_role(
+                &system,
+                NewRole {
+                    name: format!("Роль {login}"),
+                    permissions: set,
+                },
+            )
+            .await
+            .unwrap();
+        self.core
+            .create_user(
+                &system,
+                NewUser {
+                    login: login.into(),
+                    display_name: login.into(),
+                    role_id: role.id,
+                    password: TEST_PASSWORD.into(),
+                },
+            )
+            .await
+            .unwrap()
+    }
+
+    /// Входит под `login` с `TEST_PASSWORD` и возвращает токен.
+    pub async fn login(&self, login: &str) -> String {
+        let r = self
+            .send(
+                Method::POST,
+                "/api/v1/auth/login",
+                None,
+                Some(serde_json::json!({
+                    "login": login, "password": TEST_PASSWORD, "device_label": "тест"
+                })),
+            )
+            .await;
+        assert_eq!(r.status, 200, "{}: {}", self.label, r.body);
+        r.body["token"].as_str().unwrap().to_owned()
+    }
+
+    /// Токен администратора `admin`; пользователь создаётся при первом вызове.
+    pub async fn admin_token(&self) -> String {
+        let users = self
+            .core
+            .list_users(&Actor::unrestricted("Тест"))
+            .await
+            .unwrap();
+        if !users.iter().any(|u| u.login == "admin") {
+            self.create_admin_user("admin").await;
+        }
+        self.login("admin").await
+    }
+
+    pub async fn token_with(&self, login: &str, permissions: &[Permission]) -> String {
+        self.create_user_with(login, permissions).await;
+        self.login(login).await
+    }
+}
+
+/// Записанный вывод tracing; подписчик действует, пока жив `LogCapture`.
+pub struct LogCapture {
+    buf: Arc<Mutex<Vec<u8>>>,
+    _guard: tracing::subscriber::DefaultGuard,
+}
+
+impl LogCapture {
+    pub fn text(&self) -> String {
+        String::from_utf8_lossy(&self.buf.lock().unwrap()).into_owned()
+    }
+}
+
+struct BufWriter(Arc<Mutex<Vec<u8>>>);
+
+impl std::io::Write for BufWriter {
+    fn write(&mut self, data: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().unwrap().extend_from_slice(data);
+        Ok(data.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+/// Подписчик tracing уровня TRACE, пишущий в буфер (на текущем потоке).
+pub fn capture_logs() -> LogCapture {
+    let buf = Arc::new(Mutex::new(Vec::new()));
+    let writer = buf.clone();
+    let subscriber = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::TRACE)
+        .with_ansi(false)
+        .with_writer(move || BufWriter(writer.clone()))
+        .finish();
+    LogCapture {
+        buf,
+        _guard: tracing::subscriber::set_default(subscriber),
+    }
 }

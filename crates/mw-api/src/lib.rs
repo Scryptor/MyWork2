@@ -1,13 +1,16 @@
 //! HTTP API MyWork2: Axum-роутер поверх `mw-core`.
 
+mod auth;
 mod contract;
 mod dto;
 mod error;
 mod extract;
+mod limiter;
 mod middleware;
 mod routes;
 mod state;
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use axum::Router;
@@ -20,8 +23,9 @@ use utoipa::openapi::{
 };
 use utoipa::{Modify, OpenApi as _, ToSchema};
 
+pub use auth::{ACCOUNT_FAILURE_LIMIT, FAILURE_WINDOW_SECS, IP_FAILURE_LIMIT, OPEN_MODE_ACTOR};
 pub use contract::export_typescript;
-pub use dto::ServerInfo;
+pub use dto::{ChangePasswordRequest, CurrentUser, LoginRequest, LoginResponse, ServerInfo};
 pub use error::{ErrorBody, ErrorCode, ErrorField};
 pub use state::ApiConfig;
 
@@ -29,7 +33,7 @@ use middleware::{
     method_not_allowed_fallback, not_found_fallback, request_log, require_json_content_type,
     require_local_host, security_headers, with_timeout,
 };
-use state::AppState;
+use state::{AppState, Limits};
 
 /// Версия API (путь `/api/v1`).
 pub const API_VERSION: u32 = 1;
@@ -167,5 +171,6 @@ pub fn router(core: mw_core::Core, config: ApiConfig) -> Router {
             core,
             config,
             openapi_json,
+            limits: Arc::new(Limits::new()),
         })
 }
