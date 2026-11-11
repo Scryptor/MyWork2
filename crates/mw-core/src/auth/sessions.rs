@@ -203,10 +203,18 @@ impl Core {
     }
 
     async fn record_failed_login(&self, login: &str) -> Result<(), CoreError> {
+        // Набранный текст в журнал не попадает (в поле логина могли ввести пароль): пишем только
+        // сохранённый логин существующей учётной записи.
+        let stored_login = user::Entity::find()
+            .filter(user::Column::LoginKey.eq(normalize_search(login)))
+            .one(&self.db)
+            .await?
+            .map(|u| u.login);
+        let who = stored_login.unwrap_or_else(|| "неизвестный логин".to_owned());
         let tx = self.begin_write().await?;
         let actor = Actor {
             user_id: None,
-            name: login.to_owned(),
+            name: who.clone(),
             permissions: PermissionSet::empty(),
         };
         write_audit(
@@ -217,7 +225,7 @@ impl Core {
                 action: "user.login_failed",
                 order_id: None,
                 client_id: None,
-                summary: format!("Неудачный вход: {login}"),
+                summary: format!("Неудачный вход: {who}"),
                 details: None,
             },
         )

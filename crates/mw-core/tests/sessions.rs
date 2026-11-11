@@ -39,8 +39,9 @@ async fn login_sessions_and_legacy_upgrade() {
         }
         assert_eq!(count_audit(&t.core, "user.login_failed").await, 2);
         let failed = audit_json(&t.core, "user.login_failed").await;
-        assert!(failed.contains("Неудачный вход: никто"));
-        assert!(!failed.contains("12345"));
+        assert!(failed.contains("Неудачный вход: Ирина"));
+        assert!(failed.contains("Неудачный вход: неизвестный логин"));
+        assert!(!failed.contains("никто") && !failed.contains("12345"));
 
         let actor = t.core.authenticate(&s.token).await.unwrap();
         assert_eq!(
@@ -193,5 +194,23 @@ async fn password_change_and_deactivation_revoke_sessions() {
             "{}",
             t.label
         );
+    }
+}
+
+#[tokio::test]
+async fn failed_login_never_stores_typed_text() {
+    use mw_db::entity::audit_log;
+    use sea_orm::EntityTrait;
+    for t in cores().await {
+        assert!(matches!(
+            t.core.login("секрет123", "x", "x").await,
+            Err(CoreError::InvalidCredentials)
+        ));
+        let rows = audit_log::Entity::find().all(t.core.db()).await.unwrap();
+        assert_eq!(rows.len(), 1, "{}", t.label);
+        let row = &rows[0];
+        assert_eq!(row.summary, "Неудачный вход: неизвестный логин");
+        assert!(row.details.is_none());
+        assert!(!row.user_name.contains("секрет123"), "{}", t.label);
     }
 }
