@@ -44,6 +44,36 @@ pub struct NewOrder {
     pub need_parts: bool,
 }
 
+/// Частичная правка заказа: `None` — поле не меняется; `Some(None)` очищает необязательное поле.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct OrderPatch {
+    pub client_id: Option<i64>,
+    pub service_point_id: Option<Option<i64>>,
+    pub received_at: Option<NaiveDateTime>,
+    pub issued_at: Option<Option<NaiveDateTime>>,
+    pub device_type: Option<String>,
+    pub brand: Option<String>,
+    pub model: Option<String>,
+    pub serial: Option<String>,
+    pub color: Option<String>,
+    pub device_password: Option<String>,
+    pub completeness: Option<String>,
+    pub device_condition: Option<String>,
+    pub malfunction: Option<String>,
+    pub work_done: Option<String>,
+    pub internal_comment: Option<String>,
+    pub master: Option<String>,
+    pub estimate_from: Option<Option<Money>>,
+    pub estimate_to: Option<Option<Money>>,
+    pub final_price: Option<Option<Money>>,
+    pub prepayment: Option<Money>,
+    pub extra_costs: Option<Money>,
+    pub discount: Option<Money>,
+    pub warranty_days: Option<Option<u16>>,
+    pub need_call: Option<bool>,
+    pub need_parts: Option<bool>,
+}
+
 /// Заказ (все колонки, кроме `search_text`). Номер заказа = `id`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Order {

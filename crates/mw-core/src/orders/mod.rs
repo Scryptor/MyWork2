@@ -2,9 +2,6 @@
 
 mod create;
 mod types;
+mod update;
 
-pub use types::{ClientRef, NewOrder, Order};
-
-// Используется задачей 11.
-#[allow(unused_imports)]
-pub(crate) use types::order_search_text;
+pub use types::{ClientRef, NewOrder, Order, OrderPatch};

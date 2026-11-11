@@ -19,7 +19,7 @@ pub use clock::{Clock, FixedClock, SystemClock};
 pub use core::Core;
 pub use dictionaries::DictionaryItem;
 pub use error::CoreError;
-pub use orders::{ClientRef, NewOrder, Order};
+pub use orders::{ClientRef, NewOrder, Order, OrderPatch};
 pub use page::Page;
 pub use service_points::ServicePoint;
 pub use settings::{AppSettings, SettingsPatch};
