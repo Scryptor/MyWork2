@@ -154,33 +154,60 @@ impl Core {
         validate(&patch)?;
 
         let tx = self.begin_write().await?;
+        let current = load(&tx).await?;
         let mut changes = serde_json::Map::new();
         let mut names = Vec::new();
-        let mut apply = |key: &'static str, label: &'static str, value: Value| {
-            names.push(label);
-            changes.insert(key.to_owned(), value);
+        let mut apply = |key: &'static str, label: &'static str, differs: bool, value: Value| {
+            if differs {
+                names.push(label);
+                changes.insert(key.to_owned(), value);
+            }
         };
         if let Some(v) = &patch.currency_symbol {
-            apply("currency_symbol", "валюта", json!(v));
+            apply(
+                "currency_symbol",
+                "валюта",
+                *v != current.currency_symbol,
+                json!(v),
+            );
         }
         if let Some(v) = patch.master_percent {
-            apply("master_percent", "процент мастера", json!(v));
+            apply(
+                "master_percent",
+                "процент мастера",
+                v != current.master_percent,
+                json!(v),
+            );
         }
         if let Some(v) = patch.diagnostics_overdue_days {
-            apply("diagnostics_overdue_days", "срок диагностики", json!(v));
+            apply(
+                "diagnostics_overdue_days",
+                "срок диагностики",
+                v != current.diagnostics_overdue_days,
+                json!(v),
+            );
         }
         if let Some(v) = patch.default_warranty_days {
-            apply("default_warranty_days", "гарантия по умолчанию", json!(v));
+            apply(
+                "default_warranty_days",
+                "гарантия по умолчанию",
+                v != current.default_warranty_days,
+                json!(v),
+            );
         }
         if let Some(v) = patch.intake_required_fields {
             apply(
                 "intake_required_fields",
                 "обязательные поля приёма",
+                v != current.intake_required_fields,
                 json!(v),
             );
         }
         if let Some(v) = &patch.timezone {
-            apply("timezone", "часовой пояс", json!(v));
+            apply("timezone", "часовой пояс", *v != current.timezone, json!(v));
+        }
+        if changes.is_empty() {
+            return Ok(current);
         }
         for (key, value) in &changes {
             put(&tx, key, value).await?;

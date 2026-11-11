@@ -32,7 +32,7 @@ pub use orders::{
     OrderSortField,
 };
 pub use page::Page;
-pub use service_points::ServicePoint;
+pub use service_points::{ServicePoint, ServicePointPatch};
 pub use settings::{AppSettings, SettingsPatch};
 pub use statuses::{NewStatus, Status, StatusPatch};
 

@@ -282,3 +282,110 @@ async fn change_own_password_requires_current_password() -> Result<(), CoreError
     }
     Ok(())
 }
+
+#[tokio::test]
+async fn broken_database_without_admin_allows_unrelated_edits() -> Result<(), CoreError> {
+    for t in cores().await {
+        // Как после импорта: активные пользователи есть, права users_manage нет ни у кого.
+        let clerk = t
+            .core
+            .create_role(
+                &admin(),
+                NewRole {
+                    name: "Приёмщик".into(),
+                    permissions: PermissionSet::from_codes(["orders_create"]),
+                },
+            )
+            .await?
+            .id;
+        let kassa = insert_user_row(&t.core, "kassa", clerk, true).await;
+        let sklad = insert_user_row(&t.core, "sklad", clerk, true).await;
+        t.core
+            .update_user(
+                &admin(),
+                kassa,
+                1,
+                UserPatch {
+                    display_name: Some("Касса".into()),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        t.core
+            .update_user(
+                &admin(),
+                sklad,
+                1,
+                UserPatch {
+                    active: Some(false),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        t.core
+            .create_user(
+                &admin(),
+                NewUser {
+                    login: "master".into(),
+                    display_name: String::new(),
+                    role_id: clerk,
+                    password: "1234".into(),
+                },
+            )
+            .await?;
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn enabling_user_without_rights_in_open_mode_is_refused() -> Result<(), CoreError> {
+    for t in cores().await {
+        let clerk = t
+            .core
+            .create_role(
+                &admin(),
+                NewRole {
+                    name: "Приёмщик".into(),
+                    permissions: PermissionSet::from_codes(["orders_create"]),
+                },
+            )
+            .await?
+            .id;
+        let kassa = insert_user_row(&t.core, "kassa", clerk, false).await;
+        assert!(t.core.is_open_mode().await?);
+        assert_validation(
+            t.core
+                .update_user(
+                    &admin(),
+                    kassa,
+                    1,
+                    UserPatch {
+                        active: Some(true),
+                        ..Default::default()
+                    },
+                )
+                .await,
+            &[("active", "last_admin")],
+        );
+        let boss = insert_user_row(
+            &t.core,
+            "boss",
+            role_id_by_name(&t.core, "Администратор").await,
+            false,
+        )
+        .await;
+        t.core
+            .update_user(
+                &admin(),
+                boss,
+                1,
+                UserPatch {
+                    active: Some(true),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        assert!(!t.core.is_open_mode().await?);
+    }
+    Ok(())
+}

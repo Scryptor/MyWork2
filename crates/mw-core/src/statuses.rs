@@ -153,10 +153,7 @@ impl Core {
                 entity: "статус",
                 id,
             })?;
-        let name = match &patch.name {
-            Some(n) => check_name(n, &rows, Some(id))?,
-            None => current.name.clone(),
-        };
+        let new_name = patch.name.as_deref().map(str::trim);
         let kind = patch
             .kind
             .map_or(current.kind.clone(), |k| k.as_str().to_owned());
@@ -165,6 +162,29 @@ impl Core {
             .color
             .as_deref()
             .map_or(current.color.clone(), |c| c.trim().to_owned());
+
+        let mut changed = serde_json::Map::new();
+        if let Some(n) = new_name
+            && n != current.name
+        {
+            changed.insert("name".into(), json!(n));
+        }
+        if kind != current.kind {
+            changed.insert("kind".into(), json!(kind));
+        }
+        if color != current.color {
+            changed.insert("color".into(), json!(color));
+        }
+        if archived != current.archived {
+            changed.insert("archived".into(), json!(archived));
+        }
+        if changed.is_empty() {
+            return to_status(current);
+        }
+        let name = match &patch.name {
+            Some(n) => check_name(n, &rows, Some(id))?,
+            None => current.name.clone(),
+        };
 
         let after = status::Model {
             kind: kind.clone(),
@@ -201,13 +221,7 @@ impl Core {
                 order_id: None,
                 client_id: None,
                 summary: format!("Изменён статус «{name}»"),
-                details: Some(json!({
-                    "id": id,
-                    "name": patch.name,
-                    "kind": patch.kind.map(StatusKind::as_str),
-                    "color": patch.color,
-                    "archived": patch.archived,
-                })),
+                details: Some(json!({ "id": id, "changed": changed })),
             },
         )
         .await?;
@@ -225,6 +239,9 @@ impl Core {
         let tx = self.begin_write().await?;
         let rows = all_rows(&tx).await?;
         check_permutation(ordered_ids, rows.iter().map(|r| r.id))?;
+        if rows.iter().map(|r| r.id).eq(ordered_ids.iter().copied()) {
+            return Ok(());
+        }
         for (position, id) in (0_i32..).zip(ordered_ids) {
             status::ActiveModel {
                 id: Set(*id),

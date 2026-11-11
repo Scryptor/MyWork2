@@ -60,7 +60,7 @@ pub struct NewClient {
     pub blacklisted: bool,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ClientPatch {
     pub full_name: Option<String>,
     pub phone: Option<String>,
@@ -159,23 +159,12 @@ impl Core {
         let current = find_live(&tx, id)
             .await?
             .ok_or(CoreError::NotFound { entity: ENTITY, id })?;
-        if current.version != expected_version {
-            return Err(CoreError::Conflict {
-                entity: ENTITY,
-                id,
-                current_version: current.version,
-            });
-        }
-
         let full_name = patch
             .full_name
             .map_or_else(|| current.full_name.clone(), |v| v.trim().to_owned());
         let phone = patch
             .phone
             .map_or_else(|| current.phone.clone(), |v| normalize_phone(v.trim()));
-        if full_name.is_empty() && phone.is_empty() {
-            return Err(required_name());
-        }
         let address = patch
             .address
             .map_or_else(|| current.address.clone(), |v| v.trim().to_owned());
@@ -211,6 +200,16 @@ impl Core {
         );
         if changed.is_empty() {
             return Ok(current.into());
+        }
+        if current.version != expected_version {
+            return Err(CoreError::Conflict {
+                entity: ENTITY,
+                id,
+                current_version: current.version,
+            });
+        }
+        if full_name.is_empty() && phone.is_empty() {
+            return Err(required_name());
         }
         let summary = format!(
             "Изменён клиент «{}»: {}",

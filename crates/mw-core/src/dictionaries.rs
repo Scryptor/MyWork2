@@ -45,6 +45,20 @@ async fn kind_rows(
         .await?)
 }
 
+/// По `sort_order`, затем по значению — порядок, в котором значения видит `list_dictionary`.
+fn sorted_items(rows: Vec<dictionary_item::Model>) -> Result<Vec<DictionaryItem>, CoreError> {
+    let mut items = rows
+        .into_iter()
+        .map(to_item)
+        .collect::<Result<Vec<_>, _>>()?;
+    items.sort_by(|a, b| {
+        a.sort_order
+            .cmp(&b.sort_order)
+            .then_with(|| normalize_search(&a.value).cmp(&normalize_search(&b.value)))
+    });
+    Ok(items)
+}
+
 fn check_value(
     value: &str,
     others: &[dictionary_item::Model],
@@ -73,17 +87,7 @@ impl Core {
         &self,
         kind: DictionaryKind,
     ) -> Result<Vec<DictionaryItem>, CoreError> {
-        let mut items = kind_rows(&self.db, kind)
-            .await?
-            .into_iter()
-            .map(to_item)
-            .collect::<Result<Vec<_>, _>>()?;
-        items.sort_by(|a, b| {
-            a.sort_order
-                .cmp(&b.sort_order)
-                .then_with(|| normalize_search(&a.value).cmp(&normalize_search(&b.value)))
-        });
-        Ok(items)
+        sorted_items(kind_rows(&self.db, kind).await?)
     }
 
     /// Доступно и из настроек, и из приёма («+ своё»).
@@ -142,6 +146,9 @@ impl Core {
             .kind
             .parse::<DictionaryKind>()
             .map_err(|e| CoreError::Internal(format!("справочник №{id}: {e:?}")))?;
+        if value.trim() == current.value {
+            return to_item(current);
+        }
         let rows = kind_rows(&tx, kind).await?;
         let value = check_value(value, &rows, Some(id))?;
         let old = current.value.clone();
@@ -215,6 +222,10 @@ impl Core {
         let tx = self.begin_write().await?;
         let rows = kind_rows(&tx, kind).await?;
         check_permutation(ordered_ids, rows.iter().map(|r| r.id))?;
+        let current = sorted_items(rows)?;
+        if current.iter().map(|i| i.id).eq(ordered_ids.iter().copied()) {
+            return Ok(());
+        }
         for (position, id) in (0_i32..).zip(ordered_ids) {
             dictionary_item::ActiveModel {
                 id: Set(*id),

@@ -66,7 +66,7 @@ impl fmt::Debug for NewUser {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct UserPatch {
     pub display_name: Option<String>,
     pub role_id: Option<i64>,
@@ -255,6 +255,27 @@ impl Core {
             .find(|u| u.id == id)
             .cloned()
             .ok_or(CoreError::NotFound { entity: ENTITY, id })?;
+        let roles = all_roles(&tx).await?;
+        let display_name = patch
+            .display_name
+            .as_deref()
+            .map_or_else(|| current.display_name.clone(), |v| v.trim().to_owned());
+        let role_id = patch.role_id.unwrap_or(current.role_id);
+        let active = patch.active.unwrap_or(current.active);
+
+        let mut changed = Map::new();
+        if display_name != current.display_name {
+            changed.insert("display_name".into(), json!(display_name));
+        }
+        if role_id != current.role_id {
+            changed.insert("role_id".into(), json!(role_id));
+        }
+        if active != current.active {
+            changed.insert("active".into(), json!(active));
+        }
+        if changed.is_empty() {
+            return Ok(current.into());
+        }
         if current.version != expected_version {
             return Err(CoreError::Conflict {
                 entity: ENTITY,
@@ -262,21 +283,11 @@ impl Core {
                 current_version: current.version,
             });
         }
-        let roles = all_roles(&tx).await?;
-        if let Some(role_id) = patch.role_id
-            && !roles.iter().any(|r| r.id == role_id)
-        {
+        if !roles.iter().any(|r| r.id == role_id) {
             return Err(CoreError::Validation(vec![FieldError::new(
                 "role_id", "invalid",
             )]));
         }
-
-        let display_name = patch
-            .display_name
-            .as_deref()
-            .map_or_else(|| current.display_name.clone(), |v| v.trim().to_owned());
-        let role_id = patch.role_id.unwrap_or(current.role_id);
-        let active = patch.active.unwrap_or(current.active);
 
         if role_id != current.role_id || active != current.active {
             let perms = role_permissions(&roles);
@@ -304,17 +315,8 @@ impl Core {
             }
         }
 
-        let mut changed = Map::new();
-        if display_name != current.display_name {
-            changed.insert("display_name".into(), json!(display_name));
-        }
-        if role_id != current.role_id {
-            changed.insert("role_id".into(), json!(role_id));
-        }
-        if active != current.active {
-            changed.insert("active".into(), json!(active));
-        }
         let login = current.login.clone();
+        let current_active = current.active;
         let now = self.now();
         let mut model: user::ActiveModel = current.into();
         model.display_name = Set(display_name);
@@ -323,7 +325,7 @@ impl Core {
         model.updated_at = Set(now);
         model.version = Set(expected_version + 1);
         let model = model.update(&tx).await?;
-        if patch.active == Some(false) {
+        if !active && current_active {
             // Отключённого пользователя выкидываем из системы; после повторного включения нужен новый вход.
             delete_user_sessions(&tx, id).await?;
         }

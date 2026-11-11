@@ -30,6 +30,13 @@ impl From<service_point::Model> for ServicePoint {
     }
 }
 
+/// Частичное изменение точки обслуживания; `None` — не менять.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ServicePointPatch {
+    pub name: Option<String>,
+    pub archived: Option<bool>,
+}
+
 async fn all_rows(conn: &impl ConnectionTrait) -> Result<Vec<service_point::Model>, CoreError> {
     Ok(service_point::Entity::find()
         .order_by_asc(service_point::Column::SortOrder)
@@ -118,8 +125,7 @@ impl Core {
         &self,
         actor: &Actor,
         id: i64,
-        name: Option<&str>,
-        archived: Option<bool>,
+        patch: ServicePointPatch,
     ) -> Result<ServicePoint, CoreError> {
         actor.require(Permission::SettingsManage)?;
         let tx = self.begin_write().await?;
@@ -132,13 +138,27 @@ impl Core {
                 entity: "точка обслуживания",
                 id,
             })?;
-        let new_name = match name {
+        let mut changed = serde_json::Map::new();
+        if let Some(n) = patch.name.as_deref().map(str::trim)
+            && n != current.name
+        {
+            changed.insert("name".into(), json!(n));
+        }
+        if let Some(a) = patch.archived
+            && a != current.archived
+        {
+            changed.insert("archived".into(), json!(a));
+        }
+        if changed.is_empty() {
+            return Ok(current.into());
+        }
+        let new_name = match &patch.name {
             Some(n) => check_name(n, &rows, Some(id))?,
             None => current.name.clone(),
         };
         let mut active: service_point::ActiveModel = current.into();
         active.name = Set(new_name.clone());
-        if let Some(a) = archived {
+        if let Some(a) = patch.archived {
             active.archived = Set(a);
         }
         let model = active.update(&tx).await?;
@@ -151,7 +171,7 @@ impl Core {
                 order_id: None,
                 client_id: None,
                 summary: format!("Изменена точка обслуживания «{new_name}»"),
-                details: Some(json!({ "id": id, "name": name, "archived": archived })),
+                details: Some(json!({ "id": id, "changed": changed })),
             },
         )
         .await?;
@@ -169,6 +189,9 @@ impl Core {
         let tx = self.begin_write().await?;
         let rows = all_rows(&tx).await?;
         check_permutation(ordered_ids, rows.iter().map(|r| r.id))?;
+        if rows.iter().map(|r| r.id).eq(ordered_ids.iter().copied()) {
+            return Ok(());
+        }
         for (position, id) in (0_i32..).zip(ordered_ids) {
             service_point::ActiveModel {
                 id: Set(*id),

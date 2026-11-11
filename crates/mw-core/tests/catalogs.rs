@@ -1,7 +1,7 @@
 mod common;
 
 use common::{actor_with, admin, assert_validation, cores, count_audit};
-use mw_core::{CoreError, NewStatus, StatusPatch};
+use mw_core::{CoreError, NewStatus, ServicePointPatch, StatusPatch};
 use mw_domain::dictionary::DictionaryKind;
 use mw_domain::permission::Permission;
 use mw_domain::status::StatusKind;
@@ -157,7 +157,14 @@ async fn service_points_archive_hides_from_default_list() -> Result<(), CoreErro
     for t in cores().await {
         let p = t.core.create_service_point(&admin(), "Древлянка").await?;
         t.core
-            .update_service_point(&admin(), p.id, None, Some(true))
+            .update_service_point(
+                &admin(),
+                p.id,
+                ServicePointPatch {
+                    archived: Some(true),
+                    ..Default::default()
+                },
+            )
             .await?;
         assert!(t.core.list_service_points(false).await?.is_empty());
         assert_eq!(t.core.list_service_points(true).await?.len(), 1);
@@ -414,22 +421,50 @@ async fn service_point_validation_not_found_and_forbidden() -> Result<(), CoreEr
         assert_eq!(other.sort_order, p.sort_order + 1);
         // собственное имя и смена регистра допустимы, чужое — дубль
         t.core
-            .update_service_point(&admin(), p.id, Some("Древлянка"), None)
+            .update_service_point(
+                &admin(),
+                p.id,
+                ServicePointPatch {
+                    name: Some("Древлянка".into()),
+                    ..Default::default()
+                },
+            )
             .await?;
         let renamed = t
             .core
-            .update_service_point(&admin(), p.id, Some("ДРЕВЛЯНКА"), None)
+            .update_service_point(
+                &admin(),
+                p.id,
+                ServicePointPatch {
+                    name: Some("ДРЕВЛЯНКА".into()),
+                    ..Default::default()
+                },
+            )
             .await?;
         assert_eq!(renamed.name, "ДРЕВЛЯНКА");
         assert_validation(
             t.core
-                .update_service_point(&admin(), p.id, Some("центр"), None)
+                .update_service_point(
+                    &admin(),
+                    p.id,
+                    ServicePointPatch {
+                        name: Some("центр".into()),
+                        ..Default::default()
+                    },
+                )
                 .await,
             &[("name", "duplicate")],
         );
         assert!(matches!(
             t.core
-                .update_service_point(&admin(), 999_999, None, Some(true))
+                .update_service_point(
+                    &admin(),
+                    999_999,
+                    ServicePointPatch {
+                        archived: Some(true),
+                        ..Default::default()
+                    }
+                )
                 .await,
             Err(CoreError::NotFound { .. })
         ));
@@ -440,7 +475,14 @@ async fn service_point_validation_not_found_and_forbidden() -> Result<(), CoreEr
         ));
         assert!(matches!(
             t.core
-                .update_service_point(&clerk, p.id, None, Some(true))
+                .update_service_point(
+                    &clerk,
+                    p.id,
+                    ServicePointPatch {
+                        archived: Some(true),
+                        ..Default::default()
+                    }
+                )
                 .await,
             Err(CoreError::Forbidden(Permission::SettingsManage))
         ));

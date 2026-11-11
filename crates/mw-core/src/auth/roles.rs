@@ -36,7 +36,7 @@ pub struct NewRole {
     pub permissions: PermissionSet,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RolePatch {
     pub name: Option<String>,
     pub permissions: Option<PermissionSet>,
@@ -134,6 +134,25 @@ impl Core {
             .find(|r| r.id == id)
             .cloned()
             .ok_or(CoreError::NotFound { entity: ENTITY, id })?;
+        let new_name = patch.name.as_deref().map(str::trim);
+        let old_permissions = parse_permissions(&current.permissions);
+        let permissions = patch
+            .permissions
+            .clone()
+            .unwrap_or_else(|| old_permissions.clone());
+
+        let mut changed = Map::new();
+        if let Some(n) = new_name
+            && n != current.name
+        {
+            changed.insert("name".into(), json!(n));
+        }
+        if permissions != old_permissions {
+            changed.insert("permissions".into(), json!(permissions));
+        }
+        if changed.is_empty() {
+            return Ok(current.into());
+        }
         if current.version != expected_version {
             return Err(CoreError::Conflict {
                 entity: ENTITY,
@@ -142,14 +161,9 @@ impl Core {
             });
         }
         let name = match &patch.name {
-            Some(n) => check_name(n, &rows, Some(id))?,
-            None => current.name.clone(),
+            Some(n) if changed.contains_key("name") => check_name(n, &rows, Some(id))?,
+            _ => current.name.clone(),
         };
-        let old_permissions = parse_permissions(&current.permissions);
-        let permissions = patch
-            .permissions
-            .clone()
-            .unwrap_or_else(|| old_permissions.clone());
 
         if permissions != old_permissions {
             let users = users::all_users(&tx).await?;
@@ -165,13 +179,6 @@ impl Core {
             }
         }
 
-        let mut changed = Map::new();
-        if name != current.name {
-            changed.insert("name".into(), json!(name));
-        }
-        if permissions != old_permissions {
-            changed.insert("permissions".into(), json!(permissions));
-        }
         let mut active: role::ActiveModel = current.into();
         active.name = Set(name.clone());
         active.permissions = Set(permissions_json(&permissions)?);

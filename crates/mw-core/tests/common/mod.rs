@@ -388,3 +388,42 @@ pub async fn user_scheme(core: &Core, login: &str) -> String {
         .unwrap_or_else(|| panic!("нет пользователя {login}"))
         .password_scheme
 }
+
+/// Пользователь в обход `Core`: схема `argon2`, хэш-заглушка, пустое имя, версия 1.
+pub async fn insert_user_row(core: &Core, login: &str, role_id: i64, active: bool) -> i64 {
+    let now = core.now();
+    user::ActiveModel {
+        login: Set(login.to_owned()),
+        login_key: Set(mw_domain::search::normalize_search(login)),
+        display_name: Set(String::new()),
+        role_id: Set(role_id),
+        password_hash: Set("placeholder-not-a-real-hash".to_owned()),
+        password_scheme: Set("argon2".to_owned()),
+        active: Set(active),
+        created_at: Set(now),
+        updated_at: Set(now),
+        version: Set(1),
+        ..Default::default()
+    }
+    .insert(core.db())
+    .await
+    .unwrap()
+    .id
+}
+
+/// `details` всех записей журнала с этим кодом действия, старые первыми (`Null` — без details).
+pub async fn audit_details(core: &Core, action: &str) -> Vec<serde_json::Value> {
+    audit_log::Entity::find()
+        .filter(audit_log::Column::Action.eq(action))
+        .order_by_asc(audit_log::Column::Id)
+        .all(core.db())
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|r| {
+            r.details.map_or(serde_json::Value::Null, |d| {
+                serde_json::from_str(&d).unwrap()
+            })
+        })
+        .collect()
+}
