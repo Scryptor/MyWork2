@@ -1,0 +1,21 @@
+[package]
+name = "mw-db"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+mw-domain = { path = "../mw-domain" }
+sea-orm = { workspace = true }
+sea-orm-migration = { workspace = true }
+chrono = { workspace = true }
+serde_json = { workspace = true }
+getrandom = { workspace = true }
+hex = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
