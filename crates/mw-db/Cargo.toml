@@ -16,6 +16,8 @@ chrono = { workspace = true }
 serde_json = { workspace = true }
 getrandom = { workspace = true }
 hex = { workspace = true }
+sqlx = { workspace = true }
 
 [dev-dependencies]
+url = "2"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

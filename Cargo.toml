@@ -11,16 +11,17 @@ rust-version = "1.95"
 sea-orm = { version = "2.0", default-features = false, features = [
     "sqlx-sqlite",
     "sqlx-postgres",
-    "runtime-tokio-rustls",
+    "runtime-tokio",
     "macros",
     "with-chrono",
 ] }
 sea-orm-migration = { version = "2.0", default-features = false, features = [
     "sqlx-sqlite",
     "sqlx-postgres",
-    "runtime-tokio-rustls",
+    "runtime-tokio",
 ] }
 tokio = "1"
+sqlx = { version = "0.9", default-features = false, features = ["tls-rustls-ring-native-roots"] }
 chrono = { version = "0.4", features = ["serde"] }
 chrono-tz = "0.10"
 serde = { version = "1", features = ["derive"] }

@@ -123,6 +123,11 @@ fn seed_err(e: impl std::fmt::Display) -> DbErr {
 
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
+    /// SQLite по умолчанию не оборачивает миграцию в транзакцию; нужна атомарность.
+    fn use_transaction(&self) -> Option<bool> {
+        Some(true)
+    }
+
     async fn up(&self, m: &SchemaManager) -> Result<(), DbErr> {
         use ForeignKeyAction::{Cascade, Restrict, SetNull};
 
