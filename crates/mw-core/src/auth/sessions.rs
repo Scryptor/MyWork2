@@ -7,6 +7,7 @@ use chrono::Duration;
 use mw_db::entity::{role, session, user};
 use mw_domain::permission::PermissionSet;
 use mw_domain::search::normalize_search;
+use sea_orm::sea_query::Expr;
 use sea_orm::{ActiveModelTrait, ColumnTrait, DbErr, EntityTrait, NotSet, QueryFilter, Set};
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -66,6 +67,12 @@ async fn verify_against_dummy(password: &str) {
     .await;
 }
 
+/// Нужна ли «холостая» проверка Argon2 при отказе: когда настоящая Argon2-проверка не выполнялась
+/// (неизвестный логин, старая схема SHA-1 или неизвестная схема).
+fn needs_dummy_verify(scheme: Option<PasswordScheme>) -> bool {
+    scheme != Some(PasswordScheme::Argon2)
+}
+
 impl Core {
     pub async fn login(
         &self,
@@ -79,9 +86,12 @@ impl Core {
             .one(&self.db)
             .await?;
 
+        // Схема учётной записи; у неизвестного логина её нет.
+        let scheme = found
+            .as_ref()
+            .and_then(|u| PasswordScheme::from_code(&u.password_scheme));
         let verified = match found {
             Some(u) => {
-                let scheme = PasswordScheme::from_code(&u.password_scheme);
                 let ok = match scheme {
                     Some(scheme) => {
                         verify_password_blocking(
@@ -93,14 +103,15 @@ impl Core {
                     }
                     None => false,
                 };
-                (ok && u.active).then_some((u, scheme))
+                (ok && u.active).then_some(u)
             }
-            None => {
-                verify_against_dummy(password).await;
-                None
-            }
+            None => None,
         };
-        let Some((u, scheme)) = verified else {
+        let Some(u) = verified else {
+            // Любой отказ стоит примерно одного Argon2, чтобы не выдавать тип учётной записи.
+            if needs_dummy_verify(scheme) {
+                verify_against_dummy(password).await;
+            }
             self.record_failed_login(login).await?;
             return Err(CoreError::InvalidCredentials);
         };
@@ -110,25 +121,54 @@ impl Core {
         } else {
             None
         };
+        match self.commit_login(u, upgraded, device_label).await? {
+            Some(session) => Ok(session),
+            None => {
+                self.record_failed_login(login).await?;
+                Err(CoreError::InvalidCredentials)
+            }
+        }
+    }
+
+    /// Создаёт сессию в одной транзакции, заново проверив пользователя: пароль не менялся
+    /// (`u.password_hash` тот же, что проверен) и он всё ещё активен. `None` — проверка не прошла.
+    /// `upgraded` — новый хэш Argon2 для пользователя со старой схемой.
+    pub(crate) async fn commit_login(
+        &self,
+        u: user::Model,
+        upgraded: Option<String>,
+        device_label: &str,
+    ) -> Result<Option<Session>, CoreError> {
         let token = new_token()?;
         let tx = self.begin_write().await?;
         let now = self.now();
-        let model = match upgraded {
+        let still_valid = match upgraded {
             Some(hash) => {
-                user::ActiveModel {
-                    id: Set(u.id),
-                    password_hash: Set(hash),
-                    password_scheme: Set(PasswordScheme::Argon2.as_str().to_owned()),
-                    ..Default::default()
-                }
-                .update(&tx)
-                .await?
+                let res = user::Entity::update_many()
+                    .col_expr(user::Column::PasswordHash, Expr::value(hash))
+                    .col_expr(
+                        user::Column::PasswordScheme,
+                        Expr::value(PasswordScheme::Argon2.as_str()),
+                    )
+                    .filter(user::Column::Id.eq(u.id))
+                    .filter(user::Column::PasswordHash.eq(u.password_hash.clone()))
+                    .filter(user::Column::Active.eq(true))
+                    .exec(&tx)
+                    .await?;
+                res.rows_affected == 1
             }
-            None => u,
+            None => user::Entity::find_by_id(u.id)
+                .one(&tx)
+                .await?
+                .is_some_and(|cur| cur.active && cur.password_hash == u.password_hash),
         };
+        if !still_valid {
+            tx.rollback().await?;
+            return Ok(None);
+        }
         session::ActiveModel {
             id: NotSet,
-            user_id: Set(model.id),
+            user_id: Set(u.id),
             token_hash: Set(token_hash(&token)),
             device_label: Set(device_label.trim().to_owned()),
             created_at: Set(now),
@@ -136,11 +176,11 @@ impl Core {
         }
         .insert(&tx)
         .await?;
-        let permissions = match role::Entity::find_by_id(model.role_id).one(&tx).await? {
+        let permissions = match role::Entity::find_by_id(u.role_id).one(&tx).await? {
             Some(r) => parse_permissions(&r.permissions),
             None => PermissionSet::empty(),
         };
-        let actor = actor_for(&model, permissions.clone());
+        let actor = actor_for(&u, permissions.clone());
         write_audit(
             &tx,
             now,
@@ -149,17 +189,17 @@ impl Core {
                 action: "user.login",
                 order_id: None,
                 client_id: None,
-                summary: format!("Вход: {}", model.login),
+                summary: format!("Вход: {}", u.login),
                 details: Some(json!({ "device": device_label.trim() })),
             },
         )
         .await?;
         tx.commit().await?;
-        Ok(Session {
+        Ok(Some(Session {
             token,
-            user: model.into(),
+            user: u.into(),
             permissions,
-        })
+        }))
     }
 
     async fn record_failed_login(&self, login: &str) -> Result<(), CoreError> {
@@ -285,6 +325,87 @@ mod tests {
         };
         let text = format!("{s:?}");
         assert!(text.contains("\"***\"") && !text.contains("abc123"));
+    }
+
+    #[test]
+    fn dummy_verify_needed_unless_argon2_was_checked() {
+        assert!(!needs_dummy_verify(Some(PasswordScheme::Argon2)));
+        assert!(needs_dummy_verify(Some(PasswordScheme::LegacySha1)));
+        assert!(needs_dummy_verify(None));
+    }
+
+    #[tokio::test]
+    async fn login_commit_rejects_user_changed_after_verification() {
+        use mw_db::entity::user as u;
+        for (label, db) in mw_db::testing::all_backends().await {
+            let clock = std::sync::Arc::new(crate::FixedClock::new(chrono::Utc::now()));
+            let core = Core::open(db, clock, "UTC").await.unwrap();
+            let now = core.now();
+            let mk = |login: &str, hash: &str, scheme: &str| u::ActiveModel {
+                login: Set(login.into()),
+                login_key: Set(login.into()),
+                display_name: Set(String::new()),
+                role_id: Set(1),
+                password_hash: Set(hash.into()),
+                password_scheme: Set(scheme.into()),
+                active: Set(true),
+                created_at: Set(now),
+                updated_at: Set(now),
+                version: Set(1),
+                ..Default::default()
+            };
+            let legacy = mk("old", "aaaa", "legacy_sha1")
+                .insert(core.db())
+                .await
+                .unwrap();
+            let modern = mk("new", "bbbb", "argon2").insert(core.db()).await.unwrap();
+            // «Верифицированные» модели устарели: пароль сменили, а второго пользователя отключили.
+            u::ActiveModel {
+                id: Set(legacy.id),
+                password_hash: Set("cccc".into()),
+                password_scheme: Set("argon2".into()),
+                ..Default::default()
+            }
+            .update(core.db())
+            .await
+            .unwrap();
+            u::ActiveModel {
+                id: Set(modern.id),
+                active: Set(false),
+                ..Default::default()
+            }
+            .update(core.db())
+            .await
+            .unwrap();
+
+            let res = core
+                .commit_login(legacy.clone(), Some("новый-хэш".into()), "x")
+                .await
+                .unwrap();
+            assert!(res.is_none(), "{label}");
+            let res = core.commit_login(modern.clone(), None, "x").await.unwrap();
+            assert!(res.is_none(), "{label}");
+            let kept = u::Entity::find_by_id(legacy.id)
+                .one(core.db())
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(kept.password_hash, "cccc", "{label}");
+            assert_eq!(
+                session::Entity::find().all(core.db()).await.unwrap().len(),
+                0
+            );
+            // Актуальная модель проходит.
+            let fresh = u::Entity::find_by_id(legacy.id)
+                .one(core.db())
+                .await
+                .unwrap()
+                .unwrap();
+            assert!(
+                core.commit_login(fresh, None, "x").await.unwrap().is_some(),
+                "{label}"
+            );
+        }
     }
 
     #[test]

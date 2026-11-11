@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fmt;
 
 use chrono::NaiveDateTime;
-use mw_db::entity::user;
+use mw_db::entity::{session, user};
 use mw_domain::permission::{Permission, PermissionSet};
 use mw_domain::search::normalize_search;
 use mw_domain::validation::FieldError;
@@ -93,6 +93,14 @@ pub(super) fn admin_count(
                     .is_some_and(|p| p.contains(Permission::UsersManage))
         })
         .count()
+}
+
+async fn delete_user_sessions(conn: &impl ConnectionTrait, user_id: i64) -> Result<(), CoreError> {
+    session::Entity::delete_many()
+        .filter(session::Column::UserId.eq(user_id))
+        .exec(conn)
+        .await?;
+    Ok(())
 }
 
 fn too_short(password: &str) -> bool {
@@ -271,6 +279,10 @@ impl Core {
         model.updated_at = Set(now);
         model.version = Set(expected_version + 1);
         let model = model.update(&tx).await?;
+        if patch.active == Some(false) {
+            // Отключённого пользователя выкидываем из системы; после повторного включения нужен новый вход.
+            delete_user_sessions(&tx, id).await?;
+        }
         write_audit(
             &tx,
             now,
@@ -289,6 +301,9 @@ impl Core {
     }
 
     /// Свой пароль можно менять без прав, чужой — только с `users_manage`. Всегда схема `argon2`.
+    ///
+    /// Все сессии пользователя удаляются в той же транзакции. `Core` не знает текущую сессию
+    /// вызывающего, поэтому смена собственного пароля тоже завершает его сессии: нужен новый вход.
     pub async fn set_password(
         &self,
         actor: &Actor,
@@ -321,6 +336,7 @@ impl Core {
         model.password_scheme = Set(PasswordScheme::Argon2.as_str().to_owned());
         model.updated_at = Set(now);
         model.update(&tx).await?;
+        delete_user_sessions(&tx, user_id).await?;
         write_audit(
             &tx,
             now,

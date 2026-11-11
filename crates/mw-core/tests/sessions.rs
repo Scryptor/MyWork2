@@ -133,3 +133,65 @@ async fn login_sessions_and_legacy_upgrade() {
         assert_eq!(t.core.authenticate(&boss.token).await.unwrap().name, "boss");
     }
 }
+
+#[tokio::test]
+async fn password_change_and_deactivation_revoke_sessions() {
+    for t in cores().await {
+        let role = role_id_by_name(&t.core, "Администратор").await;
+        let new_user = |login: &str| NewUser {
+            login: login.into(),
+            display_name: String::new(),
+            role_id: role,
+            password: "1234".into(),
+        };
+        let a = t
+            .core
+            .create_user(&admin(), new_user("анна"))
+            .await
+            .unwrap();
+        let b = t
+            .core
+            .create_user(&admin(), new_user("борис"))
+            .await
+            .unwrap();
+
+        let sa = t.core.login("анна", "1234", "x").await.unwrap();
+        t.core.authenticate(&sa.token).await.unwrap();
+        t.core
+            .set_password(&admin(), a.id, "новый-пароль")
+            .await
+            .unwrap();
+        assert!(
+            matches!(
+                t.core.authenticate(&sa.token).await,
+                Err(CoreError::Unauthenticated)
+            ),
+            "{}",
+            t.label
+        );
+        t.core.login("анна", "новый-пароль", "x").await.unwrap();
+
+        let sb = t.core.login("борис", "1234", "x").await.unwrap();
+        let off = UserPatch {
+            active: Some(false),
+            ..Default::default()
+        };
+        let b2 = t.core.update_user(&admin(), b.id, 1, off).await.unwrap();
+        let on = UserPatch {
+            active: Some(true),
+            ..Default::default()
+        };
+        t.core
+            .update_user(&admin(), b.id, b2.version, on)
+            .await
+            .unwrap();
+        assert!(
+            matches!(
+                t.core.authenticate(&sb.token).await,
+                Err(CoreError::Unauthenticated)
+            ),
+            "{}",
+            t.label
+        );
+    }
+}
