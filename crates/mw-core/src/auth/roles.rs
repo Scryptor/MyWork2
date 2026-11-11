@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use mw_db::entity::role;
 use mw_domain::permission::{Permission, PermissionSet};
 use mw_domain::search::normalize_search;
@@ -156,13 +154,11 @@ impl Core {
 
         if permissions != old_permissions {
             let users = users::all_users(&tx).await?;
-            let mut role_perms: HashMap<i64, PermissionSet> = rows
-                .iter()
-                .map(|r| (r.id, parse_permissions(&r.permissions)))
-                .collect();
-            let before = users::admin_count(&users, &role_perms);
-            role_perms.insert(id, permissions.clone());
-            if before > 0 && users::admin_count(&users, &role_perms) == 0 {
+            let before_perms = users::role_permissions(&rows);
+            let mut after_perms = before_perms.clone();
+            after_perms.insert(id, permissions.clone());
+            let accounts = users::accounts(&users);
+            if users::would_lock_out((&accounts, &before_perms), (&accounts, &after_perms)) {
                 return Err(CoreError::Validation(vec![FieldError::new(
                     "permissions",
                     "last_admin",

@@ -79,20 +79,51 @@ pub(super) async fn all_users(conn: &impl ConnectionTrait) -> Result<Vec<user::M
         .await?)
 }
 
-/// Сколько активных пользователей имеют роль с правом `users_manage`.
-pub(super) fn admin_count(
-    users: &[user::Model],
-    role_permissions: &HashMap<i64, PermissionSet>,
-) -> usize {
-    users
+/// Права ролей по id.
+pub(super) fn role_permissions(
+    roles: &[mw_db::entity::role::Model],
+) -> HashMap<i64, PermissionSet> {
+    roles
         .iter()
-        .filter(|u| {
-            u.active
+        .map(|r| (r.id, parse_permissions(&r.permissions)))
+        .collect()
+}
+
+/// (число активных пользователей, число активных пользователей с правом `users_manage`).
+fn access_counts(
+    accounts: &[(bool, i64)],
+    role_permissions: &HashMap<i64, PermissionSet>,
+) -> (usize, usize) {
+    let active = accounts.iter().filter(|(active, _)| *active).count();
+    let admins = accounts
+        .iter()
+        .filter(|&&(active, role_id)| {
+            active
                 && role_permissions
-                    .get(&u.role_id)
+                    .get(&role_id)
                     .is_some_and(|p| p.contains(Permission::UsersManage))
         })
-        .count()
+        .count();
+    (active, admins)
+}
+
+/// Пары (активен, роль) всех пользователей.
+pub(super) fn accounts(users: &[user::Model]) -> Vec<(bool, i64)> {
+    users.iter().map(|u| (u.active, u.role_id)).collect()
+}
+
+/// Истина, если изменение ведёт к блокировке: после него нет ни одного активного пользователя
+/// с правом `users_manage`, хотя до него либо такой был, либо система была в открытом режиме
+/// (нет активных пользователей), а после появились активные. Уже нарушенное состояние
+/// (активные пользователи без администратора) посторонние правки не блокирует.
+/// Единственная проверка для `create_user`, `update_user` и `update_role`.
+pub(super) fn would_lock_out(
+    before: (&[(bool, i64)], &HashMap<i64, PermissionSet>),
+    after: (&[(bool, i64)], &HashMap<i64, PermissionSet>),
+) -> bool {
+    let (before_active, before_admins) = access_counts(before.0, before.1);
+    let (after_active, after_admins) = access_counts(after.0, after.1);
+    after_admins == 0 && (before_admins > 0 || (before_active == 0 && after_active > 0))
 }
 
 async fn delete_user_sessions(conn: &impl ConnectionTrait, user_id: i64) -> Result<(), CoreError> {
@@ -148,8 +179,17 @@ impl Core {
         {
             errors.push(FieldError::new("login", "duplicate"));
         }
-        if !all_roles(&tx).await?.iter().any(|r| r.id == new.role_id) {
+        let roles = all_roles(&tx).await?;
+        if !roles.iter().any(|r| r.id == new.role_id) {
             errors.push(FieldError::new("role_id", "invalid"));
+        } else {
+            let perms = role_permissions(&roles);
+            let before = accounts(&all_users(&tx).await?);
+            let mut after = before.clone();
+            after.push((true, new.role_id));
+            if would_lock_out((&before, &perms), (&after, &perms)) {
+                errors.push(FieldError::new("role_id", "last_admin"));
+            }
         }
         if password_hash.is_none() {
             errors.push(FieldError::new("password", "too_short"));
@@ -231,23 +271,19 @@ impl Core {
         let active = patch.active.unwrap_or(current.active);
 
         if role_id != current.role_id || active != current.active {
-            let role_perms: HashMap<i64, PermissionSet> = roles
+            let perms = role_permissions(&roles);
+            let before = accounts(&users);
+            let after: Vec<(bool, i64)> = users
                 .iter()
-                .map(|r| (r.id, parse_permissions(&r.permissions)))
-                .collect();
-            let before = admin_count(&users, &role_perms);
-            let after_users: Vec<user::Model> = users
-                .iter()
-                .cloned()
-                .map(|mut u| {
+                .map(|u| {
                     if u.id == id {
-                        u.role_id = role_id;
-                        u.active = active;
+                        (active, role_id)
+                    } else {
+                        (u.active, u.role_id)
                     }
-                    u
                 })
                 .collect();
-            if before > 0 && admin_count(&after_users, &role_perms) == 0 {
+            if would_lock_out((&before, &perms), (&after, &perms)) {
                 let field = if active != current.active {
                     "active"
                 } else {

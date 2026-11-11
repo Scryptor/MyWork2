@@ -163,3 +163,59 @@ async fn users_validation_and_last_admin_guard() -> Result<(), CoreError> {
     }
     Ok(())
 }
+
+#[tokio::test]
+async fn first_user_without_users_manage_is_refused_in_open_mode() -> Result<(), CoreError> {
+    for t in cores().await {
+        let clerk_role = t
+            .core
+            .create_role(
+                &admin(),
+                NewRole {
+                    name: "Приёмщик".into(),
+                    permissions: PermissionSet::from_codes(["orders_create"]),
+                },
+            )
+            .await?;
+        assert_validation(
+            t.core
+                .create_user(
+                    &admin(),
+                    NewUser {
+                        login: "kassa".into(),
+                        display_name: String::new(),
+                        role_id: clerk_role.id,
+                        password: "1234".into(),
+                    },
+                )
+                .await,
+            &[("role_id", "last_admin")],
+        );
+        assert!(t.core.is_open_mode().await?, "{}", t.label);
+        let admin_role = role_id_by_name(&t.core, "Администратор").await;
+        t.core
+            .create_user(
+                &admin(),
+                NewUser {
+                    login: "boss".into(),
+                    display_name: String::new(),
+                    role_id: admin_role,
+                    password: "1234".into(),
+                },
+            )
+            .await?;
+        // С администратором в системе пользователь без прав создаётся свободно.
+        t.core
+            .create_user(
+                &admin(),
+                NewUser {
+                    login: "kassa".into(),
+                    display_name: String::new(),
+                    role_id: clerk_role.id,
+                    password: "1234".into(),
+                },
+            )
+            .await?;
+    }
+    Ok(())
+}
