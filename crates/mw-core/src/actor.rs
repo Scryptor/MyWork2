@@ -5,9 +5,9 @@ use crate::CoreError;
 /// Кто выполняет операцию: пользователь с правами или внутренний вызов без ограничений.
 #[derive(Debug, Clone)]
 pub struct Actor {
-    pub user_id: Option<i64>,
-    pub name: String,
-    pub permissions: PermissionSet,
+    pub(crate) user_id: Option<i64>,
+    pub(crate) name: String,
+    pub(crate) permissions: PermissionSet,
 }
 
 impl Actor {
@@ -18,6 +18,32 @@ impl Actor {
             name: name.into(),
             permissions: PermissionSet::all(),
         }
+    }
+
+    /// Только для тестов: `Actor` с произвольными правами.
+    #[cfg(any(test, feature = "testing"))]
+    pub fn for_tests(
+        user_id: Option<i64>,
+        name: impl Into<String>,
+        permissions: PermissionSet,
+    ) -> Actor {
+        Actor {
+            user_id,
+            name: name.into(),
+            permissions,
+        }
+    }
+
+    pub fn user_id(&self) -> Option<i64> {
+        self.user_id
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn permissions(&self) -> &PermissionSet {
+        &self.permissions
     }
 
     pub fn require(&self, permission: Permission) -> Result<(), CoreError> {

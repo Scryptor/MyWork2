@@ -4,8 +4,8 @@ use mw_domain::permission::Permission;
 use mw_domain::search::normalize_search;
 use mw_domain::validation::FieldError;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DbErr, EntityTrait, NotSet, QueryFilter,
-    QueryOrder, Set,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, NotSet, QueryFilter, QueryOrder,
+    Set,
 };
 use serde_json::json;
 
@@ -24,7 +24,7 @@ fn to_item(m: dictionary_item::Model) -> Result<DictionaryItem, CoreError> {
     let kind = m
         .kind
         .parse::<DictionaryKind>()
-        .map_err(|e| DbErr::Custom(format!("справочник №{}: {e:?}", m.id)))?;
+        .map_err(|e| CoreError::Internal(format!("справочник №{}: {e:?}", m.id)))?;
     Ok(DictionaryItem {
         id: m.id,
         kind,
@@ -141,7 +141,7 @@ impl Core {
         let kind = current
             .kind
             .parse::<DictionaryKind>()
-            .map_err(|e| DbErr::Custom(format!("справочник №{id}: {e:?}")))?;
+            .map_err(|e| CoreError::Internal(format!("справочник №{id}: {e:?}")))?;
         let rows = kind_rows(&tx, kind).await?;
         let value = check_value(value, &rows, Some(id))?;
         let old = current.value.clone();
@@ -181,7 +181,7 @@ impl Core {
         let kind = current
             .kind
             .parse::<DictionaryKind>()
-            .map_err(|e| DbErr::Custom(format!("справочник №{id}: {e:?}")))?;
+            .map_err(|e| CoreError::Internal(format!("справочник №{id}: {e:?}")))?;
         dictionary_item::Entity::delete_by_id(id).exec(&tx).await?;
         write_audit(
             &tx,

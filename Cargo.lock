@@ -1334,6 +1334,7 @@ dependencies = [
  "chrono-tz",
  "getrandom 0.4.3",
  "hex",
+ "mw-core",
  "mw-db",
  "mw-domain",
  "sea-orm",

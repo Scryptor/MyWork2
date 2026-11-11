@@ -44,10 +44,7 @@ async fn login_sessions_and_legacy_upgrade() {
         assert!(!failed.contains("никто") && !failed.contains("12345"));
 
         let actor = t.core.authenticate(&s.token).await.unwrap();
-        assert_eq!(
-            (actor.user_id, actor.name.as_str()),
-            (Some(u.id), "Ирина П.")
-        );
+        assert_eq!((actor.user_id(), actor.name()), (Some(u.id), "Ирина П."));
         assert!(matches!(
             t.core.authenticate("нет-такого").await,
             Err(CoreError::Unauthenticated)
@@ -127,11 +124,14 @@ async fn login_sessions_and_legacy_upgrade() {
                 .authenticate(&s3.token)
                 .await
                 .unwrap()
-                .permissions
+                .permissions()
                 .contains(Permission::UsersManage)
         );
         let boss = t.core.login("boss", "qwerty", "x").await.unwrap();
-        assert_eq!(t.core.authenticate(&boss.token).await.unwrap().name, "boss");
+        assert_eq!(
+            t.core.authenticate(&boss.token).await.unwrap().name(),
+            "boss"
+        );
     }
 }
 

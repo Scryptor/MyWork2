@@ -47,8 +47,7 @@ pub(super) fn parse_permissions(json: &str) -> PermissionSet {
 }
 
 fn permissions_json(set: &PermissionSet) -> Result<String, CoreError> {
-    serde_json::to_string(set)
-        .map_err(|e| CoreError::Db(sea_orm::DbErr::Custom(format!("права роли: {e}"))))
+    serde_json::to_string(set).map_err(|e| CoreError::Internal(format!("права роли: {e}")))
 }
 
 pub(super) async fn all_roles(conn: &impl ConnectionTrait) -> Result<Vec<role::Model>, CoreError> {

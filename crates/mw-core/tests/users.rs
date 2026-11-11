@@ -2,7 +2,7 @@ mod common;
 
 use common::*;
 use mw_core::{
-    Actor, CoreError, NewRole, NewUser, PasswordScheme, RolePatch, UserPatch, hash_password,
+    CoreError, NewRole, NewUser, PasswordScheme, RolePatch, UserPatch, hash_password,
     legacy_sha1_hex, verify_password,
 };
 use mw_domain::permission::{Permission, PermissionSet};
@@ -146,10 +146,7 @@ async fn users_validation_and_last_admin_guard() -> Result<(), CoreError> {
                 .is_ok()
         );
         // свой пароль меняют только с текущим паролем, без права users_manage
-        let me = Actor {
-            user_id: Some(boss.id),
-            ..actor_with(&[])
-        };
+        let me = user_actor(boss.id);
         t.core
             .change_own_password(&me, "qwerty", "новый-пароль")
             .await?;
@@ -242,10 +239,7 @@ async fn change_own_password_requires_current_password() -> Result<(), CoreError
                 },
             )
             .await?;
-        let me = Actor {
-            user_id: Some(u.id),
-            ..actor_with(&[])
-        };
+        let me = user_actor(u.id);
         let session = t.core.login("анна", "1234", "x").await?;
 
         assert_validation(

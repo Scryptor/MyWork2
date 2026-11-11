@@ -42,12 +42,32 @@ pub fn admin() -> Actor {
 }
 
 pub fn actor_with(permissions: &[Permission]) -> Actor {
-    let mut actor = Actor::unrestricted("Тест");
-    actor.permissions = mw_domain::permission::PermissionSet::empty();
+    let mut set = mw_domain::permission::PermissionSet::empty();
     for p in permissions {
-        actor.permissions.insert(*p);
+        set.insert(*p);
     }
-    actor
+    Actor::for_tests(None, "Тест", set)
+}
+
+/// Пользователь с этим id и без прав, имя «Тест».
+pub fn user_actor(user_id: i64) -> Actor {
+    Actor::for_tests(
+        Some(user_id),
+        "Тест",
+        mw_domain::permission::PermissionSet::empty(),
+    )
+}
+
+/// Записывает вид статуса в обход `Core` (имитация повреждённых данных).
+pub async fn set_status_kind_directly(t: &TestCore, status_id: i64, kind: &str) {
+    status::ActiveModel {
+        id: Set(status_id),
+        kind: Set(kind.to_owned()),
+        ..Default::default()
+    }
+    .update(t.core.db())
+    .await
+    .unwrap();
 }
 
 /// Ровно эти пары (поле, код) в этом порядке.

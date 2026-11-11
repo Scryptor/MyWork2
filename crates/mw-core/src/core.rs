@@ -32,6 +32,7 @@ impl Core {
         })
     }
 
+    #[cfg(any(test, feature = "testing"))]
     pub fn db(&self) -> &DatabaseConnection {
         &self.db
     }
@@ -42,6 +43,11 @@ impl Core {
         tz.from_utc_datetime(&self.clock.now_utc().naive_utc())
             .naive_local()
             .trunc_subsecs(0)
+    }
+
+    /// Показания часов `Core` в UTC, без перевода в пояс предприятия (интервалы, ограничение попыток).
+    pub fn now_utc(&self) -> chrono::DateTime<chrono::Utc> {
+        self.clock.now_utc()
     }
 
     /// Копия настроек из кэша.

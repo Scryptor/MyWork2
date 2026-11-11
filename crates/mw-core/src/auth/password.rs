@@ -1,5 +1,4 @@
 use argon2::{Argon2, PasswordHasher, PasswordVerifier};
-use sea_orm::DbErr;
 use sha1::{Digest, Sha1};
 
 use crate::CoreError;
@@ -35,7 +34,7 @@ pub fn hash_password(password: &str) -> Result<String, CoreError> {
     Argon2::default()
         .hash_password(password.as_bytes())
         .map(|h| h.to_string())
-        .map_err(|_| CoreError::Db(DbErr::Custom("не удалось вычислить хэш пароля".into())))
+        .map_err(|_| CoreError::Internal("не удалось вычислить хэш пароля".into()))
 }
 
 /// SHA-1 от байтов UTF-16LE, hex в нижнем регистре — как хранил MyWork 2.
@@ -69,7 +68,7 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 pub(crate) async fn hash_password_blocking(password: String) -> Result<String, CoreError> {
     tokio::task::spawn_blocking(move || hash_password(&password))
         .await
-        .map_err(|_| CoreError::Db(DbErr::Custom("сбой вычисления хэша пароля".into())))?
+        .map_err(|_| CoreError::Internal("сбой вычисления хэша пароля".into()))?
 }
 
 /// `verify_password` вне рабочего потока async-рантайма; сбой задачи — «не подходит».

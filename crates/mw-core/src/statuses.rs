@@ -4,8 +4,8 @@ use mw_domain::search::normalize_search;
 use mw_domain::status::StatusKind;
 use mw_domain::validation::FieldError;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DbErr, EntityTrait, NotSet, QueryFilter,
-    QueryOrder, Set,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, NotSet, QueryFilter, QueryOrder,
+    Set,
 };
 use serde_json::json;
 
@@ -41,7 +41,7 @@ fn to_status(m: status::Model) -> Result<Status, CoreError> {
     let kind = m
         .kind
         .parse::<StatusKind>()
-        .map_err(|e| DbErr::Custom(format!("статус №{}: {e:?}", m.id)))?;
+        .map_err(|e| CoreError::Internal(format!("статус №{}: {e:?}", m.id)))?;
     Ok(Status {
         id: m.id,
         name: m.name,

@@ -320,7 +320,7 @@ impl Core {
             .db
             .query_one_raw(StatementBuilder::build(&count, &backend))
             .await?
-            .ok_or_else(|| sea_orm::DbErr::RecordNotFound("COUNT(*)".to_owned()))?;
+            .ok_or_else(|| CoreError::Internal("пустой результат COUNT(*)".to_owned()))?;
         let total = u64::try_from(row.try_get_by_index::<i64>(0)?).unwrap_or(0);
 
         let mut q = base(cond);

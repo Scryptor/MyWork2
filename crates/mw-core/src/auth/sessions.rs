@@ -42,7 +42,7 @@ impl fmt::Debug for Session {
 }
 
 fn internal(msg: &str) -> CoreError {
-    CoreError::Db(DbErr::Custom(msg.to_owned()))
+    CoreError::Internal(msg.to_owned())
 }
 
 /// 32 случайных байта из ОС в hex (64 символа).

@@ -25,5 +25,10 @@ sha2 = { workspace = true }
 getrandom = { workspace = true }
 tokio = { workspace = true, features = ["rt"] }
 
+[features]
+# Помощники для тестов (`Actor::for_tests`, `Core::db`); включается dev-зависимостью ниже.
+testing = []
+
 [dev-dependencies]
+mw-core = { path = ".", features = ["testing"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
