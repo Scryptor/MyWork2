@@ -6,6 +6,7 @@ use sea_orm::{
     TransactionOptions, TransactionTrait,
 };
 
+use crate::auth::{HashGate, MAX_CONCURRENT_PASSWORD_HASHES};
 use crate::settings::{self, AppSettings};
 use crate::{Clock, CoreError};
 
@@ -15,6 +16,7 @@ pub struct Core {
     pub(crate) db: DatabaseConnection,
     pub(crate) clock: Arc<dyn Clock>,
     pub(crate) settings: Arc<RwLock<AppSettings>>,
+    pub(crate) hash_gate: HashGate,
 }
 
 impl Core {
@@ -29,6 +31,7 @@ impl Core {
             db,
             clock,
             settings: Arc::new(RwLock::new(loaded)),
+            hash_gate: HashGate::new(MAX_CONCURRENT_PASSWORD_HASHES),
         })
     }
 

@@ -14,7 +14,7 @@ use sha2::{Digest, Sha256};
 
 use crate::{Actor, Core, CoreError, NewAuditEntry, write_audit};
 
-use super::password::{hash_password, hash_password_blocking, verify_password_blocking};
+use super::password::{hash_password, verify_password};
 use super::roles::parse_permissions;
 use super::{PasswordScheme, User};
 
@@ -56,17 +56,6 @@ fn token_hash(token: &str) -> String {
     hex::encode(Sha256::digest(token.as_bytes()))
 }
 
-/// Проверка пароля против фиксированного хэша: неизвестный логин отвечает за то же время.
-async fn verify_against_dummy(password: &str) {
-    static DUMMY: OnceLock<String> = OnceLock::new();
-    let password = password.to_owned();
-    let _ = tokio::task::spawn_blocking(move || {
-        let stored = DUMMY.get_or_init(|| hash_password("пустышка").unwrap_or_default());
-        super::verify_password(PasswordScheme::Argon2, stored, &password)
-    })
-    .await;
-}
-
 /// Нужна ли «холостая» проверка Argon2 при отказе: когда настоящая Argon2-проверка не выполнялась
 /// (неизвестный логин, старая схема SHA-1 или неизвестная схема).
 fn needs_dummy_verify(scheme: Option<PasswordScheme>) -> bool {
@@ -74,6 +63,19 @@ fn needs_dummy_verify(scheme: Option<PasswordScheme>) -> bool {
 }
 
 impl Core {
+    /// Проверка пароля против фиксированного хэша: неизвестный логин отвечает за то же время.
+    /// Хэш-пустышка тоже считается внутри ограничителя.
+    async fn verify_against_dummy(&self, password: &str) -> Result<(), CoreError> {
+        static DUMMY: OnceLock<String> = OnceLock::new();
+        let password = password.to_owned();
+        self.hash_gate
+            .run(move || {
+                let stored = DUMMY.get_or_init(|| hash_password("пустышка").unwrap_or_default());
+                verify_password(PasswordScheme::Argon2, stored, &password);
+            })
+            .await
+    }
+
     pub async fn login(
         &self,
         login: &str,
@@ -94,12 +96,10 @@ impl Core {
             Some(u) => {
                 let ok = match scheme {
                     Some(scheme) => {
-                        verify_password_blocking(
-                            scheme,
-                            u.password_hash.clone(),
-                            password.to_owned(),
-                        )
-                        .await
+                        let (hash, plain) = (u.password_hash.clone(), password.to_owned());
+                        self.hash_gate
+                            .run(move || verify_password(scheme, &hash, &plain))
+                            .await?
                     }
                     None => false,
                 };
@@ -110,14 +110,17 @@ impl Core {
         let Some(u) = verified else {
             // Любой отказ стоит примерно одного Argon2, чтобы не выдавать тип учётной записи.
             if needs_dummy_verify(scheme) {
-                verify_against_dummy(password).await;
+                self.verify_against_dummy(password).await?;
             }
             self.record_failed_login(login).await?;
             return Err(CoreError::InvalidCredentials);
         };
 
         let upgraded = if scheme == Some(PasswordScheme::LegacySha1) {
-            Some(hash_password_blocking(password.to_owned()).await?)
+            {
+                let plain = password.to_owned();
+                Some(self.hash_gate.run(move || hash_password(&plain)).await??)
+            }
         } else {
             None
         };

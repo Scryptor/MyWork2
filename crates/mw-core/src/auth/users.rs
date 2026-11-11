@@ -15,7 +15,7 @@ use serde_json::{Map, json};
 
 use crate::{Actor, Core, CoreError, NewAuditEntry, write_audit};
 
-use super::password::{hash_password_blocking, verify_password_blocking};
+use super::password::{hash_password, verify_password};
 use super::roles::{all_roles, parse_permissions};
 use super::{MIN_PASSWORD_CHARS, PasswordScheme};
 
@@ -164,7 +164,14 @@ impl Core {
         let password_hash = if too_short(&new.password) {
             None
         } else {
-            Some(hash_password_blocking(new.password.clone()).await?)
+            {
+                let password = new.password.clone();
+                Some(
+                    self.hash_gate
+                        .run(move || hash_password(&password))
+                        .await??,
+                )
+            }
         };
         let tx = self.begin_write().await?;
         let login = new.login.trim().to_owned();
@@ -354,7 +361,8 @@ impl Core {
                 "too_short",
             )]));
         }
-        let password_hash = hash_password_blocking(password.to_owned()).await?;
+        let plain = password.to_owned();
+        let password_hash = self.hash_gate.run(move || hash_password(&plain)).await??;
         let tx = self.begin_write().await?;
         let current =
             user::Entity::find_by_id(user_id)
@@ -408,12 +416,10 @@ impl Core {
         // Проверка и хэширование — вне блокировки записи.
         let verified = match PasswordScheme::from_code(&stored.password_scheme) {
             Some(scheme) => {
-                verify_password_blocking(
-                    scheme,
-                    stored.password_hash.clone(),
-                    current_password.to_owned(),
-                )
-                .await
+                let (hash, plain) = (stored.password_hash.clone(), current_password.to_owned());
+                self.hash_gate
+                    .run(move || verify_password(scheme, &hash, &plain))
+                    .await?
             }
             None => false,
         };
@@ -426,7 +432,8 @@ impl Core {
                 "too_short",
             )]));
         }
-        let new_hash = hash_password_blocking(new_password.to_owned()).await?;
+        let plain = new_password.to_owned();
+        let new_hash = self.hash_gate.run(move || hash_password(&plain)).await??;
         let tx = self.begin_write().await?;
         let now = self.now();
         let res = user::Entity::update_many()

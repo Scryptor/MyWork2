@@ -23,7 +23,7 @@ sha1 = { workspace = true }
 hex = { workspace = true }
 sha2 = { workspace = true }
 getrandom = { workspace = true }
-tokio = { workspace = true, features = ["rt"] }
+tokio = { workspace = true, features = ["rt", "sync"] }
 
 [features]
 # Помощники для тестов (`Actor::for_tests`, `Core::db`); включается dev-зависимостью ниже.
