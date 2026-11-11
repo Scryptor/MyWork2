@@ -1,4 +1,4 @@
-use chrono::NaiveDateTime;
+use chrono::{NaiveDateTime, SubsecRound};
 use mw_db::entity::{order, status};
 use mw_domain::permission::Permission;
 use mw_domain::status::StatusKind;
@@ -71,6 +71,12 @@ impl Core {
         patch: OrderPatch,
     ) -> Result<Order, CoreError> {
         actor.require(Permission::OrdersEdit)?;
+        // Даты хранятся с точностью до секунды, как `Core::now()`.
+        let patch = OrderPatch {
+            received_at: patch.received_at.map(|t| t.trunc_subsecs(0)),
+            issued_at: patch.issued_at.map(|t| t.map(|t| t.trunc_subsecs(0))),
+            ..patch
+        };
         if patch.received_at.is_some() || patch.issued_at.is_some() {
             actor.require(Permission::OrderDatesEdit)?;
         }

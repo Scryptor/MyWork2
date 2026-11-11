@@ -69,6 +69,19 @@ async fn audit_listing_filters_permissions_and_order() -> Result<(), CoreError> 
             )
             .await?;
         assert_eq!((only_orders.items.len(), only_orders.total), (1, 2));
+        let upper = t
+            .core
+            .list_audit(
+                &admin(),
+                &AuditFilter {
+                    action_prefix: Some("ORDER.".into()),
+                    ..Default::default()
+                },
+                1,
+                0,
+            )
+            .await?;
+        assert_eq!(upper.total, only_orders.total, "{}", t.label);
         let wildcard = t
             .core
             .list_audit(

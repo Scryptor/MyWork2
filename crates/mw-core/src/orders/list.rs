@@ -16,7 +16,7 @@ use sea_orm::sea_query::{
 use sea_orm::{ConnectionTrait, FromQueryResult, StatementBuilder};
 use serde_json::json;
 
-use crate::page::validate_limit;
+use crate::page::validate_page;
 use crate::sql::text_sort;
 use crate::{Actor, Core, CoreError, NewAuditEntry, Page, write_audit};
 
@@ -270,7 +270,7 @@ impl Core {
         if filter.include_deleted {
             actor.require(Permission::OrdersDelete)?;
         }
-        validate_limit(limit)?;
+        validate_page(limit, offset)?;
         let backend = self.db.get_database_backend();
 
         let mut cond = Condition::all();

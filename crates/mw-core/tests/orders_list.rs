@@ -229,3 +229,23 @@ async fn nameless_client_keeps_raw_empty_name() -> Result<(), CoreError> {
     }
     Ok(())
 }
+
+#[tokio::test]
+async fn huge_offset_is_validation_error_not_panic() {
+    for t in cores().await {
+        for offset in [u64::MAX, i64::MAX as u64 + 1] {
+            assert_validation(
+                t.core
+                    .list_orders(
+                        &admin(),
+                        &OrderFilter::default(),
+                        OrderSort::default(),
+                        50,
+                        offset,
+                    )
+                    .await,
+                &[("offset", "out_of_range")],
+            );
+        }
+    }
+}

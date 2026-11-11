@@ -13,7 +13,7 @@ use sea_orm::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 
-use crate::page::validate_limit;
+use crate::page::validate_page;
 use crate::sql::text_sort;
 use crate::{Actor, Core, CoreError, NewAuditEntry, Page, write_audit};
 
@@ -279,7 +279,7 @@ impl Core {
         offset: u64,
     ) -> Result<Page<Client>, CoreError> {
         actor.require_any(&[Permission::ClientsView, Permission::OrdersCreate])?;
-        validate_limit(limit)?;
+        validate_page(limit, offset)?;
         let mut select = client::Entity::find().filter(client::Column::DeletedAt.is_null());
         for token in search_tokens(query) {
             select = select.filter(

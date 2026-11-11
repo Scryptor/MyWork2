@@ -1,4 +1,4 @@
-use chrono::NaiveDateTime;
+use chrono::{NaiveDateTime, SubsecRound};
 use mw_db::entity::audit_log;
 use mw_domain::permission::Permission;
 use sea_orm::ExprTrait;
@@ -9,7 +9,7 @@ use sea_orm::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::page::validate_limit;
+use crate::page::validate_page;
 use crate::{Actor, Core, CoreError, Page};
 
 /// Запись журнала для чтения. `details` — разобранный JSON; `None`, если его нет или он повреждён.
@@ -62,19 +62,6 @@ impl From<audit_log::Model> for AuditEntry {
     }
 }
 
-/// Шаблон `LIKE` «начинается с»: `\`, `%`, `_` экранируются обратной косой.
-fn like_prefix(prefix: &str) -> String {
-    let mut out = String::with_capacity(prefix.len() + 1);
-    for c in prefix.chars() {
-        if matches!(c, '\\' | '%' | '_') {
-            out.push('\\');
-        }
-        out.push(c);
-    }
-    out.push('%');
-    out
-}
-
 impl Core {
     /// Журнал: новые сверху. С `order_id` или `client_id` доступен любому (история в карточке),
     /// иначе нужно право `audit_view`.
@@ -88,7 +75,7 @@ impl Core {
         if filter.order_id.is_none() && filter.client_id.is_none() {
             actor.require(Permission::AuditView)?;
         }
-        validate_limit(limit)?;
+        validate_page(limit, offset)?;
         let mut select = audit_log::Entity::find();
         if let Some(id) = filter.order_id {
             select = select.filter(audit_log::Column::OrderId.eq(id));
@@ -102,14 +89,14 @@ impl Core {
         if let Some(prefix) = filter.action_prefix.as_deref().filter(|p| !p.is_empty()) {
             select = select.filter(
                 Expr::col(audit_log::Column::Action)
-                    .like(LikeExpr::new(like_prefix(prefix)).escape('\\')),
+                    .like(LikeExpr::new(mw_domain::search::like_prefix(prefix)).escape('\\')),
             );
         }
         if let Some(from) = filter.from {
-            select = select.filter(audit_log::Column::At.gte(from));
+            select = select.filter(audit_log::Column::At.gte(from.trunc_subsecs(0)));
         }
         if let Some(to) = filter.to {
-            select = select.filter(audit_log::Column::At.lte(to));
+            select = select.filter(audit_log::Column::At.lte(to.trunc_subsecs(0)));
         }
         let total = select.clone().count(&self.db).await?;
         let items = select

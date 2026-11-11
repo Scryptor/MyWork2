@@ -257,3 +257,39 @@ async fn negative_money_and_absurd_warranty_are_rejected_on_update() -> Result<(
     }
     Ok(())
 }
+
+#[tokio::test]
+async fn caller_supplied_dates_are_truncated_to_whole_seconds() -> Result<(), CoreError> {
+    use chrono::{NaiveDate, Timelike};
+    for t in cores().await {
+        let o = t.core.create_order(&admin(), sample_new_order()).await?;
+        let at = NaiveDate::from_ymd_opt(2026, 3, 4)
+            .unwrap()
+            .and_hms_nano_opt(10, 11, 12, 123_456_789)
+            .unwrap();
+        let u = t
+            .core
+            .update_order(
+                &admin(),
+                o.id,
+                1,
+                OrderPatch {
+                    received_at: Some(at),
+                    issued_at: Some(Some(at)),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        let read = t.core.get_order(&admin(), o.id).await?;
+        for v in [
+            u.received_at,
+            u.issued_at.unwrap(),
+            read.received_at,
+            read.issued_at.unwrap(),
+        ] {
+            assert_eq!(v.nanosecond(), 0, "{}", t.label);
+            assert_eq!(v.second(), 12);
+        }
+    }
+    Ok(())
+}

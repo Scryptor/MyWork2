@@ -9,15 +9,18 @@ pub struct Page<T> {
     pub total: u64,
 }
 
-/// Допустимый размер страницы: 1..=500.
-#[allow(dead_code)] // используется списками из следующих задач
-pub(crate) fn validate_limit(limit: u64) -> Result<(), CoreError> {
-    if (1..=500).contains(&limit) {
+/// Допустимая страница: размер 1..=500, смещение не больше `i64::MAX` (иначе БД отвергнет запрос).
+pub(crate) fn validate_page(limit: u64, offset: u64) -> Result<(), CoreError> {
+    let mut errors = Vec::new();
+    if !(1..=500).contains(&limit) {
+        errors.push(FieldError::new("limit", "out_of_range"));
+    }
+    if offset > i64::MAX as u64 {
+        errors.push(FieldError::new("offset", "out_of_range"));
+    }
+    if errors.is_empty() {
         Ok(())
     } else {
-        Err(CoreError::Validation(vec![FieldError::new(
-            "limit",
-            "out_of_range",
-        )]))
+        Err(CoreError::Validation(errors))
     }
 }

@@ -40,17 +40,33 @@ pub fn search_tokens(input: &str) -> Vec<String> {
     tokens
 }
 
-/// `%` + токен с экранированием `\`, `%`, `_` обратной косой + `%`.
-/// Запросы всегда используют `ESCAPE '\'`.
-pub fn like_contains(token: &str) -> String {
-    let mut out = String::with_capacity(token.len() + 2);
-    out.push('%');
-    for c in token.chars() {
+/// Экранирует `\`, `%`, `_` обратной косой для `LIKE ... ESCAPE '\'`.
+fn escape_like(text: &str, out: &mut String) {
+    for c in text.chars() {
         if matches!(c, '\\' | '%' | '_') {
             out.push('\\');
         }
         out.push(c);
     }
+}
+
+/// `%` + токен с экранированием `\`, `%`, `_` обратной косой + `%`.
+/// Запросы всегда используют `ESCAPE '\'`.
+pub fn like_contains(token: &str) -> String {
+    let mut out = String::with_capacity(token.len() + 2);
+    out.push('%');
+    escape_like(token, &mut out);
+    out.push('%');
+    out
+}
+
+/// Шаблон «начинается с» для кодов действий журнала: префикс приводится к нижнему регистру
+/// (коды — строчный ASCII; `LIKE` в SQLite не различает регистр ASCII, в PostgreSQL различает,
+/// поэтому без этого результаты на бэкендах расходятся), экранируется и получает `%` в конце.
+/// Запросы всегда используют `ESCAPE '\'`.
+pub fn like_prefix(prefix: &str) -> String {
+    let mut out = String::with_capacity(prefix.len() + 1);
+    escape_like(&prefix.to_lowercase(), &mut out);
     out.push('%');
     out
 }
@@ -157,6 +173,14 @@ mod tests {
         assert_eq!(like_contains("50%"), r"%50\%%");
         assert_eq!(like_contains("a_b"), r"%a\_b%");
         assert_eq!(like_contains(r"c:\x"), r"%c:\\x%");
+    }
+
+    #[test]
+    fn like_prefix_lowercases_and_escapes() {
+        assert_eq!(like_prefix("ORDER."), "order.%");
+        assert_eq!(like_prefix("a_b%"), r"a\_b\%%");
+        assert_eq!(like_prefix(r"x\y"), r"x\\y%");
+        assert_eq!(like_prefix(""), "%");
     }
 
     #[test]
