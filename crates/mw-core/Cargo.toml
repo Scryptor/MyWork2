@@ -21,6 +21,7 @@ tracing = { workspace = true }
 argon2 = { workspace = true }
 sha1 = { workspace = true }
 hex = { workspace = true }
+tokio = { workspace = true, features = ["rt"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }

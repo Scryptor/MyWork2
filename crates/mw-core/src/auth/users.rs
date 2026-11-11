@@ -14,8 +14,9 @@ use serde_json::{Map, json};
 
 use crate::{Actor, Core, CoreError, NewAuditEntry, write_audit};
 
+use super::password::hash_password_blocking;
 use super::roles::{all_roles, parse_permissions};
-use super::{MIN_PASSWORD_CHARS, PasswordScheme, hash_password};
+use super::{MIN_PASSWORD_CHARS, PasswordScheme};
 
 const ENTITY: &str = "пользователь";
 
@@ -119,6 +120,12 @@ impl Core {
 
     pub async fn create_user(&self, actor: &Actor, new: NewUser) -> Result<User, CoreError> {
         actor.require(Permission::UsersManage)?;
+        // Хэш считается до блокировки записи; при ошибке валидации он просто отбрасывается.
+        let password_hash = if too_short(&new.password) {
+            None
+        } else {
+            Some(hash_password_blocking(new.password.clone()).await?)
+        };
         let tx = self.begin_write().await?;
         let login = new.login.trim().to_owned();
         let login_key = normalize_search(&login);
@@ -136,12 +143,12 @@ impl Core {
         if !all_roles(&tx).await?.iter().any(|r| r.id == new.role_id) {
             errors.push(FieldError::new("role_id", "invalid"));
         }
-        if too_short(&new.password) {
+        if password_hash.is_none() {
             errors.push(FieldError::new("password", "too_short"));
         }
-        if !errors.is_empty() {
+        let Some(password_hash) = password_hash.filter(|_| errors.is_empty()) else {
             return Err(CoreError::Validation(errors));
-        }
+        };
 
         let now = self.now();
         let display_name = new.display_name.trim().to_owned();
@@ -151,7 +158,7 @@ impl Core {
             login_key: Set(login_key),
             display_name: Set(display_name),
             role_id: Set(new.role_id),
-            password_hash: Set(hash_password(&new.password)?),
+            password_hash: Set(password_hash),
             password_scheme: Set(PasswordScheme::Argon2.as_str().to_owned()),
             active: Set(true),
             created_at: Set(now),
@@ -297,6 +304,7 @@ impl Core {
                 "too_short",
             )]));
         }
+        let password_hash = hash_password_blocking(password.to_owned()).await?;
         let tx = self.begin_write().await?;
         let current =
             user::Entity::find_by_id(user_id)
@@ -309,7 +317,7 @@ impl Core {
         let login = current.login.clone();
         let now = self.now();
         let mut model: user::ActiveModel = current.into();
-        model.password_hash = Set(hash_password(password)?);
+        model.password_hash = Set(password_hash);
         model.password_scheme = Set(PasswordScheme::Argon2.as_str().to_owned());
         model.updated_at = Set(now);
         model.update(&tx).await?;

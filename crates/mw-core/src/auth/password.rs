@@ -53,6 +53,51 @@ pub fn verify_password(scheme: PasswordScheme, stored: &str, password: &str) -> 
         PasswordScheme::Argon2 => Argon2::default()
             .verify_password(password.as_bytes(), stored)
             .is_ok(),
-        PasswordScheme::LegacySha1 => stored.eq_ignore_ascii_case(&legacy_sha1_hex(password)),
+        PasswordScheme::LegacySha1 => constant_time_eq(
+            stored.to_ascii_lowercase().as_bytes(),
+            legacy_sha1_hex(password).as_bytes(),
+        ),
+    }
+}
+
+/// Сравнение без раннего выхода по содержимому; разная длина — сразу `false`.
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+}
+
+/// `hash_password` вне рабочего потока async-рантайма (Argon2 занимает ЦП и ~19 МиБ).
+pub(crate) async fn hash_password_blocking(password: String) -> Result<String, CoreError> {
+    tokio::task::spawn_blocking(move || hash_password(&password))
+        .await
+        .map_err(|_| CoreError::Db(DbErr::Custom("сбой вычисления хэша пароля".into())))?
+}
+
+/// `verify_password` вне рабочего потока async-рантайма; сбой задачи — «не подходит».
+#[allow(dead_code)] // используется входом в систему (задача 14)
+pub(crate) async fn verify_password_blocking(
+    scheme: PasswordScheme,
+    stored: String,
+    password: String,
+) -> bool {
+    tokio::task::spawn_blocking(move || verify_password(scheme, &stored, &password))
+        .await
+        .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn legacy_compare_ignores_case_of_stored_hex_but_not_content() {
+        let upper = "139F69C93C042496A8E958EC5930662C6CCCAFBF";
+        assert!(verify_password(PasswordScheme::LegacySha1, upper, "1234"));
+        let off_by_one = "139f69c93c042496a8e958ec5930662c6cccafbe";
+        assert!(!verify_password(
+            PasswordScheme::LegacySha1,
+            off_by_one,
+            "1234"
+        ));
+        assert!(!verify_password(PasswordScheme::LegacySha1, "139f", "1234"));
     }
 }
