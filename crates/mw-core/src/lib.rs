@@ -2,6 +2,7 @@
 
 mod actor;
 mod audit;
+mod auth;
 mod clients;
 mod clock;
 mod core;
@@ -15,6 +16,10 @@ mod sql;
 mod statuses;
 
 pub use actor::Actor;
+pub use auth::{
+    MIN_PASSWORD_CHARS, NewRole, NewUser, PasswordScheme, Role, RolePatch, User, UserPatch,
+    hash_password, legacy_sha1_hex, verify_password,
+};
 pub use clients::{Client, ClientPatch, NewClient};
 pub use clock::{Clock, FixedClock, SystemClock};
 pub use core::Core;
