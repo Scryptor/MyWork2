@@ -63,6 +63,12 @@ pub trait HasId {
     fn id(&self) -> i64;
 }
 
+impl HasId for mw_core::Client {
+    fn id(&self) -> i64 {
+        self.id
+    }
+}
+
 pub fn ids(items: impl IntoIterator<Item = impl HasId>) -> Vec<i64> {
     items.into_iter().map(|i| i.id()).collect()
 }

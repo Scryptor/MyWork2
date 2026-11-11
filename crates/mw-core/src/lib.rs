@@ -2,6 +2,7 @@
 
 mod actor;
 mod audit;
+mod clients;
 mod clock;
 mod core;
 mod dictionaries;
@@ -12,6 +13,7 @@ mod settings;
 mod statuses;
 
 pub use actor::Actor;
+pub use clients::{Client, ClientPatch, NewClient};
 pub use clock::{Clock, FixedClock, SystemClock};
 pub use core::Core;
 pub use dictionaries::DictionaryItem;
