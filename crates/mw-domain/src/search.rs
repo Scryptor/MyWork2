@@ -55,6 +55,39 @@ pub fn like_contains(token: &str) -> String {
     out
 }
 
+/// Text for `search_text` columns: each field normalized with `normalize_search`,
+/// plus the digit-only forms that `search_tokens` would produce for numbers
+/// written with separators, so a query typed exactly like the stored value
+/// always matches. Fields empty after normalization are skipped. No last-10
+/// shortening here: the full stored digits contain the query's suffix.
+pub fn index_text(fields: &[&str]) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    for field in fields {
+        let normalized = normalize_search(field);
+        if normalized.is_empty() {
+            continue;
+        }
+        if is_phone_like_query(&normalized) {
+            let digits = digits_of(&normalized);
+            if digits != normalized {
+                parts.push(normalized);
+                parts.push(digits);
+            } else {
+                parts.push(normalized);
+            }
+            continue;
+        }
+        let extra: Vec<String> = normalized
+            .split(' ')
+            .filter(|w| is_separated_number(w))
+            .map(digits_of)
+            .collect();
+        parts.push(normalized);
+        parts.extend(extra);
+    }
+    parts.join(" ")
+}
+
 fn digits_of(s: &str) -> String {
     s.chars().filter(char::is_ascii_digit).collect()
 }
@@ -65,11 +98,20 @@ fn is_phone_like_query(s: &str) -> bool {
         && s.chars().filter(char::is_ascii_digit).count() >= MIN_PHONE_DIGITS
 }
 
-fn collapse_numeric_word(word: &str) -> String {
-    if word
-        .chars()
+fn is_numeric_word(word: &str) -> bool {
+    word.chars()
         .all(|c| c.is_ascii_digit() || "+-()".contains(c))
-    {
+}
+
+/// Numeric word that has at least one digit and at least one separator.
+fn is_separated_number(word: &str) -> bool {
+    is_numeric_word(word)
+        && word.chars().any(|c| c.is_ascii_digit())
+        && word.chars().any(|c| !c.is_ascii_digit())
+}
+
+fn collapse_numeric_word(word: &str) -> String {
+    if is_numeric_word(word) {
         digits_of(word)
     } else {
         word.to_owned()
@@ -115,5 +157,33 @@ mod tests {
         assert_eq!(like_contains("50%"), r"%50\%%");
         assert_eq!(like_contains("a_b"), r"%a\_b%");
         assert_eq!(like_contains(r"c:\x"), r"%c:\\x%");
+    }
+
+    #[test]
+    fn index_text_adds_digit_forms_for_numbers_with_separators() {
+        assert_eq!(
+            index_text(&["ПЁТР ИВАНОВ", "79211234567"]),
+            "петр иванов 79211234567"
+        );
+        assert_eq!(index_text(&["1234-5678"]), "1234-5678 12345678");
+        assert_eq!(index_text(&["SN 12-34 X"]), "sn 12-34 x 1234");
+        assert_eq!(index_text(&["", "  "]), "");
+    }
+
+    #[test]
+    fn every_query_token_is_found_in_index_of_same_text() {
+        for q in [
+            "1234-5678",
+            "1234 5678",
+            "12-34",
+            "+7 (921) 123-45-67",
+            "Samsung A52",
+            "Пётр 8-921-123-45-67",
+        ] {
+            let idx = index_text(&[q]);
+            for t in search_tokens(q) {
+                assert!(idx.contains(&t), "{q:?}: token {t:?} not in {idx:?}");
+            }
+        }
     }
 }
