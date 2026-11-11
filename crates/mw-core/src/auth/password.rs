@@ -73,7 +73,6 @@ pub(crate) async fn hash_password_blocking(password: String) -> Result<String, C
 }
 
 /// `verify_password` вне рабочего потока async-рантайма; сбой задачи — «не подходит».
-#[allow(dead_code)] // используется входом в систему (задача 14)
 pub(crate) async fn verify_password_blocking(
     scheme: PasswordScheme,
     stored: String,

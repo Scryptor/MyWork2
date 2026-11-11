@@ -17,8 +17,8 @@ mod statuses;
 
 pub use actor::Actor;
 pub use auth::{
-    MIN_PASSWORD_CHARS, NewRole, NewUser, PasswordScheme, Role, RolePatch, User, UserPatch,
-    hash_password, legacy_sha1_hex, verify_password,
+    LAST_SEEN_THROTTLE_SECS, MIN_PASSWORD_CHARS, NewRole, NewUser, PasswordScheme, Role, RolePatch,
+    SESSION_IDLE_DAYS, Session, User, UserPatch, hash_password, legacy_sha1_hex, verify_password,
 };
 pub use clients::{Client, ClientPatch, NewClient};
 pub use clock::{Clock, FixedClock, SystemClock};

@@ -11,7 +11,7 @@ use mw_core::{
     Actor, ClientRef, Core, CoreError, FixedClock, NewClient, NewOrder, OrderFilter, OrderPatch,
     OrderSort,
 };
-use mw_db::entity::{audit_log, order, role, status};
+use mw_db::entity::{audit_log, order, role, session, status, user};
 use mw_domain::permission::Permission;
 use mw_domain::status::StatusKind;
 use sea_orm::{
@@ -324,4 +324,47 @@ pub async fn set_barcode_directly(t: &TestCore, order_id: i64, code: &str) {
     .update(t.core.db())
     .await
     .unwrap();
+}
+
+/// `token_hash` всех сессий.
+pub async fn stored_token_hashes(core: &Core) -> Vec<String> {
+    session::Entity::find()
+        .all(core.db())
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|s| s.token_hash)
+        .collect()
+}
+
+/// Активный пользователь со старым хэшем MyWork 2 (SHA-1), в обход `Core`.
+pub async fn insert_legacy_user(core: &Core, login: &str, sha1_hex: &str, role_id: i64) {
+    let now = core.now();
+    user::ActiveModel {
+        login: Set(login.to_owned()),
+        login_key: Set(mw_domain::search::normalize_search(login)),
+        display_name: Set(String::new()),
+        role_id: Set(role_id),
+        password_hash: Set(sha1_hex.to_owned()),
+        password_scheme: Set("legacy_sha1".to_owned()),
+        active: Set(true),
+        created_at: Set(now),
+        updated_at: Set(now),
+        version: Set(1),
+        ..Default::default()
+    }
+    .insert(core.db())
+    .await
+    .unwrap();
+}
+
+/// Схема пароля пользователя (`argon2` / `legacy_sha1`).
+pub async fn user_scheme(core: &Core, login: &str) -> String {
+    user::Entity::find()
+        .filter(user::Column::Login.eq(login))
+        .one(core.db())
+        .await
+        .unwrap()
+        .unwrap_or_else(|| panic!("нет пользователя {login}"))
+        .password_scheme
 }

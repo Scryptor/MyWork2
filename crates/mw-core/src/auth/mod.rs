@@ -2,10 +2,12 @@
 
 mod password;
 mod roles;
+mod sessions;
 mod users;
 
 pub use password::{PasswordScheme, hash_password, legacy_sha1_hex, verify_password};
 pub use roles::{NewRole, Role, RolePatch};
+pub use sessions::{LAST_SEEN_THROTTLE_SECS, SESSION_IDLE_DAYS, Session};
 pub use users::{NewUser, User, UserPatch};
 
 /// Минимальная длина пароля в символах (не в байтах).
