@@ -6,6 +6,7 @@ use mw_db::entity::{session, user};
 use mw_domain::permission::{Permission, PermissionSet};
 use mw_domain::search::normalize_search;
 use mw_domain::validation::FieldError;
+use sea_orm::sea_query::Expr;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, NotSet, PaginatorTrait,
     QueryFilter, QueryOrder, Set,
@@ -14,7 +15,7 @@ use serde_json::{Map, json};
 
 use crate::{Actor, Core, CoreError, NewAuditEntry, write_audit};
 
-use super::password::hash_password_blocking;
+use super::password::{hash_password_blocking, verify_password_blocking};
 use super::roles::{all_roles, parse_permissions};
 use super::{MIN_PASSWORD_CHARS, PasswordScheme};
 
@@ -336,19 +337,17 @@ impl Core {
         Ok(model.into())
     }
 
-    /// Свой пароль можно менять без прав, чужой — только с `users_manage`. Всегда схема `argon2`.
+    /// Сброс пароля администратором: нужно `users_manage` для ЛЮБОГО пользователя, включая себя.
+    /// Свой пароль меняют через `change_own_password`. Всегда схема `argon2`.
     ///
-    /// Все сессии пользователя удаляются в той же транзакции. `Core` не знает текущую сессию
-    /// вызывающего, поэтому смена собственного пароля тоже завершает его сессии: нужен новый вход.
+    /// Все сессии пользователя удаляются в той же транзакции.
     pub async fn set_password(
         &self,
         actor: &Actor,
         user_id: i64,
         password: &str,
     ) -> Result<(), CoreError> {
-        if actor.user_id != Some(user_id) {
-            actor.require(Permission::UsersManage)?;
-        }
+        actor.require(Permission::UsersManage)?;
         if too_short(password) {
             return Err(CoreError::Validation(vec![FieldError::new(
                 "password",
@@ -382,6 +381,80 @@ impl Core {
                 order_id: None,
                 client_id: None,
                 summary: format!("Изменён пароль пользователя «{login}»"),
+                details: Some(json!({ "id": user_id })),
+            },
+        )
+        .await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    /// Смена собственного пароля с проверкой текущего. Все сессии пользователя удаляются
+    /// (`Core` не знает текущую сессию вызывающего): после смены нужен новый вход.
+    pub async fn change_own_password(
+        &self,
+        actor: &Actor,
+        current_password: &str,
+        new_password: &str,
+    ) -> Result<(), CoreError> {
+        let user_id = actor.user_id.ok_or(CoreError::Unauthenticated)?;
+        let stored = user::Entity::find_by_id(user_id)
+            .one(&self.db)
+            .await?
+            .filter(|u| u.active)
+            .ok_or(CoreError::Unauthenticated)?;
+        let invalid_current =
+            || CoreError::Validation(vec![FieldError::new("current_password", "invalid")]);
+        // Проверка и хэширование — вне блокировки записи.
+        let verified = match PasswordScheme::from_code(&stored.password_scheme) {
+            Some(scheme) => {
+                verify_password_blocking(
+                    scheme,
+                    stored.password_hash.clone(),
+                    current_password.to_owned(),
+                )
+                .await
+            }
+            None => false,
+        };
+        if !verified {
+            return Err(invalid_current());
+        }
+        if too_short(new_password) {
+            return Err(CoreError::Validation(vec![FieldError::new(
+                "password",
+                "too_short",
+            )]));
+        }
+        let new_hash = hash_password_blocking(new_password.to_owned()).await?;
+        let tx = self.begin_write().await?;
+        let now = self.now();
+        let res = user::Entity::update_many()
+            .col_expr(user::Column::PasswordHash, Expr::value(new_hash))
+            .col_expr(
+                user::Column::PasswordScheme,
+                Expr::value(PasswordScheme::Argon2.as_str()),
+            )
+            .col_expr(user::Column::UpdatedAt, Expr::value(now))
+            .filter(user::Column::Id.eq(user_id))
+            .filter(user::Column::PasswordHash.eq(stored.password_hash.clone()))
+            .filter(user::Column::Active.eq(true))
+            .exec(&tx)
+            .await?;
+        if res.rows_affected != 1 {
+            tx.rollback().await?;
+            return Err(invalid_current());
+        }
+        delete_user_sessions(&tx, user_id).await?;
+        write_audit(
+            &tx,
+            now,
+            actor,
+            NewAuditEntry {
+                action: "user.password_changed",
+                order_id: None,
+                client_id: None,
+                summary: format!("Изменён пароль пользователя «{}»", stored.login),
                 details: Some(json!({ "id": user_id })),
             },
         )

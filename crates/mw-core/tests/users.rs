@@ -145,14 +145,20 @@ async fn users_validation_and_last_admin_guard() -> Result<(), CoreError> {
                 .await
                 .is_ok()
         );
-        // свой пароль можно сменить без права users_manage
+        // свой пароль меняют только с текущим паролем, без права users_manage
         let me = Actor {
             user_id: Some(boss.id),
             ..actor_with(&[])
         };
-        t.core.set_password(&me, boss.id, "новый-пароль").await?;
+        t.core
+            .change_own_password(&me, "qwerty", "новый-пароль")
+            .await?;
         assert!(matches!(
             t.core.set_password(&me, irina.id, "zzzz").await,
+            Err(CoreError::Forbidden(Permission::UsersManage))
+        ));
+        assert!(matches!(
+            t.core.set_password(&me, boss.id, "zzzz").await,
             Err(CoreError::Forbidden(Permission::UsersManage))
         ));
         assert!(
@@ -216,6 +222,69 @@ async fn first_user_without_users_manage_is_refused_in_open_mode() -> Result<(),
                 },
             )
             .await?;
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn change_own_password_requires_current_password() -> Result<(), CoreError> {
+    for t in cores().await {
+        let role = role_id_by_name(&t.core, "Администратор").await;
+        let u = t
+            .core
+            .create_user(
+                &admin(),
+                NewUser {
+                    login: "анна".into(),
+                    display_name: String::new(),
+                    role_id: role,
+                    password: "1234".into(),
+                },
+            )
+            .await?;
+        let me = Actor {
+            user_id: Some(u.id),
+            ..actor_with(&[])
+        };
+        let session = t.core.login("анна", "1234", "x").await?;
+
+        assert_validation(
+            t.core
+                .change_own_password(&me, "wrong", "новый-пароль")
+                .await,
+            &[("current_password", "invalid")],
+        );
+        t.core.login("анна", "1234", "x").await?;
+        t.core.authenticate(&session.token).await?;
+        assert_validation(
+            t.core.change_own_password(&me, "1234", "12").await,
+            &[("password", "too_short")],
+        );
+        assert!(matches!(
+            t.core
+                .change_own_password(&actor_with(&[]), "1234", "новый-пароль")
+                .await,
+            Err(CoreError::Unauthenticated)
+        ));
+
+        t.core
+            .change_own_password(&me, "1234", "новый-пароль")
+            .await?;
+        t.core.login("анна", "новый-пароль", "x").await?;
+        assert!(
+            matches!(
+                t.core.login("анна", "1234", "x").await,
+                Err(CoreError::InvalidCredentials)
+            ),
+            "{}",
+            t.label
+        );
+        assert!(matches!(
+            t.core.authenticate(&session.token).await,
+            Err(CoreError::Unauthenticated)
+        ));
+        let log = audit_json(&t.core, "user.password_changed").await;
+        assert!(!log.contains("новый-пароль") && !log.contains("1234"));
     }
     Ok(())
 }
