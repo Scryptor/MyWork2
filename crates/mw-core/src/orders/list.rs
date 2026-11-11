@@ -3,7 +3,7 @@
 use chrono::{Duration, NaiveDateTime};
 use mw_db::entity::{client, order, status};
 use mw_db::ids::{IdTable, max_id, set_next_id};
-use mw_domain::barcode::normalize_scanned;
+use mw_domain::barcode::{normalize_scanned, order_barcode};
 use mw_domain::money::Money;
 use mw_domain::permission::Permission;
 use mw_domain::search::{like_contains, search_tokens};
@@ -146,12 +146,7 @@ impl From<Row> for OrderListItem {
             received_at: r.received_at,
             issued_at: r.issued_at,
             client_id: r.client_id,
-            // у клиента без имени показываем телефон
-            client_name: if r.client_name.is_empty() {
-                r.client_phone.clone()
-            } else {
-                r.client_name
-            },
+            client_name: r.client_name,
             client_phone: r.client_phone,
             client_blacklisted: r.client_blacklisted,
             service_point_id: r.service_point_id,
@@ -368,7 +363,7 @@ impl Core {
     pub async fn set_next_order_number(&self, actor: &Actor, next: i64) -> Result<(), CoreError> {
         actor.require(Permission::SettingsManage)?;
         let tx = self.begin_write().await?;
-        if next <= max_id(&tx, IdTable::Orders).await? {
+        if next <= max_id(&tx, IdTable::Orders).await? || order_barcode(next).is_none() {
             return Err(CoreError::Validation(vec![FieldError::new(
                 "next",
                 "out_of_range",

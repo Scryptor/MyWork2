@@ -115,6 +115,12 @@ async fn search_filters_sorting_paging_barcode_and_numbering() -> Result<(), Cor
             t.core.set_next_order_number(&admin(), d).await,
             &[("next", "out_of_range")],
         );
+        // верхняя граница: штрихкод покрывает номера до 9_999_999_999
+        assert_validation(
+            t.core.set_next_order_number(&admin(), 10_000_000_000).await,
+            &[("next", "out_of_range")],
+        );
+        assert_eq!(count_audit(&t.core, "orders.next_number_set").await, 0);
         t.core.set_next_order_number(&admin(), d + 100).await?;
         assert_eq!(
             t.core.create_order(&admin(), sample_new_order()).await?.id,
@@ -186,6 +192,40 @@ async fn every_sort_field_is_deterministic_and_deleted_are_opt_in() -> Result<()
             Err(CoreError::Forbidden(Permission::SettingsManage))
         ));
         assert_eq!(count_audit(&t.core, "orders.next_number_set").await, 0);
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn nameless_client_keeps_raw_empty_name() -> Result<(), CoreError> {
+    for t in cores().await {
+        let o = t
+            .core
+            .create_order(
+                &admin(),
+                mw_core::NewOrder {
+                    client: mw_core::ClientRef::New(mw_core::NewClient {
+                        phone: "+7 900 111-22-33".into(),
+                        ..Default::default()
+                    }),
+                    ..sample_new_order()
+                },
+            )
+            .await?;
+        let items = t
+            .core
+            .list_orders(
+                &admin(),
+                &OrderFilter::default(),
+                OrderSort::default(),
+                50,
+                0,
+            )
+            .await?
+            .items;
+        let item = items.iter().find(|i| i.id == o.id).unwrap();
+        assert_eq!(item.client_name, "");
+        assert!(!item.client_phone.is_empty());
     }
     Ok(())
 }
