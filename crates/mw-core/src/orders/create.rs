@@ -160,6 +160,8 @@ impl Core {
             extra_costs: Set(0),
             discount: Set(0),
             warranty_days: Set(new.warranty_days.map(i32::from)),
+            warranty_text: Set(String::new()),
+            warranty_months: Set(None),
             need_call: Set(new.need_call),
             need_parts: Set(new.need_parts),
             created_at: Set(now),

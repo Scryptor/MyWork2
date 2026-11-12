@@ -9,6 +9,7 @@ rust-version = "1.95"
 
 [workspace.dependencies]
 unicode-normalization = "0.1"
+tempfile = "3"
 sea-orm = { version = "2.0", default-features = false, features = [
     "sqlx-sqlite",
     "sqlx-postgres",

@@ -31,6 +31,8 @@ pub struct Model {
     pub extra_costs: i64,
     pub discount: i64,
     pub warranty_days: Option<i32>,
+    pub warranty_text: String,
+    pub warranty_months: Option<i32>,
     pub need_call: bool,
     pub need_parts: bool,
     pub created_at: DateTime,

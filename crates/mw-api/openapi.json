@@ -2686,7 +2686,8 @@
           "malfunction",
           "work_done",
           "master",
-          "client_source"
+          "client_source",
+          "warranty"
         ]
       },
       "DictionaryValue": {

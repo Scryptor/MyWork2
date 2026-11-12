@@ -10,6 +10,7 @@ code_enum! {
         WorkDone => "work_done",
         Master => "master",
         ClientSource => "client_source",
+        Warranty => "warranty",
     }
 }
 
@@ -26,6 +27,7 @@ impl DictionaryKind {
             Self::WorkDone => "Выполненные работы",
             Self::Master => "Мастера",
             Self::ClientSource => "Откуда узнали",
+            Self::Warranty => "Гарантия",
         }
     }
 }
@@ -121,6 +123,17 @@ pub const DEFAULT_DICTIONARY: &[(DictionaryKind, &[&str])] = &[
             "Повторное обращение",
         ],
     ),
+    (
+        DictionaryKind::Warranty,
+        &[
+            "Без гарантии",
+            "14 дней",
+            "30 дней",
+            "3 месяца",
+            "6 месяцев",
+            "1 год",
+        ],
+    ),
 ];
 
 #[cfg(test)]
@@ -139,6 +152,7 @@ mod tests {
             DictionaryKind::WorkDone,
             DictionaryKind::Master,
             DictionaryKind::ClientSource,
+            DictionaryKind::Warranty,
         ]
         .map(DictionaryKind::label_ru)
         .to_vec();
@@ -153,7 +167,8 @@ mod tests {
                 "Неисправности",
                 "Выполненные работы",
                 "Мастера",
-                "Откуда узнали"
+                "Откуда узнали",
+                "Гарантия"
             ]
         );
     }

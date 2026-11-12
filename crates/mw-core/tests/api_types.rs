@@ -326,6 +326,7 @@ fn code_enums_use_wire_codes_everywhere() {
             K::WorkDone,
             K::Master,
             K::ClientSource,
+            K::Warranty,
         ],
         &[
             "device_type",
@@ -337,6 +338,7 @@ fn code_enums_use_wire_codes_everywhere() {
             "work_done",
             "master",
             "client_source",
+            "warranty",
         ],
     );
 }

@@ -2,7 +2,9 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use chrono::NaiveDate;
-use mw_db::entity::{client, dictionary_item, order, role, status};
+use mw_db::entity::{
+    client, client_phone, dictionary_item, legacy_import, legacy_row, order, role, status,
+};
 use mw_db::ids::IdTable;
 use mw_domain::permission::PermissionSet;
 use sea_orm::{
@@ -201,4 +203,160 @@ async fn seed_data_equals_current_domain_constants() {
             "{label}"
         );
     }
+}
+
+/// Строка клиента только с колонками первой миграции.
+async fn insert_client_row_with_phone(db: &DatabaseConnection, phone: &str) -> i64 {
+    let key = mw_domain::phone::phone_key(phone);
+    let model = client::ActiveModel {
+        full_name: Set("Иванов Иван".to_owned()),
+        phone: Set(phone.to_owned()),
+        phone_key: Set(key),
+        created_at: Set(now()),
+        updated_at: Set(now()),
+        ..Default::default()
+    };
+    client::Entity::insert(model)
+        .exec(db)
+        .await
+        .unwrap()
+        .last_insert_id
+}
+
+/// Строка заказа только с колонками первой миграции (новых колонок ещё нет).
+async fn insert_order_row_with_warranty(
+    db: &DatabaseConnection,
+    client_id: i64,
+    warranty_days: Option<i32>,
+) -> i64 {
+    let first_status = status::Entity::find()
+        .order_by_asc(status::Column::SortOrder)
+        .one(db)
+        .await
+        .unwrap()
+        .unwrap();
+    let backend = db.get_database_backend();
+    let sql = "INSERT INTO orders (client_id, status_id, received_at, created_at, updated_at, warranty_days) \
+               VALUES ($1, $2, $3, $3, $3, $4) RETURNING id";
+    let row = db
+        .query_one_raw(Statement::from_sql_and_values(
+            backend,
+            sql,
+            [
+                client_id.into(),
+                first_status.id.into(),
+                now().into(),
+                warranty_days.into(),
+            ],
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    row.try_get_by_index(0).unwrap()
+}
+
+async fn insert_legacy_import(db: &DatabaseConnection) -> i64 {
+    let model = legacy_import::ActiveModel {
+        imported_at: Set(now()),
+        source_path: Set("C:/MyWork2".to_owned()),
+        mode: Set("into_empty".to_owned()),
+        report: Set("{}".to_owned()),
+        ..Default::default()
+    };
+    model.insert(db).await.unwrap().id
+}
+
+async fn insert_legacy_row(
+    db: &DatabaseConnection,
+    import_id: i64,
+    source: &str,
+    key: &str,
+) -> Result<(), DbErr> {
+    let model = legacy_row::ActiveModel {
+        import_id: Set(import_id),
+        source: Set(source.to_owned()),
+        source_key: Set(key.to_owned()),
+        target_table: Set(None),
+        target_id: Set(None),
+        raw: Set("{}".to_owned()),
+        ..Default::default()
+    };
+    legacy_row::Entity::insert(model).exec(db).await.map(|_| ())
+}
+
+#[tokio::test]
+async fn legacy_import_migration_backfills_phones_and_warranty_text() {
+    for (label, db) in mw_db::testing::all_backends_up_to(1).await {
+        let client = insert_client_row_with_phone(&db, "79211234567").await;
+        let _no_phone = insert_client_row_with_phone(&db, "").await;
+        let thirty = insert_order_row_with_warranty(&db, client, Some(30)).await;
+        let none = insert_order_row_with_warranty(&db, client, Some(0)).await;
+        let unknown = insert_order_row_with_warranty(&db, client, None).await;
+        mw_db::migrate(&db).await.unwrap();
+        let phones = client_phone::Entity::find().all(&db).await.unwrap();
+        assert_eq!(
+            phones
+                .iter()
+                .map(|p| (
+                    p.client_id,
+                    p.position,
+                    p.phone.as_str(),
+                    p.phone_key.as_str(),
+                    p.note.as_str()
+                ))
+                .collect::<Vec<_>>(),
+            vec![(client, 0, "79211234567", "9211234567", "")],
+            "{label}"
+        );
+        let text = |id: i64| {
+            let db = db.clone();
+            async move {
+                order::Entity::find_by_id(id)
+                    .one(&db)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .warranty_text
+            }
+        };
+        assert_eq!(text(thirty).await, "30 дн.", "{label}");
+        assert_eq!(text(none).await, "Без гарантии", "{label}");
+        assert_eq!(text(unknown).await, "", "{label}");
+    }
+}
+
+#[tokio::test]
+async fn legacy_rows_are_unique_per_source_row() {
+    for (label, db) in mw_db::testing::all_backends().await {
+        let import = insert_legacy_import(&db).await;
+        insert_legacy_row(&db, import, "Catalog", "12")
+            .await
+            .unwrap();
+        assert!(
+            insert_legacy_row(&db, import, "Catalog", "12")
+                .await
+                .is_err(),
+            "{label}"
+        );
+        assert!(
+            insert_legacy_row(&db, import, "ClientsMap", "12")
+                .await
+                .is_ok(),
+            "{label}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn vacuum_into_writes_a_consistent_copy_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = mw_db::connect(&mw_db::sqlite_url(&dir.path().join("live.db")))
+        .await
+        .unwrap();
+    mw_db::migrate(&db).await.unwrap();
+    let copy = dir.path().join("backups").join("copy.db");
+    mw_db::backup::vacuum_into(&db, &copy).await.unwrap();
+    let restored = mw_db::connect(&mw_db::sqlite_url(&copy)).await.unwrap();
+    assert_eq!(status::Entity::find().count(&restored).await.unwrap(), 8);
+    assert!(mw_db::backup::vacuum_into(&db, &copy).await.is_err());
 }

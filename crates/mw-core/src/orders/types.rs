@@ -464,6 +464,8 @@ mod tests {
             extra_costs: 0,
             discount: 0,
             warranty_days: None,
+            warranty_text: String::new(),
+            warranty_months: None,
             need_call: false,
             need_parts: false,
             created_at: NaiveDateTime::default(),

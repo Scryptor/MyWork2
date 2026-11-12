@@ -3,4 +3,4 @@
 /**
  * Вид справочника.
  */
-export type DictionaryKind = "device_type" | "brand" | "color" | "completeness" | "condition" | "malfunction" | "work_done" | "master" | "client_source";
+export type DictionaryKind = "device_type" | "brand" | "color" | "completeness" | "condition" | "malfunction" | "work_done" | "master" | "client_source" | "warranty";

@@ -4,14 +4,25 @@ use sea_orm::{DatabaseConnection, DbErr};
 use sea_orm_migration::prelude::*;
 
 mod m20261111_000001_init;
+mod m20261112_000001_legacy_import;
+mod m20261112_000002_warranty_dictionary;
 
 pub struct Migrator;
 
 #[async_trait::async_trait]
 impl MigratorTrait for Migrator {
     fn migrations() -> Vec<Box<dyn MigrationTrait>> {
-        vec![Box::new(m20261111_000001_init::Migration)]
+        vec![
+            Box::new(m20261111_000001_init::Migration),
+            Box::new(m20261112_000001_legacy_import::Migration),
+            Box::new(m20261112_000002_warranty_dictionary::Migration),
+        ]
     }
+}
+
+/// Применяет только первые `steps` миграций (для тестов переноса данных).
+pub async fn migrate_up_to(db: &DatabaseConnection, steps: u32) -> Result<(), DbErr> {
+    Migrator::up(db, Some(steps)).await
 }
 
 /// Применяет все миграции; повторный вызов ничего не делает.
