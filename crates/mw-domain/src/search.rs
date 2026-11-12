@@ -1,13 +1,16 @@
 //! Нормализация текста для регистронезависимого поиска (колонки `search_text`).
 
+use unicode_normalization::UnicodeNormalization;
+
 const MAX_NUMBER_DIGITS: usize = 10;
 const MIN_PHONE_DIGITS: usize = 5;
 
-/// Нижний регистр Unicode, `ё` -> `е`, любые пробельные символы схлопнуты
-/// в один пробел, края обрезаны.
+/// Сначала NFC (составные символы, «й» и «ё» одним кодом), затем нижний регистр
+/// Unicode, `ё` -> `е`, любые пробельные символы схлопнуты в один пробел,
+/// края обрезаны.
 pub fn normalize_search(input: &str) -> String {
     let lowered: String = input
-        .chars()
+        .nfc()
         .flat_map(char::to_lowercase)
         .map(|c| if c == 'ё' { 'е' } else { c })
         .collect();
@@ -145,6 +148,14 @@ fn shorten_number(token: String) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn normalize_search_composes_unicode_first() {
+        assert_eq!(normalize_search("Пе\u{0308}тр"), "петр"); // «ё» двумя кодами
+        assert_eq!(normalize_search("И\u{0306}ошкар-Ола"), "йошкар-ола");
+        assert_eq!(search_tokens("ПЕ\u{0308}ТР"), vec!["петр"]);
+        assert_eq!(index_text(&["Пе\u{0308}тр"]), "петр");
+    }
 
     #[test]
     fn normalize_search_folds_case_yo_and_spaces() {

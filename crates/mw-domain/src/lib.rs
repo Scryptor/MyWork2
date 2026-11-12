@@ -58,3 +58,4 @@ pub mod phone;
 pub mod search;
 pub mod status;
 pub mod validation;
+pub mod warranty;
