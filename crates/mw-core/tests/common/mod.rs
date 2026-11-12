@@ -8,8 +8,8 @@ use std::sync::Arc;
 
 use chrono::{TimeZone, Utc};
 use mw_core::{
-    Actor, ClientRef, Core, CoreError, FixedClock, NewClient, NewOrder, OrderFilter, OrderPatch,
-    OrderSort,
+    Actor, ClientPhone, ClientRef, Core, CoreError, FixedClock, NewClient, NewOrder, OrderFilter,
+    OrderPatch, OrderSort,
 };
 use mw_db::entity::{audit_log, order, role, session, status, user};
 use mw_domain::permission::Permission;
@@ -71,6 +71,16 @@ pub async fn set_status_kind_directly(t: &TestCore, status_id: i64, kind: &str) 
 }
 
 /// Ровно эти пары (поле, код) в этом порядке.
+/// Телефоны без пометок.
+pub fn phones(list: &[&str]) -> Vec<ClientPhone> {
+    list.iter()
+        .map(|p| ClientPhone {
+            phone: (*p).into(),
+            note: String::new(),
+        })
+        .collect()
+}
+
 pub fn assert_validation<T: Debug>(res: Result<T, CoreError>, expected: &[(&str, &str)]) {
     match res {
         Err(CoreError::Validation(fields)) => {
@@ -204,7 +214,7 @@ pub fn sample_new_order() -> mw_core::NewOrder {
     mw_core::NewOrder {
         client: mw_core::ClientRef::New(mw_core::NewClient {
             full_name: "Пётр Иванов".into(),
-            phone: "+7 921 123-45-67".into(),
+            phones: phones(&["+7 921 123-45-67"]),
             ..Default::default()
         }),
         device_type: "Телефон".into(),
@@ -233,7 +243,7 @@ pub async fn seed_orders(t: &TestCore) -> Seed {
     let client = |name: &str, phone: &str| {
         ClientRef::New(NewClient {
             full_name: name.into(),
-            phone: phone.into(),
+            phones: phones(&[phone]),
             ..Default::default()
         })
     };

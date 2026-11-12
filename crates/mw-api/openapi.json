@@ -2471,7 +2471,7 @@
         "required": [
           "id",
           "full_name",
-          "phone",
+          "phones",
           "address",
           "note",
           "source",
@@ -2507,9 +2507,12 @@
             "type": "string",
             "description": "Заметка."
           },
-          "phone": {
-            "type": "string",
-            "description": "Телефон."
+          "phones": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClientPhone"
+            },
+            "description": "Телефоны; первый — основной."
           },
           "source": {
             "type": "string",
@@ -2570,13 +2573,35 @@
             "type": "string",
             "description": "Заметка."
           },
-          "phone": {
-            "type": "string",
-            "description": "Телефон."
+          "phones": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClientPhone"
+            },
+            "description": "Телефоны; список заменяется целиком."
           },
           "source": {
             "type": "string",
             "description": "Откуда клиент узнал о сервисе."
+          }
+        },
+        "additionalProperties": false
+      },
+      "ClientPhone": {
+        "type": "object",
+        "description": "Телефон клиента с пометкой («жена», «раб»); первый в списке основной.",
+        "required": [
+          "phone",
+          "note"
+        ],
+        "properties": {
+          "note": {
+            "type": "string",
+            "description": "Пометка к номеру."
+          },
+          "phone": {
+            "type": "string",
+            "description": "Номер; при записи остаются только цифры."
           }
         },
         "additionalProperties": false
@@ -2865,7 +2890,7 @@
         "description": "Данные нового клиента.",
         "required": [
           "full_name",
-          "phone",
+          "phones",
           "address",
           "note",
           "source",
@@ -2888,9 +2913,12 @@
             "type": "string",
             "description": "Заметка."
           },
-          "phone": {
-            "type": "string",
-            "description": "Телефон."
+          "phones": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClientPhone"
+            },
+            "description": "Телефоны; первый — основной."
           },
           "source": {
             "type": "string",

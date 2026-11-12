@@ -205,7 +205,7 @@ async fn nameless_client_keeps_raw_empty_name() -> Result<(), CoreError> {
                 &admin(),
                 mw_core::NewOrder {
                     client: mw_core::ClientRef::New(mw_core::NewClient {
-                        phone: "+7 900 111-22-33".into(),
+                        phones: common::phones(&["+7 900 111-22-33"]),
                         ..Default::default()
                     }),
                     ..sample_new_order()

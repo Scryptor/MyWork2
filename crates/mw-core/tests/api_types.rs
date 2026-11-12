@@ -156,7 +156,7 @@ fn codes_money_and_refs_on_the_wire() {
         ClientRef::Existing(5)
     );
     assert!(
-        serde_json::from_value::<NewClient>(json!({ "full_name": "А", "phone": "", "address": "",
+        serde_json::from_value::<NewClient>(json!({ "full_name": "А", "phones": [], "address": "",
             "note": "", "source": "", "blacklisted": false, "vip": true }))
         .is_err()
     );
@@ -254,7 +254,7 @@ where
 fn request_bodies_require_every_field() {
     check_new::<NewStatus>(json!({ "name": "А", "kind": "open", "color": "blue" }));
     check_new::<NewClient>(
-        json!({ "full_name": "А", "phone": "", "address": "", "note": "",
+        json!({ "full_name": "А", "phones": [], "address": "", "note": "",
         "source": "", "blacklisted": false }),
     );
     check_new::<NewUser>(

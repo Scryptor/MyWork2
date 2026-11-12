@@ -21,13 +21,17 @@ async fn client_endpoints() {
                 ],
             )
             .await;
-        let new = json!({ "full_name": " ПЁТР ИВАНОВ ", "phone": "+7 (921) 123-45-67", "address": "", "note": "", "source": "", "blacklisted": false });
+        let new = json!({ "full_name": " ПЁТР ИВАНОВ ", "phones": [{"phone": "+7 (921) 123-45-67", "note": ""}, {"phone": "8 911 765-43-21", "note": "жена"}], "address": "", "note": "", "source": "", "blacklisted": false });
         let r = t
             .send(Method::POST, "/api/v1/clients", Some(&token), Some(new))
             .await;
         assert_eq!(
-            (r.status, &r.body["phone"], &r.body["version"]),
-            (201, &json!("79211234567"), &json!(1)),
+            (r.status, &r.body["phones"][1], &r.body["version"]),
+            (
+                201,
+                &json!({"phone": "89117654321", "note": "жена"}),
+                &json!(1)
+            ),
             "{}",
             t.label
         );
@@ -42,6 +46,28 @@ async fn client_endpoints() {
         assert_eq!(
             (&page["total"], &page["items"][0]["id"]),
             (&json!(1), &json!(id)),
+            "{}",
+            t.label
+        );
+        assert_eq!(
+            t.get("/api/v1/clients/by-phone?phone=89117654321", Some(&token))
+                .await
+                .body[0]["id"],
+            json!(id),
+            "{}",
+            t.label
+        );
+        let old_shape = json!({ "full_name": "А", "phone": "1", "address": "", "note": "", "source": "", "blacklisted": false });
+        assert_eq!(
+            t.send(
+                Method::POST,
+                "/api/v1/clients",
+                Some(&token),
+                Some(old_shape)
+            )
+            .await
+            .status,
+            400,
             "{}",
             t.label
         );
@@ -92,7 +118,7 @@ async fn client_endpoints() {
 async fn client_versions_over_http() {
     for t in apis(Listen::Network).await {
         let token = t.admin_token().await;
-        let new = json!({ "full_name": "Анна", "phone": "", "address": "", "note": "", "source": "", "blacklisted": false });
+        let new = json!({ "full_name": "Анна", "phones": [], "address": "", "note": "", "source": "", "blacklisted": false });
         let r = t
             .send(Method::POST, "/api/v1/clients", Some(&token), Some(new))
             .await;

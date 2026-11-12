@@ -26,8 +26,8 @@ async fn intake_creates_client_order_barcode_and_audit() -> Result<(), CoreError
         assert_eq!(o.prepaid_at, Some(o.received_at));
         assert_eq!(t.core.get_order(&admin(), o.id).await?, o);
         assert_eq!(
-            t.core.get_client(&admin(), o.client_id).await?.phone,
-            "79211234567"
+            t.core.get_client(&admin(), o.client_id).await?.phones,
+            common::phones(&["79211234567"])
         );
         assert_eq!(
             audit_summaries(&t.core, o.id).await,

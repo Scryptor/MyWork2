@@ -1,7 +1,9 @@
 mod common;
 
-use common::{actor_with, admin, assert_validation, cores, count_audit, ids};
-use mw_core::{ClientPatch, CoreError, NewClient};
+use common::{actor_with, admin, assert_validation, cores, count_audit, ids, phones};
+use mw_core::{
+    ClientPatch, ClientPhone, ClientRef, CoreError, NewClient, NewOrder, OrderFilter, OrderSort,
+};
 use mw_domain::permission::Permission;
 
 #[tokio::test]
@@ -14,14 +16,14 @@ async fn create_search_and_optimistic_locking() -> Result<(), CoreError> {
                 &admin(),
                 NewClient {
                     full_name: " ПЁТР ИВАНОВ ".into(),
-                    phone: "+7 (921) 123-45-67".into(),
+                    phones: phones(&["+7 (921) 123-45-67"]),
                     ..Default::default()
                 },
             )
             .await?;
         assert_eq!(
-            (c.full_name.as_str(), c.phone.as_str(), c.version),
-            ("ПЁТР ИВАНОВ", "79211234567", 1)
+            (c.full_name.as_str(), c.phones, c.version),
+            ("ПЁТР ИВАНОВ", phones(&["79211234567"]), 1)
         );
         for q in ["8 921 123 45 67", "9211234567", "+79211234567"] {
             assert_eq!(
@@ -153,12 +155,12 @@ async fn create_search_and_optimistic_locking() -> Result<(), CoreError> {
                 c.id,
                 2,
                 ClientPatch {
-                    phone: Some("8 900 111 22 33".into()),
+                    phones: Some(phones(&["8 900 111 22 33"])),
                     ..Default::default()
                 },
             )
             .await?;
-        assert_eq!((v3.version, v3.phone.as_str()), (3, "89001112233"));
+        assert_eq!((v3.version, v3.phones), (3, phones(&["89001112233"])));
         assert_eq!(
             ids(t
                 .core
@@ -208,7 +210,7 @@ async fn rights_and_validation() -> Result<(), CoreError> {
             .create_client(
                 &intake,
                 NewClient {
-                    phone: "89211234567".into(),
+                    phones: phones(&["89211234567"]),
                     ..Default::default()
                 },
             )
@@ -220,6 +222,179 @@ async fn rights_and_validation() -> Result<(), CoreError> {
                 .await,
             Err(CoreError::Forbidden(Permission::ClientsEdit))
         ));
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn phones_list_keeps_order_and_any_number_finds_the_client() -> Result<(), CoreError> {
+    for t in cores().await {
+        let c = t
+            .core
+            .create_client(
+                &admin(),
+                NewClient {
+                    full_name: "ИВАНОВ ИВАН".into(),
+                    phones: vec![
+                        ClientPhone {
+                            phone: "+7 (921) 123-45-67".into(),
+                            note: String::new(),
+                        },
+                        ClientPhone {
+                            phone: "8 911 765 43 21".into(),
+                            note: " жена ".into(),
+                        },
+                    ],
+                    ..Default::default()
+                },
+            )
+            .await?;
+        assert_eq!(
+            c.phones,
+            vec![
+                ClientPhone {
+                    phone: "79211234567".into(),
+                    note: String::new()
+                },
+                ClientPhone {
+                    phone: "89117654321".into(),
+                    note: "жена".into()
+                }
+            ]
+        );
+        assert_eq!(
+            ids(t
+                .core
+                .find_clients_by_phone(&admin(), "+7 911 765-43-21")
+                .await?),
+            vec![c.id]
+        );
+        assert_eq!(
+            ids(t.core.find_clients(&admin(), "911 765", 50, 0).await?.items),
+            vec![c.id]
+        );
+        let o = t
+            .core
+            .create_order(
+                &admin(),
+                NewOrder {
+                    client: ClientRef::Existing(c.id),
+                    ..common::sample_new_order()
+                },
+            )
+            .await?;
+        let page = t
+            .core
+            .list_orders(
+                &admin(),
+                &OrderFilter::default(),
+                OrderSort::default(),
+                50,
+                0,
+            )
+            .await?;
+        assert_eq!(
+            page.items
+                .iter()
+                .find(|i| i.id == o.id)
+                .unwrap()
+                .client_phone,
+            "79211234567"
+        );
+
+        // replacing_phones_drops_old_numbers_from_lookup
+        let u = t
+            .core
+            .update_client(
+                &admin(),
+                c.id,
+                c.version,
+                ClientPatch {
+                    phones: Some(phones(&["8 911 765 43 21"])),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        assert_eq!(u.phones.len(), 1);
+        let same = t
+            .core
+            .update_client(
+                &admin(),
+                c.id,
+                1,
+                ClientPatch {
+                    phones: Some(phones(&["8 (911) 765-43-21"])),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        assert_eq!(same, u);
+        assert_eq!(t.core.get_client(&admin(), c.id).await?, u);
+        assert!(
+            t.core
+                .find_clients_by_phone(&admin(), "9211234567")
+                .await?
+                .is_empty()
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn phone_list_validation() -> Result<(), CoreError> {
+    for t in cores().await {
+        let bad = |p: Vec<ClientPhone>| NewClient {
+            full_name: "А".into(),
+            phones: p,
+            ..Default::default()
+        };
+        assert_validation(
+            t.core
+                .create_client(
+                    &admin(),
+                    bad(vec![ClientPhone {
+                        phone: "нет".into(),
+                        note: "x".into(),
+                    }]),
+                )
+                .await,
+            &[("phones", "invalid")],
+        );
+        assert_validation(
+            t.core
+                .create_client(
+                    &admin(),
+                    bad(phones(&["8 921 123-45-67", "+7 921 1234567"])),
+                )
+                .await,
+            &[("phones", "duplicate")],
+        );
+        assert_validation(
+            t.core
+                .create_client(
+                    &admin(),
+                    bad(phones(&[
+                        "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11",
+                    ])),
+                )
+                .await,
+            &[("phones", "out_of_range")],
+        );
+        assert_validation(
+            t.core
+                .create_client(
+                    &admin(),
+                    NewClient {
+                        phones: vec![ClientPhone {
+                            phone: " ".into(),
+                            note: " ".into(),
+                        }],
+                        ..Default::default()
+                    },
+                )
+                .await,
+            &[("full_name", "required")],
+        );
     }
     Ok(())
 }

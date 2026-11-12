@@ -87,10 +87,8 @@ impl Core {
                 }
             }
             ClientRef::New(c) => {
-                if c.full_name.trim().is_empty()
-                    && mw_domain::phone::normalize_phone(c.phone.trim()).is_empty()
-                {
-                    errors.push(FieldError::required("full_name"));
+                if let Err(e) = crate::clients::validate_client(&c.full_name, &c.phones) {
+                    errors.extend(e);
                 }
             }
         }

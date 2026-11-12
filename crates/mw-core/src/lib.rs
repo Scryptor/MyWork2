@@ -23,7 +23,7 @@ pub use auth::{
     PasswordScheme, Role, RolePatch, SESSION_IDLE_DAYS, Session, User, UserPatch, hash_password,
     legacy_sha1_hex, verify_password,
 };
-pub use clients::{Client, ClientPatch, NewClient};
+pub use clients::{Client, ClientPatch, ClientPhone, MAX_CLIENT_PHONES, NewClient};
 pub use clock::{Clock, FixedClock, SystemClock};
 pub use core::Core;
 pub use dictionaries::DictionaryItem;

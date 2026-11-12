@@ -288,7 +288,7 @@ pub fn capture_logs() -> LogCapture {
 pub fn new_order(name: &str, phone: &str, brand: &str, model: &str) -> serde_json::Value {
     serde_json::json!({
         "client": { "new": {
-            "full_name": name, "phone": phone, "address": "", "note": "",
+            "full_name": name, "phones": [{ "phone": phone, "note": "" }], "address": "", "note": "",
             "source": "", "blacklisted": false
         } },
         "service_point_id": null, "status_id": null,
