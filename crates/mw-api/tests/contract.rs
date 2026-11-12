@@ -203,3 +203,37 @@ fn documented_operations_match_the_api_map() {
         assert!(ops.iter().any(|o| o == expected), "нет операции {expected}");
     }
 }
+
+#[test]
+fn response_schemas_require_every_property() {
+    // Тела ответов всегда содержат все поля (пустое значение — `null`); у запросов
+    // (`additionalProperties: false`) обязательность задаётся по смыслу поля.
+    let text = mw_api::openapi().to_json().unwrap();
+    let api: serde_json::Value = serde_json::from_str(&text).unwrap();
+    let mut problems = Vec::new();
+    for (name, schema) in api["components"]["schemas"].as_object().unwrap() {
+        let Some(properties) = schema["properties"].as_object() else {
+            continue;
+        };
+        if schema["additionalProperties"] == serde_json::json!(false) {
+            continue;
+        }
+        let required: std::collections::BTreeSet<&str> = schema["required"]
+            .as_array()
+            .map(|a| a.iter().filter_map(|v| v.as_str()).collect())
+            .unwrap_or_default();
+        let missing: Vec<&str> = properties
+            .keys()
+            .map(String::as_str)
+            .filter(|k| !required.contains(k))
+            .collect();
+        if !missing.is_empty() {
+            problems.push(format!("{name}: {missing:?}"));
+        }
+    }
+    assert!(
+        problems.is_empty(),
+        "поля ответов не помечены обязательными:\n{}",
+        problems.join("\n")
+    );
+}

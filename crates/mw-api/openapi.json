@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "MyWork 3 API",
-    "description": "HTTP API учёта сервисного центра MyWork 3.\n\n**Вход.** `POST /api/v1/auth/login` выдаёт токен; дальше он передаётся в заголовке `Authorization: Bearer <токен>`. Если сервер слушает только локальный адрес и в базе нет активных пользователей, вход не нужен (режим без входа): запросы без токена выполняются с полными правами. Узнать это можно по `GET /api/v1/server-info` (`auth_required`).\n\n**Форматы.** Поля JSON — `snake_case`. Деньги — целое число копеек. Даты и время — местное время предприятия без смещения, `YYYY-MM-DDTHH:MM:SS` (в схемах помечены `date-time`, но смещения в них нет).\n\n**Правки.** В теле `PATCH` непереданное поле не меняется; `null` очищает только те поля, которые бывают пустыми; `null` у остальных полей и неизвестные поля — ошибка 400.\n\n**Версия записи.** Изменение заказов, клиентов, пользователей и ролей принимает параметр `version` — версию записи, которую видел клиент; устаревшая даёт 409 с `current_version`.\n\n**Ошибки.** Любая ошибка — JSON `ErrorBody` с полями `code`, `message` (по-русски), `fields`, `current_version`, `permission`, `retry_after_secs`. Коды: `bad_request` (400, 405, 415), `unauthenticated` и `invalid_credentials` (401), `forbidden` (403), `not_found` (404), `conflict` (409), `validation` (422), `too_many_attempts` (429), `unavailable` (503), `internal` (500).",
+    "description": "HTTP API учёта сервисного центра MyWork 3.\n\n**Вход.** `POST /api/v1/auth/login` выдаёт токен; дальше он передаётся в заголовке `Authorization: Bearer <токен>`. Если сервер слушает только локальный адрес и в базе нет активных пользователей, вход не нужен (режим без входа): запросы без токена выполняются с полными правами. Узнать это можно по `GET /api/v1/server-info` (`auth_required`).\n\n**Форматы.** Поля JSON — `snake_case`. Деньги — целое число копеек. Даты и время — местное время предприятия без смещения, `YYYY-MM-DDTHH:MM:SS` (в схемах помечены `date-time`, но смещения в них нет).\n\n**Правки.** В теле `PATCH` непереданное поле не меняется; `null` очищает только те поля, которые бывают пустыми; `null` у остальных полей и неизвестные поля — ошибка 400.\n\n**Версия записи.** Изменение заказов, клиентов, пользователей и ролей принимает параметр `version` — версию записи, которую видел клиент; устаревшая даёт 409 с `current_version`.\n\n**Тело запроса.** Каждый изменяющий запрос (POST, PUT, PATCH, DELETE) должен нести `Content-Type: application/json`, даже без тела (выход, выдача, удаление), иначе ответ 415.\n\n**Ошибки.** Любая ошибка — JSON `ErrorBody` с полями `code`, `message` (по-русски), `fields`, `current_version`, `permission`, `retry_after_secs`. Коды: `bad_request` (400, 405, 413 — тело больше 1 МиБ, 415), `unauthenticated` и `invalid_credentials` (401), `forbidden` (403), `not_found` (404), `conflict` (409), `validation` (422), `too_many_attempts` (429), `unavailable` (503), `internal` (500).",
     "license": {
       "name": "MIT",
       "identifier": "MIT"
@@ -321,7 +321,7 @@
         "tags": [
           "Клиенты"
         ],
-        "summary": "Список и поиск клиентов (право `clients_view`).",
+        "summary": "Список и поиск клиентов (право `clients_view` или `orders_create`).",
         "operationId": "list_clients",
         "parameters": [
           {
@@ -388,7 +388,7 @@
         "tags": [
           "Клиенты"
         ],
-        "summary": "Новый клиент (право `clients_create`).",
+        "summary": "Новый клиент (право `clients_create` или `orders_create`).",
         "operationId": "create_client",
         "requestBody": {
           "content": {
@@ -434,7 +434,7 @@
         "tags": [
           "Клиенты"
         ],
-        "summary": "Клиенты с указанным телефоном (право `clients_view`).",
+        "summary": "Клиенты с указанным телефоном (право `clients_view` или `orders_create`).",
         "operationId": "clients_by_phone",
         "parameters": [
           {
@@ -484,7 +484,7 @@
         "tags": [
           "Клиенты"
         ],
-        "summary": "Карточка клиента (право `clients_view`).",
+        "summary": "Карточка клиента (достаточно войти).",
         "operationId": "get_client",
         "parameters": [
           {
@@ -530,7 +530,7 @@
         "tags": [
           "Клиенты"
         ],
-        "summary": "Изменение клиента по версии записи (право `clients_edit`). Правка без различий\nуспешна и версию не проверяет.",
+        "summary": "Изменение клиента по версии записи (право `clients_edit` или `orders_edit`). Правка без различий\nуспешна и версию не проверяет.",
         "operationId": "update_client",
         "parameters": [
           {
@@ -879,7 +879,7 @@
         "tags": [
           "Заказы"
         ],
-        "summary": "Список заказов с фильтрами, сортировкой и страницами (право `orders_view`;\n`include_deleted` — ещё `orders_delete`).",
+        "summary": "Список заказов с фильтрами, сортировкой и страницами (достаточно войти;\n`include_deleted` требует права `orders_delete`).",
         "operationId": "list_orders",
         "parameters": [
           {
@@ -1088,7 +1088,7 @@
         "tags": [
           "Заказы"
         ],
-        "summary": "Заказы по штрихкоду со сканера (право `orders_view`).",
+        "summary": "Заказы по штрихкоду со сканера (достаточно войти).",
         "operationId": "orders_by_barcode",
         "parameters": [
           {
@@ -1138,7 +1138,7 @@
         "tags": [
           "Заказы"
         ],
-        "summary": "Задать номер следующего заказа (право `settings_edit`).",
+        "summary": "Задать номер следующего заказа (право `settings_manage`).",
         "operationId": "set_next_order_number",
         "requestBody": {
           "content": {
@@ -1177,7 +1177,7 @@
         "tags": [
           "Заказы"
         ],
-        "summary": "Карточка заказа (право `orders_view`).",
+        "summary": "Карточка заказа (достаточно войти).",
         "operationId": "get_order",
         "parameters": [
           {
@@ -2317,6 +2317,7 @@
           "currency_symbol",
           "master_percent",
           "diagnostics_overdue_days",
+          "default_warranty_days",
           "intake_required_fields",
           "timezone"
         ],
@@ -2358,13 +2359,17 @@
       },
       "AuditEntry": {
         "type": "object",
-        "description": "Запись журнала для чтения. `details` — разобранный JSON; `None`, если его нет или он повреждён.",
+        "description": "Запись журнала для чтения. `details` — разобранный JSON; `null`, если его нет или он повреждён.",
         "required": [
           "id",
           "at",
+          "user_id",
           "user_name",
           "action",
-          "summary"
+          "order_id",
+          "client_id",
+          "summary",
+          "details"
         ],
         "properties": {
           "action": {
@@ -2455,7 +2460,7 @@
           },
           "new_password": {
             "type": "string",
-            "description": "Новый пароль (не короче `MIN_PASSWORD_CHARS` символов)."
+            "description": "Новый пароль (не короче 4 символов)."
           }
         },
         "additionalProperties": false
@@ -2612,6 +2617,7 @@
         "type": "object",
         "description": "Кто делает запросы.",
         "required": [
+          "user_id",
           "name",
           "permissions",
           "open_mode"
@@ -2703,7 +2709,10 @@
         "required": [
           "code",
           "message",
-          "fields"
+          "fields",
+          "current_version",
+          "permission",
+          "retry_after_secs"
         ],
         "properties": {
           "code": {
@@ -3133,8 +3142,11 @@
         "required": [
           "id",
           "client_id",
+          "service_point_id",
           "status_id",
           "received_at",
+          "issued_at",
+          "prepaid_at",
           "device_type",
           "brand",
           "model",
@@ -3148,13 +3160,18 @@
           "internal_comment",
           "master",
           "barcode",
+          "estimate_from",
+          "estimate_to",
+          "final_price",
           "prepayment",
           "extra_costs",
           "discount",
+          "warranty_days",
           "need_call",
           "need_parts",
           "created_at",
           "updated_at",
+          "deleted_at",
           "version"
         ],
         "properties": {
@@ -3347,10 +3364,12 @@
         "required": [
           "id",
           "received_at",
+          "issued_at",
           "client_id",
           "client_name",
           "client_phone",
           "client_blacklisted",
+          "service_point_id",
           "status_id",
           "device_type",
           "brand",
@@ -3358,10 +3377,14 @@
           "serial",
           "malfunction",
           "master",
+          "estimate_from",
+          "estimate_to",
           "prepayment",
+          "final_price",
           "need_call",
           "need_parts",
           "barcode",
+          "deleted_at",
           "version"
         ],
         "properties": {
@@ -3526,7 +3549,7 @@
       },
       "OrderPatch": {
         "type": "object",
-        "description": "Частичная правка заказа: `None` — поле не меняется; `Some(None)` очищает необязательное поле.",
+        "description": "Частичная правка заказа: не переданное поле не меняется; `null` очищает необязательное поле.",
         "properties": {
           "brand": {
             "type": "string",
@@ -3843,7 +3866,7 @@
       },
       "ServicePointPatch": {
         "type": "object",
-        "description": "Частичное изменение точки обслуживания; `None` — не менять.",
+        "description": "Частичное изменение точки обслуживания; не переданное поле не меняется.",
         "properties": {
           "archived": {
             "type": "boolean",
@@ -3865,14 +3888,14 @@
         "properties": {
           "password": {
             "type": "string",
-            "description": "Новый пароль (не короче `MIN_PASSWORD_CHARS` символов)."
+            "description": "Новый пароль (не короче 4 символов)."
           }
         },
         "additionalProperties": false
       },
       "SettingsPatch": {
         "type": "object",
-        "description": "Частичное изменение настроек; `None` — не менять. Гарантия: `Some(None)` — «без гарантии».",
+        "description": "Частичное изменение настроек; не переданное поле не меняется. Гарантия: `null` — «без гарантии».",
         "properties": {
           "currency_symbol": {
             "type": "string",
@@ -3976,7 +3999,7 @@
       },
       "StatusPatch": {
         "type": "object",
-        "description": "Частичное изменение статуса; `None` — не менять.",
+        "description": "Частичное изменение статуса; не переданное поле не меняется.",
         "properties": {
           "archived": {
             "type": "boolean",

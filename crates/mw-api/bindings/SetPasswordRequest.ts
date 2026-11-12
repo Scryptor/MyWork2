@@ -5,6 +5,6 @@
  */
 export type SetPasswordRequest = { 
 /**
- * Новый пароль (не короче `MIN_PASSWORD_CHARS` символов).
+ * Новый пароль (не короче 4 символов).
  */
 password: string, };

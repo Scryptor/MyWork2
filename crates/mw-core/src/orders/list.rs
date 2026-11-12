@@ -110,6 +110,7 @@ pub struct OrderListItem {
     /// Когда принят (местное время предприятия).
     pub received_at: NaiveDateTime,
     /// Когда выдан (местное время предприятия); пусто, если не выдан.
+    #[schema(required = true)]
     pub issued_at: Option<NaiveDateTime>,
     /// Номер клиента.
     pub client_id: i64,
@@ -120,6 +121,7 @@ pub struct OrderListItem {
     /// Клиент в чёрном списке.
     pub client_blacklisted: bool,
     /// Номер точки обслуживания; пусто — не указана.
+    #[schema(required = true)]
     pub service_point_id: Option<i64>,
     /// Номер статуса.
     pub status_id: i64,
@@ -136,12 +138,15 @@ pub struct OrderListItem {
     /// Мастер.
     pub master: String,
     /// Оценка стоимости: нижняя граница, в копейках.
+    #[schema(required = true)]
     pub estimate_from: Option<Money>,
     /// Оценка стоимости: верхняя граница, в копейках.
+    #[schema(required = true)]
     pub estimate_to: Option<Money>,
     /// Предоплата, в копейках.
     pub prepayment: Money,
     /// Итоговая цена, в копейках.
+    #[schema(required = true)]
     pub final_price: Option<Money>,
     /// Нужно позвонить клиенту.
     pub need_call: bool,
@@ -150,6 +155,7 @@ pub struct OrderListItem {
     /// Штрихкод заказа.
     pub barcode: String,
     /// Когда удалено (местное время предприятия); пусто, если не удалено.
+    #[schema(required = true)]
     pub deleted_at: Option<NaiveDateTime>,
     /// Версия записи для проверки конфликтов правок.
     pub version: i64,

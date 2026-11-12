@@ -41,7 +41,7 @@ pub struct NewStatus {
     pub color: String,
 }
 
-/// Частичное изменение статуса; `None` — не менять.
+/// Частичное изменение статуса; не переданное поле не меняется.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, ts_rs::TS, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 #[ts(optional_fields)]

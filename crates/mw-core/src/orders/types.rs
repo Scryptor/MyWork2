@@ -78,7 +78,7 @@ pub struct NewOrder {
     pub need_parts: bool,
 }
 
-/// Частичная правка заказа: `None` — поле не меняется; `Some(None)` очищает необязательное поле.
+/// Частичная правка заказа: не переданное поле не меняется; `null` очищает необязательное поле.
 #[derive(Clone, Default, PartialEq, Deserialize, ts_rs::TS, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 #[ts(optional_fields)]
@@ -187,14 +187,17 @@ pub struct Order {
     /// Номер клиента.
     pub client_id: i64,
     /// Номер точки обслуживания; пусто — не указана.
+    #[schema(required = true)]
     pub service_point_id: Option<i64>,
     /// Номер статуса.
     pub status_id: i64,
     /// Когда принят (местное время предприятия).
     pub received_at: NaiveDateTime,
     /// Когда выдан (местное время предприятия); пусто, если не выдан.
+    #[schema(required = true)]
     pub issued_at: Option<NaiveDateTime>,
     /// Когда внесена предоплата (местное время предприятия).
+    #[schema(required = true)]
     pub prepaid_at: Option<NaiveDateTime>,
     /// Тип устройства.
     pub device_type: String,
@@ -223,10 +226,13 @@ pub struct Order {
     /// Штрихкод заказа.
     pub barcode: String,
     /// Оценка стоимости: нижняя граница, в копейках.
+    #[schema(required = true)]
     pub estimate_from: Option<Money>,
     /// Оценка стоимости: верхняя граница, в копейках.
+    #[schema(required = true)]
     pub estimate_to: Option<Money>,
     /// Итоговая цена, в копейках.
+    #[schema(required = true)]
     pub final_price: Option<Money>,
     /// Предоплата, в копейках.
     pub prepayment: Money,
@@ -235,6 +241,7 @@ pub struct Order {
     /// Скидка, в копейках.
     pub discount: Money,
     /// Гарантия, в сутках; пусто — без гарантии.
+    #[schema(required = true)]
     pub warranty_days: Option<u16>,
     /// Нужно позвонить клиенту.
     pub need_call: bool,
@@ -245,6 +252,7 @@ pub struct Order {
     /// Когда изменено (местное время предприятия).
     pub updated_at: NaiveDateTime,
     /// Когда удалено (местное время предприятия); пусто, если не удалено.
+    #[schema(required = true)]
     pub deleted_at: Option<NaiveDateTime>,
     /// Версия записи для проверки конфликтов правок.
     pub version: i64,

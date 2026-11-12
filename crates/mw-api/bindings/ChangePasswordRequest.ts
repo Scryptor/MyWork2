@@ -9,6 +9,6 @@ export type ChangePasswordRequest = {
  */
 current_password: string, 
 /**
- * Новый пароль (не короче `MIN_PASSWORD_CHARS` символов).
+ * Новый пароль (не короче 4 символов).
  */
 new_password: string, };

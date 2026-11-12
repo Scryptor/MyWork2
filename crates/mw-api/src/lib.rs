@@ -67,8 +67,11 @@ HTTP API учёта сервисного центра MyWork 3.
 **Версия записи.** Изменение заказов, клиентов, пользователей и ролей принимает параметр \
 `version` — версию записи, которую видел клиент; устаревшая даёт 409 с `current_version`.
 
+**Тело запроса.** Каждый изменяющий запрос (POST, PUT, PATCH, DELETE) должен нести \
+`Content-Type: application/json`, даже без тела (выход, выдача, удаление), иначе ответ 415.
+
 **Ошибки.** Любая ошибка — JSON `ErrorBody` с полями `code`, `message` (по-русски), `fields`, \
-`current_version`, `permission`, `retry_after_secs`. Коды: `bad_request` (400, 405, 415), \
+`current_version`, `permission`, `retry_after_secs`. Коды: `bad_request` (400, 405, 413 — тело больше 1 МиБ, 415), \
 `unauthenticated` и `invalid_credentials` (401), `forbidden` (403), `not_found` (404), \
 `conflict` (409), `validation` (422), `too_many_attempts` (429), `unavailable` (503), \
 `internal` (500).";

@@ -21,6 +21,7 @@ pub struct AppSettings {
     /// Через сколько суток диагностика считается просроченной.
     pub diagnostics_overdue_days: u16,
     /// Гарантия по умолчанию, в сутках; пусто — без гарантии.
+    #[schema(required = true)]
     pub default_warranty_days: Option<u16>,
     /// Требовать заполнения обязательных полей при приёме.
     pub intake_required_fields: bool,
@@ -41,7 +42,7 @@ impl Default for AppSettings {
     }
 }
 
-/// Частичное изменение настроек; `None` — не менять. Гарантия: `Some(None)` — «без гарантии».
+/// Частичное изменение настроек; не переданное поле не меняется. Гарантия: `null` — «без гарантии».
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, ts_rs::TS, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 #[ts(optional_fields)]

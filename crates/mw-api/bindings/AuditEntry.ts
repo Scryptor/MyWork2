@@ -2,7 +2,7 @@
 import type { JsonValue } from "./serde_json/JsonValue";
 
 /**
- * Запись журнала для чтения. `details` — разобранный JSON; `None`, если его нет или он повреждён.
+ * Запись журнала для чтения. `details` — разобранный JSON; `null`, если его нет или он повреждён.
  */
 export type AuditEntry = { 
 /**

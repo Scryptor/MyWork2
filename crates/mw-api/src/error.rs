@@ -46,10 +46,13 @@ pub struct ErrorBody {
     /// Ошибки полей (только для `validation`).
     pub fields: Vec<ErrorField>,
     /// Текущая версия записи (только для `conflict`).
+    #[schema(required = true)]
     pub current_version: Option<i64>,
     /// Недостающее право (только для `forbidden`).
+    #[schema(required = true)]
     pub permission: Option<Permission>,
     /// Через сколько секунд повторить (только для `too_many_attempts`).
+    #[schema(required = true)]
     pub retry_after_secs: Option<u64>,
 }
 

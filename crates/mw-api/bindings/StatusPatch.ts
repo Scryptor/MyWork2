@@ -2,7 +2,7 @@
 import type { StatusKind } from "./StatusKind";
 
 /**
- * Частичное изменение статуса; `None` — не менять.
+ * Частичное изменение статуса; не переданное поле не меняется.
  */
 export type StatusPatch = { 
 /**

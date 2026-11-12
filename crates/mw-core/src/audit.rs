@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::page::validate_page;
 use crate::{Actor, Core, CoreError, Page};
 
-/// Запись журнала для чтения. `details` — разобранный JSON; `None`, если его нет или он повреждён.
+/// Запись журнала для чтения. `details` — разобранный JSON; `null`, если его нет или он повреждён.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
 pub struct AuditEntry {
     /// Номер записи.
@@ -20,18 +20,22 @@ pub struct AuditEntry {
     /// Когда произошло (местное время предприятия).
     pub at: NaiveDateTime,
     /// Номер пользователя; пусто для системных действий.
+    #[schema(required = true)]
     pub user_id: Option<i64>,
     /// Имя пользователя на момент действия.
     pub user_name: String,
     /// Код действия.
     pub action: String,
     /// Номер заказа, к которому относится запись.
+    #[schema(required = true)]
     pub order_id: Option<i64>,
     /// Номер клиента, к которому относится запись.
+    #[schema(required = true)]
     pub client_id: Option<i64>,
     /// Краткое описание.
     pub summary: String,
     /// Подробности в JSON; пусто, если их нет.
+    #[schema(required = true)]
     pub details: Option<serde_json::Value>,
 }
 

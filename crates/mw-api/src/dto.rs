@@ -70,6 +70,7 @@ impl fmt::Debug for LoginResponse {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, ToSchema)]
 pub struct CurrentUser {
     /// Номер пользователя; пусто в режиме без входа.
+    #[schema(required = true)]
     pub user_id: Option<i64>,
     /// Имя для показа и журнала действий.
     pub name: String,
@@ -85,7 +86,7 @@ pub struct CurrentUser {
 pub struct ChangePasswordRequest {
     /// Текущий пароль.
     pub current_password: String,
-    /// Новый пароль (не короче `MIN_PASSWORD_CHARS` символов).
+    /// Новый пароль (не короче 4 символов).
     pub new_password: String,
 }
 
@@ -288,7 +289,7 @@ impl From<mw_core::Page<mw_core::OrderListItem>> for OrderPage {
 #[derive(Clone, Deserialize, TS, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SetPasswordRequest {
-    /// Новый пароль (не короче `MIN_PASSWORD_CHARS` символов).
+    /// Новый пароль (не короче 4 символов).
     pub password: String,
 }
 

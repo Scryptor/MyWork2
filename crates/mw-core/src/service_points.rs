@@ -36,7 +36,7 @@ impl From<service_point::Model> for ServicePoint {
     }
 }
 
-/// Частичное изменение точки обслуживания; `None` — не менять.
+/// Частичное изменение точки обслуживания; не переданное поле не меняется.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, ts_rs::TS, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 #[ts(optional_fields)]
