@@ -7,6 +7,9 @@ use sha2::{Digest, Sha256};
 use tempfile::TempDir;
 
 use crate::fixture::{FixtureOptions, FixtureVersion, write_fixture};
+use crate::folder::{LegacyFolder, scan_folder};
+use crate::report::Warnings;
+use crate::source::{LegacyDb, read_database};
 
 /// Собирает синтетическую папку MyWork 2 указанной версии во временной папке.
 pub(crate) async fn fixture(version: FixtureVersion) -> TempDir {
@@ -47,4 +50,21 @@ pub(crate) fn hash_tree(path: &Path) -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
     walk(path, path, &mut out);
     out
+}
+
+/// Фикстура указанной версии, прочитанная так же, как читает импорт: база и папка.
+pub(crate) async fn prepared(version: FixtureVersion) -> (LegacyDb, LegacyFolder) {
+    let dir = fixture(version).await;
+    let folder = scan_folder(dir.path()).unwrap();
+    let db = read_database(&folder.db_file).await.unwrap();
+    // Папка фикстуры удаляется вместе с `dir`; тесты используют только уже прочитанное.
+    (db, folder)
+}
+
+/// Пары (код, ключ) предупреждений по порядку.
+pub(crate) fn codes(w: &Warnings) -> Vec<(&str, &str)> {
+    w.list()
+        .iter()
+        .map(|x| (x.code.as_str(), x.key.as_str()))
+        .collect()
 }
