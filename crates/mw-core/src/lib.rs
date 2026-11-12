@@ -11,6 +11,7 @@ mod error;
 mod orders;
 mod page;
 mod patch;
+mod search_index;
 mod service_points;
 mod settings;
 mod sql;
@@ -33,6 +34,7 @@ pub use orders::{
     OrderSortField,
 };
 pub use page::Page;
+pub use search_index::{ReindexStats, SEARCH_INDEX_VERSION};
 pub use service_points::{ServicePoint, ServicePointPatch};
 pub use settings::{AppSettings, SettingsPatch};
 pub use statuses::{NewStatus, Status, StatusPatch};

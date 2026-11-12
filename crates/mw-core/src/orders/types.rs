@@ -1,7 +1,6 @@
 use chrono::NaiveDateTime;
 use mw_db::entity::order;
 use mw_domain::money::Money;
-use mw_domain::search::index_text;
 use mw_domain::warranty::{WarrantyTerm, WarrantyUnit, parse_warranty_term};
 use serde::{Deserialize, Serialize};
 
@@ -407,20 +406,6 @@ impl std::fmt::Debug for Order {
             .field("version", &self.version)
             .finish()
     }
-}
-
-/// Текст для поиска по заказу (без данных клиента: поиск соединяет таблицы).
-pub(crate) fn order_search_text(m: &order::Model) -> String {
-    index_text(&[
-        &m.id.to_string(),
-        &m.device_type,
-        &m.brand,
-        &m.model,
-        &m.serial,
-        &m.barcode,
-        &m.malfunction,
-        &m.color,
-    ])
 }
 
 /// Срок гарантии из колонок: в сутках, в месяцах или не определён.

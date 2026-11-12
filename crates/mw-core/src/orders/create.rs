@@ -10,8 +10,9 @@ use sea_orm::{
 };
 use serde_json::json;
 
-use super::types::{order_search_text, warranty_columns};
+use super::types::warranty_columns;
 use crate::clients::{find_live, insert_client};
+use crate::search_index::order_search_text;
 use crate::{Actor, ClientRef, Core, CoreError, NewAuditEntry, NewOrder, Order, write_audit};
 
 const ENTITY: &str = "заказ";

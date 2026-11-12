@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 use mw_db::entity::{client, client_phone};
 use mw_domain::permission::Permission;
 use mw_domain::phone::{normalize_phone, phone_key};
-use mw_domain::search::{index_text, like_contains, search_tokens};
+use mw_domain::search::{like_contains, search_tokens};
 use mw_domain::validation::FieldError;
 use sea_orm::ExprTrait;
 use sea_orm::sea_query::{Expr, Query};
@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 
 use crate::page::validate_page;
+use crate::search_index::client_search_text;
 use crate::sql::text_sort;
 use crate::{Actor, Core, CoreError, NewAuditEntry, Page, write_audit};
 
@@ -130,9 +131,8 @@ pub struct ClientPatch {
 }
 
 fn search_text(full_name: &str, phones: &[ClientPhone]) -> String {
-    let mut parts: Vec<&str> = vec![full_name];
-    parts.extend(phones.iter().map(|p| p.phone.as_str()));
-    index_text(&parts)
+    let numbers: Vec<String> = phones.iter().map(|p| p.phone.clone()).collect();
+    client_search_text(full_name, &numbers)
 }
 
 /// Оставляет в номерах цифры, обрезает пометки, отбрасывает записи без цифр.

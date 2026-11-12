@@ -11,7 +11,7 @@ use mw_core::{
     Actor, ClientPhone, ClientRef, Core, CoreError, FixedClock, NewClient, NewOrder, OrderFilter,
     OrderPatch, OrderSort,
 };
-use mw_db::entity::{audit_log, order, role, session, status, user};
+use mw_db::entity::{audit_log, client, order, role, session, setting, status, user};
 use mw_domain::permission::Permission;
 use mw_domain::status::StatusKind;
 use sea_orm::{
@@ -437,4 +437,43 @@ pub async fn audit_details(core: &Core, action: &str) -> Vec<serde_json::Value> 
             })
         })
         .collect()
+}
+
+/// Записывает `search_text` клиента в обход `Core` (имитация устаревшего индекса).
+pub async fn set_search_text_directly(core: &Core, client_id: i64, text: &str) {
+    client::ActiveModel {
+        id: Set(client_id),
+        search_text: Set(text.to_owned()),
+        ..Default::default()
+    }
+    .update(core.db())
+    .await
+    .unwrap();
+}
+
+/// Записывает настройку в обход `Core`.
+pub async fn set_setting_directly(core: &Core, key: &str, value: serde_json::Value) {
+    let row = setting::ActiveModel {
+        key: Set(key.to_owned()),
+        value: Set(value.to_string()),
+    };
+    setting::Entity::insert(row)
+        .on_conflict(
+            sea_orm::sea_query::OnConflict::column(setting::Column::Key)
+                .update_column(setting::Column::Value)
+                .to_owned(),
+        )
+        .exec_without_returning(core.db())
+        .await
+        .unwrap();
+}
+
+/// Значение настройки как JSON.
+pub async fn setting_value(core: &Core, key: &str) -> serde_json::Value {
+    let row = setting::Entity::find_by_id(key)
+        .one(core.db())
+        .await
+        .unwrap()
+        .unwrap();
+    serde_json::from_str(&row.value).unwrap()
 }

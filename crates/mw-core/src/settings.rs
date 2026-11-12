@@ -185,7 +185,11 @@ async fn load(conn: &impl ConnectionTrait) -> Result<AppSettings, CoreError> {
     })
 }
 
-async fn put(conn: &impl ConnectionTrait, key: &str, value: &Value) -> Result<(), CoreError> {
+pub(crate) async fn put(
+    conn: &impl ConnectionTrait,
+    key: &str,
+    value: &Value,
+) -> Result<(), CoreError> {
     let row = setting::ActiveModel {
         key: Set(key.to_owned()),
         value: Set(value.to_string()),

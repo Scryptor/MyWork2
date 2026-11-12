@@ -27,6 +27,7 @@ impl Core {
         system_timezone: &str,
     ) -> Result<Core, CoreError> {
         let loaded = settings::ensure_timezone(&db, system_timezone).await?;
+        crate::search_index::ensure_index(&db).await?;
         Ok(Core {
             db,
             clock,
