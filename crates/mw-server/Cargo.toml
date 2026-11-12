@@ -1,0 +1,38 @@
+[package]
+name = "mw-server"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+name = "mw_server"
+path = "src/lib.rs"
+
+[[bin]]
+name = "mw-server"
+path = "src/main.rs"
+
+[dependencies]
+mw-api = { path = "../mw-api" }
+mw-core = { path = "../mw-core" }
+mw-db = { path = "../mw-db" }
+mw-domain = { path = "../mw-domain" }
+axum = { workspace = true }
+sea-orm = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "signal", "sync"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+clap = { workspace = true }
+dirs = { workspace = true }
+rpassword = { workspace = true }
+iana-time-zone = { workspace = true }
+url = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+mw-db = { path = "../mw-db" }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "signal", "sync", "time", "io-util"] }

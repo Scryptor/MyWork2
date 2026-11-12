@@ -1,0 +1,154 @@
+use crate::config::{Config, ServerError, redact_database_url};
+use axum::Router;
+use mw_api::ApiConfig;
+use mw_core::{Core, SystemClock};
+use sea_orm::DatabaseConnection;
+use std::future::Future;
+use std::net::SocketAddr;
+use std::sync::Arc;
+use tokio::net::TcpListener;
+
+/// Запущенный, но ещё не обслуживающий запросы сервер: база подключена и мигрирована, порт занят.
+pub struct Server {
+    core: Core,
+    db: DatabaseConnection,
+    listener: TcpListener,
+    router: Router,
+}
+
+/// Подключает базу и применяет миграции; сообщение ошибки не содержит адреса базы.
+pub(crate) async fn connect_and_migrate(
+    config: &Config,
+) -> Result<DatabaseConnection, ServerError> {
+    std::fs::create_dir_all(&config.data_dir).map_err(|source| ServerError::Io {
+        context: format!(
+            "не удалось создать папку данных {}",
+            config.data_dir.display()
+        ),
+        source,
+    })?;
+    let url = config.database_url();
+    tracing::info!("база данных: {}", redact_database_url(&url));
+    let db = mw_db::connect(&url).await.map_err(|e| {
+        ServerError::Database(format!("не удалось подключиться к базе данных: {e}"))
+    })?;
+    migrate(&db).await?;
+    Ok(db)
+}
+
+async fn migrate(db: &DatabaseConnection) -> Result<(), ServerError> {
+    mw_db::migrate(db).await.map_err(|e| {
+        ServerError::Database(format!(
+            "не удалось применить миграции (возможно, база создана более новой версией программы): {e}"
+        ))
+    })
+}
+
+pub(crate) fn system_timezone(config: &Config) -> String {
+    config
+        .timezone
+        .clone()
+        .or_else(|| iana_time_zone::get_timezone().ok())
+        .unwrap_or_else(|| "UTC".to_string())
+}
+
+impl Server {
+    /// Создаёт папку данных, подключает базу, применяет миграции и занимает порт.
+    pub async fn start(config: &Config) -> Result<Server, ServerError> {
+        let db = connect_and_migrate(config).await?;
+        Server::start_with_db(config, db).await
+    }
+
+    /// То же на уже подключённой базе (тесты, десктоп).
+    pub async fn start_with_db(
+        config: &Config,
+        db: DatabaseConnection,
+    ) -> Result<Server, ServerError> {
+        migrate(&db).await?;
+        let core = Core::open(db.clone(), Arc::new(SystemClock), &system_timezone(config)).await?;
+        let listener =
+            TcpListener::bind(config.listen)
+                .await
+                .map_err(|source| ServerError::Io {
+                    context: format!("не удалось занять адрес {}", config.listen),
+                    source,
+                })?;
+        let local_addr = listener.local_addr().map_err(|source| ServerError::Io {
+            context: "не удалось узнать адрес сервера".into(),
+            source,
+        })?;
+        let router = mw_api::router(core.clone(), ApiConfig::for_listen_addr(local_addr));
+        tracing::info!("сервер слушает {local_addr}");
+        Ok(Server {
+            core,
+            db,
+            listener,
+            router,
+        })
+    }
+
+    pub fn local_addr(&self) -> SocketAddr {
+        // Адрес известен с момента привязки; запасной вариант нужен только для типов.
+        self.listener
+            .local_addr()
+            .unwrap_or_else(|_| SocketAddr::from(([127, 0, 0, 1], 0)))
+    }
+
+    pub fn core(&self) -> &Core {
+        &self.core
+    }
+
+    /// Обслуживает запросы до сигнала `shutdown`, затем закрывает пул базы.
+    pub async fn serve(
+        self,
+        shutdown: impl Future<Output = ()> + Send + 'static,
+    ) -> Result<(), ServerError> {
+        let Server {
+            core,
+            db,
+            listener,
+            router,
+        } = self;
+        let result = axum::serve(
+            listener,
+            router.into_make_service_with_connect_info::<SocketAddr>(),
+        )
+        .with_graceful_shutdown(shutdown)
+        .await
+        .map_err(|source| ServerError::Io {
+            context: "ошибка сервера".into(),
+            source,
+        });
+        drop(core);
+        if let Err(e) = db.close().await {
+            tracing::warn!("не удалось закрыть соединения с базой: {e}");
+        }
+        tracing::info!("сервер остановлен");
+        result
+    }
+}
+
+/// Ждёт Ctrl+C или (на unix) SIGTERM.
+pub async fn shutdown_signal() {
+    let ctrl_c = async {
+        if tokio::signal::ctrl_c().await.is_err() {
+            std::future::pending::<()>().await;
+        }
+    };
+    #[cfg(unix)]
+    let terminate = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut signal) => {
+                signal.recv().await;
+            }
+            Err(_) => std::future::pending::<()>().await,
+        }
+    };
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+    tokio::select! {
+        () = ctrl_c => {},
+        () = terminate => {},
+    }
+    tracing::info!("получен сигнал остановки");
+}
