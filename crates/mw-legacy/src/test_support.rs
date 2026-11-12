@@ -68,3 +68,27 @@ pub(crate) fn codes(w: &Warnings) -> Vec<(&str, &str)> {
         .map(|x| (x.code.as_str(), x.key.as_str()))
         .collect()
 }
+
+/// Преобразование фикстуры указанной версии с временем импорта `2026-11-12 10:00:00`.
+pub(crate) async fn conversion_of(version: FixtureVersion) -> crate::convert::Conversion {
+    let dir = fixture(version).await;
+    let folder = scan_folder(dir.path()).unwrap();
+    let db = read_database(&folder.db_file).await.unwrap();
+    crate::convert::convert(&db, &folder, dt("2026-11-12 10:00:00"))
+}
+
+pub(crate) fn dt(text: &str) -> chrono::NaiveDateTime {
+    chrono::NaiveDateTime::parse_from_str(text, "%Y-%m-%d %H:%M:%S").unwrap()
+}
+
+pub(crate) fn rub(rubles: i64) -> mw_domain::money::Money {
+    mw_domain::money::Money::from_rubles(rubles)
+}
+
+pub(crate) fn order(b: &mw_core::ImportBundle, id: i64) -> &mw_core::ImportedOrder {
+    b.orders.iter().find(|o| o.id == id).unwrap()
+}
+
+pub(crate) fn client(b: &mw_core::ImportBundle, id: i64) -> &mw_core::ImportedClient {
+    b.clients.iter().find(|c| c.id == id).unwrap()
+}
