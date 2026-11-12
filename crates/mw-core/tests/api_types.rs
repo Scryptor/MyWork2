@@ -50,7 +50,6 @@ const NULLABLE: &[(&str, &str)] = &[
     ("OrderPatch", "estimate_from"),
     ("OrderPatch", "estimate_to"),
     ("OrderPatch", "final_price"),
-    ("OrderPatch", "warranty_days"),
 ];
 
 /// serde, TypeScript и OpenAPI согласны по каждому полю правки: необязательно, можно ли `null`.
@@ -111,7 +110,7 @@ fn patches_agree_on_absent_null_and_unknown_fields() {
 #[test]
 fn order_patch_json_semantics() {
     let p: OrderPatch = serde_json::from_value(
-        json!({ "brand": "Apple", "estimate_from": null, "warranty_days": 30 }),
+        json!({ "brand": "Apple", "estimate_from": null, "warranty": "30 дней" }),
     )
     .unwrap();
     assert_eq!(
@@ -119,7 +118,7 @@ fn order_patch_json_semantics() {
         OrderPatch {
             brand: Some("Apple".into()),
             estimate_from: Some(None),
-            warranty_days: Some(Some(30)),
+            warranty: Some("30 дней".into()),
             ..Default::default()
         }
     );
@@ -266,7 +265,7 @@ fn request_bodies_require_every_field() {
         "device_type": "", "brand": "", "model": "", "serial": "", "color": "",
         "device_password": "", "completeness": "", "device_condition": "", "malfunction": "",
         "internal_comment": "", "master": "", "estimate_from": null, "estimate_to": null,
-        "prepayment": 0, "warranty_days": null, "need_call": false, "need_parts": false
+        "prepayment": 0, "warranty": "30 дней", "need_call": false, "need_parts": false
     }));
 }
 

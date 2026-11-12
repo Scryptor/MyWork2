@@ -2948,7 +2948,7 @@
           "estimate_from",
           "estimate_to",
           "prepayment",
-          "warranty_days",
+          "warranty",
           "need_call",
           "need_parts"
         ],
@@ -3051,14 +3051,9 @@
             "format": "int64",
             "description": "Номер статуса; пусто — статус по умолчанию."
           },
-          "warranty_days": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32",
-            "description": "Гарантия, в сутках; пусто — без гарантии.",
-            "minimum": 0
+          "warranty": {
+            "type": "string",
+            "description": "Гарантия: текст, как он печатается в акте (например, «30 дней»)."
           }
         },
         "additionalProperties": false
@@ -3195,7 +3190,8 @@
           "prepayment",
           "extra_costs",
           "discount",
-          "warranty_days",
+          "warranty",
+          "warranty_term",
           "need_call",
           "need_parts",
           "created_at",
@@ -3372,14 +3368,20 @@
             "format": "int64",
             "description": "Версия записи для проверки конфликтов правок."
           },
-          "warranty_days": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32",
-            "description": "Гарантия, в сутках; пусто — без гарантии.",
-            "minimum": 0
+          "warranty": {
+            "type": "string",
+            "description": "Гарантия: текст, как он печатается в акте."
+          },
+          "warranty_term": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/WarrantyTerm",
+                "description": "Срок гарантии, выведенный из текста; пусто, если по тексту срок не определить."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "work_done": {
             "type": "string",
@@ -3703,14 +3705,9 @@
             "format": "int64",
             "description": "Номер точки обслуживания; пусто — не указана."
           },
-          "warranty_days": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32",
-            "description": "Гарантия, в сутках; пусто — без гарантии.",
-            "minimum": 0
+          "warranty": {
+            "type": "string",
+            "description": "Гарантия: текст, как он печатается в акте."
           },
           "work_done": {
             "type": "string",
@@ -4115,6 +4112,31 @@
           }
         },
         "additionalProperties": false
+      },
+      "WarrantyTerm": {
+        "type": "object",
+        "description": "Срок гарантии; `value = 0` -- «без гарантии».",
+        "required": [
+          "unit",
+          "value"
+        ],
+        "properties": {
+          "unit": {
+            "$ref": "#/components/schemas/WarrantyUnit"
+          },
+          "value": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "WarrantyUnit": {
+        "type": "string",
+        "enum": [
+          "days",
+          "months"
+        ]
       }
     },
     "securitySchemes": {

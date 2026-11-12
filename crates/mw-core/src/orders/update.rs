@@ -10,8 +10,7 @@ use sea_orm::{
 };
 use serde_json::{Map, Value, json};
 
-use super::create::MAX_WARRANTY_DAYS;
-use super::types::{OrderPatch, order_search_text};
+use super::types::{OrderPatch, order_search_text, warranty_columns};
 use crate::clients::find_live;
 use crate::{Actor, Core, CoreError, NewAuditEntry, Order, write_audit};
 
@@ -193,13 +192,13 @@ impl Core {
             "скидка",
             patch.discount.map(|v| v.kopecks())
         );
-        apply!(
-            d,
-            m,
-            warranty_days,
-            "гарантия",
-            patch.warranty_days.map(|v| v.map(i32::from))
-        );
+        // Текст гарантии и срок, выведенный из него, меняются вместе; в журнале одно поле.
+        if let Some(new) = trimmed(patch.warranty)
+            && new != m.warranty_text
+        {
+            d.note("warranty", "гарантия", json!(m.warranty_text), json!(new));
+            (m.warranty_text, m.warranty_days, m.warranty_months) = warranty_columns(&new);
+        }
         apply!(d, m, need_call, "нужно позвонить", patch.need_call);
         apply!(d, m, need_parts, "требует заказа", patch.need_parts);
 
@@ -242,12 +241,6 @@ impl Core {
             if d.changes.contains_key(field) && value.is_some_and(|v| v < 0) {
                 errors.push(FieldError::new(field, "out_of_range"));
             }
-        }
-        if d.changes.contains_key("warranty_days")
-            && m.warranty_days
-                .is_some_and(|days| days < 0 || days > i32::from(MAX_WARRANTY_DAYS))
-        {
-            errors.push(FieldError::new("warranty_days", "out_of_range"));
         }
         if let (Some(from), Some(to)) = (m.estimate_from, m.estimate_to)
             && from > to
@@ -313,7 +306,15 @@ impl Core {
             .col_expr(order::Column::Prepayment, Expr::value(m.prepayment))
             .col_expr(order::Column::ExtraCosts, Expr::value(m.extra_costs))
             .col_expr(order::Column::Discount, Expr::value(m.discount))
+            .col_expr(
+                order::Column::WarrantyText,
+                Expr::value(m.warranty_text.clone()),
+            )
             .col_expr(order::Column::WarrantyDays, Expr::value(m.warranty_days))
+            .col_expr(
+                order::Column::WarrantyMonths,
+                Expr::value(m.warranty_months),
+            )
             .col_expr(order::Column::NeedCall, Expr::value(m.need_call))
             .col_expr(order::Column::NeedParts, Expr::value(m.need_parts))
             .col_expr(

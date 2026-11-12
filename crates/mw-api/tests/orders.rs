@@ -29,6 +29,10 @@ async fn intake_and_read() {
             (&json!("2026-11-11T09:00:00"), &json!("2026-11-11T09:00:00"))
         );
         assert_eq!(
+            (&o["warranty"], &o["warranty_term"]),
+            (&json!("30 дней"), &json!({ "unit": "days", "value": 30 }))
+        );
+        assert_eq!(
             t.get(&format!("/api/v1/orders/{id}"), Some(&token))
                 .await
                 .body,
@@ -166,6 +170,7 @@ async fn edits_status_issue_delete_with_versions() {
         );
         assert_eq!(patch(3, json!({ "brand": null })).await.status, 400);
         assert_eq!(patch(3, json!({ "brnad": "Apple" })).await.status, 400);
+        assert_eq!(patch(3, json!({ "warranty_days": 30 })).await.status, 400);
         let r = patch(1, json!({ "model": "X" })).await;
         assert_eq!((r.status, &r.body["current_version"]), (409, &json!(3)));
         assert_eq!(

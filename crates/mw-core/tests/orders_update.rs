@@ -2,7 +2,7 @@ mod common;
 
 use chrono::Duration;
 use common::*;
-use mw_core::{CoreError, OrderPatch};
+use mw_core::{CoreError, NewOrder, OrderPatch};
 use mw_domain::permission::Permission;
 use serde_json::json;
 
@@ -220,7 +220,7 @@ async fn delete_is_soft_and_blocks_edits() -> Result<(), CoreError> {
 }
 
 #[tokio::test]
-async fn negative_money_and_absurd_warranty_are_rejected_on_update() -> Result<(), CoreError> {
+async fn negative_money_is_rejected_on_update() -> Result<(), CoreError> {
     use mw_domain::money::Money;
     for t in cores().await {
         let o = t.core.create_order(&admin(), sample_new_order()).await?;
@@ -238,22 +238,14 @@ async fn negative_money_and_absurd_warranty_are_rejected_on_update() -> Result<(
             patch(OrderPatch {
                 extra_costs: Some(Money::from_kopecks(-1)),
                 final_price: Some(Some(Money::from_kopecks(-5))),
-                warranty_days: Some(Some(3651)),
                 ..Default::default()
             })
             .await,
             &[
                 ("extra_costs", "out_of_range"),
                 ("final_price", "out_of_range"),
-                ("warranty_days", "out_of_range"),
             ],
         );
-        let u = patch(OrderPatch {
-            warranty_days: Some(Some(3650)),
-            ..Default::default()
-        })
-        .await?;
-        assert_eq!(u.warranty_days, Some(3650), "{}", t.label);
     }
     Ok(())
 }
@@ -290,6 +282,78 @@ async fn caller_supplied_dates_are_truncated_to_whole_seconds() -> Result<(), Co
             assert_eq!(v.nanosecond(), 0, "{}", t.label);
             assert_eq!(v.second(), 12);
         }
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn warranty_text_is_kept_and_term_is_derived() -> Result<(), CoreError> {
+    use mw_domain::warranty::WarrantyTerm;
+    for t in cores().await {
+        let o = t
+            .core
+            .create_order(
+                &admin(),
+                NewOrder {
+                    warranty: " 3 мес ".into(),
+                    ..sample_new_order()
+                },
+            )
+            .await?;
+        assert_eq!(
+            (o.warranty.as_str(), o.warranty_term),
+            ("3 мес", Some(WarrantyTerm::months(3))),
+            "{}",
+            t.label
+        );
+        let o = t
+            .core
+            .update_order(
+                &admin(),
+                o.id,
+                o.version,
+                OrderPatch {
+                    warranty: Some("Без гарантии".into()),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        assert_eq!(o.warranty_term, Some(WarrantyTerm::days(0)));
+        assert_eq!(
+            last_audit(&t.core, o.id).await.details.unwrap()["changes"]["warranty"],
+            json!(["3 мес", "Без гарантии"])
+        );
+        let o = t
+            .core
+            .update_order(
+                &admin(),
+                o.id,
+                o.version,
+                OrderPatch {
+                    warranty: Some("30 дней — чистка, 6 мес блок питания".into()),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        assert_eq!(o.warranty_term, None);
+        assert_eq!(
+            t.core.get_order(&admin(), o.id).await?.warranty,
+            "30 дней — чистка, 6 мес блок питания"
+        );
+        // Та же запись другими пробелами — не правка.
+        let same = t
+            .core
+            .update_order(
+                &admin(),
+                o.id,
+                o.version,
+                OrderPatch {
+                    warranty: Some(format!(" {} ", o.warranty)),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        assert_eq!(same.version, o.version);
     }
     Ok(())
 }

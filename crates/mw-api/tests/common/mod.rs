@@ -297,7 +297,7 @@ pub fn new_order(name: &str, phone: &str, brand: &str, model: &str) -> serde_jso
         "device_condition": "", "malfunction": "Не включается",
         "internal_comment": "", "master": "",
         "estimate_from": null, "estimate_to": null, "prepayment": 0,
-        "warranty_days": null, "need_call": false, "need_parts": false
+        "warranty": "30 дней", "need_call": false, "need_parts": false
     })
 }
 

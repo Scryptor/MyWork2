@@ -75,9 +75,9 @@ estimate_to: Money | null,
  */
 prepayment: Money, 
 /**
- * Гарантия, в сутках; пусто — без гарантии.
+ * Гарантия: текст, как он печатается в акте (например, «30 дней»).
  */
-warranty_days: number | null, 
+warranty: string, 
 /**
  * Нужно позвонить клиенту.
  */

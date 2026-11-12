@@ -221,6 +221,7 @@ pub fn sample_new_order() -> mw_core::NewOrder {
         brand: "Samsung".into(),
         model: "A52".into(),
         malfunction: "Разбит экран".into(),
+        warranty: "30 дней".into(),
         ..Default::default()
     }
 }

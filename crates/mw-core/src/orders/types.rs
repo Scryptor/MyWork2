@@ -2,6 +2,7 @@ use chrono::NaiveDateTime;
 use mw_db::entity::order;
 use mw_domain::money::Money;
 use mw_domain::search::index_text;
+use mw_domain::warranty::{WarrantyTerm, WarrantyUnit, parse_warranty_term};
 use serde::{Deserialize, Serialize};
 
 use crate::NewClient;
@@ -68,10 +69,8 @@ pub struct NewOrder {
     pub estimate_to: Option<Money>,
     /// Предоплата, в копейках.
     pub prepayment: Money,
-    /// Гарантия, в сутках; пусто — без гарантии.
-    #[serde(deserialize_with = "crate::patch::required_nullable")]
-    #[schema(required = true)]
-    pub warranty_days: Option<u16>,
+    /// Гарантия: текст, как он печатается в акте (например, «30 дней»).
+    pub warranty: String,
     /// Нужно позвонить клиенту.
     pub need_call: bool,
     /// Нужны запчасти.
@@ -166,9 +165,10 @@ pub struct OrderPatch {
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub discount: Option<Money>,
-    /// Гарантия, в сутках; пусто — без гарантии.
-    #[serde(default, deserialize_with = "crate::patch::nullable")]
-    pub warranty_days: Option<Option<u16>>,
+    /// Гарантия: текст, как он печатается в акте.
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
+    pub warranty: Option<String>,
     /// Нужно позвонить клиенту.
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
@@ -240,9 +240,11 @@ pub struct Order {
     pub extra_costs: Money,
     /// Скидка, в копейках.
     pub discount: Money,
-    /// Гарантия, в сутках; пусто — без гарантии.
+    /// Гарантия: текст, как он печатается в акте.
+    pub warranty: String,
+    /// Срок гарантии, выведенный из текста; пусто, если по тексту срок не определить.
     #[schema(required = true)]
-    pub warranty_days: Option<u16>,
+    pub warranty_term: Option<WarrantyTerm>,
     /// Нужно позвонить клиенту.
     pub need_call: bool,
     /// Нужны запчасти.
@@ -261,6 +263,7 @@ pub struct Order {
 impl From<order::Model> for Order {
     fn from(m: order::Model) -> Self {
         let money = |v: i64| Money::from_kopecks(v);
+        let term = warranty_term(&m);
         Self {
             id: m.id,
             client_id: m.client_id,
@@ -288,7 +291,8 @@ impl From<order::Model> for Order {
             prepayment: money(m.prepayment),
             extra_costs: money(m.extra_costs),
             discount: money(m.discount),
-            warranty_days: m.warranty_days.and_then(|d| u16::try_from(d).ok()),
+            warranty_term: term,
+            warranty: m.warranty_text,
             need_call: m.need_call,
             need_parts: m.need_parts,
             created_at: m.created_at,
@@ -320,7 +324,7 @@ impl std::fmt::Debug for NewOrder {
             .field("estimate_from", &self.estimate_from)
             .field("estimate_to", &self.estimate_to)
             .field("prepayment", &self.prepayment)
-            .field("warranty_days", &self.warranty_days)
+            .field("warranty", &self.warranty)
             .field("need_call", &self.need_call)
             .field("need_parts", &self.need_parts)
             .finish()
@@ -356,7 +360,7 @@ impl std::fmt::Debug for OrderPatch {
             .field("prepayment", &self.prepayment)
             .field("extra_costs", &self.extra_costs)
             .field("discount", &self.discount)
-            .field("warranty_days", &self.warranty_days)
+            .field("warranty", &self.warranty)
             .field("need_call", &self.need_call)
             .field("need_parts", &self.need_parts)
             .finish()
@@ -393,7 +397,8 @@ impl std::fmt::Debug for Order {
             .field("prepayment", &self.prepayment)
             .field("extra_costs", &self.extra_costs)
             .field("discount", &self.discount)
-            .field("warranty_days", &self.warranty_days)
+            .field("warranty", &self.warranty)
+            .field("warranty_term", &self.warranty_term)
             .field("need_call", &self.need_call)
             .field("need_parts", &self.need_parts)
             .field("created_at", &self.created_at)
@@ -416,6 +421,32 @@ pub(crate) fn order_search_text(m: &order::Model) -> String {
         &m.malfunction,
         &m.color,
     ])
+}
+
+/// Срок гарантии из колонок: в сутках, в месяцах или не определён.
+fn warranty_term(m: &order::Model) -> Option<WarrantyTerm> {
+    let value = |v: i32| u16::try_from(v).ok();
+    match (m.warranty_days, m.warranty_months) {
+        (Some(d), _) => value(d).map(WarrantyTerm::days),
+        (None, Some(n)) => value(n).map(WarrantyTerm::months),
+        (None, None) => None,
+    }
+}
+
+/// Колонки гарантии по тексту: текст без пробелов по краям, сутки, месяцы.
+pub(super) fn warranty_columns(text: &str) -> (String, Option<i32>, Option<i32>) {
+    let text = text.trim().to_owned();
+    match parse_warranty_term(&text) {
+        Some(WarrantyTerm {
+            unit: WarrantyUnit::Days,
+            value,
+        }) => (text, Some(i32::from(value)), None),
+        Some(WarrantyTerm {
+            unit: WarrantyUnit::Months,
+            value,
+        }) => (text, None, Some(i32::from(value))),
+        None => (text, None, None),
+    }
 }
 
 #[cfg(test)]

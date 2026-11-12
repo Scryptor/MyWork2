@@ -94,9 +94,9 @@ extra_costs?: Money,
  */
 discount?: Money, 
 /**
- * Гарантия, в сутках; пусто — без гарантии.
+ * Гарантия: текст, как он печатается в акте.
  */
-warranty_days?: number | null, 
+warranty?: string, 
 /**
  * Нужно позвонить клиенту.
  */

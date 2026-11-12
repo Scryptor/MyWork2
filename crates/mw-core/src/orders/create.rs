@@ -10,14 +10,11 @@ use sea_orm::{
 };
 use serde_json::json;
 
-use super::types::order_search_text;
+use super::types::{order_search_text, warranty_columns};
 use crate::clients::{find_live, insert_client};
 use crate::{Actor, ClientRef, Core, CoreError, NewAuditEntry, NewOrder, Order, write_audit};
 
 const ENTITY: &str = "заказ";
-
-/// Гарантия не больше десяти лет.
-pub(super) const MAX_WARRANTY_DAYS: u16 = 3650;
 
 fn trimmed(s: &str) -> String {
     s.trim().to_owned()
@@ -71,9 +68,6 @@ impl Core {
             if value.is_some_and(|v| v < 0) {
                 errors.push(FieldError::new(field, "out_of_range"));
             }
-        }
-        if new.warranty_days.is_some_and(|d| d > MAX_WARRANTY_DAYS) {
-            errors.push(FieldError::new("warranty_days", "out_of_range"));
         }
         if let (Some(from), Some(to)) = (new.estimate_from, new.estimate_to)
             && from > to
@@ -130,6 +124,7 @@ impl Core {
             ClientRef::New(c) => insert_client(&tx, now, c).await?.id,
         };
         let prepayment = new.prepayment.kopecks();
+        let (warranty_text, warranty_days, warranty_months) = warranty_columns(&new.warranty);
         let inserted = order::ActiveModel {
             id: NotSet,
             client_id: Set(client_id),
@@ -157,9 +152,9 @@ impl Core {
             prepayment: Set(prepayment),
             extra_costs: Set(0),
             discount: Set(0),
-            warranty_days: Set(new.warranty_days.map(i32::from)),
-            warranty_text: Set(String::new()),
-            warranty_months: Set(None),
+            warranty_days: Set(warranty_days),
+            warranty_text: Set(warranty_text),
+            warranty_months: Set(warranty_months),
             need_call: Set(new.need_call),
             need_parts: Set(new.need_parts),
             created_at: Set(now),
