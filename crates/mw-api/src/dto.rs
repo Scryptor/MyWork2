@@ -283,3 +283,74 @@ impl From<mw_core::Page<mw_core::OrderListItem>> for OrderPage {
         }
     }
 }
+
+/// Новый пароль пользователя, который задаёт администратор.
+#[derive(Clone, Deserialize, TS, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SetPasswordRequest {
+    /// Новый пароль (не короче `MIN_PASSWORD_CHARS` символов).
+    pub password: String,
+}
+
+impl fmt::Debug for SetPasswordRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SetPasswordRequest")
+            .field("password", &"***")
+            .finish()
+    }
+}
+
+/// Параметры чтения журнала: фильтры и страница. Время — местное, `ГГГГ-ММ-ДДTЧЧ:ММ:СС`.
+#[derive(Debug, Clone, Default, Deserialize, TS, IntoParams)]
+#[serde(deny_unknown_fields)]
+#[ts(optional_fields)]
+#[into_params(parameter_in = Query)]
+pub struct AuditListQuery {
+    /// Только записи этого заказа.
+    pub order_id: Option<i64>,
+    /// Только записи этого клиента.
+    pub client_id: Option<i64>,
+    /// Только действия этого пользователя.
+    pub user_id: Option<i64>,
+    /// Только действия, код которых начинается с этой строки, например `order.`.
+    pub action_prefix: Option<String>,
+    /// Не раньше этого времени.
+    pub from: Option<chrono::NaiveDateTime>,
+    /// Не позже этого времени.
+    pub to: Option<chrono::NaiveDateTime>,
+    /// Размер страницы, 1..=500; по умолчанию 50.
+    pub limit: Option<u64>,
+    /// Сколько записей пропустить; по умолчанию 0.
+    pub offset: Option<u64>,
+}
+
+impl From<AuditListQuery> for mw_core::AuditFilter {
+    fn from(q: AuditListQuery) -> Self {
+        Self {
+            order_id: q.order_id,
+            client_id: q.client_id,
+            user_id: q.user_id,
+            action_prefix: q.action_prefix,
+            from: q.from,
+            to: q.to,
+        }
+    }
+}
+
+/// Страница журнала.
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
+pub struct AuditPage {
+    /// Записи страницы, новые сверху.
+    pub items: Vec<mw_core::AuditEntry>,
+    /// Сколько записей подходит всего.
+    pub total: u64,
+}
+
+impl From<mw_core::Page<mw_core::AuditEntry>> for AuditPage {
+    fn from(p: mw_core::Page<mw_core::AuditEntry>) -> Self {
+        Self {
+            items: p.items,
+            total: p.total,
+        }
+    }
+}

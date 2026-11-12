@@ -10,6 +10,125 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/api/v1/audit": {
+      "get": {
+        "tags": [
+          "Журнал"
+        ],
+        "summary": "Журнал, новые записи сверху. Без `order_id` и `client_id` нужно право `audit_view`;\nистория заказа или клиента доступна любому вошедшему.",
+        "operationId": "list_audit",
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "query",
+            "description": "Только записи этого заказа.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "description": "Только записи этого клиента.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "description": "Только действия этого пользователя.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "action_prefix",
+            "in": "query",
+            "description": "Только действия, код которых начинается с этой строки, например `order.`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Не раньше этого времени.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Не позже этого времени.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Размер страницы, 1..=500; по умолчанию 50.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Сколько записей пропустить; по умолчанию 0.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Страница журнала",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditPage"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/auth/login": {
       "post": {
         "tags": [
@@ -1342,6 +1461,157 @@
         ]
       }
     },
+    "/api/v1/roles": {
+      "get": {
+        "tags": [
+          "Пользователи и роли"
+        ],
+        "summary": "Список ролей (право `users_manage`).",
+        "operationId": "list_roles",
+        "responses": {
+          "200": {
+            "description": "Роли",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Role"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Пользователи и роли"
+        ],
+        "summary": "Новая роль (право `users_manage`). Неизвестные права отбрасываются.",
+        "operationId": "create_role",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewRole"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Роль создана",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Role"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/roles/{id}": {
+      "patch": {
+        "tags": [
+          "Пользователи и роли"
+        ],
+        "summary": "Изменение роли по версии записи (право `users_manage`). Правка без различий\nуспешна и версию не проверяет.",
+        "operationId": "update_role",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер роли",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "description": "Версия записи, которую правит клиент.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RolePatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Роль после изменения",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Role"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/server-info": {
       "get": {
         "tags": [
@@ -1834,6 +2104,208 @@
           }
         ]
       }
+    },
+    "/api/v1/users": {
+      "get": {
+        "tags": [
+          "Пользователи и роли"
+        ],
+        "summary": "Список пользователей (право `users_manage`).",
+        "operationId": "list_users",
+        "responses": {
+          "200": {
+            "description": "Пользователи",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/User"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Пользователи и роли"
+        ],
+        "summary": "Новый пользователь (право `users_manage`).",
+        "operationId": "create_user",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewUser"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Пользователь создан",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/users/{id}": {
+      "patch": {
+        "tags": [
+          "Пользователи и роли"
+        ],
+        "summary": "Изменение пользователя по версии записи (право `users_manage`). Правка без различий\nуспешна и версию не проверяет.",
+        "operationId": "update_user",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер пользователя",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "description": "Версия записи, которую правит клиент.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Пользователь после изменения",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/users/{id}/password": {
+      "put": {
+        "tags": [
+          "Пользователи и роли"
+        ],
+        "summary": "Сброс пароля пользователя администратором (право `users_manage`).",
+        "operationId": "set_user_password",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер пользователя",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetPasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Пароль задан"
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -1881,6 +2353,91 @@
           "timezone": {
             "type": "string",
             "description": "Часовой пояс предприятия (имя IANA)."
+          }
+        }
+      },
+      "AuditEntry": {
+        "type": "object",
+        "description": "Запись журнала для чтения. `details` — разобранный JSON; `None`, если его нет или он повреждён.",
+        "required": [
+          "id",
+          "at",
+          "user_name",
+          "action",
+          "summary"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "Код действия."
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Когда произошло (местное время предприятия)."
+          },
+          "client_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Номер клиента, к которому относится запись."
+          },
+          "details": {
+            "description": "Подробности в JSON; пусто, если их нет."
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Номер записи."
+          },
+          "order_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Номер заказа, к которому относится запись."
+          },
+          "summary": {
+            "type": "string",
+            "description": "Краткое описание."
+          },
+          "user_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Номер пользователя; пусто для системных действий."
+          },
+          "user_name": {
+            "type": "string",
+            "description": "Имя пользователя на момент действия."
+          }
+        }
+      },
+      "AuditPage": {
+        "type": "object",
+        "description": "Страница журнала.",
+        "required": [
+          "items",
+          "total"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuditEntry"
+            },
+            "description": "Записи страницы, новые сверху."
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Сколько записей подходит всего.",
+            "minimum": 0
           }
         }
       },
@@ -2468,6 +3025,25 @@
         },
         "additionalProperties": false
       },
+      "NewRole": {
+        "type": "object",
+        "description": "Данные новой роли.",
+        "required": [
+          "name",
+          "permissions"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Название роли."
+          },
+          "permissions": {
+            "$ref": "#/components/schemas/PermissionSet",
+            "description": "Набор прав."
+          }
+        },
+        "additionalProperties": false
+      },
       "NewServicePoint": {
         "type": "object",
         "description": "Новая точка обслуживания.",
@@ -2502,6 +3078,36 @@
           "name": {
             "type": "string",
             "description": "Название."
+          }
+        },
+        "additionalProperties": false
+      },
+      "NewUser": {
+        "type": "object",
+        "description": "Данные нового пользователя; пароль в логи не попадает.",
+        "required": [
+          "login",
+          "display_name",
+          "role_id",
+          "password"
+        ],
+        "properties": {
+          "display_name": {
+            "type": "string",
+            "description": "Отображаемое имя."
+          },
+          "login": {
+            "type": "string",
+            "description": "Логин."
+          },
+          "password": {
+            "type": "string",
+            "description": "Пароль."
+          },
+          "role_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Номер роли."
           }
         },
         "additionalProperties": false
@@ -3125,6 +3731,51 @@
         },
         "additionalProperties": false
       },
+      "Role": {
+        "type": "object",
+        "description": "Роль: набор прав.",
+        "required": [
+          "id",
+          "name",
+          "permissions",
+          "version"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Номер роли."
+          },
+          "name": {
+            "type": "string",
+            "description": "Название роли."
+          },
+          "permissions": {
+            "$ref": "#/components/schemas/PermissionSet",
+            "description": "Набор прав."
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Версия записи для проверки конфликтов правок."
+          }
+        }
+      },
+      "RolePatch": {
+        "type": "object",
+        "description": "Частичное изменение роли; отсутствующее поле не меняется.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Название роли."
+          },
+          "permissions": {
+            "$ref": "#/components/schemas/PermissionSet",
+            "description": "Набор прав."
+          }
+        },
+        "additionalProperties": false
+      },
       "ServerInfo": {
         "type": "object",
         "description": "Сведения о сервере; доступны без входа.",
@@ -3201,6 +3852,20 @@
           "name": {
             "type": "string",
             "description": "Название."
+          }
+        },
+        "additionalProperties": false
+      },
+      "SetPasswordRequest": {
+        "type": "object",
+        "description": "Новый пароль пользователя, который задаёт администратор.",
+        "required": [
+          "password"
+        ],
+        "properties": {
+          "password": {
+            "type": "string",
+            "description": "Новый пароль (не короче `MIN_PASSWORD_CHARS` символов)."
           }
         },
         "additionalProperties": false
@@ -3378,6 +4043,26 @@
             "description": "Версия записи для проверки конфликтов правок."
           }
         }
+      },
+      "UserPatch": {
+        "type": "object",
+        "description": "Частичное изменение пользователя; отсутствующее поле не меняется.",
+        "properties": {
+          "active": {
+            "type": "boolean",
+            "description": "Учётная запись активна."
+          },
+          "display_name": {
+            "type": "string",
+            "description": "Отображаемое имя."
+          },
+          "role_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Номер роли."
+          }
+        },
+        "additionalProperties": false
       }
     },
     "securitySchemes": {

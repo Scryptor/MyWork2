@@ -5,11 +5,13 @@ use utoipa_axum::routes;
 
 use crate::state::AppState;
 
+mod audit;
 mod auth;
 mod catalogs;
 mod clients;
 mod meta;
 mod orders;
+mod users;
 
 pub(crate) fn api_routes() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
@@ -51,4 +53,10 @@ pub(crate) fn api_routes() -> OpenApiRouter<AppState> {
         ))
         .routes(routes!(orders::change_order_status))
         .routes(routes!(orders::issue_order))
+        .routes(routes!(users::list_users, users::create_user))
+        .routes(routes!(users::update_user))
+        .routes(routes!(users::set_user_password))
+        .routes(routes!(users::list_roles, users::create_role))
+        .routes(routes!(users::update_role))
+        .routes(routes!(audit::list_audit))
 }

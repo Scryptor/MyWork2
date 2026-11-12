@@ -173,3 +173,33 @@ fn parameters_match_their_paths() {
         }
     }
 }
+
+/// Каждая строка «Карты API» (43, включая `openapi.json`) описана в документе OpenAPI.
+#[test]
+fn documented_operations_match_the_api_map() {
+    let api = serde_json::to_value(mw_api::openapi()).unwrap();
+    let mut ops: Vec<String> = Vec::new();
+    for (path, item) in api["paths"].as_object().unwrap() {
+        for method in ["get", "post", "put", "patch", "delete"] {
+            if item.get(method).is_some() {
+                ops.push(format!("{} {path}", method.to_uppercase()));
+            }
+        }
+    }
+    assert_eq!(ops.len(), 43, "{ops:#?}");
+    for expected in [
+        "GET /api/v1/server-info",
+        "GET /api/v1/openapi.json",
+        "POST /api/v1/auth/password",
+        "PUT /api/v1/statuses/order",
+        "DELETE /api/v1/dictionary-items/{id}",
+        "GET /api/v1/clients/by-phone",
+        "POST /api/v1/orders/{id}/issue",
+        "PUT /api/v1/orders/next-number",
+        "PUT /api/v1/users/{id}/password",
+        "PATCH /api/v1/roles/{id}",
+        "GET /api/v1/audit",
+    ] {
+        assert!(ops.iter().any(|o| o == expected), "нет операции {expected}");
+    }
+}

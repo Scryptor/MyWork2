@@ -5,9 +5,10 @@ use std::path::Path;
 use ts_rs::TS;
 
 use crate::{
-    BarcodeQuery, ChangePasswordRequest, ClientListQuery, ClientPage, CurrentUser, DictionaryValue,
-    ErrorBody, IncludeArchived, LoginRequest, LoginResponse, NewServicePoint, NextOrderNumber,
-    OrderListQuery, OrderPage, PhoneQuery, ReorderRequest, ServerInfo, StatusChange, VersionParam,
+    AuditListQuery, AuditPage, BarcodeQuery, ChangePasswordRequest, ClientListQuery, ClientPage,
+    CurrentUser, DictionaryValue, ErrorBody, IncludeArchived, LoginRequest, LoginResponse,
+    NewServicePoint, NextOrderNumber, OrderListQuery, OrderPage, PhoneQuery, ReorderRequest,
+    ServerInfo, SetPasswordRequest, StatusChange, VersionParam,
 };
 
 /// Выгружает в `dir` TS-типы всех корневых типов API вместе с зависимостями
@@ -44,6 +45,15 @@ pub fn export_typescript(dir: &Path) -> Result<(), ts_rs::ExportError> {
     mw_core::Order::export_all(&cfg)?;
     mw_core::NewClient::export_all(&cfg)?;
     mw_core::ClientPatch::export_all(&cfg)?;
+    SetPasswordRequest::export_all(&cfg)?;
+    AuditListQuery::export_all(&cfg)?;
+    AuditPage::export_all(&cfg)?;
+    mw_core::NewUser::export_all(&cfg)?;
+    mw_core::UserPatch::export_all(&cfg)?;
+    mw_core::User::export_all(&cfg)?;
+    mw_core::NewRole::export_all(&cfg)?;
+    mw_core::RolePatch::export_all(&cfg)?;
+    mw_core::Role::export_all(&cfg)?;
     mw_core::AppSettings::export_all(&cfg)?;
     mw_core::SettingsPatch::export_all(&cfg)?;
     mw_core::Status::export_all(&cfg)?;
