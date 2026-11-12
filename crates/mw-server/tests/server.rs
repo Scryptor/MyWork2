@@ -163,3 +163,15 @@ async fn create_admin_then_login_over_http() {
     assert!(body.contains("\"token\""));
     stop(tx, running, addr, "admin").await;
 }
+
+#[tokio::test]
+async fn connection_error_does_not_leak_the_password() {
+    let mut cfg = config(temp_dir("leak"));
+    cfg.database_url = Some("postgres://mw:Pa55#word@db.invalid:5432/mw".into());
+    let err = Server::start(&cfg)
+        .await
+        .err()
+        .expect("подключение должно не удаться");
+    assert!(!err.to_string().contains("Pa55#word"), "{err}");
+    assert!(!format!("{err:?}").contains("Pa55#word"), "{err:?}");
+}

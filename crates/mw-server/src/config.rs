@@ -40,18 +40,47 @@ impl Config {
     }
 }
 
-/// Заменяет пароль в адресе базы на `***`; адрес без пароля или неразбираемый возвращается как есть.
+/// Скрывает секреты в адресе базы: пароль и параметры с `password` в имени заменяются на `***`;
+/// неразбираемый адрес сводится к `схема://***`. Адрес без секретов возвращается как есть.
 pub fn redact_database_url(url: &str) -> String {
-    match url::Url::parse(url) {
-        Ok(mut parsed) if parsed.password().is_some() => {
-            if parsed.set_password(Some("***")).is_ok() {
-                parsed.to_string()
-            } else {
-                url.to_string()
-            }
-        }
-        _ => url.to_string(),
+    let Ok(mut parsed) = url::Url::parse(url) else {
+        return match url.split_once("://") {
+            Some((scheme, _)) => format!("{scheme}://***"),
+            None => "***".to_string(),
+        };
+    };
+    let mut changed = false;
+    if parsed.password().is_some() && parsed.set_password(Some("***")).is_ok() {
+        changed = true;
     }
+    let has_secret_param = parsed
+        .query_pairs()
+        .any(|(name, _)| name.to_lowercase().contains("password"));
+    if has_secret_param {
+        let pairs: Vec<(String, String)> = parsed
+            .query_pairs()
+            .map(|(name, value)| {
+                let value = if name.to_lowercase().contains("password") {
+                    "***".to_string()
+                } else {
+                    value.into_owned()
+                };
+                (name.into_owned(), value)
+            })
+            .collect();
+        parsed.query_pairs_mut().clear().extend_pairs(pairs);
+        changed = true;
+    }
+    if changed {
+        parsed.to_string()
+    } else {
+        url.to_string()
+    }
+}
+
+/// Заменяет адрес базы в тексте ошибки его скрытой формой.
+pub fn scrub_url(message: &str, url: &str) -> String {
+    message.replace(url, &redact_database_url(url))
 }
 
 /// Ошибки запуска и служебных команд сервера.
@@ -93,10 +122,24 @@ mod tests {
             "postgres://mw:***@db:5432/mw"
         );
         assert_eq!(redact_database_url("postgres://db/mw"), "postgres://db/mw");
+        assert_eq!(redact_database_url("not a url"), "***");
         assert_eq!(
             redact_database_url("sqlite:///data/mywork.db?mode=rwc"),
             "sqlite:///data/mywork.db?mode=rwc"
         );
+    }
+
+    #[test]
+    fn redaction_hides_secrets_in_odd_urls() {
+        let out = redact_database_url("postgres://mw:Pa55#word@db.invalid:5432/mw");
+        assert_eq!(out, "postgres://***");
+        let out = redact_database_url("postgres://mw:a/b?c@h/db");
+        assert!(!out.contains("a/b") && out.starts_with("postgres://"), "{out}");
+        let out = redact_database_url("postgres://db/mw?password=S3cr3t&user=mw");
+        assert!(!out.contains("S3cr3t"), "{out}");
+        assert!(out.contains("user=mw") && out.contains("password=***"), "{out}");
+        let out = redact_database_url("postgres://mw:pw@db/mw?sslPassword=zzz");
+        assert!(!out.contains("zzz") && !out.contains("pw@"), "{out}");
     }
 
     #[test]

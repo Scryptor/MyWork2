@@ -1,4 +1,4 @@
-use crate::config::{Config, ServerError, redact_database_url};
+use crate::config::{Config, ServerError, redact_database_url, scrub_url};
 use axum::Router;
 use mw_api::ApiConfig;
 use mw_core::{Core, SystemClock};
@@ -30,16 +30,21 @@ pub(crate) async fn connect_and_migrate(
     let url = config.database_url();
     tracing::info!("база данных: {}", redact_database_url(&url));
     let db = mw_db::connect(&url).await.map_err(|e| {
-        ServerError::Database(format!("не удалось подключиться к базе данных: {e}"))
+        ServerError::Database(format!(
+            "не удалось подключиться к базе данных: {}",
+            scrub_url(&e.to_string(), &url)
+        ))
     })?;
-    migrate(&db).await?;
+    migrate(&db, Some(&url)).await?;
     Ok(db)
 }
 
-async fn migrate(db: &DatabaseConnection) -> Result<(), ServerError> {
+async fn migrate(db: &DatabaseConnection, url: Option<&str>) -> Result<(), ServerError> {
     mw_db::migrate(db).await.map_err(|e| {
+        let message = e.to_string();
+        let message = url.map_or(message.clone(), |url| scrub_url(&message, url));
         ServerError::Database(format!(
-            "не удалось применить миграции (возможно, база создана более новой версией программы): {e}"
+            "не удалось применить миграции (возможно, база создана более новой версией программы): {message}"
         ))
     })
 }
@@ -64,7 +69,7 @@ impl Server {
         config: &Config,
         db: DatabaseConnection,
     ) -> Result<Server, ServerError> {
-        migrate(&db).await?;
+        migrate(&db, None).await?;
         let core = Core::open(db.clone(), Arc::new(SystemClock), &system_timezone(config)).await?;
         let listener =
             TcpListener::bind(config.listen)

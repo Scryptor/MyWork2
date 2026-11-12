@@ -1,5 +1,5 @@
 use crate::admin::{create_admin, read_password};
-use crate::config::{Config, DEFAULT_LISTEN, ServerError};
+use crate::config::{Config, DEFAULT_LISTEN, ServerError, redact_database_url};
 use crate::paths::{os_data_dir, resolve_data_dir};
 use crate::server::{Server, connect_and_migrate, shutdown_signal, system_timezone};
 use clap::{Parser, Subcommand};
@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 /// Сервер MyWork.
-#[derive(Debug, Parser)]
+#[derive(Parser)]
 #[command(name = "mw-server", version, about = "Сервер MyWork")]
 pub struct Cli {
     /// Адрес и порт, на которых слушает сервер.
@@ -27,6 +27,22 @@ pub struct Cli {
     pub timezone: Option<String>,
     #[command(subcommand)]
     pub command: Option<Command>,
+}
+
+impl std::fmt::Debug for Cli {
+    // Адрес базы может содержать пароль, поэтому в отладочный вывод он попадает только скрытым.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Cli")
+            .field("listen", &self.listen)
+            .field("data_dir", &self.data_dir)
+            .field(
+                "database_url",
+                &self.database_url.as_deref().map(redact_database_url),
+            )
+            .field("timezone", &self.timezone)
+            .field("command", &self.command)
+            .finish()
+    }
 }
 
 #[derive(Debug, Subcommand)]
@@ -97,6 +113,14 @@ fn ask_password() -> Result<String, ServerError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn debug_output_hides_the_database_password() {
+        let cli =
+            Cli::try_parse_from(["mw-server", "--database-url", "postgres://mw:secret@h/db"])
+                .unwrap();
+        assert!(!format!("{cli:?}").contains("secret"));
+    }
 
     #[test]
     fn parses_defaults_and_create_admin() {
