@@ -197,6 +197,283 @@
         ]
       }
     },
+    "/api/v1/clients": {
+      "get": {
+        "tags": [
+          "Клиенты"
+        ],
+        "summary": "Список и поиск клиентов (право `clients_view`).",
+        "operationId": "list_clients",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "description": "Часть имени или телефона; без учёта регистра. Пусто — все клиенты.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Размер страницы, 1..=500; по умолчанию 50.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Сколько записей пропустить; по умолчанию 0.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Страница клиентов",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientPage"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Клиенты"
+        ],
+        "summary": "Новый клиент (право `clients_create`).",
+        "operationId": "create_client",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewClient"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Клиент создан",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Client"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/clients/by-phone": {
+      "get": {
+        "tags": [
+          "Клиенты"
+        ],
+        "summary": "Клиенты с указанным телефоном (право `clients_view`).",
+        "operationId": "clients_by_phone",
+        "parameters": [
+          {
+            "name": "phone",
+            "in": "query",
+            "description": "Телефон, например `8 921 123-45-67`.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Найденные клиенты",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Client"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/clients/{id}": {
+      "get": {
+        "tags": [
+          "Клиенты"
+        ],
+        "summary": "Карточка клиента (право `clients_view`).",
+        "operationId": "get_client",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер клиента",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Клиент",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Client"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "Клиенты"
+        ],
+        "summary": "Изменение клиента по версии записи (право `clients_edit`). Правка без различий\nуспешна и версию не проверяет.",
+        "operationId": "update_client",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер клиента",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "description": "Версия записи, которую правит клиент.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClientPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Клиент после изменения",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Client"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/dictionaries/{kind}": {
       "get": {
         "tags": [
@@ -1039,6 +1316,122 @@
         },
         "additionalProperties": false
       },
+      "Client": {
+        "type": "object",
+        "description": "Клиент.",
+        "required": [
+          "id",
+          "full_name",
+          "phone",
+          "address",
+          "note",
+          "source",
+          "blacklisted",
+          "created_at",
+          "updated_at",
+          "version"
+        ],
+        "properties": {
+          "address": {
+            "type": "string",
+            "description": "Адрес."
+          },
+          "blacklisted": {
+            "type": "boolean",
+            "description": "Клиент в чёрном списке."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Когда создано (местное время предприятия)."
+          },
+          "full_name": {
+            "type": "string",
+            "description": "ФИО клиента."
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Номер клиента."
+          },
+          "note": {
+            "type": "string",
+            "description": "Заметка."
+          },
+          "phone": {
+            "type": "string",
+            "description": "Телефон."
+          },
+          "source": {
+            "type": "string",
+            "description": "Откуда клиент узнал о сервисе."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Когда изменено (местное время предприятия)."
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Версия записи для проверки конфликтов правок."
+          }
+        }
+      },
+      "ClientPage": {
+        "type": "object",
+        "description": "Страница клиентов.",
+        "required": [
+          "items",
+          "total"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Client"
+            },
+            "description": "Клиенты страницы."
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Сколько клиентов подходит всего.",
+            "minimum": 0
+          }
+        }
+      },
+      "ClientPatch": {
+        "type": "object",
+        "description": "Частичное изменение клиента; отсутствующее поле не меняется.",
+        "properties": {
+          "address": {
+            "type": "string",
+            "description": "Адрес."
+          },
+          "blacklisted": {
+            "type": "boolean",
+            "description": "Клиент в чёрном списке."
+          },
+          "full_name": {
+            "type": "string",
+            "description": "ФИО клиента."
+          },
+          "note": {
+            "type": "string",
+            "description": "Заметка."
+          },
+          "phone": {
+            "type": "string",
+            "description": "Телефон."
+          },
+          "source": {
+            "type": "string",
+            "description": "Откуда клиент узнал о сервисе."
+          }
+        },
+        "additionalProperties": false
+      },
       "CurrentUser": {
         "type": "object",
         "description": "Кто делает запросы.",
@@ -1266,6 +1659,45 @@
             "description": "Пользователь."
           }
         }
+      },
+      "NewClient": {
+        "type": "object",
+        "description": "Данные нового клиента.",
+        "required": [
+          "full_name",
+          "phone",
+          "address",
+          "note",
+          "source",
+          "blacklisted"
+        ],
+        "properties": {
+          "address": {
+            "type": "string",
+            "description": "Адрес."
+          },
+          "blacklisted": {
+            "type": "boolean",
+            "description": "Клиент в чёрном списке."
+          },
+          "full_name": {
+            "type": "string",
+            "description": "ФИО клиента."
+          },
+          "note": {
+            "type": "string",
+            "description": "Заметка."
+          },
+          "phone": {
+            "type": "string",
+            "description": "Телефон."
+          },
+          "source": {
+            "type": "string",
+            "description": "Откуда клиент узнал о сервисе."
+          }
+        },
+        "additionalProperties": false
       },
       "NewServicePoint": {
         "type": "object",

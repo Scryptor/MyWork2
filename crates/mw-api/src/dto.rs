@@ -131,3 +131,53 @@ pub struct NewServicePoint {
     /// Название точки.
     pub name: String,
 }
+
+/// Параметры списка и поиска клиентов.
+#[derive(Debug, Clone, Default, Deserialize, TS, IntoParams)]
+#[serde(deny_unknown_fields)]
+#[ts(optional_fields)]
+#[into_params(parameter_in = Query)]
+pub struct ClientListQuery {
+    /// Часть имени или телефона; без учёта регистра. Пусто — все клиенты.
+    pub query: Option<String>,
+    /// Размер страницы, 1..=500; по умолчанию 50.
+    pub limit: Option<u64>,
+    /// Сколько записей пропустить; по умолчанию 0.
+    pub offset: Option<u64>,
+}
+
+/// Телефон для поиска клиентов; в любом написании.
+#[derive(Debug, Clone, Deserialize, TS, IntoParams)]
+#[serde(deny_unknown_fields)]
+#[into_params(parameter_in = Query)]
+pub struct PhoneQuery {
+    /// Телефон, например `8 921 123-45-67`.
+    pub phone: String,
+}
+
+/// Версия записи, которую правит клиент.
+#[derive(Debug, Clone, Deserialize, TS, IntoParams)]
+#[serde(deny_unknown_fields)]
+#[into_params(parameter_in = Query)]
+pub struct VersionParam {
+    /// Версия записи, которую правит клиент.
+    pub version: i64,
+}
+
+/// Страница клиентов.
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
+pub struct ClientPage {
+    /// Клиенты страницы.
+    pub items: Vec<mw_core::Client>,
+    /// Сколько клиентов подходит всего.
+    pub total: u64,
+}
+
+impl From<mw_core::Page<mw_core::Client>> for ClientPage {
+    fn from(p: mw_core::Page<mw_core::Client>) -> Self {
+        Self {
+            items: p.items,
+            total: p.total,
+        }
+    }
+}

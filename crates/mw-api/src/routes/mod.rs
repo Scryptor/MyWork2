@@ -7,6 +7,7 @@ use crate::state::AppState;
 
 mod auth;
 mod catalogs;
+mod clients;
 mod meta;
 
 pub(crate) fn api_routes() -> OpenApiRouter<AppState> {
@@ -36,4 +37,7 @@ pub(crate) fn api_routes() -> OpenApiRouter<AppState> {
         ))
         .routes(routes!(catalogs::update_service_point))
         .routes(routes!(catalogs::reorder_service_points))
+        .routes(routes!(clients::list_clients, clients::create_client))
+        .routes(routes!(clients::clients_by_phone))
+        .routes(routes!(clients::get_client, clients::update_client))
 }
