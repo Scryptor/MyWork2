@@ -31,11 +31,15 @@ async fn logs_never_contain_passwords_tokens_or_search_text() {
         )
         .await;
         let token = t.login("Ирина").await;
-        t.get(
-            "/api/v1/server-info?query=%D0%9A%D0%BE%D0%BD%D1%84%D0%B8%D0%B4%D0%B5%D0%BD%D1%86%D0%B8%D0%B0%D0%BB%D1%8C%D0%BD%D0%BE&phone=9211234567",
-            Some(&token),
-        )
-        .await;
+        let word = "%D0%9A%D0%BE%D0%BD%D1%84%D0%B8%D0%B4%D0%B5%D0%BD%D1%86%D0%B8%D0%B0%D0%BB%D1%8C%D0%BD%D0%BE";
+        for path in [
+            format!("/api/v1/clients?query={word}"),
+            "/api/v1/clients/by-phone?phone=9211234567".to_owned(),
+            format!("/api/v1/orders?query={word}"),
+        ] {
+            let r = t.get(&path, Some(&token)).await;
+            assert_eq!(r.status, 200, "{}: {path}: {}", t.label, r.body);
+        }
         t.get("/api/v1/auth/me", Some(&token)).await;
         secrets.push(token);
     }
