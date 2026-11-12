@@ -55,12 +55,21 @@ pub(crate) struct LegacyFolder {
 
 impl LegacyFolder {
     /// Ищет файл по относительному пути без учёта регистра в каждом сегменте (разделители `/` и `\`).
+    ///
+    /// Путь приходит из содержимого старой базы, поэтому он не должен выводить за пределы папки: пустые сегменты
+    /// (в том числе ведущий разделитель), `.`, `..` и сегменты с `:` (диск `C:`) дают `None`, а найденный файл
+    /// обязан лежать внутри `root` (после раскрытия ссылок).
     pub(crate) fn find_file(&self, relative: &str) -> Option<PathBuf> {
         let mut current = self.root.clone();
-        for segment in relative.split(['/', '\\']).filter(|s| !s.is_empty()) {
+        for segment in relative.split(['/', '\\']) {
+            if segment.is_empty() || segment == "." || segment == ".." || segment.contains(':') {
+                return None;
+            }
             current = find_child(&current, segment)?;
         }
-        current.is_file().then_some(current)
+        let root = self.root.canonicalize().ok()?;
+        let found = current.canonicalize().ok()?;
+        (found.is_file() && found.starts_with(&root)).then_some(current)
     }
 }
 
@@ -267,5 +276,33 @@ mod tests {
         assert_eq!(f.client_files, ["1/1/a.jpg"]);
         assert!(!f.text_files.keys().any(|k| k.contains("backup")));
         assert_eq!(scan_folder(&p.join("BAZA.SQLITE")).unwrap().root, f.root);
+    }
+
+    #[test]
+    fn find_file_is_case_insensitive_and_stays_inside_the_folder() {
+        let outer = tempfile::tempdir().unwrap();
+        let root = outer.path().join("old");
+        std::fs::create_dir_all(root.join("Settings/Stock/Photos")).unwrap();
+        std::fs::write(root.join("baza.sqlite"), b"x").unwrap();
+        std::fs::write(root.join("Settings/Stock/Photos/ABC.jpg"), b"x").unwrap();
+        std::fs::write(outer.path().join("secret.txt"), b"x").unwrap();
+        let f = scan_folder(&root).unwrap();
+        let hit = f.find_file("settings\\stock/PHOTOS\\abc.JPG").unwrap();
+        assert!(
+            hit.to_string_lossy()
+                .to_lowercase()
+                .ends_with("settings/stock/photos/abc.jpg")
+        );
+        assert_eq!(f.find_file("settings/stock/photos/missing.jpg"), None);
+        assert_eq!(f.find_file("settings/Stock/../../../secret.txt"), None);
+        assert_eq!(f.find_file("..\\secret.txt"), None);
+        assert_eq!(f.find_file("settings/./Stock/Photos/ABC.jpg"), None);
+        assert_eq!(f.find_file("/etc/hosts"), None);
+        assert_eq!(f.find_file("\\Windows\\x.jpg"), None);
+        assert_eq!(f.find_file("C:\\Photos\\ABC.jpg"), None);
+        assert_eq!(
+            f.find_file(&outer.path().join("secret.txt").to_string_lossy()),
+            None
+        );
     }
 }
