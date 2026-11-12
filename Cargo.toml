@@ -42,7 +42,6 @@ tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 clap = { version = "4", features = ["derive", "env"] }
-dirs = "7"
 rpassword = "7"
 iana-time-zone = "0.1"
 url = "2"

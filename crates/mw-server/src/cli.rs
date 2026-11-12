@@ -1,6 +1,6 @@
 use crate::admin::{create_admin, read_password};
 use crate::config::{Config, DEFAULT_LISTEN, ServerError};
-use crate::paths::resolve_data_dir;
+use crate::paths::{os_data_dir, resolve_data_dir};
 use crate::server::{Server, connect_and_migrate, shutdown_signal, system_timezone};
 use clap::{Parser, Subcommand};
 use mw_core::{Core, SystemClock};
@@ -48,7 +48,7 @@ impl Cli {
         let exe_dir = exe.as_deref().and_then(|path| path.parent());
         Ok(Config {
             listen: self.listen,
-            data_dir: resolve_data_dir(self.data_dir.clone(), exe_dir, dirs::data_dir())?,
+            data_dir: resolve_data_dir(self.data_dir.clone(), exe_dir, os_data_dir())?,
             database_url: self.database_url.clone(),
             timezone: self.timezone.clone(),
         })

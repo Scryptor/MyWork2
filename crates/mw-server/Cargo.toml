@@ -27,7 +27,6 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "sig
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 clap = { workspace = true }
-dirs = { workspace = true }
 rpassword = { workspace = true }
 iana-time-zone = { workspace = true }
 url = { workspace = true }

@@ -1,4 +1,5 @@
 use crate::config::{DATA_DIR_NAME, ServerError};
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 /// Папка данных: явная; иначе `data` рядом с программой при наличии `portable.txt`;
@@ -23,6 +24,53 @@ pub fn resolve_data_dir(
                 "не удалось определить папку данных: укажите --data-dir или MW_DATA_DIR".into(),
             )
         })
+}
+
+/// Семейство ОС для выбора папки данных.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DataDirOs {
+    Windows,
+    MacOs,
+    Other,
+}
+
+impl DataDirOs {
+    /// ОС, под которой собрана программа.
+    pub fn current() -> DataDirOs {
+        if cfg!(windows) {
+            DataDirOs::Windows
+        } else if cfg!(target_os = "macos") {
+            DataDirOs::MacOs
+        } else {
+            DataDirOs::Other
+        }
+    }
+}
+
+/// Папка данных ОС по переменным окружения (без внешних зависимостей):
+/// Windows — `%APPDATA%`; macOS — `$HOME/Library/Application Support`;
+/// иначе `$XDG_DATA_HOME` (если задана и абсолютна), иначе `$HOME/.local/share`.
+pub fn os_data_dir_for(os: DataDirOs, env: &dyn Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
+    let non_empty = |name: &str| env(name).filter(|value| !value.is_empty());
+    match os {
+        DataDirOs::Windows => non_empty("APPDATA").map(PathBuf::from),
+        DataDirOs::MacOs => non_empty("HOME").map(|home| {
+            PathBuf::from(home)
+                .join("Library")
+                .join("Application Support")
+        }),
+        DataDirOs::Other => non_empty("XDG_DATA_HOME")
+            .map(PathBuf::from)
+            .filter(|path| path.is_absolute())
+            .or_else(|| {
+                non_empty("HOME").map(|home| PathBuf::from(home).join(".local").join("share"))
+            }),
+    }
+}
+
+/// Папка данных текущей ОС; `None`, если нужные переменные окружения не заданы.
+pub fn os_data_dir() -> Option<PathBuf> {
+    os_data_dir_for(DataDirOs::current(), &|name| std::env::var_os(name))
 }
 
 #[cfg(test)]
@@ -54,5 +102,50 @@ mod tests {
         );
         assert!(resolve_data_dir(None, None, None).is_err());
         let _ = std::fs::remove_dir_all(&exe);
+    }
+
+    fn env_of(pairs: &'static [(&'static str, &'static str)]) -> impl Fn(&str) -> Option<OsString> {
+        move |name| {
+            pairs
+                .iter()
+                .find(|(key, _)| *key == name)
+                .map(|(_, value)| OsString::from(*value))
+        }
+    }
+
+    #[test]
+    fn os_data_dir_per_os() {
+        let win = env_of(&[("APPDATA", "/ad"), ("HOME", "/h")]);
+        assert_eq!(
+            os_data_dir_for(DataDirOs::Windows, &win),
+            Some(PathBuf::from("/ad"))
+        );
+        assert_eq!(
+            os_data_dir_for(DataDirOs::Windows, &env_of(&[("HOME", "/h")])),
+            None
+        );
+
+        let mac = env_of(&[("HOME", "/Users/u"), ("XDG_DATA_HOME", "/x")]);
+        assert_eq!(
+            os_data_dir_for(DataDirOs::MacOs, &mac),
+            Some(PathBuf::from("/Users/u/Library/Application Support"))
+        );
+
+        let abs = env_of(&[("XDG_DATA_HOME", "/x"), ("HOME", "/h")]);
+        assert_eq!(
+            os_data_dir_for(DataDirOs::Other, &abs),
+            Some(PathBuf::from("/x"))
+        );
+        let rel = env_of(&[("XDG_DATA_HOME", "rel"), ("HOME", "/h")]);
+        assert_eq!(
+            os_data_dir_for(DataDirOs::Other, &rel),
+            Some(PathBuf::from("/h/.local/share"))
+        );
+        let empty = env_of(&[("XDG_DATA_HOME", ""), ("HOME", "/h")]);
+        assert_eq!(
+            os_data_dir_for(DataDirOs::Other, &empty),
+            Some(PathBuf::from("/h/.local/share"))
+        );
+        assert_eq!(os_data_dir_for(DataDirOs::Other, &env_of(&[])), None);
     }
 }
