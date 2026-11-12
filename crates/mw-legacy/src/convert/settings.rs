@@ -5,6 +5,7 @@ use serde_json::json;
 
 use crate::convert::catalogs::Catalogs;
 use crate::folder::LegacyFolder;
+use crate::parse::parse_flag;
 use crate::report::{WarningCode, Warnings};
 use crate::text::{Ini, TextEncoding, decode_text, parse_ini, text_lines};
 
@@ -18,7 +19,7 @@ const SHARED_SECTIONS: &[&str] = &[
     "EXPORT",
     "ACTIVATION",
 ];
-/// Секции, которые не читаются вообще (токен SMS, ключ активации).
+/// Секции, которые не читаются вообще (токен SMS, ключ активации): убираются сразу после разбора.
 const SECRET_SECTIONS: &[&str] = &["SMSSEND", "ACTIVATION"];
 /// Ключи с соответствием: (секция или `*` для секции компьютера, ключ).
 const MAPPED_KEYS: &[(&str, &str)] = &[
@@ -93,6 +94,11 @@ fn clean_act_text(text: &str) -> String {
     out.trim().to_owned()
 }
 
+/// Флажок `Checked`/`Unchecked` в любом регистре.
+fn checkbox(value: &str) -> Option<bool> {
+    parse_flag(value)
+}
+
 struct Invalid<'a> {
     w: &'a mut Warnings,
 }
@@ -148,10 +154,9 @@ fn apply_program_settings(ini: &Ini, patch: &mut SettingsPatch, bad: &mut Invali
         }
     }
     if let Some(v) = get("NessesaryCHB") {
-        match v {
-            "Checked" => patch.intake_required_fields = Some(true),
-            "Unchecked" => patch.intake_required_fields = Some(false),
-            _ => bad.report(
+        match checkbox(v) {
+            Some(on) => patch.intake_required_fields = Some(on),
+            None => bad.report(
                 "PROGRAMM_SETTINGS",
                 "NessesaryCHB",
                 v,
@@ -160,10 +165,10 @@ fn apply_program_settings(ini: &Ini, patch: &mut SettingsPatch, bad: &mut Invali
         }
     }
     if let Some(v) = ini.get("CHECKBOX", "garantyDefault") {
-        match v {
-            "Checked" => patch.default_warranty = Some("Без гарантии".to_owned()),
-            "Unchecked" => {}
-            _ => bad.report(
+        match checkbox(v) {
+            Some(true) => patch.default_warranty = Some("Без гарантии".to_owned()),
+            Some(false) => {}
+            None => bad.report(
                 "CHECKBOX",
                 "garantyDefault",
                 v,
@@ -217,7 +222,8 @@ fn convert_config(
     let Some(bytes) = &folder.config_ini else {
         return;
     };
-    let ini = parse_ini(&decode_text(bytes).0);
+    let mut ini = parse_ini(&decode_text(bytes).0);
+    ini.sections.retain(|s| !is_secret(&s.name));
     let computer = ini
         .sections
         .iter()
@@ -226,7 +232,9 @@ fn convert_config(
     let mut ignored = std::collections::BTreeSet::new();
     for section in &ini.sections {
         if !is_shared(&section.name)
-            && Some(&section.name) != computer.as_ref()
+            && !computer
+                .as_deref()
+                .is_some_and(|c| c.eq_ignore_ascii_case(&section.name))
             && ignored.insert(section.name.to_lowercase())
         {
             w.push(
@@ -243,13 +251,24 @@ fn convert_config(
     if let Some(name) = &computer {
         apply_computer_settings(&ini, name, folder, catalogs, settings, &mut Invalid { w });
     }
-    for section in ini.sections.iter().filter(|s| !is_secret(&s.name)) {
+    let mut seen_keys: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    for section in &ini.sections {
         for (key, value) in &section.entries {
-            let source_key = format!("[{}] {key}", section.name);
+            let base_key = format!("[{}] {key}", section.name);
+            let count = seen_keys.entry(base_key.to_lowercase()).or_insert(0);
+            *count += 1;
+            // Повтор ключа (или секции) не теряется, но получает свой ключ; в настройках первый побеждает.
+            let source_key = if *count == 1 {
+                base_key
+            } else {
+                format!("{base_key} #{count}")
+            };
             let mapped = MAPPED_KEYS.iter().any(|(s, k)| {
                 k.eq_ignore_ascii_case(key)
                     && if *s == "*" {
-                        computer.as_deref() == Some(section.name.as_str())
+                        computer
+                            .as_deref()
+                            .is_some_and(|c| c.eq_ignore_ascii_case(&section.name))
                     } else {
                         s.eq_ignore_ascii_case(&section.name)
                     }
@@ -393,6 +412,7 @@ mod tests {
         assert_eq!(rows.iter().filter(|r| r.source == "Config.ini").count(), 16);
         assert_eq!(rows.iter().filter(|r| r.source == "file").count(), 13);
         assert!(!format!("{rows:?}").contains(FIXTURE_SMS_TOKEN));
+        assert!(!format!("{:?}", w.list()).contains(FIXTURE_SMS_TOKEN));
         assert_eq!(
             w.list()
                 .iter()
@@ -401,5 +421,33 @@ mod tests {
             8
         );
         assert!(codes(&w).contains(&("config_section_ignored", "S2Z9")));
+    }
+
+    #[tokio::test]
+    async fn repeated_keys_and_sections_keep_unique_row_keys_and_first_wins() {
+        let (db, mut folder) = prepared(V32).await;
+        let mut w = Warnings::default();
+        let c = convert_catalogs(&db, &folder, &|_| false, &mut w);
+        folder.config_ini = Some(
+            "[PROGRAMM_SETTINGS]\nMpersent=10\nmpersent=20\nNessesaryCHB=checked\n[programm_settings]\nMpersent=30\n[CHECKBOX]\ngarantyDefault=CHECKED\n"
+                .as_bytes()
+                .to_vec(),
+        );
+        let mut w = Warnings::default();
+        let (s, rows) = convert_settings(&folder, &c, &mut w);
+        let keys: Vec<_> = rows
+            .iter()
+            .filter(|r| r.source == "Config.ini")
+            .map(|r| r.source_key.as_str())
+            .collect();
+        let unique: std::collections::BTreeSet<_> = keys.iter().collect();
+        assert_eq!(keys.len(), 5);
+        assert_eq!(unique.len(), 5, "{keys:?}");
+        assert!(keys.contains(&"[PROGRAMM_SETTINGS] Mpersent"));
+        assert!(keys.contains(&"[PROGRAMM_SETTINGS] mpersent #2"));
+        assert!(keys.contains(&"[programm_settings] Mpersent #3"));
+        assert_eq!(s.values.master_percent, Some(10));
+        assert_eq!(s.values.intake_required_fields, Some(true));
+        assert_eq!(s.values.default_warranty.as_deref(), Some("Без гарантии"));
     }
 }

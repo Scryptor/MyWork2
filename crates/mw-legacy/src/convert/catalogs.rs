@@ -179,7 +179,12 @@ fn is_untouched(file: &str, lines: &[String]) -> bool {
         .iter()
         .find(|(name, _)| name.eq_ignore_ascii_case(file))
         .is_some_and(|(_, default)| {
-            lines.len() == default.len() && lines.iter().zip(*default).all(|(a, b)| a.trim() == *b)
+            let given: Vec<&str> = lines
+                .iter()
+                .map(|l| l.trim())
+                .filter(|l| !l.is_empty())
+                .collect();
+            given == *default
         })
 }
 
@@ -478,5 +483,27 @@ mod tests {
             assert!(info.contains(&code), "{code}");
         }
         assert_eq!(info.iter().filter(|c| **c == "status_custom").count(), 3);
+    }
+
+    #[test]
+    fn untouched_file_ignores_blank_lines_and_edge_spaces() {
+        let lines: Vec<String> = [
+            "",
+            " Мастер1 ",
+            "",
+            "Этот текст можно",
+            "поменять в файле",
+            "settings/masters.txt",
+            "",
+        ]
+        .iter()
+        .map(|s| (*s).to_owned())
+        .collect();
+        assert!(is_untouched("masters.txt", &lines));
+        let edited: Vec<String> = ["Мастер1", "Иванов"]
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect();
+        assert!(!is_untouched("masters.txt", &edited));
     }
 }
