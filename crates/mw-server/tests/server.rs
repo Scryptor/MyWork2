@@ -182,6 +182,10 @@ async fn explicit_timezone_is_stored_on_first_start() {
         let mut cfg = config(temp_dir(label));
         cfg.timezone = Some("Europe/Moscow".into());
         let server = Server::start_with_db(&cfg, db).await.unwrap();
-        assert_eq!(server.core().settings().timezone, "Europe/Moscow", "{label}");
+        assert_eq!(
+            server.core().settings().timezone,
+            "Europe/Moscow",
+            "{label}"
+        );
     }
 }

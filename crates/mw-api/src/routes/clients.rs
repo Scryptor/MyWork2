@@ -11,7 +11,7 @@ use crate::error::ApiError;
 use crate::extract::{Json, Path, Query};
 use crate::state::AppState;
 
-/// Список и поиск клиентов (право `clients_view`).
+/// Список и поиск клиентов (право `clients_view` или `orders_create`).
 #[utoipa::path(
     get,
     path = "/api/v1/clients",
@@ -37,7 +37,7 @@ pub(super) async fn list_clients(
     Ok(Json(page.into()))
 }
 
-/// Клиенты с указанным телефоном (право `clients_view`).
+/// Клиенты с указанным телефоном (право `clients_view` или `orders_create`).
 #[utoipa::path(
     get,
     path = "/api/v1/clients/by-phone",
@@ -56,7 +56,7 @@ pub(super) async fn clients_by_phone(
     ))
 }
 
-/// Карточка клиента (право `clients_view`).
+/// Карточка клиента (достаточно войти).
 #[utoipa::path(
     get,
     path = "/api/v1/clients/{id}",
@@ -73,7 +73,7 @@ pub(super) async fn get_client(
     Ok(Json(state.core.get_client(&actor, id).await?))
 }
 
-/// Новый клиент (право `clients_create`).
+/// Новый клиент (право `clients_create` или `orders_create`).
 #[utoipa::path(
     post,
     path = "/api/v1/clients",
@@ -93,7 +93,7 @@ pub(super) async fn create_client(
     ))
 }
 
-/// Изменение клиента по версии записи (право `clients_edit`). Правка без различий
+/// Изменение клиента по версии записи (право `clients_edit` или `orders_edit`). Правка без различий
 /// успешна и версию не проверяет.
 #[utoipa::path(
     patch,

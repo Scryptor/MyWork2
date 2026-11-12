@@ -456,7 +456,7 @@ impl Core {
         }
         if too_short(new_password) {
             return Err(CoreError::Validation(vec![FieldError::new(
-                "password",
+                "new_password",
                 "too_short",
             )]));
         }

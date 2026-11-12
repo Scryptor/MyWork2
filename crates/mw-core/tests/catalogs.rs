@@ -507,3 +507,74 @@ async fn service_point_validation_not_found_and_forbidden() -> Result<(), CoreEr
     }
     Ok(())
 }
+
+#[tokio::test]
+async fn unchanged_names_skip_the_collision_check_for_legacy_data() -> Result<(), CoreError> {
+    use mw_db::entity::{service_point, status};
+    use sea_orm::{ActiveModelTrait, ActiveValue::NotSet, Set};
+    for t in cores().await {
+        let ready = t
+            .core
+            .list_statuses(true)
+            .await?
+            .into_iter()
+            .find(|s| s.name == "Готов")
+            .unwrap();
+        status::ActiveModel {
+            id: NotSet,
+            name: Set("готов".into()),
+            kind: Set("open".into()),
+            color: Set("gray".into()),
+            sort_order: Set(100),
+            archived: Set(false),
+        }
+        .insert(t.core.db())
+        .await
+        .unwrap();
+        let updated = t
+            .core
+            .update_status(
+                &admin(),
+                ready.id,
+                StatusPatch {
+                    name: Some("Готов".into()),
+                    color: Some("pink".into()),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        assert_eq!(
+            (updated.name.as_str(), updated.color.as_str()),
+            ("Готов", "pink"),
+            "{}",
+            t.label
+        );
+
+        let mut ids = Vec::new();
+        for (i, name) in ["Центр", "центр"].into_iter().enumerate() {
+            let row = service_point::ActiveModel {
+                id: NotSet,
+                name: Set(name.into()),
+                sort_order: Set(i as i32),
+                archived: Set(false),
+            }
+            .insert(t.core.db())
+            .await
+            .unwrap();
+            ids.push(row.id);
+        }
+        let point = t
+            .core
+            .update_service_point(
+                &admin(),
+                ids[0],
+                ServicePointPatch {
+                    name: Some("Центр".into()),
+                    archived: Some(true),
+                },
+            )
+            .await?;
+        assert!(point.archived, "{}", t.label);
+    }
+    Ok(())
+}

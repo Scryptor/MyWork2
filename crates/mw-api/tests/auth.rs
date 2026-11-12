@@ -339,3 +339,21 @@ async fn concurrent_wrong_passwords_cannot_exceed_the_limit() {
         assert_eq!(r.status, 429, "{}", t.label);
     }
 }
+
+#[tokio::test]
+async fn short_new_password_names_the_request_field() {
+    for t in apis(Listen::Network).await {
+        t.create_admin_user("Ирина").await;
+        let token = t.login("Ирина").await;
+        let r = t
+            .send(
+                Method::POST,
+                "/api/v1/auth/password",
+                Some(&token),
+                Some(json!({ "current_password": TEST_PASSWORD, "new_password": "12" })),
+            )
+            .await;
+        assert_eq!(r.status, 422, "{}: {}", t.label, r.body);
+        assert_eq!(r.body["fields"][0]["field"], "new_password", "{}", t.label);
+    }
+}

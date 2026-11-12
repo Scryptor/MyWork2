@@ -134,10 +134,16 @@ mod tests {
         let out = redact_database_url("postgres://mw:Pa55#word@db.invalid:5432/mw");
         assert_eq!(out, "postgres://***");
         let out = redact_database_url("postgres://mw:a/b?c@h/db");
-        assert!(!out.contains("a/b") && out.starts_with("postgres://"), "{out}");
+        assert!(
+            !out.contains("a/b") && out.starts_with("postgres://"),
+            "{out}"
+        );
         let out = redact_database_url("postgres://db/mw?password=S3cr3t&user=mw");
         assert!(!out.contains("S3cr3t"), "{out}");
-        assert!(out.contains("user=mw") && out.contains("password=***"), "{out}");
+        assert!(
+            out.contains("user=mw") && out.contains("password=***"),
+            "{out}"
+        );
         let out = redact_database_url("postgres://mw:pw@db/mw?sslPassword=zzz");
         assert!(!out.contains("zzz") && !out.contains("pw@"), "{out}");
     }

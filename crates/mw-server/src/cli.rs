@@ -123,9 +123,8 @@ mod tests {
 
     #[test]
     fn debug_output_hides_the_database_password() {
-        let cli =
-            Cli::try_parse_from(["mw-server", "--database-url", "postgres://mw:secret@h/db"])
-                .unwrap();
+        let cli = Cli::try_parse_from(["mw-server", "--database-url", "postgres://mw:secret@h/db"])
+            .unwrap();
         assert!(!format!("{cli:?}").contains("secret"));
     }
 

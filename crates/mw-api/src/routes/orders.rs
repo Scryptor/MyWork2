@@ -13,8 +13,8 @@ use crate::error::ApiError;
 use crate::extract::{Json, Path, Query};
 use crate::state::AppState;
 
-/// Список заказов с фильтрами, сортировкой и страницами (право `orders_view`;
-/// `include_deleted` — ещё `orders_delete`).
+/// Список заказов с фильтрами, сортировкой и страницами (достаточно войти;
+/// `include_deleted` требует права `orders_delete`).
 #[utoipa::path(
     get,
     path = "/api/v1/orders",
@@ -38,7 +38,7 @@ pub(super) async fn list_orders(
     Ok(Json(page.into()))
 }
 
-/// Заказы по штрихкоду со сканера (право `orders_view`).
+/// Заказы по штрихкоду со сканера (достаточно войти).
 #[utoipa::path(
     get,
     path = "/api/v1/orders/by-barcode",
@@ -57,7 +57,7 @@ pub(super) async fn orders_by_barcode(
     ))
 }
 
-/// Задать номер следующего заказа (право `settings_edit`).
+/// Задать номер следующего заказа (право `settings_manage`).
 #[utoipa::path(
     put,
     path = "/api/v1/orders/next-number",
@@ -75,7 +75,7 @@ pub(super) async fn set_next_order_number(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Карточка заказа (право `orders_view`).
+/// Карточка заказа (достаточно войти).
 #[utoipa::path(
     get,
     path = "/api/v1/orders/{id}",

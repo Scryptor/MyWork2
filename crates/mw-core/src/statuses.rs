@@ -209,7 +209,8 @@ impl Core {
             return to_status(current);
         }
         let name = match &patch.name {
-            Some(n) => check_name(n, &rows, Some(id))?,
+            Some(n) if n.trim() != current.name => check_name(n, &rows, Some(id))?,
+            Some(_) => current.name.clone(),
             None => current.name.clone(),
         };
 

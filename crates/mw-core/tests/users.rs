@@ -252,7 +252,7 @@ async fn change_own_password_requires_current_password() -> Result<(), CoreError
         t.core.authenticate(&session.token).await?;
         assert_validation(
             t.core.change_own_password(&me, "1234", "12").await,
-            &[("password", "too_short")],
+            &[("new_password", "too_short")],
         );
         assert!(matches!(
             t.core

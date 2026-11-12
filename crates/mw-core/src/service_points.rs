@@ -167,7 +167,8 @@ impl Core {
             return Ok(current.into());
         }
         let new_name = match &patch.name {
-            Some(n) => check_name(n, &rows, Some(id))?,
+            Some(n) if n.trim() != current.name => check_name(n, &rows, Some(id))?,
+            Some(_) => current.name.clone(),
             None => current.name.clone(),
         };
         let mut active: service_point::ActiveModel = current.into();
