@@ -59,7 +59,8 @@ pub(crate) fn split_phones(raw: &str) -> PhoneSplit {
             append_note(&mut out.phones[0].note, &word);
         }
     }
-    out.reshaped = out.phones.len() != 1 || out.phones.iter().any(|p| !p.note.is_empty());
+    out.reshaped = !out.phones.is_empty()
+        && (out.phones.len() > 1 || out.phones.iter().any(|p| !p.note.is_empty()));
     out
 }
 
@@ -87,7 +88,6 @@ fn add_phone(phones: &mut Vec<ClientPhone>, number: String) -> usize {
 fn tokenize(raw: &str) -> Vec<Token> {
     let mut tokens = Vec::new();
     let mut digits = String::new();
-    let mut in_group = false;
     let mut word = String::new();
     let flush_group = |digits: &mut String, tokens: &mut Vec<Token>| {
         if !digits.is_empty() {
@@ -103,20 +103,16 @@ fn tokenize(raw: &str) -> Vec<Token> {
         if c.is_ascii_digit() {
             flush_word(&mut word, &mut tokens);
             digits.push(c);
-            in_group = true;
         } else if c.is_alphabetic() {
             flush_group(&mut digits, &mut tokens);
-            in_group = false;
             word.push(c);
         } else if matches!(c, ' ' | '\u{a0}' | '\t' | '+' | '-' | '(' | ')' | '.') {
             // Внутри группы эти знаки не мешают; слово они закрывают.
             flush_word(&mut word, &mut tokens);
-            let _ = in_group;
         } else {
             // `, ; / \ |`, перевод строки и всё прочее.
             flush_word(&mut word, &mut tokens);
             flush_group(&mut digits, &mut tokens);
-            in_group = false;
         }
     }
     flush_word(&mut word, &mut tokens);
@@ -236,6 +232,16 @@ mod tests {
         let odd = split_phones("12345678901");
         assert_eq!(odd.unusual, vec!["12345678901".to_owned()]);
         assert_eq!(nums(&odd), [("12345678901", "")]);
+    }
+
+    #[test]
+    fn reshaped_only_with_numbers() {
+        for s in ["", "-", "?", "нет телефона", "1234", "89211234567"] {
+            assert!(!split_phones(s).reshaped, "{s:?}");
+        }
+        for s in ["89211234567жена", "89211234567,89117654321"] {
+            assert!(split_phones(s).reshaped, "{s:?}");
+        }
     }
 
     #[test]

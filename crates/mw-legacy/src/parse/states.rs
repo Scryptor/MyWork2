@@ -47,12 +47,15 @@ pub(crate) fn read_states_row(state: &str, date: &str) -> StatesRow {
     }
 }
 
-/// Первая непустая строка — вид события, следующая непустая — значение.
+/// Первая непустая строка — вид события, всё остальное (с краёв без пробелов) — значение.
 fn classify(text: &str) -> StateEvent {
-    let mut lines = text.lines().map(str::trim).filter(|l| !l.is_empty());
-    let (Some(head), Some(value)) = (lines.next(), lines.next()) else {
+    let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
+    let trimmed = normalized.trim();
+    let (head, value) = trimmed.split_once('\n').unwrap_or((trimmed, ""));
+    let (head, value) = (head.trim(), value.trim());
+    if value.is_empty() {
         return StateEvent::Other(text.to_owned());
-    };
+    }
     let value = value.to_owned();
     match head {
         "Установлен статус" => StateEvent::Status(value),
@@ -114,6 +117,14 @@ mod tests {
         assert_eq!(
             read_states_row("07-03-2015 12-00", "").event,
             StateEvent::Other(String::new())
+        );
+    }
+
+    #[test]
+    fn keeps_all_lines_of_the_value() {
+        assert_eq!(
+            read_states_row("x", "Сообщение отправлено\r\nСтрока 1\r\nСтрока 2").event,
+            StateEvent::Message("Строка 1\nСтрока 2".into())
         );
     }
 
