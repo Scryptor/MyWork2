@@ -60,6 +60,13 @@ pub enum Command {
 
 impl Cli {
     pub fn config(&self) -> Result<Config, ServerError> {
+        if let Some(name) = &self.timezone
+            && name.parse::<chrono_tz::Tz>().is_err()
+        {
+            return Err(ServerError::Config(format!(
+                "неизвестный часовой пояс «{name}»: укажите имя IANA, например Europe/Moscow"
+            )));
+        }
         let exe = std::env::current_exe().ok();
         let exe_dir = exe.as_deref().and_then(|path| path.parent());
         Ok(Config {
@@ -120,6 +127,15 @@ mod tests {
             Cli::try_parse_from(["mw-server", "--database-url", "postgres://mw:secret@h/db"])
                 .unwrap();
         assert!(!format!("{cli:?}").contains("secret"));
+    }
+
+    #[test]
+    fn timezone_must_be_an_iana_name() {
+        let cli = Cli::try_parse_from(["mw-server", "--timezone", "Moscow"]).unwrap();
+        let err = cli.config().unwrap_err().to_string();
+        assert!(err.contains("«Moscow»"), "{err}");
+        let cli = Cli::try_parse_from(["mw-server", "--timezone", "Europe/Moscow"]).unwrap();
+        assert!(cli.config().is_ok());
     }
 
     #[test]

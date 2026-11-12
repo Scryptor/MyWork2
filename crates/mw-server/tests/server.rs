@@ -175,3 +175,13 @@ async fn connection_error_does_not_leak_the_password() {
     assert!(!err.to_string().contains("Pa55#word"), "{err}");
     assert!(!format!("{err:?}").contains("Pa55#word"), "{err:?}");
 }
+
+#[tokio::test]
+async fn explicit_timezone_is_stored_on_first_start() {
+    for (label, db) in mw_db::testing::all_backends().await {
+        let mut cfg = config(temp_dir(label));
+        cfg.timezone = Some("Europe/Moscow".into());
+        let server = Server::start_with_db(&cfg, db).await.unwrap();
+        assert_eq!(server.core().settings().timezone, "Europe/Moscow", "{label}");
+    }
+}

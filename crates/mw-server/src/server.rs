@@ -71,6 +71,15 @@ impl Server {
     ) -> Result<Server, ServerError> {
         migrate(&db, None).await?;
         let core = Core::open(db.clone(), Arc::new(SystemClock), &system_timezone(config)).await?;
+        let effective = core.settings().timezone;
+        tracing::info!("часовой пояс предприятия: {effective}");
+        if let Some(requested) = &config.timezone
+            && *requested != effective
+        {
+            tracing::warn!(
+                "часовой пояс «{requested}» не применён: в базе уже сохранён пояс «{effective}», он меняется в настройках программы"
+            );
+        }
         let listener =
             TcpListener::bind(config.listen)
                 .await

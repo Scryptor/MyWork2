@@ -1731,6 +1731,7 @@ name = "mw-server"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "chrono-tz",
  "clap",
  "iana-time-zone",
  "mw-api",

@@ -29,6 +29,7 @@ tracing-subscriber = { workspace = true }
 clap = { workspace = true }
 rpassword = { workspace = true }
 iana-time-zone = { workspace = true }
+chrono-tz = { workspace = true }
 url = { workspace = true }
 thiserror = { workspace = true }
 
