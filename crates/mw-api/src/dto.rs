@@ -181,3 +181,105 @@ impl From<mw_core::Page<mw_core::Client>> for ClientPage {
         }
     }
 }
+
+/// Параметры списка заказов: фильтры, сортировка и страница.
+#[derive(Debug, Clone, Default, Deserialize, TS, IntoParams)]
+#[serde(deny_unknown_fields)]
+#[ts(optional_fields)]
+#[into_params(parameter_in = Query)]
+pub struct OrderListQuery {
+    /// Слова поиска по тексту заказа и клиента; все слова должны найтись. Пусто — без поиска.
+    pub query: Option<String>,
+    /// Только эти статусы (параметр можно повторять); пусто — любые.
+    pub status_ids: Option<Vec<i64>>,
+    /// Только эта точка обслуживания.
+    pub service_point_id: Option<i64>,
+    /// Только заказы этого клиента.
+    pub client_id: Option<i64>,
+    /// Нужно ли звонить клиенту; не указано — любые.
+    pub need_call: Option<bool>,
+    /// Нужны ли запчасти; не указано — любые.
+    pub need_parts: Option<bool>,
+    /// Выданные или находящиеся в сервисе; по умолчанию любые.
+    pub issued: Option<mw_core::IssuedFilter>,
+    /// Только с просроченной диагностикой; по умолчанию `false`.
+    pub overdue_diagnostics: Option<bool>,
+    /// Показывать и удалённые (право `orders_delete`); по умолчанию `false`.
+    pub include_deleted: Option<bool>,
+    /// Поле сортировки; по умолчанию дата приёма, новые сверху.
+    pub sort: Option<mw_core::OrderSortField>,
+    /// Обратный порядок; действует только вместе с `sort`, по умолчанию `false`.
+    pub descending: Option<bool>,
+    /// Размер страницы, 1..=500; по умолчанию 50.
+    pub limit: Option<u64>,
+    /// Сколько записей пропустить; по умолчанию 0.
+    pub offset: Option<u64>,
+}
+
+impl OrderListQuery {
+    /// Фильтр и порядок для ядра.
+    pub fn into_filter_and_sort(self) -> (mw_core::OrderFilter, mw_core::OrderSort) {
+        let sort = match self.sort {
+            None => mw_core::OrderSort::default(),
+            Some(field) => mw_core::OrderSort {
+                field,
+                descending: self.descending.unwrap_or(false),
+            },
+        };
+        let filter = mw_core::OrderFilter {
+            query: self.query.unwrap_or_default(),
+            status_ids: self.status_ids.unwrap_or_default(),
+            service_point_id: self.service_point_id,
+            client_id: self.client_id,
+            need_call: self.need_call,
+            need_parts: self.need_parts,
+            issued: self.issued.unwrap_or_default(),
+            overdue_diagnostics: self.overdue_diagnostics.unwrap_or(false),
+            include_deleted: self.include_deleted.unwrap_or(false),
+        };
+        (filter, sort)
+    }
+}
+
+/// Штрихкод для поиска заказа.
+#[derive(Debug, Clone, Deserialize, TS, IntoParams)]
+#[serde(deny_unknown_fields)]
+#[into_params(parameter_in = Query)]
+pub struct BarcodeQuery {
+    /// Считанный штрихкод; ведущий ноль и перевод строки сканера допускаются.
+    pub code: String,
+}
+
+/// Смена статуса заказа.
+#[derive(Debug, Clone, Deserialize, TS, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct StatusChange {
+    /// Номер нового статуса.
+    pub status_id: i64,
+}
+
+/// Следующий номер заказа.
+#[derive(Debug, Clone, Deserialize, TS, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct NextOrderNumber {
+    /// Номер, который получит следующий заказ; больше всех существующих.
+    pub next: i64,
+}
+
+/// Страница заказов.
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
+pub struct OrderPage {
+    /// Заказы страницы.
+    pub items: Vec<mw_core::OrderListItem>,
+    /// Сколько заказов подходит всего.
+    pub total: u64,
+}
+
+impl From<mw_core::Page<mw_core::OrderListItem>> for OrderPage {
+    fn from(p: mw_core::Page<mw_core::OrderListItem>) -> Self {
+        Self {
+            items: p.items,
+            total: p.total,
+        }
+    }
+}

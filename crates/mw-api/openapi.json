@@ -755,6 +755,593 @@
         }
       }
     },
+    "/api/v1/orders": {
+      "get": {
+        "tags": [
+          "Заказы"
+        ],
+        "summary": "Список заказов с фильтрами, сортировкой и страницами (право `orders_view`;\n`include_deleted` — ещё `orders_delete`).",
+        "operationId": "list_orders",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "description": "Слова поиска по тексту заказа и клиента; все слова должны найтись. Пусто — без поиска.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status_ids",
+            "in": "query",
+            "description": "Только эти статусы (параметр можно повторять); пусто — любые.",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "format": "int64"
+              }
+            }
+          },
+          {
+            "name": "service_point_id",
+            "in": "query",
+            "description": "Только эта точка обслуживания.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "description": "Только заказы этого клиента.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "need_call",
+            "in": "query",
+            "description": "Нужно ли звонить клиенту; не указано — любые.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "need_parts",
+            "in": "query",
+            "description": "Нужны ли запчасти; не указано — любые.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "issued",
+            "in": "query",
+            "description": "Выданные или находящиеся в сервисе; по умолчанию любые.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/IssuedFilter"
+            }
+          },
+          {
+            "name": "overdue_diagnostics",
+            "in": "query",
+            "description": "Только с просроченной диагностикой; по умолчанию `false`.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "include_deleted",
+            "in": "query",
+            "description": "Показывать и удалённые (право `orders_delete`); по умолчанию `false`.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "description": "Поле сортировки; по умолчанию дата приёма, новые сверху.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/OrderSortField"
+            }
+          },
+          {
+            "name": "descending",
+            "in": "query",
+            "description": "Обратный порядок; действует только вместе с `sort`, по умолчанию `false`.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Размер страницы, 1..=500; по умолчанию 50.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Сколько записей пропустить; по умолчанию 0.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Страница заказов",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderPage"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Заказы"
+        ],
+        "summary": "Приём устройства: новый заказ (право `orders_create`).",
+        "operationId": "create_order",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewOrder"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Заказ создан",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Order"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/orders/by-barcode": {
+      "get": {
+        "tags": [
+          "Заказы"
+        ],
+        "summary": "Заказы по штрихкоду со сканера (право `orders_view`).",
+        "operationId": "orders_by_barcode",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "query",
+            "description": "Считанный штрихкод; ведущий ноль и перевод строки сканера допускаются.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Найденные заказы",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OrderListItem"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/orders/next-number": {
+      "put": {
+        "tags": [
+          "Заказы"
+        ],
+        "summary": "Задать номер следующего заказа (право `settings_edit`).",
+        "operationId": "set_next_order_number",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NextOrderNumber"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Номер задан"
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/orders/{id}": {
+      "get": {
+        "tags": [
+          "Заказы"
+        ],
+        "summary": "Карточка заказа (право `orders_view`).",
+        "operationId": "get_order",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер заказа",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Заказ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Order"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Заказы"
+        ],
+        "summary": "Удаление заказа по версии записи (право `orders_delete`).",
+        "operationId": "delete_order",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер заказа",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "description": "Версия записи, которую правит клиент.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Заказ удалён"
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "Заказы"
+        ],
+        "summary": "Изменение заказа по версии записи. Правка без различий успешна и версию не проверяет.",
+        "operationId": "update_order",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер заказа",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "description": "Версия записи, которую правит клиент.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Заказ после изменения",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Order"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/orders/{id}/issue": {
+      "post": {
+        "tags": [
+          "Заказы"
+        ],
+        "summary": "Выдача заказа клиенту по версии записи; тело пустое.",
+        "operationId": "issue_order",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер заказа",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "description": "Версия записи, которую правит клиент.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Заказ после выдачи",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Order"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/orders/{id}/status": {
+      "post": {
+        "tags": [
+          "Заказы"
+        ],
+        "summary": "Смена статуса заказа по версии записи.",
+        "operationId": "change_order_status",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер заказа",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "description": "Версия записи, которую правит клиент.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StatusChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Заказ после смены статуса",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Order"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/server-info": {
       "get": {
         "tags": [
@@ -1432,6 +2019,38 @@
         },
         "additionalProperties": false
       },
+      "ClientRef": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Существующий клиент: его номер.",
+            "required": [
+              "existing"
+            ],
+            "properties": {
+              "existing": {
+                "type": "integer",
+                "format": "int64",
+                "description": "Существующий клиент: его номер."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Новый клиент: данные для создания.",
+            "required": [
+              "new"
+            ],
+            "properties": {
+              "new": {
+                "$ref": "#/components/schemas/NewClient",
+                "description": "Новый клиент: данные для создания."
+              }
+            }
+          }
+        ],
+        "description": "Клиент заказа: существующий или новый (создаётся в той же транзакции)."
+      },
       "CurrentUser": {
         "type": "object",
         "description": "Кто делает запросы.",
@@ -1613,6 +2232,15 @@
           }
         }
       },
+      "IssuedFilter": {
+        "type": "string",
+        "description": "Фильтр по тому, выдан ли заказ (по виду его статуса).",
+        "enum": [
+          "any",
+          "in_service",
+          "issued"
+        ]
+      },
       "LoginRequest": {
         "type": "object",
         "description": "Вход в программу.",
@@ -1660,6 +2288,11 @@
           }
         }
       },
+      "Money": {
+        "type": "integer",
+        "format": "int64",
+        "description": "Сумма денег в копейках."
+      },
       "NewClient": {
         "type": "object",
         "description": "Данные нового клиента.",
@@ -1695,6 +2328,142 @@
           "source": {
             "type": "string",
             "description": "Откуда клиент узнал о сервисе."
+          }
+        },
+        "additionalProperties": false
+      },
+      "NewOrder": {
+        "type": "object",
+        "description": "Данные приёма устройства.",
+        "required": [
+          "client",
+          "service_point_id",
+          "status_id",
+          "device_type",
+          "brand",
+          "model",
+          "serial",
+          "color",
+          "device_password",
+          "completeness",
+          "device_condition",
+          "malfunction",
+          "internal_comment",
+          "master",
+          "estimate_from",
+          "estimate_to",
+          "prepayment",
+          "warranty_days",
+          "need_call",
+          "need_parts"
+        ],
+        "properties": {
+          "brand": {
+            "type": "string",
+            "description": "Бренд."
+          },
+          "client": {
+            "$ref": "#/components/schemas/ClientRef",
+            "description": "Клиент заказа: существующий или новый."
+          },
+          "color": {
+            "type": "string",
+            "description": "Цвет."
+          },
+          "completeness": {
+            "type": "string",
+            "description": "Комплектность."
+          },
+          "device_condition": {
+            "type": "string",
+            "description": "Внешнее состояние устройства."
+          },
+          "device_password": {
+            "type": "string",
+            "description": "Пароль устройства."
+          },
+          "device_type": {
+            "type": "string",
+            "description": "Тип устройства."
+          },
+          "estimate_from": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Money",
+                "description": "Оценка стоимости: нижняя граница, в копейках."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "estimate_to": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Money",
+                "description": "Оценка стоимости: верхняя граница, в копейках."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "internal_comment": {
+            "type": "string",
+            "description": "Внутренний комментарий."
+          },
+          "malfunction": {
+            "type": "string",
+            "description": "Неисправность со слов клиента."
+          },
+          "master": {
+            "type": "string",
+            "description": "Мастер."
+          },
+          "model": {
+            "type": "string",
+            "description": "Модель."
+          },
+          "need_call": {
+            "type": "boolean",
+            "description": "Нужно позвонить клиенту."
+          },
+          "need_parts": {
+            "type": "boolean",
+            "description": "Нужны запчасти."
+          },
+          "prepayment": {
+            "$ref": "#/components/schemas/Money",
+            "description": "Предоплата, в копейках."
+          },
+          "serial": {
+            "type": "string",
+            "description": "Серийный номер."
+          },
+          "service_point_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Номер точки обслуживания; пусто — не указана."
+          },
+          "status_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Номер статуса; пусто — статус по умолчанию."
+          },
+          "warranty_days": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Гарантия, в сутках; пусто — без гарантии.",
+            "minimum": 0
           }
         },
         "additionalProperties": false
@@ -1736,6 +2505,577 @@
           }
         },
         "additionalProperties": false
+      },
+      "NextOrderNumber": {
+        "type": "object",
+        "description": "Следующий номер заказа.",
+        "required": [
+          "next"
+        ],
+        "properties": {
+          "next": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Номер, который получит следующий заказ; больше всех существующих."
+          }
+        },
+        "additionalProperties": false
+      },
+      "Order": {
+        "type": "object",
+        "description": "Заказ (все колонки, кроме `search_text`). Номер заказа = `id`.",
+        "required": [
+          "id",
+          "client_id",
+          "status_id",
+          "received_at",
+          "device_type",
+          "brand",
+          "model",
+          "serial",
+          "color",
+          "device_password",
+          "completeness",
+          "device_condition",
+          "malfunction",
+          "work_done",
+          "internal_comment",
+          "master",
+          "barcode",
+          "prepayment",
+          "extra_costs",
+          "discount",
+          "need_call",
+          "need_parts",
+          "created_at",
+          "updated_at",
+          "version"
+        ],
+        "properties": {
+          "barcode": {
+            "type": "string",
+            "description": "Штрихкод заказа."
+          },
+          "brand": {
+            "type": "string",
+            "description": "Бренд."
+          },
+          "client_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Номер клиента."
+          },
+          "color": {
+            "type": "string",
+            "description": "Цвет."
+          },
+          "completeness": {
+            "type": "string",
+            "description": "Комплектность."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Когда создано (местное время предприятия)."
+          },
+          "deleted_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Когда удалено (местное время предприятия); пусто, если не удалено."
+          },
+          "device_condition": {
+            "type": "string",
+            "description": "Внешнее состояние устройства."
+          },
+          "device_password": {
+            "type": "string",
+            "description": "Пароль устройства."
+          },
+          "device_type": {
+            "type": "string",
+            "description": "Тип устройства."
+          },
+          "discount": {
+            "$ref": "#/components/schemas/Money",
+            "description": "Скидка, в копейках."
+          },
+          "estimate_from": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Money",
+                "description": "Оценка стоимости: нижняя граница, в копейках."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "estimate_to": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Money",
+                "description": "Оценка стоимости: верхняя граница, в копейках."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "extra_costs": {
+            "$ref": "#/components/schemas/Money",
+            "description": "Дополнительные расходы, в копейках."
+          },
+          "final_price": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Money",
+                "description": "Итоговая цена, в копейках."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Номер заказа (он же номер квитанции)."
+          },
+          "internal_comment": {
+            "type": "string",
+            "description": "Внутренний комментарий."
+          },
+          "issued_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Когда выдан (местное время предприятия); пусто, если не выдан."
+          },
+          "malfunction": {
+            "type": "string",
+            "description": "Неисправность со слов клиента."
+          },
+          "master": {
+            "type": "string",
+            "description": "Мастер."
+          },
+          "model": {
+            "type": "string",
+            "description": "Модель."
+          },
+          "need_call": {
+            "type": "boolean",
+            "description": "Нужно позвонить клиенту."
+          },
+          "need_parts": {
+            "type": "boolean",
+            "description": "Нужны запчасти."
+          },
+          "prepaid_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Когда внесена предоплата (местное время предприятия)."
+          },
+          "prepayment": {
+            "$ref": "#/components/schemas/Money",
+            "description": "Предоплата, в копейках."
+          },
+          "received_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Когда принят (местное время предприятия)."
+          },
+          "serial": {
+            "type": "string",
+            "description": "Серийный номер."
+          },
+          "service_point_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Номер точки обслуживания; пусто — не указана."
+          },
+          "status_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Номер статуса."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Когда изменено (местное время предприятия)."
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Версия записи для проверки конфликтов правок."
+          },
+          "warranty_days": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Гарантия, в сутках; пусто — без гарантии.",
+            "minimum": 0
+          },
+          "work_done": {
+            "type": "string",
+            "description": "Выполненные работы."
+          }
+        }
+      },
+      "OrderListItem": {
+        "type": "object",
+        "description": "Строка списка заказов.",
+        "required": [
+          "id",
+          "received_at",
+          "client_id",
+          "client_name",
+          "client_phone",
+          "client_blacklisted",
+          "status_id",
+          "device_type",
+          "brand",
+          "model",
+          "serial",
+          "malfunction",
+          "master",
+          "prepayment",
+          "need_call",
+          "need_parts",
+          "barcode",
+          "version"
+        ],
+        "properties": {
+          "barcode": {
+            "type": "string",
+            "description": "Штрихкод заказа."
+          },
+          "brand": {
+            "type": "string",
+            "description": "Бренд."
+          },
+          "client_blacklisted": {
+            "type": "boolean",
+            "description": "Клиент в чёрном списке."
+          },
+          "client_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Номер клиента."
+          },
+          "client_name": {
+            "type": "string",
+            "description": "Имя клиента."
+          },
+          "client_phone": {
+            "type": "string",
+            "description": "Телефон клиента."
+          },
+          "deleted_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Когда удалено (местное время предприятия); пусто, если не удалено."
+          },
+          "device_type": {
+            "type": "string",
+            "description": "Тип устройства."
+          },
+          "estimate_from": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Money",
+                "description": "Оценка стоимости: нижняя граница, в копейках."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "estimate_to": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Money",
+                "description": "Оценка стоимости: верхняя граница, в копейках."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "final_price": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Money",
+                "description": "Итоговая цена, в копейках."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Номер заказа."
+          },
+          "issued_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Когда выдан (местное время предприятия); пусто, если не выдан."
+          },
+          "malfunction": {
+            "type": "string",
+            "description": "Неисправность со слов клиента."
+          },
+          "master": {
+            "type": "string",
+            "description": "Мастер."
+          },
+          "model": {
+            "type": "string",
+            "description": "Модель."
+          },
+          "need_call": {
+            "type": "boolean",
+            "description": "Нужно позвонить клиенту."
+          },
+          "need_parts": {
+            "type": "boolean",
+            "description": "Нужны запчасти."
+          },
+          "prepayment": {
+            "$ref": "#/components/schemas/Money",
+            "description": "Предоплата, в копейках."
+          },
+          "received_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Когда принят (местное время предприятия)."
+          },
+          "serial": {
+            "type": "string",
+            "description": "Серийный номер."
+          },
+          "service_point_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Номер точки обслуживания; пусто — не указана."
+          },
+          "status_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Номер статуса."
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Версия записи для проверки конфликтов правок."
+          }
+        }
+      },
+      "OrderPage": {
+        "type": "object",
+        "description": "Страница заказов.",
+        "required": [
+          "items",
+          "total"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderListItem"
+            },
+            "description": "Заказы страницы."
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Сколько заказов подходит всего.",
+            "minimum": 0
+          }
+        }
+      },
+      "OrderPatch": {
+        "type": "object",
+        "description": "Частичная правка заказа: `None` — поле не меняется; `Some(None)` очищает необязательное поле.",
+        "properties": {
+          "brand": {
+            "type": "string",
+            "description": "Бренд."
+          },
+          "client_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Номер клиента."
+          },
+          "color": {
+            "type": "string",
+            "description": "Цвет."
+          },
+          "completeness": {
+            "type": "string",
+            "description": "Комплектность."
+          },
+          "device_condition": {
+            "type": "string",
+            "description": "Внешнее состояние устройства."
+          },
+          "device_password": {
+            "type": "string",
+            "description": "Пароль устройства."
+          },
+          "device_type": {
+            "type": "string",
+            "description": "Тип устройства."
+          },
+          "discount": {
+            "$ref": "#/components/schemas/Money",
+            "description": "Скидка, в копейках."
+          },
+          "estimate_from": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Money",
+                "description": "Оценка стоимости: нижняя граница, в копейках."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "estimate_to": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Money",
+                "description": "Оценка стоимости: верхняя граница, в копейках."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "extra_costs": {
+            "$ref": "#/components/schemas/Money",
+            "description": "Дополнительные расходы, в копейках."
+          },
+          "final_price": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Money",
+                "description": "Итоговая цена, в копейках."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "internal_comment": {
+            "type": "string",
+            "description": "Внутренний комментарий."
+          },
+          "issued_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Когда выдан (местное время предприятия); пусто, если не выдан."
+          },
+          "malfunction": {
+            "type": "string",
+            "description": "Неисправность со слов клиента."
+          },
+          "master": {
+            "type": "string",
+            "description": "Мастер."
+          },
+          "model": {
+            "type": "string",
+            "description": "Модель."
+          },
+          "need_call": {
+            "type": "boolean",
+            "description": "Нужно позвонить клиенту."
+          },
+          "need_parts": {
+            "type": "boolean",
+            "description": "Нужны запчасти."
+          },
+          "prepayment": {
+            "$ref": "#/components/schemas/Money",
+            "description": "Предоплата, в копейках."
+          },
+          "received_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Когда принят (местное время предприятия)."
+          },
+          "serial": {
+            "type": "string",
+            "description": "Серийный номер."
+          },
+          "service_point_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Номер точки обслуживания; пусто — не указана."
+          },
+          "warranty_days": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Гарантия, в сутках; пусто — без гарантии.",
+            "minimum": 0
+          },
+          "work_done": {
+            "type": "string",
+            "description": "Выполненные работы."
+          }
+        },
+        "additionalProperties": false
+      },
+      "OrderSortField": {
+        "type": "string",
+        "description": "Поле, по которому сортируется список заказов.",
+        "enum": [
+          "id",
+          "received_at",
+          "issued_at",
+          "client_name",
+          "device_type",
+          "brand",
+          "model",
+          "status",
+          "master",
+          "final_price"
+        ]
       },
       "Permission": {
         "type": "string",
@@ -1944,6 +3284,21 @@
             "description": "Порядковый номер в списке."
           }
         }
+      },
+      "StatusChange": {
+        "type": "object",
+        "description": "Смена статуса заказа.",
+        "required": [
+          "status_id"
+        ],
+        "properties": {
+          "status_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Номер нового статуса."
+          }
+        },
+        "additionalProperties": false
       },
       "StatusKind": {
         "type": "string",

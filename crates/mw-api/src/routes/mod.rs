@@ -9,6 +9,7 @@ mod auth;
 mod catalogs;
 mod clients;
 mod meta;
+mod orders;
 
 pub(crate) fn api_routes() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
@@ -40,4 +41,14 @@ pub(crate) fn api_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(clients::list_clients, clients::create_client))
         .routes(routes!(clients::clients_by_phone))
         .routes(routes!(clients::get_client, clients::update_client))
+        .routes(routes!(orders::list_orders, orders::create_order))
+        .routes(routes!(orders::orders_by_barcode))
+        .routes(routes!(orders::set_next_order_number))
+        .routes(routes!(
+            orders::get_order,
+            orders::update_order,
+            orders::delete_order
+        ))
+        .routes(routes!(orders::change_order_status))
+        .routes(routes!(orders::issue_order))
 }

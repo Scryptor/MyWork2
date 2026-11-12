@@ -282,3 +282,40 @@ pub fn capture_logs() -> LogCapture {
         _guard: tracing::subscriber::set_default(subscriber),
     }
 }
+
+/// Полное тело `NewOrder`: новый клиент, «Телефон», неисправность «Не включается»,
+/// остальные строки пустые, суммы `null`/0, флаги `false`.
+pub fn new_order(name: &str, phone: &str, brand: &str, model: &str) -> serde_json::Value {
+    serde_json::json!({
+        "client": { "new": {
+            "full_name": name, "phone": phone, "address": "", "note": "",
+            "source": "", "blacklisted": false
+        } },
+        "service_point_id": null, "status_id": null,
+        "device_type": "Телефон", "brand": brand, "model": model,
+        "serial": "", "color": "", "device_password": "", "completeness": "",
+        "device_condition": "", "malfunction": "Не включается",
+        "internal_comment": "", "master": "",
+        "estimate_from": null, "estimate_to": null, "prepayment": 0,
+        "warranty_days": null, "need_call": false, "need_parts": false
+    })
+}
+
+/// POST /api/v1/orders; ждёт 201 и возвращает заказ.
+pub async fn create_order(t: &TestApi, token: &str, body: serde_json::Value) -> serde_json::Value {
+    let r = t
+        .send(Method::POST, "/api/v1/orders", Some(token), Some(body))
+        .await;
+    assert_eq!(r.status, 201, "{}: {}", t.label, r.body);
+    r.body
+}
+
+/// Номера заказов из `items` страницы.
+pub fn ids(page: &serde_json::Value) -> Vec<i64> {
+    page["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|o| o["id"].as_i64().unwrap())
+        .collect()
+}
