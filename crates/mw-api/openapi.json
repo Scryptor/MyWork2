@@ -2317,8 +2317,16 @@
           "currency_symbol",
           "master_percent",
           "diagnostics_overdue_days",
-          "default_warranty_days",
+          "default_warranty",
           "intake_required_fields",
+          "default_service_point_id",
+          "default_master",
+          "firm_name",
+          "firm_phone",
+          "firm_details",
+          "firm_legal_details",
+          "intake_terms",
+          "issue_terms",
           "timezone"
         ],
         "properties": {
@@ -2326,14 +2334,21 @@
             "type": "string",
             "description": "Знак валюты."
           },
-          "default_warranty_days": {
+          "default_master": {
+            "type": "string",
+            "description": "Мастер по умолчанию (имя)."
+          },
+          "default_service_point_id": {
             "type": [
               "integer",
               "null"
             ],
-            "format": "int32",
-            "description": "Гарантия по умолчанию, в сутках; пусто — без гарантии.",
-            "minimum": 0
+            "format": "int64",
+            "description": "Точка по умолчанию (неархивная); пусто — не выбрана."
+          },
+          "default_warranty": {
+            "type": "string",
+            "description": "Гарантия по умолчанию — печатный текст («30 дней»)."
           },
           "diagnostics_overdue_days": {
             "type": "integer",
@@ -2341,9 +2356,33 @@
             "description": "Через сколько суток диагностика считается просроченной.",
             "minimum": 0
           },
+          "firm_details": {
+            "type": "string",
+            "description": "Данные фирмы (адрес, часы работы)."
+          },
+          "firm_legal_details": {
+            "type": "string",
+            "description": "Реквизиты фирмы."
+          },
+          "firm_name": {
+            "type": "string",
+            "description": "Название фирмы для печатных форм."
+          },
+          "firm_phone": {
+            "type": "string",
+            "description": "Телефон фирмы."
+          },
           "intake_required_fields": {
             "type": "boolean",
             "description": "Требовать заполнения обязательных полей при приёме."
+          },
+          "intake_terms": {
+            "type": "string",
+            "description": "Условия приёма (текст акта приёма)."
+          },
+          "issue_terms": {
+            "type": "string",
+            "description": "Условия выдачи (текст акта выдачи)."
           },
           "master_percent": {
             "type": "integer",
@@ -3921,20 +3960,27 @@
       },
       "SettingsPatch": {
         "type": "object",
-        "description": "Частичное изменение настроек; не переданное поле не меняется. Гарантия: `null` — «без гарантии».",
+        "description": "Частичное изменение настроек; не переданное поле не меняется. Точка по умолчанию: `null` — сбросить.",
         "properties": {
           "currency_symbol": {
             "type": "string",
             "description": "Знак валюты."
           },
-          "default_warranty_days": {
+          "default_master": {
+            "type": "string",
+            "description": "Мастер по умолчанию (имя)."
+          },
+          "default_service_point_id": {
             "type": [
               "integer",
               "null"
             ],
-            "format": "int32",
-            "description": "Гарантия по умолчанию, в сутках; пусто — без гарантии.",
-            "minimum": 0
+            "format": "int64",
+            "description": "Точка по умолчанию; `null` — сбросить."
+          },
+          "default_warranty": {
+            "type": "string",
+            "description": "Гарантия по умолчанию — печатный текст."
           },
           "diagnostics_overdue_days": {
             "type": "integer",
@@ -3942,9 +3988,33 @@
             "description": "Через сколько суток диагностика считается просроченной.",
             "minimum": 0
           },
+          "firm_details": {
+            "type": "string",
+            "description": "Данные фирмы (адрес, часы работы)."
+          },
+          "firm_legal_details": {
+            "type": "string",
+            "description": "Реквизиты фирмы."
+          },
+          "firm_name": {
+            "type": "string",
+            "description": "Название фирмы для печатных форм."
+          },
+          "firm_phone": {
+            "type": "string",
+            "description": "Телефон фирмы."
+          },
           "intake_required_fields": {
             "type": "boolean",
             "description": "Требовать заполнения обязательных полей при приёме."
+          },
+          "intake_terms": {
+            "type": "string",
+            "description": "Условия приёма (текст акта приёма)."
+          },
+          "issue_terms": {
+            "type": "string",
+            "description": "Условия выдачи (текст акта выдачи)."
           },
           "master_percent": {
             "type": "integer",

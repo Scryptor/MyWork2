@@ -3,7 +3,7 @@
 
 use chrono::NaiveDate;
 use mw_db::entity::{
-    client, client_phone, dictionary_item, legacy_import, legacy_row, order, role, status,
+    client, client_phone, dictionary_item, legacy_import, legacy_row, order, role, setting, status,
 };
 use mw_db::ids::IdTable;
 use mw_domain::permission::PermissionSet;
@@ -359,4 +359,54 @@ async fn vacuum_into_writes_a_consistent_copy_once() {
     let restored = mw_db::connect(&mw_db::sqlite_url(&copy)).await.unwrap();
     assert_eq!(status::Entity::find().count(&restored).await.unwrap(), 8);
     assert!(mw_db::backup::vacuum_into(&db, &copy).await.is_err());
+}
+
+async fn put_setting_row(db: &DatabaseConnection, key: &str, value: &str) {
+    setting::Entity::insert(setting::ActiveModel {
+        key: Set(key.to_owned()),
+        value: Set(value.to_owned()),
+    })
+    .exec_without_returning(db)
+    .await
+    .unwrap();
+}
+
+async fn setting_row(db: &DatabaseConnection, key: &str) -> Option<String> {
+    setting::Entity::find_by_id(key)
+        .one(db)
+        .await
+        .unwrap()
+        .map(|m| m.value)
+}
+
+#[tokio::test]
+async fn default_warranty_days_setting_becomes_text() {
+    for (value, expected) in [
+        ("45", "\"45 дн.\""),
+        ("0", "\"Без гарантии\""),
+        ("null", "\"\""),
+    ] {
+        for (label, db) in mw_db::testing::all_backends_up_to(2).await {
+            put_setting_row(&db, "default_warranty_days", value).await;
+            mw_db::migrate(&db).await.unwrap();
+            assert_eq!(
+                setting_row(&db, "default_warranty").await.as_deref(),
+                Some(expected),
+                "{label} {value}"
+            );
+            assert_eq!(
+                setting_row(&db, "default_warranty_days").await,
+                None,
+                "{label}"
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn missing_default_warranty_days_setting_adds_nothing() {
+    for (label, db) in mw_db::testing::all_backends_up_to(2).await {
+        mw_db::migrate(&db).await.unwrap();
+        assert_eq!(setting_row(&db, "default_warranty").await, None, "{label}");
+    }
 }

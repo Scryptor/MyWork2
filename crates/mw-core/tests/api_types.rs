@@ -44,7 +44,7 @@ fn ts_field_type(decl: &str, field: &str) -> String {
 }
 
 const NULLABLE: &[(&str, &str)] = &[
-    ("SettingsPatch", "default_warranty_days"),
+    ("SettingsPatch", "default_service_point_id"),
     ("OrderPatch", "service_point_id"),
     ("OrderPatch", "issued_at"),
     ("OrderPatch", "estimate_from"),

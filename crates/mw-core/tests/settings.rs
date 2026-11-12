@@ -26,8 +26,8 @@ async fn defaults_and_timezone_saved_once() -> Result<(), CoreError> {
             "{label}"
         );
         assert_eq!(
-            (s.default_warranty_days, s.intake_required_fields),
-            (Some(30), true)
+            (s.default_warranty.as_str(), s.intake_required_fields),
+            ("30 дней", true)
         );
         assert_eq!(core.now().to_string(), "2026-11-11 10:30:00");
         let reopened = Core::open(db, clock, "UTC").await?;
@@ -75,13 +75,13 @@ async fn update_settings_checks_rights_validates_and_audits() -> Result<(), Core
             .update_settings(
                 &admin(),
                 SettingsPatch {
-                    default_warranty_days: Some(None),
+                    default_warranty: Some("6 месяцев".into()),
                     ..Default::default()
                 },
             )
             .await?;
-        assert_eq!(s.default_warranty_days, None);
-        assert_eq!(t.core.settings().default_warranty_days, None);
+        assert_eq!(s.default_warranty, "6 месяцев");
+        assert_eq!(t.core.settings().default_warranty, "6 месяцев");
         assert_eq!(count_audit(&t.core, "settings.updated").await, 1);
     }
     Ok(())
@@ -103,6 +103,66 @@ async fn reopening_keeps_single_timezone_row_with_first_value() -> Result<(), Co
             .await?;
         assert_eq!(rows, 1, "{label}");
         assert_eq!(second.settings().timezone, "Europe/Moscow", "{label}");
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn new_settings_have_defaults_and_validate_service_point() -> Result<(), CoreError> {
+    for t in cores().await {
+        let s = t.core.settings();
+        assert_eq!(
+            (
+                s.default_warranty.as_str(),
+                s.default_service_point_id,
+                s.default_master.as_str(),
+                s.firm_name.as_str()
+            ),
+            ("30 дней", None, "", ""),
+            "{}",
+            t.label
+        );
+        let p = t.core.create_service_point(&admin(), "Мира, 5").await?;
+        let s = t
+            .core
+            .update_settings(
+                &admin(),
+                SettingsPatch {
+                    default_service_point_id: Some(Some(p.id)),
+                    intake_terms: Some("Строка 1\nСтрока 2\n".into()),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        assert_eq!(
+            (s.default_service_point_id, s.intake_terms.as_str()),
+            (Some(p.id), "Строка 1\nСтрока 2"),
+            "{}",
+            t.label
+        );
+        assert_validation(
+            t.core
+                .update_settings(
+                    &admin(),
+                    SettingsPatch {
+                        default_service_point_id: Some(Some(9_999)),
+                        ..Default::default()
+                    },
+                )
+                .await,
+            &[("default_service_point_id", "invalid")],
+        );
+        let cleared = t
+            .core
+            .update_settings(
+                &admin(),
+                SettingsPatch {
+                    default_service_point_id: Some(None),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        assert_eq!(cleared.default_service_point_id, None, "{}", t.label);
     }
     Ok(())
 }

@@ -18,9 +18,9 @@ async fn settings_endpoints() {
             (
                 r.status,
                 &r.body["currency_symbol"],
-                &r.body["default_warranty_days"]
+                &r.body["default_warranty"]
             ),
-            (200, &json!("₽"), &json!(30)),
+            (200, &json!("₽"), &json!("30 дней")),
             "{}",
             t.label
         );
@@ -29,13 +29,22 @@ async fn settings_endpoints() {
                 Method::PATCH,
                 "/api/v1/settings",
                 Some(&admin),
-                Some(json!({ "default_warranty_days": null })),
+                Some(json!({ "default_warranty": "6 месяцев" })),
             )
             .await;
         assert_eq!(
-            (r.status, &r.body["default_warranty_days"]),
-            (200, &json!(null))
+            (r.status, &r.body["default_warranty"]),
+            (200, &json!("6 месяцев"))
         );
+        let r = t
+            .send(
+                Method::PATCH,
+                "/api/v1/settings",
+                Some(&admin),
+                Some(json!({ "default_warranty_days": 30 })),
+            )
+            .await;
+        assert_eq!(r.status, 400, "{}", t.label);
         let r = t
             .send(
                 Method::PATCH,

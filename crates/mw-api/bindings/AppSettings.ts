@@ -18,13 +18,45 @@ master_percent: number,
  */
 diagnostics_overdue_days: number, 
 /**
- * Гарантия по умолчанию, в сутках; пусто — без гарантии.
+ * Гарантия по умолчанию — печатный текст («30 дней»).
  */
-default_warranty_days: number | null, 
+default_warranty: string, 
 /**
  * Требовать заполнения обязательных полей при приёме.
  */
 intake_required_fields: boolean, 
+/**
+ * Точка по умолчанию (неархивная); пусто — не выбрана.
+ */
+default_service_point_id: number | null, 
+/**
+ * Мастер по умолчанию (имя).
+ */
+default_master: string, 
+/**
+ * Название фирмы для печатных форм.
+ */
+firm_name: string, 
+/**
+ * Телефон фирмы.
+ */
+firm_phone: string, 
+/**
+ * Данные фирмы (адрес, часы работы).
+ */
+firm_details: string, 
+/**
+ * Реквизиты фирмы.
+ */
+firm_legal_details: string, 
+/**
+ * Условия приёма (текст акта приёма).
+ */
+intake_terms: string, 
+/**
+ * Условия выдачи (текст акта выдачи).
+ */
+issue_terms: string, 
 /**
  * Часовой пояс предприятия (имя IANA).
  */
