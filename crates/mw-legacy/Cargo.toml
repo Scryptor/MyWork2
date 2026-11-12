@@ -1,0 +1,38 @@
+[package]
+name = "mw-legacy"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+mw-core = { path = "../mw-core" }
+mw-domain = { path = "../mw-domain" }
+sqlx = { workspace = true, features = ["sqlite", "runtime-tokio"] }
+tokio = { workspace = true, features = ["fs", "rt"] }
+encoding_rs = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tempfile = { workspace = true }
+
+[features]
+# Код-генератор синтетической папки MyWork 2 (для тестов и примера).
+fixtures = []
+
+[dev-dependencies]
+mw-legacy = { path = ".", features = ["fixtures"] }
+mw-core = { path = "../mw-core", features = ["testing"] }
+mw-db = { path = "../mw-db" }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[[example]]
+name = "make_fixture"
+required-features = ["fixtures"]
