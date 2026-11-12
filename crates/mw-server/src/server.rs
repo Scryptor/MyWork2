@@ -1,4 +1,4 @@
-use crate::config::{Config, ServerError, redact_database_url, scrub_url};
+use crate::config::{Config, ServerError, redact_database_url, scrub_url, validate_timezone};
 use axum::Router;
 use mw_api::ApiConfig;
 use mw_core::{Core, SystemClock};
@@ -49,6 +49,19 @@ async fn migrate(db: &DatabaseConnection, url: Option<&str>) -> Result<(), Serve
     })
 }
 
+/// Пишет в лог часовой пояс предприятия и предупреждает, если заданный явно пояс не применён.
+pub(crate) fn log_timezone(core: &Core, requested: Option<&str>) {
+    let effective = core.settings().timezone;
+    tracing::info!("часовой пояс предприятия: {effective}");
+    if let Some(requested) = requested
+        && requested != effective
+    {
+        tracing::warn!(
+            "часовой пояс «{requested}» не применён: в базе уже сохранён пояс «{effective}», он меняется в настройках программы"
+        );
+    }
+}
+
 pub(crate) fn system_timezone(config: &Config) -> String {
     config
         .timezone
@@ -69,17 +82,12 @@ impl Server {
         config: &Config,
         db: DatabaseConnection,
     ) -> Result<Server, ServerError> {
+        if let Some(name) = &config.timezone {
+            validate_timezone(name)?;
+        }
         migrate(&db, None).await?;
         let core = Core::open(db.clone(), Arc::new(SystemClock), &system_timezone(config)).await?;
-        let effective = core.settings().timezone;
-        tracing::info!("часовой пояс предприятия: {effective}");
-        if let Some(requested) = &config.timezone
-            && *requested != effective
-        {
-            tracing::warn!(
-                "часовой пояс «{requested}» не применён: в базе уже сохранён пояс «{effective}», он меняется в настройках программы"
-            );
-        }
+        log_timezone(&core, config.timezone.as_deref());
         let listener =
             TcpListener::bind(config.listen)
                 .await

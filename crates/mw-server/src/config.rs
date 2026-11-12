@@ -43,11 +43,19 @@ impl Config {
 /// Скрывает секреты в адресе базы: пароль и параметры с `password` в имени заменяются на `***`;
 /// неразбираемый адрес сводится к `схема://***`. Адрес без секретов возвращается как есть.
 pub fn redact_database_url(url: &str) -> String {
-    let Ok(mut parsed) = url::Url::parse(url) else {
-        return match url.split_once("://") {
-            Some((scheme, _)) => format!("{scheme}://***"),
-            None => "***".to_string(),
-        };
+    let known = |parsed: &url::Url| {
+        matches!(parsed.scheme(), "postgres" | "postgresql" | "sqlite") && {
+            parsed.has_host() || parsed.scheme() == "sqlite"
+        }
+    };
+    let mut parsed = match url::Url::parse(url) {
+        Ok(parsed) if known(&parsed) => parsed,
+        _ => {
+            return match url.split_once("://") {
+                Some((scheme, _)) => format!("{scheme}://***"),
+                None => "***".to_string(),
+            };
+        }
     };
     let mut changed = false;
     if parsed.password().is_some() && parsed.set_password(Some("***")).is_ok() {
@@ -80,7 +88,21 @@ pub fn redact_database_url(url: &str) -> String {
 
 /// Заменяет адрес базы в тексте ошибки его скрытой формой.
 pub fn scrub_url(message: &str, url: &str) -> String {
-    message.replace(url, &redact_database_url(url))
+    let redacted = redact_database_url(url);
+    if url.is_empty() || redacted == url {
+        return message.to_string();
+    }
+    message.replace(url, &redacted)
+}
+
+/// Проверяет имя часового пояса (IANA); общая для командной строки и сервера.
+pub fn validate_timezone(name: &str) -> Result<(), ServerError> {
+    if name.parse::<chrono_tz::Tz>().is_err() {
+        return Err(ServerError::Config(format!(
+            "неизвестный часовой пояс «{name}»: укажите имя IANA, например Europe/Moscow"
+        )));
+    }
+    Ok(())
 }
 
 /// Ошибки запуска и служебных команд сервера.
@@ -146,6 +168,18 @@ mod tests {
         );
         let out = redact_database_url("postgres://mw:pw@db/mw?sslPassword=zzz");
         assert!(!out.contains("zzz") && !out.contains("pw@"), "{out}");
+    }
+
+    #[test]
+    fn redaction_hides_schemeless_credentials() {
+        let out = redact_database_url("mw:secret@localhost:5432/mw");
+        assert!(!out.contains("secret"), "{out}");
+        assert_eq!(redact_database_url("mw://u:secret@h/db"), "mw://***");
+    }
+
+    #[test]
+    fn scrub_of_empty_url_changes_nothing() {
+        assert_eq!(scrub_url("ошибка", ""), "ошибка");
     }
 
     #[test]

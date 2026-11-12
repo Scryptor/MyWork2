@@ -189,3 +189,31 @@ async fn explicit_timezone_is_stored_on_first_start() {
         );
     }
 }
+
+#[tokio::test]
+async fn schemeless_database_url_does_not_leak_the_password() {
+    let mut cfg = config(temp_dir("schemeless"));
+    cfg.database_url = Some("mw:secret@localhost:5432/mw".into());
+    let err = Server::start(&cfg)
+        .await
+        .err()
+        .expect("подключение должно не удаться");
+    assert!(!err.to_string().contains("secret"), "{err}");
+}
+
+#[tokio::test]
+async fn unknown_timezone_is_rejected_by_the_library() {
+    for (label, db) in mw_db::testing::all_backends().await {
+        let mut cfg = config(temp_dir(label));
+        cfg.timezone = Some("Moscow".into());
+        let err = Server::start_with_db(&cfg, db)
+            .await
+            .err()
+            .expect("неизвестный пояс должен быть отвергнут");
+        assert!(
+            err.to_string()
+                .contains("неизвестный часовой пояс «Moscow»"),
+            "{label}: {err}"
+        );
+    }
+}

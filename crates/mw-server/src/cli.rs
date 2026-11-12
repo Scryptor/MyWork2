@@ -1,7 +1,7 @@
 use crate::admin::{create_admin, read_password};
-use crate::config::{Config, DEFAULT_LISTEN, ServerError, redact_database_url};
+use crate::config::{Config, DEFAULT_LISTEN, ServerError, redact_database_url, validate_timezone};
 use crate::paths::{os_data_dir, resolve_data_dir};
-use crate::server::{Server, connect_and_migrate, shutdown_signal, system_timezone};
+use crate::server::{Server, connect_and_migrate, log_timezone, shutdown_signal, system_timezone};
 use clap::{Parser, Subcommand};
 use mw_core::{Core, SystemClock};
 use std::io::IsTerminal;
@@ -60,12 +60,17 @@ pub enum Command {
 
 impl Cli {
     pub fn config(&self) -> Result<Config, ServerError> {
-        if let Some(name) = &self.timezone
-            && name.parse::<chrono_tz::Tz>().is_err()
+        if let Some(name) = &self.timezone {
+            validate_timezone(name)?;
+        }
+        if self
+            .database_url
+            .as_deref()
+            .is_some_and(|u| u.trim().is_empty())
         {
-            return Err(ServerError::Config(format!(
-                "неизвестный часовой пояс «{name}»: укажите имя IANA, например Europe/Moscow"
-            )));
+            return Err(ServerError::Config(
+                "адрес базы данных пуст: укажите его или не задавайте --database-url / MW_DATABASE_URL".into(),
+            ));
         }
         let exe = std::env::current_exe().ok();
         let exe_dir = exe.as_deref().and_then(|path| path.parent());
@@ -87,6 +92,7 @@ pub async fn run(cli: Cli) -> Result<(), ServerError> {
             let db = connect_and_migrate(&config).await?;
             let core =
                 Core::open(db.clone(), Arc::new(SystemClock), &system_timezone(&config)).await?;
+            log_timezone(&core, config.timezone.as_deref());
             let result = create_admin(&core, &login, &name, &password).await;
             drop(core);
             let _ = db.close().await;
@@ -135,6 +141,13 @@ mod tests {
         assert!(err.contains("«Moscow»"), "{err}");
         let cli = Cli::try_parse_from(["mw-server", "--timezone", "Europe/Moscow"]).unwrap();
         assert!(cli.config().is_ok());
+    }
+
+    #[test]
+    fn empty_database_url_is_rejected() {
+        let cli = Cli::try_parse_from(["mw-server", "--database-url", ""]).unwrap();
+        let err = cli.config().unwrap_err().to_string();
+        assert!(err.contains("адрес базы данных пуст"), "{err}");
     }
 
     #[test]
