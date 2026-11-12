@@ -375,6 +375,13 @@ impl Core {
             json!(blacklisted),
         );
         if changed.is_empty() {
+            // Пустая правка допустима, только если исходные данные корректны:
+            // запись без цифр с пометкой не должна пропадать молча.
+            if let Err(errors) = &validated
+                && errors.iter().any(|e| e.field == "phones")
+            {
+                return Err(CoreError::Validation(errors.clone()));
+            }
             return Ok(Client::from_parts(current, current_phones));
         }
         if current.version != expected_version {

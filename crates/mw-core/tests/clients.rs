@@ -398,3 +398,57 @@ async fn phone_list_validation() -> Result<(), CoreError> {
     }
     Ok(())
 }
+
+#[tokio::test]
+async fn phone_input_is_validated_on_update_even_when_cleaned_list_is_unchanged()
+-> Result<(), CoreError> {
+    for t in cores().await {
+        let c = t
+            .core
+            .create_client(
+                &admin(),
+                NewClient {
+                    full_name: "А".into(),
+                    phones: phones(&["89211234567"]),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        let patch = |p: Vec<ClientPhone>| ClientPatch {
+            phones: Some(p),
+            ..Default::default()
+        };
+        let mut with_note_only = phones(&["89211234567"]);
+        with_note_only.push(ClientPhone {
+            phone: "нет".into(),
+            note: "x".into(),
+        });
+        assert_validation(
+            t.core
+                .update_client(&admin(), c.id, c.version, patch(with_note_only))
+                .await,
+            &[("phones", "invalid")],
+        );
+        assert_validation(
+            t.core
+                .update_client(
+                    &admin(),
+                    c.id,
+                    c.version,
+                    patch(phones(&["8 921 123-45-67", "+7 921 1234567"])),
+                )
+                .await,
+            &[("phones", "duplicate")],
+        );
+        let many: Vec<String> = (1..=11).map(|i| i.to_string()).collect();
+        let many: Vec<&str> = many.iter().map(String::as_str).collect();
+        assert_validation(
+            t.core
+                .update_client(&admin(), c.id, c.version, patch(phones(&many)))
+                .await,
+            &[("phones", "out_of_range")],
+        );
+        assert_eq!(t.core.get_client(&admin(), c.id).await?, c);
+    }
+    Ok(())
+}
