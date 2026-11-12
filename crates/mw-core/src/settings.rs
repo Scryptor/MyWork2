@@ -161,7 +161,7 @@ fn get<T: serde::de::DeserializeOwned>(rows: &[setting::Model], key: &str) -> Op
 }
 
 /// Читает все настройки; отсутствующие или нечитаемые поля заменяются умолчаниями.
-async fn load(conn: &impl ConnectionTrait) -> Result<AppSettings, CoreError> {
+pub(crate) async fn load(conn: &impl ConnectionTrait) -> Result<AppSettings, CoreError> {
     let rows = setting::Entity::find().all(conn).await?;
     let d = AppSettings::default();
     Ok(AppSettings {
@@ -229,7 +229,7 @@ pub(crate) async fn ensure_timezone(
 }
 
 /// `point_exists` — найдена ли неархивная точка, на которую указывает патч (если указывает).
-fn validate(p: &SettingsPatch, point_exists: bool) -> Result<(), CoreError> {
+pub(crate) fn validate(p: &SettingsPatch, point_exists: bool) -> Result<(), CoreError> {
     let mut errors = Vec::new();
     if let Some(c) = &p.currency_symbol {
         let n = c.chars().count();

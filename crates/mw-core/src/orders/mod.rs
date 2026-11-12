@@ -6,4 +6,5 @@ mod types;
 mod update;
 
 pub use list::{IssuedFilter, OrderFilter, OrderListItem, OrderSort, OrderSortField};
+pub(crate) use types::warranty_columns;
 pub use types::{ClientRef, NewOrder, Order, OrderPatch};

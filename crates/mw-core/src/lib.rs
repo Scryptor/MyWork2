@@ -8,6 +8,7 @@ mod clock;
 mod core;
 mod dictionaries;
 mod error;
+mod import;
 mod orders;
 mod page;
 mod patch;
@@ -29,6 +30,11 @@ pub use clock::{Clock, FixedClock, SystemClock};
 pub use core::Core;
 pub use dictionaries::DictionaryItem;
 pub use error::CoreError;
+pub use import::{
+    DatabaseKind, ImportBundle, ImportMode, ImportSummary, ImportTarget, ImportedClient,
+    ImportedHistory, ImportedLegacyRow, ImportedOrder, ImportedSettings, ImportedUser,
+    LegacyTarget,
+};
 pub use orders::{
     ClientRef, IssuedFilter, NewOrder, Order, OrderFilter, OrderListItem, OrderPatch, OrderSort,
     OrderSortField,

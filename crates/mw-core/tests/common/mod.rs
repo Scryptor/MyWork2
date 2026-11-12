@@ -477,3 +477,227 @@ pub async fn setting_value(core: &Core, key: &str) -> serde_json::Value {
         .unwrap();
     serde_json::from_str(&row.value).unwrap()
 }
+
+/// Пакет импорта из описания плана: 9 статусов, 2 точки, роли, 2 пользователя, 2 клиента, 3 заказа.
+pub fn sample_bundle() -> mw_core::ImportBundle {
+    use chrono::{NaiveDate, NaiveDateTime};
+    use mw_core::{
+        ImportBundle, ImportedClient, ImportedHistory, ImportedOrder, ImportedSettings,
+        ImportedUser, LegacyTarget, NewRole, NewStatus, SettingsPatch,
+    };
+    use mw_domain::dictionary::{DEFAULT_DICTIONARY, DictionaryKind};
+    use mw_domain::money::Money;
+    use mw_domain::permission::PermissionSet;
+    use mw_domain::status::DEFAULT_STATUSES;
+    use serde_json::json;
+
+    let dt = |y, mo, d, h, mi| -> NaiveDateTime {
+        NaiveDate::from_ymd_opt(y, mo, d)
+            .unwrap()
+            .and_hms_opt(h, mi, 0)
+            .unwrap()
+    };
+    let mut statuses: Vec<NewStatus> = DEFAULT_STATUSES
+        .iter()
+        .map(|s| NewStatus {
+            name: s.name.to_owned(),
+            kind: s.kind,
+            color: s.color.to_owned(),
+        })
+        .collect();
+    statuses.push(NewStatus {
+        name: "Куплен".into(),
+        kind: StatusKind::Issued,
+        color: "gray".into(),
+    });
+    let dictionary: Vec<(DictionaryKind, Vec<String>)> = DEFAULT_DICTIONARY
+        .iter()
+        .map(|(kind, values)| {
+            let values = if *kind == DictionaryKind::Master {
+                vec!["ПЕТРОВ".to_owned()]
+            } else {
+                values.iter().map(|v| (*v).to_owned()).collect()
+            };
+            (*kind, values)
+        })
+        .collect();
+    let order = |id: i64, client_id: i64, status: &str, received_at: NaiveDateTime| ImportedOrder {
+        id,
+        client_id,
+        status: status.to_owned(),
+        service_point: None,
+        received_at,
+        issued_at: None,
+        prepaid_at: None,
+        device_type: "ТЕЛЕФОН".into(),
+        brand: "SAMSUNG".into(),
+        model: "A52".into(),
+        serial: String::new(),
+        color: String::new(),
+        completeness: String::new(),
+        device_condition: String::new(),
+        malfunction: "Разбит экран".into(),
+        work_done: String::new(),
+        internal_comment: String::new(),
+        master: "ПЕТРОВ".into(),
+        barcode: format!("{id:012}"),
+        estimate_from: None,
+        estimate_to: None,
+        final_price: None,
+        prepayment: Money::ZERO,
+        extra_costs: Money::ZERO,
+        discount: Money::ZERO,
+        warranty: String::new(),
+        need_call: false,
+        need_parts: false,
+        deleted_at: None,
+        tracking: Vec::new(),
+    };
+    let mut o5 = order(5, 7, "Выдан", dt(2015, 3, 5, 14, 20));
+    o5.issued_at = Some(dt(2015, 3, 7, 0, 0));
+    o5.final_price = Some(Money::from_rubles(1500));
+    o5.warranty = "30 дней".into();
+    o5.barcode = "123456789012".into();
+    let mut o6 = order(6, 7, "Куплен", dt(2015, 3, 6, 9, 5));
+    o6.deleted_at = Some(dt(2015, 3, 8, 10, 0));
+    o6.barcode = "123456789012".into();
+    let mut o10 = order(10, 9, "Диагностика", dt(2015, 3, 17, 12, 0));
+    o10.service_point = Some("Ленина, 1".into());
+    o10.estimate_from = Some(Money::from_rubles(1500));
+    o10.estimate_to = Some(Money::from_rubles(1500));
+    o10.tracking = vec![("RA123456789RU".into(), "посылка".into())];
+    let client = |id: i64, name: &str, phones: Vec<ClientPhone>, created_at| ImportedClient {
+        id,
+        full_name: name.to_owned(),
+        phones,
+        address: String::new(),
+        note: String::new(),
+        source: String::new(),
+        blacklisted: false,
+        created_at,
+    };
+    ImportBundle {
+        source_path: "fixture/MyWork2".into(),
+        statuses,
+        service_points: vec!["Мира, 5".into(), "Ленина, 1".into()],
+        dictionary,
+        roles: vec![
+            NewRole {
+                name: "Администратор".into(),
+                permissions: PermissionSet::all(),
+            },
+            NewRole {
+                name: "Мастера".into(),
+                permissions: PermissionSet::from_codes(["orders_edit"]),
+            },
+        ],
+        users: vec![
+            ImportedUser {
+                login: "Ирина".into(),
+                role: "Администратор".into(),
+                legacy_sha1: mw_core::legacy_sha1_hex("1234"),
+            },
+            ImportedUser {
+                login: "Олег".into(),
+                role: "Мастера".into(),
+                legacy_sha1: mw_core::legacy_sha1_hex("qwerty"),
+            },
+        ],
+        settings: ImportedSettings {
+            values: SettingsPatch {
+                currency_symbol: Some("руб.".into()),
+                firm_name: Some("СЕРВИС".into()),
+                ..Default::default()
+            },
+            default_service_point: Some("Ленина, 1".into()),
+        },
+        clients: vec![
+            client(
+                7,
+                "ИВАНОВ ИВАН",
+                vec![
+                    ClientPhone {
+                        phone: "89211234567".into(),
+                        note: String::new(),
+                    },
+                    ClientPhone {
+                        phone: "89117654321".into(),
+                        note: "жена".into(),
+                    },
+                ],
+                dt(2014, 11, 2, 0, 0),
+            ),
+            client(9, "КИМ", Vec::new(), dt(2015, 3, 17, 12, 0)),
+        ],
+        orders: vec![o5, o6, o10],
+        history: vec![
+            ImportedHistory {
+                at: dt(2015, 3, 5, 14, 20),
+                user_name: String::new(),
+                action: "legacy.status".into(),
+                order_id: Some(5),
+                client_id: None,
+                summary: "Установлен статус «Диагностика»".into(),
+                details: Some(json!({ "legacy": { "id": 1 } })),
+            },
+            ImportedHistory {
+                at: dt(2015, 3, 7, 10, 0),
+                user_name: "ADMIN".into(),
+                action: "legacy.history".into(),
+                order_id: Some(5),
+                client_id: None,
+                summary: "ПЕЧАТЬ АКТА ВЫДАЧИ".into(),
+                details: None,
+            },
+        ],
+        legacy_rows: vec![
+            legacy_row("Catalog", "5", Some(LegacyTarget::Order(5))),
+            legacy_row("ClientsMap", "7", Some(LegacyTarget::Client(7))),
+            legacy_row("Users", "1", Some(LegacyTarget::User("Ирина".into()))),
+            legacy_row(
+                "GroupDostup",
+                "1",
+                Some(LegacyTarget::Role("Мастера".into())),
+            ),
+            legacy_row("Stock", "1", None),
+        ],
+        next_order_id: 16,
+        next_client_id: 15,
+        report: json!({ "warnings": [] }),
+    }
+}
+
+fn legacy_row(
+    source: &str,
+    key: &str,
+    target: Option<mw_core::LegacyTarget>,
+) -> mw_core::ImportedLegacyRow {
+    mw_core::ImportedLegacyRow {
+        source: source.to_owned(),
+        source_key: key.to_owned(),
+        target,
+        raw: serde_json::json!({ "id": key }),
+    }
+}
+
+/// Цель следа импорта: (таблица, номер).
+pub async fn legacy_target(core: &Core, source: &str, key: &str) -> Option<(String, i64)> {
+    let row = mw_db::entity::legacy_row::Entity::find()
+        .filter(mw_db::entity::legacy_row::Column::Source.eq(source))
+        .filter(mw_db::entity::legacy_row::Column::SourceKey.eq(key))
+        .one(core.db())
+        .await
+        .unwrap()
+        .unwrap_or_else(|| panic!("нет следа {source}/{key}"));
+    row.target_table.zip(row.target_id)
+}
+
+pub async fn service_point_id_by_name(core: &Core, name: &str) -> i64 {
+    mw_db::entity::service_point::Entity::find()
+        .filter(mw_db::entity::service_point::Column::Name.eq(name))
+        .one(core.db())
+        .await
+        .unwrap()
+        .unwrap_or_else(|| panic!("нет точки {name}"))
+        .id
+}

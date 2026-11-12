@@ -419,7 +419,7 @@ fn warranty_term(m: &order::Model) -> Option<WarrantyTerm> {
 }
 
 /// Колонки гарантии по тексту: текст без пробелов по краям, сутки, месяцы.
-pub(super) fn warranty_columns(text: &str) -> (String, Option<i32>, Option<i32>) {
+pub(crate) fn warranty_columns(text: &str) -> (String, Option<i32>, Option<i32>) {
     let text = text.trim().to_owned();
     match parse_warranty_term(&text) {
         Some(WarrantyTerm {

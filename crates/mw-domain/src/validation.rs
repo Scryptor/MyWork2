@@ -33,6 +33,8 @@ impl FieldError {
             "deleted" => "Запись удалена",
             "last_admin" => "Нельзя оставить программу без администратора",
             "last_issued_status" => "Нужен хотя бы один статус вида «Выдан»",
+            "not_empty" => "База не пуста",
+            "replace_unsupported" => "Замена возможна только для базы SQLite",
             _ => "Недопустимое значение",
         }
     }
@@ -41,6 +43,18 @@ impl FieldError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn import_codes_have_russian_messages() {
+        assert_eq!(
+            FieldError::new("database", "not_empty").message_ru(),
+            "База не пуста"
+        );
+        assert_eq!(
+            FieldError::new("mode", "replace_unsupported").message_ru(),
+            "Замена возможна только для базы SQLite"
+        );
+    }
 
     #[test]
     fn field_error_required() {
