@@ -519,14 +519,11 @@
         "parameters": [
           {
             "name": "include_archived",
-            "in": "path",
+            "in": "query",
             "description": "Показывать и архивные записи; по умолчанию `false`.",
-            "required": true,
+            "required": false,
             "schema": {
-              "type": [
-                "boolean",
-                "null"
-              ]
+              "type": "boolean"
             }
           }
         ],
@@ -793,14 +790,11 @@
         "parameters": [
           {
             "name": "include_archived",
-            "in": "path",
+            "in": "query",
             "description": "Показывать и архивные записи; по умолчанию `false`.",
-            "required": true,
+            "required": false,
             "schema": {
-              "type": [
-                "boolean",
-                "null"
-              ]
+              "type": "boolean"
             }
           }
         ],

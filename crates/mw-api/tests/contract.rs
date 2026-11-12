@@ -129,3 +129,47 @@ fn every_schema_reference_resolves() {
         );
     }
 }
+
+#[test]
+fn parameters_match_their_paths() {
+    const REQUIRED_QUERY: [&str; 3] = ["version", "phone", "code"];
+    let api: serde_json::Value =
+        serde_json::from_str(&mw_api::openapi().to_json().unwrap()).unwrap();
+    for (path, item) in api["paths"].as_object().unwrap() {
+        let placeholders: Vec<&str> = path
+            .split('/')
+            .filter_map(|s| s.strip_prefix('{').and_then(|s| s.strip_suffix('}')))
+            .collect();
+        for (method, op) in item.as_object().unwrap() {
+            let params = op["parameters"].as_array().cloned().unwrap_or_default();
+            let at = format!("{method} {path}");
+            let mut path_names = Vec::new();
+            for p in &params {
+                let name = p["name"].as_str().unwrap();
+                match p["in"].as_str().unwrap() {
+                    "path" => {
+                        assert!(placeholders.contains(&name), "{at}: нет {{{name}}} в пути");
+                        assert_eq!(p["required"], true, "{at}: параметр пути {name}");
+                        path_names.push(name);
+                    }
+                    "query" => {
+                        let required = p["required"].as_bool().unwrap_or(false);
+                        assert!(
+                            !required || REQUIRED_QUERY.contains(&name),
+                            "{at}: параметр запроса {name} обязателен"
+                        );
+                        let ty = &p["schema"]["type"];
+                        let nullable = ty.as_array().is_some_and(|a| a.contains(&"null".into()))
+                            || ty == "null"
+                            || p["schema"]["nullable"] == true;
+                        assert!(!nullable, "{at}: параметр запроса {name} допускает null");
+                    }
+                    other => panic!("{at}: неожиданное расположение {other}"),
+                }
+            }
+            for ph in &placeholders {
+                assert!(path_names.contains(ph), "{at}: нет параметра пути {ph}");
+            }
+        }
+    }
+}

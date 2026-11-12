@@ -102,6 +102,7 @@ impl fmt::Debug for ChangePasswordRequest {
 #[derive(Debug, Clone, Default, Deserialize, TS, IntoParams)]
 #[serde(deny_unknown_fields)]
 #[ts(optional_fields)]
+#[into_params(parameter_in = Query)]
 pub struct IncludeArchived {
     /// Показывать и архивные записи; по умолчанию `false`.
     pub include_archived: Option<bool>,
