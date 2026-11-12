@@ -3,6 +3,8 @@
 mod error;
 #[allow(dead_code)] // используется со следующих задач плана
 mod folder;
+#[allow(dead_code, unused_imports)] // используется со следующих задач плана
+mod parse;
 #[allow(dead_code)] // используется со следующих задач плана
 mod source;
 #[allow(dead_code)] // используется со следующих задач плана
