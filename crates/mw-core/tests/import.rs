@@ -216,6 +216,12 @@ async fn broken_bundle_rolls_back_everything() {
                 b
             },
             {
+                // Роль с правом есть, но все пользователи — в роли «Мастера».
+                let mut b = sample_bundle();
+                b.users.remove(0);
+                b
+            },
+            {
                 let mut b = sample_bundle();
                 b.next_order_id = 10;
                 b
@@ -344,5 +350,29 @@ async fn replace_mode_backs_up_sqlite_and_is_refused_on_postgres() {
             .await,
             &[("mode", "replace_unsupported")],
         );
+    }
+}
+
+#[tokio::test]
+async fn import_splits_large_order_lists_into_batches() {
+    for t in cores().await {
+        let mut b = sample_bundle();
+        let template = b.orders[2].clone();
+        b.orders.truncate(2);
+        for id in 100..1100 {
+            let mut o = template.clone();
+            o.id = id;
+            o.barcode = format!("{id:012}");
+            o.tracking = Vec::new();
+            b.orders.push(o);
+        }
+        b.next_order_id = 2000;
+        let s = t
+            .core
+            .import_bundle(&admin(), b, ImportMode::IntoEmpty)
+            .await
+            .unwrap();
+        assert_eq!(s.orders, 1002, "{}", t.label);
+        assert_eq!(t.core.import_target_state().await.unwrap().orders, 1002);
     }
 }

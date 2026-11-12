@@ -108,12 +108,15 @@ fn validate_bundle(b: &ImportBundle) -> Result<(), CoreError> {
         }
     }
     if !b.users.is_empty()
-        && !b
-            .roles
-            .iter()
-            .any(|r| r.permissions.contains(Permission::UsersManage))
+        && !b.users.iter().any(|u| {
+            b.roles
+                .iter()
+                .any(|r| r.name == u.role && r.permissions.contains(Permission::UsersManage))
+        })
     {
-        return Err(bad("ни у одной роли нет права «Пользователи и права»"));
+        return Err(bad(
+            "ни у одного пользователя нет права «Пользователи и права»",
+        ));
     }
 
     let mut client_ids = HashSet::new();
@@ -207,12 +210,13 @@ async fn target_state(conn: &impl ConnectionTrait) -> Result<ImportTarget, CoreE
 async fn insert_chunked<E>(
     conn: &impl ConnectionTrait,
     rows: Vec<E::ActiveModel>,
-    columns: usize,
 ) -> Result<(), CoreError>
 where
     E: EntityTrait,
     E::ActiveModel: Send,
 {
+    // Каждая колонка получает параметр: считаем по сущности, а не вручную.
+    let columns = <E::Column as sea_orm::Iterable>::iter().count();
     let size = (MAX_BIND_PARAMS / columns.max(1)).max(1);
     let mut rows = rows.into_iter();
     loop {
@@ -263,7 +267,7 @@ async fn write_catalogs(
             archived: Set(false),
         })
         .collect();
-    insert_chunked::<status::Entity>(conn, statuses, 6).await?;
+    insert_chunked::<status::Entity>(conn, statuses).await?;
     let points = b
         .service_points
         .iter()
@@ -275,7 +279,7 @@ async fn write_catalogs(
             archived: Set(false),
         })
         .collect();
-    insert_chunked::<service_point::Entity>(conn, points, 4).await?;
+    insert_chunked::<service_point::Entity>(conn, points).await?;
     let items = b
         .dictionary
         .iter()
@@ -291,7 +295,7 @@ async fn write_catalogs(
                 })
         })
         .collect();
-    insert_chunked::<dictionary_item::Entity>(conn, items, 4).await?;
+    insert_chunked::<dictionary_item::Entity>(conn, items).await?;
 
     let status_ids = status::Entity::find()
         .all(conn)
@@ -386,8 +390,8 @@ async fn write_clients(conn: &impl ConnectionTrait, b: &ImportBundle) -> Result<
         }
     }
     let phone_count = phones.len() as u64;
-    insert_chunked::<client::Entity>(conn, clients, 13).await?;
-    insert_chunked::<client_phone::Entity>(conn, phones, 6).await?;
+    insert_chunked::<client::Entity>(conn, clients).await?;
+    insert_chunked::<client_phone::Entity>(conn, phones).await?;
     Ok(phone_count)
 }
 
@@ -453,8 +457,8 @@ async fn write_orders(
         }
     }
     let tracking_count = tracking.len() as u64;
-    insert_chunked::<order::Entity>(conn, orders, 33).await?;
-    insert_chunked::<order_tracking::Entity>(conn, tracking, 5).await?;
+    insert_chunked::<order::Entity>(conn, orders).await?;
+    insert_chunked::<order_tracking::Entity>(conn, tracking).await?;
     Ok(tracking_count)
 }
 
@@ -557,7 +561,7 @@ impl Core {
     }
 
     /// Записывает пакет из MyWork 2 в одной транзакции: или всё, или ничего.
-    /// `Replace` сначала копирует базу (только SQLite), затем стирает и пишет заново.
+    /// `Replace` (только SQLite) под блокировкой писателя снимает копию базы, затем стирает и пишет заново.
     pub async fn import_bundle(
         &self,
         actor: &Actor,
@@ -567,14 +571,13 @@ impl Core {
         actor.require(Permission::SettingsManage)?;
         actor.require(Permission::UsersManage)?;
         validate_bundle(&bundle)?;
-        if let ImportMode::Replace { backup_to } = &mode {
-            if self.database_kind() != DatabaseKind::Sqlite {
-                return Err(CoreError::Validation(vec![FieldError::new(
-                    "mode",
-                    "replace_unsupported",
-                )]));
-            }
-            mw_db::backup::vacuum_into(&self.db, backup_to).await?;
+        if matches!(mode, ImportMode::Replace { .. })
+            && self.database_kind() != DatabaseKind::Sqlite
+        {
+            return Err(CoreError::Validation(vec![FieldError::new(
+                "mode",
+                "replace_unsupported",
+            )]));
         }
         let tx = self.begin_write().await?;
         match self.write_bundle(&tx, actor, &bundle, &mode).await {
@@ -610,6 +613,11 @@ impl Core {
                 "database",
                 "not_empty",
             )]));
+        }
+        // Копия снимается под блокировкой писателя: между копией и стиранием база не меняется.
+        // Другое соединение пула читает последнее зафиксированное состояние (WAL).
+        if let ImportMode::Replace { backup_to } = mode {
+            mw_db::backup::vacuum_into(&self.db, backup_to).await?;
         }
         let timezone = settings::load(tx).await?.timezone;
         wipe(tx).await?;
@@ -671,7 +679,7 @@ impl Core {
             )),
             details: Set(Some(json!({ "import_id": import_id }).to_string())),
         });
-        insert_chunked::<audit_log::Entity>(tx, entries, 9).await?;
+        insert_chunked::<audit_log::Entity>(tx, entries).await?;
 
         let rows = b
             .legacy_rows
@@ -695,7 +703,7 @@ impl Core {
                 }
             })
             .collect();
-        insert_chunked::<legacy_row::Entity>(tx, rows, 7).await?;
+        insert_chunked::<legacy_row::Entity>(tx, rows).await?;
 
         set_next_id(tx, IdTable::Orders, b.next_order_id).await?;
         set_next_id(tx, IdTable::Clients, b.next_client_id).await?;

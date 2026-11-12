@@ -45,12 +45,39 @@ impl ImportTarget {
 }
 
 /// Пользователь старой программы; пароль — SHA-1 в нижнем регистре.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct ImportedUser {
     pub login: String,
     /// Название роли из `ImportBundle::roles`.
     pub role: String,
     pub legacy_sha1: String,
+}
+
+impl std::fmt::Debug for ImportedUser {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ImportedUser")
+            .field("login", &self.login)
+            .field("role", &self.role)
+            .field("legacy_sha1", &"***")
+            .finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn imported_user_debug_hides_the_hash() {
+        let u = ImportedUser {
+            login: "Ирина".into(),
+            role: "Админы".into(),
+            legacy_sha1: "7110eda4d09e062aa5e4a390b0a572ac0d2c0220".into(),
+        };
+        let text = format!("{u:?}");
+        assert!(!text.contains("7110eda4"));
+        assert!(text.contains("Ирина"));
+    }
 }
 
 /// Настройки из старой программы. `values.timezone` и `values.default_service_point_id` должны быть пусты.
