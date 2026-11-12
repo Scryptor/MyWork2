@@ -166,3 +166,64 @@ async fn new_settings_have_defaults_and_validate_service_point() -> Result<(), C
     }
     Ok(())
 }
+
+#[tokio::test]
+async fn archived_default_point_is_invalid_but_repeating_it_is_a_no_op() -> Result<(), CoreError> {
+    use mw_core::ServicePointPatch;
+    for t in cores().await {
+        let p = t.core.create_service_point(&admin(), "Мира, 5").await?;
+        let set = |id| SettingsPatch {
+            default_service_point_id: Some(Some(id)),
+            ..Default::default()
+        };
+        t.core.update_settings(&admin(), set(p.id)).await?;
+        t.core
+            .update_service_point(
+                &admin(),
+                p.id,
+                ServicePointPatch {
+                    archived: Some(true),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        let before = count_audit(&t.core, "settings.updated").await;
+        let s = t.core.update_settings(&admin(), set(p.id)).await?;
+        assert_eq!(s.default_service_point_id, Some(p.id), "{}", t.label);
+        assert_eq!(count_audit(&t.core, "settings.updated").await, before);
+        let other = t.core.create_service_point(&admin(), "Ленина, 1").await?;
+        t.core
+            .update_service_point(
+                &admin(),
+                other.id,
+                ServicePointPatch {
+                    archived: Some(true),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        assert_validation(
+            t.core.update_settings(&admin(), set(other.id)).await,
+            &[("default_service_point_id", "invalid")],
+        );
+        assert_validation(
+            t.core
+                .update_settings(
+                    &admin(),
+                    SettingsPatch {
+                        default_service_point_id: Some(Some(other.id)),
+                        master_percent: Some(101),
+                        timezone: Some("Mars/Olympus".into()),
+                        ..Default::default()
+                    },
+                )
+                .await,
+            &[
+                ("master_percent", "out_of_range"),
+                ("default_service_point_id", "invalid"),
+                ("timezone", "invalid"),
+            ],
+        );
+    }
+    Ok(())
+}

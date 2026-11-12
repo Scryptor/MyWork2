@@ -128,6 +128,29 @@ pub struct SettingsPatch {
     pub timezone: Option<String>,
 }
 
+/// Оставляет в правке только поля, значение которых отличается от текущего.
+fn keep_differences(p: &mut SettingsPatch, c: &AppSettings) {
+    fn keep<T: PartialEq>(v: &mut Option<T>, cur: &T) {
+        if v.as_ref() == Some(cur) {
+            *v = None;
+        }
+    }
+    keep(&mut p.currency_symbol, &c.currency_symbol);
+    keep(&mut p.master_percent, &c.master_percent);
+    keep(&mut p.diagnostics_overdue_days, &c.diagnostics_overdue_days);
+    keep(&mut p.default_warranty, &c.default_warranty);
+    keep(&mut p.intake_required_fields, &c.intake_required_fields);
+    keep(&mut p.default_service_point_id, &c.default_service_point_id);
+    keep(&mut p.default_master, &c.default_master);
+    keep(&mut p.firm_name, &c.firm_name);
+    keep(&mut p.firm_phone, &c.firm_phone);
+    keep(&mut p.firm_details, &c.firm_details);
+    keep(&mut p.firm_legal_details, &c.firm_legal_details);
+    keep(&mut p.intake_terms, &c.intake_terms);
+    keep(&mut p.issue_terms, &c.issue_terms);
+    keep(&mut p.timezone, &c.timezone);
+}
+
 pub(crate) fn parse_timezone(name: &str) -> Tz {
     name.parse().unwrap_or(Tz::UTC)
 }
@@ -261,6 +284,9 @@ impl Core {
         }
 
         let tx = self.begin_write().await?;
+        let current = load(&tx).await?;
+        // Правило «правка без изменений»: проверяем только то, что действительно отличается.
+        keep_differences(&mut patch, &current);
         let point_exists = match patch.default_service_point_id {
             Some(Some(id)) => service_point::Entity::find_by_id(id)
                 .filter(service_point::Column::Archived.eq(false))
@@ -270,7 +296,6 @@ impl Core {
             _ => true,
         };
         validate(&patch, point_exists)?;
-        let current = load(&tx).await?;
         let mut changes = serde_json::Map::new();
         let mut names = Vec::new();
         let mut apply = |key: &'static str, label: &'static str, differs: bool, value: Value| {
