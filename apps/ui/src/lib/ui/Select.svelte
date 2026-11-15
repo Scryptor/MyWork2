@@ -89,8 +89,6 @@
 		justify-content: space-between;
 		text-align: left;
 		cursor: pointer;
-		font: inherit;
-		font-size: var(--text-md);
 	}
 	:global(.mw-box.select[aria-invalid='true']) {
 		border-color: var(--danger);

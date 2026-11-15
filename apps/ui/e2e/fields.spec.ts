@@ -76,3 +76,28 @@ test('the gallery renders without console errors', async ({ page }) => {
 	await expect(page.getByRole('listbox')).toBeHidden();
 	expect(errors).toEqual([]);
 });
+
+test.describe('coarse pointer', () => {
+	test.use({ hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } });
+
+	test('tap targets are at least 44px and inputs 16px', async ({ page }) => {
+		await page.goto('/design', { waitUntil: 'networkidle' });
+		expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(true);
+		const height = async (loc: ReturnType<typeof page.locator>) =>
+			(await loc.first().boundingBox())?.height ?? 0;
+		const calendar = page.getByRole('button', { name: 'Открыть календарь' });
+		const reveal = page.getByRole('button', { name: 'Показать пароль' });
+		const checkbox = page.locator('label.row').filter({ hasText: 'Согласен' });
+		const segment = page.getByRole('radiogroup', { name: 'Срочность' }).locator('label');
+		for (const loc of [calendar, reveal, checkbox, segment]) {
+			await loc.first().scrollIntoViewIfNeeded();
+			expect(await height(loc)).toBeGreaterThanOrEqual(44);
+		}
+		const font = (loc: ReturnType<typeof page.locator>) =>
+			loc.first().evaluate((e) => parseFloat(getComputedStyle(e).fontSize));
+		expect(await font(page.getByLabel('Обычное'))).toBeGreaterThanOrEqual(16);
+		expect(
+			await font(page.getByRole('combobox', { name: 'Тип устройства' }))
+		).toBeGreaterThanOrEqual(16);
+	});
+});

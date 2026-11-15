@@ -63,8 +63,14 @@
 	color: var(--text-3);
 	flex: none;
 }
+/* the select trigger is a <button>: reset its font before the coarse floor below */
+.mw-box.select {
+	font: inherit;
+	font-size: var(--text-md);
+}
 @media (pointer: coarse) {
-	.mw-box {
+	.mw-box,
+	.mw-box.select {
 		min-height: 2.75rem;
 		font-size: max(16px, var(--text-lg));
 	}

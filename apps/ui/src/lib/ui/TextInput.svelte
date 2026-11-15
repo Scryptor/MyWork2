@@ -109,6 +109,14 @@
 		color: var(--text-3);
 		cursor: pointer;
 	}
+	@media (pointer: coarse) {
+		.reveal {
+			justify-content: center;
+			min-width: 2.75rem;
+			min-height: 2.75rem;
+			margin: 0 calc(-1 * var(--space-3));
+		}
+	}
 	.reveal:hover {
 		color: var(--text);
 	}

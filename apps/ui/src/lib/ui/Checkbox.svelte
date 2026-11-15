@@ -50,6 +50,12 @@
 		cursor: pointer;
 		min-height: var(--control-sm);
 	}
+	@media (pointer: coarse) {
+		.row {
+			min-height: 2.75rem;
+			align-items: center;
+		}
+	}
 	.row.disabled {
 		cursor: not-allowed;
 		color: var(--text-disabled);
