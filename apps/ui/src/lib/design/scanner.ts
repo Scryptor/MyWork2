@@ -14,7 +14,9 @@ export class ScanDetector {
 
 	feed(key: string, timeMs: number): string | null {
 		if (key === 'Enter') {
-			const code = this.buffer.length >= this.minLength ? this.buffer : null;
+			// Enter is part of the burst: a late Enter is not a scan.
+			const fast = timeMs - this.last <= this.maxIntervalMs;
+			const code = fast && this.buffer.length >= this.minLength ? this.buffer : null;
 			this.buffer = '';
 			return code;
 		}
@@ -31,18 +33,26 @@ export type ScanResult =
 	| { kind: 'order'; id: number }
 	| { kind: 'text'; value: string };
 
-/** Up to 7 digits without a leading zero is an order number; 8 or more digits is a barcode. */
+/**
+ * 1-7 digits without a leading zero: order number. Exactly 12 digits: barcode.
+ * 13 digits starting with 0 (UPC-A sent as EAN-13): barcode of the last 12 digits.
+ * Everything else is plain text.
+ */
 export function classifyScan(code: string): ScanResult {
 	if (/^[1-9]\d{0,6}$/.test(code)) return { kind: 'order', id: Number(code) };
-	if (/^\d{8,}$/.test(code)) return { kind: 'barcode', value: code };
+	if (/^\d{12}$/.test(code)) return { kind: 'barcode', value: code };
+	if (/^0\d{12}$/.test(code)) return { kind: 'barcode', value: code.slice(1) };
 	return { kind: 'text', value: code };
 }
 
-export function installScanner(onscan: (r: ScanResult) => void): () => void {
+export function installScanner(
+	onscan: (r: ScanResult) => void,
+	clock: (e: KeyboardEvent) => number = (e) => e.timeStamp
+): () => void {
 	const detector = new ScanDetector();
 	const onKeydown = (e: KeyboardEvent) => {
-		if (isEditableTarget(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
-		const code = detector.feed(e.key, e.timeStamp);
+		if (e.repeat || isEditableTarget(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
+		const code = detector.feed(e.key, clock(e));
 		if (code !== null) {
 			e.preventDefault();
 			onscan(classifyScan(code));

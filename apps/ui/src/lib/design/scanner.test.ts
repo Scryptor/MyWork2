@@ -33,6 +33,12 @@ describe('ScanDetector', () => {
 		t = type(d, '201234567893', t, 10);
 		expect(d.feed('Enter', t)).toBe('201234567893');
 	});
+	it('ignores a late Enter', () => {
+		const d = new ScanDetector();
+		const t = type(d, '123456', 0, 10);
+		expect(d.feed('Enter', t + 500)).toBeNull();
+		expect(d.feed('Enter', t + 510)).toBeNull();
+	});
 	it('ignores Shift inside a burst', () => {
 		const d = new ScanDetector();
 		let t = type(d, 'AB', 0, 10);
@@ -49,26 +55,74 @@ describe('classifyScan', () => {
 		expect(classifyScan('10481')).toEqual({ kind: 'order', id: 10481 });
 		expect(classifyScan('0')).toEqual({ kind: 'text', value: '0' });
 		expect(classifyScan('ABC-123')).toEqual({ kind: 'text', value: 'ABC-123' });
+		expect(classifyScan('0201234567893')).toEqual({
+			kind: 'barcode',
+			value: '201234567893'
+		});
+	});
+	it('treats other lengths as text', () => {
+		for (const v of ['12345678', '12345678901', '1234567890123', '123456789012345'])
+			expect(classifyScan(v)).toEqual({ kind: 'text', value: v });
 	});
 });
 
 describe('installScanner', () => {
-	it('reports scans and stops after uninstall', () => {
+	function setup() {
 		const onscan = vi.fn();
-		const off = installScanner(onscan);
-		const key = (k: string) =>
-			window.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
-		for (const ch of '10481') key(ch);
-		key('Enter');
-		// five digits are below the minimum length
+		let t = 0;
+		const off = installScanner(onscan, () => t);
+		const key = (k: string, target: EventTarget = window, init: KeyboardEventInit = {}) => {
+			t += 10;
+			const e = new KeyboardEvent('keydown', {
+				key: k,
+				bubbles: true,
+				cancelable: true,
+				...init
+			});
+			target.dispatchEvent(e);
+			return e;
+		};
+		const burst = (text: string, target?: EventTarget) => {
+			for (const ch of text) key(ch, target);
+			return key('Enter', target);
+		};
+		return { onscan, off, key, burst, advance: (ms: number) => (t += ms) };
+	}
+
+	it('reports scans and stops after uninstall', () => {
+		const { onscan, off, burst } = setup();
+		burst('10481');
 		expect(onscan).not.toHaveBeenCalled();
-		for (const ch of '201234567893') key(ch);
-		key('Enter');
+		const e = burst('201234567893');
 		expect(onscan).toHaveBeenCalledWith({ kind: 'barcode', value: '201234567893' });
+		expect(e.defaultPrevented).toBe(true);
 		off();
 		onscan.mockClear();
+		burst('201234567893');
+		expect(onscan).not.toHaveBeenCalled();
+	});
+
+	it('leaves a burst typed in a field alone', () => {
+		document.body.innerHTML = '<input id="i">';
+		const input = document.getElementById('i')!;
+		const { onscan, off, burst } = setup();
+		const e = burst('201234567893', input);
+		expect(onscan).not.toHaveBeenCalled();
+		expect(e.defaultPrevented).toBe(false);
+		off();
+		document.body.innerHTML = '';
+	});
+
+	it('ignores auto-repeat and a late Enter', () => {
+		const { onscan, off, key, advance } = setup();
+		for (let i = 0; i < 8; i++) key('1', window, { repeat: true });
+		const e = key('Enter');
+		expect(onscan).not.toHaveBeenCalled();
+		expect(e.defaultPrevented).toBe(false);
 		for (const ch of '201234567893') key(ch);
+		advance(500);
 		key('Enter');
 		expect(onscan).not.toHaveBeenCalled();
+		off();
 	});
 });
