@@ -21,3 +21,9 @@ legacy/packages/
 *.sqlite-*
 *.db
 Config.ini
+
+# Интерфейс (apps/ui)
+.svelte-kit/
+apps/ui/build/
+test-results/
+playwright-report/
