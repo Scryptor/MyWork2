@@ -112,7 +112,18 @@ pub async fn run(cli: Cli) -> Result<(), ServerError> {
             let db = connect_and_migrate(&config).await?;
             let result = run_import_with_db(&config, db.clone(), &source, replace).await;
             let _ = db.close().await;
-            let outcome = result?;
+            let outcome = match result {
+                Ok(outcome) => outcome,
+                Err(
+                    ServerError::ImportReportNotWritten { ref report, .. }
+                    | ServerError::ImportFilesNotPlaced { ref report, .. },
+                ) => {
+                    // База уже импортирована: покажем сводку, чтобы было видно, что данные внутри.
+                    println!("{}", report.summary_text());
+                    return result.map(|_| ());
+                }
+                Err(error) => return Err(error),
+            };
             println!("{}", outcome.report.summary_text());
             println!("Полный отчёт: {}", outcome.text_report.display());
             println!("Отчёт в формате JSON: {}", outcome.json_report.display());

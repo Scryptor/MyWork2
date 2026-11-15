@@ -122,6 +122,25 @@ pub enum ServerError {
     Core(#[from] CoreError),
     #[error("{}", crate::import::import_error_message(.0))]
     Import(mw_legacy::LegacyError),
+    #[error(
+        "База импортирована, но отчёт не записан: {reason}{}",
+        .staging.as_ref().map(|p| format!(". Файлы не поставлены на место, они лежат в папке {}", p.display())).unwrap_or_default()
+    )]
+    ImportReportNotWritten {
+        report: Box<mw_legacy::ImportReport>,
+        reason: String,
+        staging: Option<PathBuf>,
+    },
+    #[error(
+        "База импортирована, но файлы не поставлены на место: они лежат в папке {}. Отчёт: {}",
+        .staging.display(), .text_report.display()
+    )]
+    ImportFilesNotPlaced {
+        staging: PathBuf,
+        text_report: PathBuf,
+        json_report: PathBuf,
+        report: Box<mw_legacy::ImportReport>,
+    },
 }
 
 #[cfg(test)]

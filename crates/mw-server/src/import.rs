@@ -47,25 +47,37 @@ pub async fn run_import_with_db(
         replace,
     };
     match import_folder(&core, &actor, &options).await {
-        Ok(report) => {
-            let (text_report, json_report) = write_reports(config, &core, &report)?;
-            let open_mode = core.is_open_mode().await?;
-            Ok(ImportOutcome {
-                report,
-                text_report,
-                json_report,
-                open_mode,
-            })
-        }
+        Ok(report) => match write_reports(config, &core, &report) {
+            Ok((text_report, json_report)) => {
+                let open_mode = core.is_open_mode().await?;
+                Ok(ImportOutcome {
+                    report,
+                    text_report,
+                    json_report,
+                    open_mode,
+                })
+            }
+            Err(error) => Err(ServerError::ImportReportNotWritten {
+                report: Box::new(report),
+                reason: error.to_string(),
+                staging: None,
+            }),
+        },
         Err(LegacyError::FilesNotPlaced { staging, report }) => {
             // База уже импортирована: отчёт всё равно нужен, а файлы остались в промежуточной папке.
-            let (text, json) = write_reports(config, &core, &report)?;
-            eprintln!("Отчёт: {}", text.display());
-            eprintln!("Отчёт (JSON): {}", json.display());
-            Err(ServerError::Import(LegacyError::FilesNotPlaced {
-                staging,
-                report,
-            }))
+            match write_reports(config, &core, &report) {
+                Ok((text_report, json_report)) => Err(ServerError::ImportFilesNotPlaced {
+                    staging,
+                    text_report,
+                    json_report,
+                    report,
+                }),
+                Err(error) => Err(ServerError::ImportReportNotWritten {
+                    report,
+                    reason: error.to_string(),
+                    staging: Some(staging),
+                }),
+            }
         }
         Err(error) => Err(ServerError::Import(error)),
     }
@@ -77,13 +89,26 @@ fn write_reports(
     report: &ImportReport,
 ) -> Result<(PathBuf, PathBuf), ServerError> {
     let dir = config.data_dir.join("import-reports");
-    std::fs::create_dir_all(&dir).map_err(|source| ServerError::Io {
+    let stamp = core.now().format("%Y%m%d-%H%M%S").to_string();
+    let json =
+        serde_json::to_string_pretty(&report.to_json()).map_err(|error| ServerError::Io {
+            context: "не удалось подготовить отчёт JSON".into(),
+            source: std::io::Error::other(error),
+        })?;
+    write_report_files(&dir, &stamp, &report.full_text(), &json)
+}
+
+/// Пишет `mywork2-<stamp>.txt/.json` в `dir`; занятое имя получает суффикс `-2`, `-3`…
+fn write_report_files(
+    dir: &Path,
+    stamp: &str,
+    text: &str,
+    json: &str,
+) -> Result<(PathBuf, PathBuf), ServerError> {
+    std::fs::create_dir_all(dir).map_err(|source| ServerError::Io {
         context: format!("не удалось создать папку {}", dir.display()),
         source,
     })?;
-    let stamp = core.now().format("%Y%m%d-%H%M%S").to_string();
-    let json = serde_json::to_string_pretty(&report.to_json()).unwrap_or_default();
-    // Имя, свободное для обоих файлов; существующие файлы не перезаписываются.
     let mut n = 1;
     loop {
         let base = if n == 1 {
@@ -97,8 +122,8 @@ fn write_reports(
             n += 1;
             continue;
         }
-        write_new(&text_path, &report.full_text())?;
-        write_new(&json_path, &json)?;
+        write_new(&text_path, text)?;
+        write_new(&json_path, json)?;
         return Ok((text_path, json_path));
     }
 }
@@ -115,4 +140,21 @@ fn write_new(path: &Path, content: &str) -> Result<(), ServerError> {
         .open(path)
         .map_err(io)?;
     file.write_all(content.as_bytes()).map_err(io)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn same_stamp_gets_numbered_names() {
+        let dir = tempfile::tempdir().unwrap();
+        let (t1, _) = write_report_files(dir.path(), "20260101-000000", "t", "{}").unwrap();
+        let (t2, j2) = write_report_files(dir.path(), "20260101-000000", "t", "{}").unwrap();
+        let (t3, _) = write_report_files(dir.path(), "20260101-000000", "t", "{}").unwrap();
+        assert!(t1.ends_with("mywork2-20260101-000000.txt"));
+        assert!(t2.ends_with("mywork2-20260101-000000-2.txt"));
+        assert!(j2.ends_with("mywork2-20260101-000000-2.json"));
+        assert!(t3.ends_with("mywork2-20260101-000000-3.txt"));
+    }
 }

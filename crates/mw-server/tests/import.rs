@@ -51,3 +51,79 @@ async fn import_legacy_command_imports_fixture_and_writes_report() {
         assert!(again.contains("--replace"), "{label}: {again}");
     }
 }
+
+#[tokio::test]
+async fn open_mode_follows_imported_users() {
+    for (label, db) in mw_db::testing::all_backends().await {
+        let (src, data) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        write_fixture(
+            src.path(),
+            &FixtureOptions {
+                version: FixtureVersion::V30,
+                extra_orders: 0,
+            },
+        )
+        .await
+        .unwrap();
+        let out = run_import_with_db(&test_config(data.path()), db, src.path(), false)
+            .await
+            .unwrap();
+        assert!(out.open_mode, "{label}: V30 has no users");
+    }
+    for (label, db) in mw_db::testing::all_backends().await {
+        let (src, data) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        write_fixture(
+            src.path(),
+            &FixtureOptions {
+                version: FixtureVersion::V32,
+                extra_orders: 0,
+            },
+        )
+        .await
+        .unwrap();
+        let out = run_import_with_db(&test_config(data.path()), db, src.path(), false)
+            .await
+            .unwrap();
+        assert!(!out.open_mode, "{label}: V32 has users");
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn files_not_placed_still_writes_reports_and_names_staging() {
+    for (label, db) in mw_db::testing::all_backends().await {
+        let (src, data) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        write_fixture(
+            src.path(),
+            &FixtureOptions {
+                version: FixtureVersion::V32,
+                extra_orders: 0,
+            },
+        )
+        .await
+        .unwrap();
+        let attachments = data.path().join("attachments");
+        std::fs::create_dir_all(&attachments).unwrap();
+        // Висячая ссылка: проверка перед импортом её пропускает, а поставить папку на её место нельзя.
+        std::os::unix::fs::symlink(data.path().join("nowhere"), attachments.join("orders"))
+            .unwrap();
+        let error = run_import_with_db(&test_config(data.path()), db, src.path(), false)
+            .await
+            .unwrap_err();
+        let text = error.to_string();
+        let mw_server::ServerError::ImportFilesNotPlaced {
+            staging,
+            text_report,
+            json_report,
+            ..
+        } = &error
+        else {
+            panic!("{label}: {error:?}");
+        };
+        assert!(
+            text.contains(&staging.display().to_string()),
+            "{label}: {text}"
+        );
+        assert!(text_report.exists() && json_report.exists(), "{label}");
+    }
+}
