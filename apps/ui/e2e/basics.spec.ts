@@ -29,3 +29,19 @@ test('an icon button opens its tooltip on keyboard focus', async ({ page }) => {
 	await expect(button).toBeFocused();
 	await expect(page.getByRole('tooltip')).toHaveText('Найти');
 });
+
+test('a flag icon tooltip opens on hover and on keyboard focus', async ({ page }) => {
+	await page.goto('/design');
+	const flag = page.locator('#basics .flag').first();
+	await flag.scrollIntoViewIfNeeded();
+	await flag.hover();
+	await expect(page.getByRole('tooltip', { name: 'Позвонить' })).toBeVisible();
+	await page.mouse.move(0, 0);
+	await expect(page.getByRole('tooltip')).toHaveCount(0);
+	await page.locator('#basics').getByRole('button', { name: 'Добавить' }).focus();
+	for (let i = 0; i < 40 && !(await flag.evaluate((el) => el === document.activeElement)); i++) {
+		await page.keyboard.press('Tab');
+	}
+	await expect(flag).toBeFocused();
+	await expect(page.getByRole('tooltip', { name: 'Позвонить' })).toBeVisible();
+});

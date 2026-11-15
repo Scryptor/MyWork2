@@ -15,28 +15,35 @@
 <span class="flags">
 	{#if needCall}
 		<Tooltip text={ru.flags.needCall}>
-			<span class="flag"
-				><Phone size={14} aria-hidden="true" /><VisuallyHidden>{ru.flags.needCall}</VisuallyHidden
-				></span
-			>
+			{#snippet children(p)}
+				<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+				<span {...p} class="flag" tabindex="0">
+					<Phone size={14} aria-hidden="true" />
+					<VisuallyHidden>{ru.flags.needCall}</VisuallyHidden>
+				</span>
+			{/snippet}
 		</Tooltip>
 	{/if}
 	{#if needParts}
 		<Tooltip text={ru.flags.needParts}>
-			<span class="flag"
-				><Package size={14} aria-hidden="true" /><VisuallyHidden
-					>{ru.flags.needParts}</VisuallyHidden
-				></span
-			>
+			{#snippet children(p)}
+				<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+				<span {...p} class="flag" tabindex="0">
+					<Package size={14} aria-hidden="true" />
+					<VisuallyHidden>{ru.flags.needParts}</VisuallyHidden>
+				</span>
+			{/snippet}
 		</Tooltip>
 	{/if}
 	{#if blacklisted}
 		<Tooltip text={ru.flags.blacklisted}>
-			<span class="flag"
-				><span class="dot" aria-hidden="true"></span><VisuallyHidden
-					>{ru.flags.blacklisted}</VisuallyHidden
-				></span
-			>
+			{#snippet children(p)}
+				<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+				<span {...p} class="flag" tabindex="0">
+					<span class="dot" aria-hidden="true"></span>
+					<VisuallyHidden>{ru.flags.blacklisted}</VisuallyHidden>
+				</span>
+			{/snippet}
 		</Tooltip>
 	{/if}
 </span>
