@@ -31,6 +31,7 @@ fixtures = []
 mw-legacy = { path = ".", features = ["fixtures"] }
 mw-core = { path = "../mw-core", features = ["testing"] }
 mw-db = { path = "../mw-db" }
+sea-orm = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [[example]]

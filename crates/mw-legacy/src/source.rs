@@ -115,7 +115,7 @@ impl LegacyTable {
 }
 
 /// Краткая сводка по схеме старой базы.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct SchemaSummary {
     pub catalog_columns: usize,
     /// Колонки `Catalog` из полного набора (32), которых в этой базе нет.
