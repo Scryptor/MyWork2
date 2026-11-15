@@ -15,7 +15,7 @@ use chrono::{TimeZone, Utc};
 use mw_core::{Actor, Core, FixedClock};
 use mw_domain::money::Money;
 use mw_legacy::{ImportOptions, WarningCode, import_folder};
-use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
+use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use sqlx::Connection;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteConnection};
 
@@ -302,35 +302,53 @@ async fn real_mywork2_folder_imports_without_loss() {
         want.orders, want.deleted, want.clients_map, want.history, want.next_order_id
     );
 
+    let want = Arc::new(want);
     let mut failures = Vec::new();
     for (label, db) in mw_db::testing::all_backends().await {
-        let clock = Arc::new(FixedClock::new(
-            Utc.with_ymd_and_hms(2026, 11, 11, 9, 0, 0).unwrap(),
-        ));
-        let core = Core::open(db, clock, "UTC").await.unwrap();
-        let result = check_backend(label, &core, &source, &want).await;
-        if core.db().get_database_backend() == DatabaseBackend::Postgres {
-            // Настоящие данные клиентов не должны остаться в тестовой базе.
-            let schema = scalar_text(&core, "SELECT current_schema() AS n").await;
-            core.db()
-                .execute_unprepared(&format!("DROP SCHEMA \"{schema}\" CASCADE"))
-                .await
-                .unwrap();
-            println!("[{label}] схема удалена");
+        let is_postgres = db.get_database_backend() == DatabaseBackend::Postgres;
+        // Имя схемы узнаём до импорта: уборка не должна зависеть от того, что произойдёт дальше.
+        let schema = if is_postgres {
+            query_text(&db, "SELECT current_schema() AS n").await
+        } else {
+            None
+        };
+        // Паника внутри задачи становится `JoinError`; её текст может содержать данные и не печатается.
+        let task = tokio::spawn({
+            let (db, source, want) = (db.clone(), source.clone(), Arc::clone(&want));
+            async move {
+                let clock = Arc::new(FixedClock::new(
+                    Utc.with_ymd_and_hms(2026, 11, 11, 9, 0, 0).unwrap(),
+                ));
+                let core = Core::open(db, clock, "UTC").await.unwrap();
+                check_backend(label, &core, &source, &want).await
+            }
+        });
+        match task.await {
+            Ok(Ok(())) => {}
+            Ok(Err(bad)) => failures.extend(bad),
+            Err(_) => failures.push(format!("{label}: проверка прервалась паникой")),
         }
-        if let Err(bad) = result {
-            failures.extend(bad);
+        if is_postgres {
+            // Настоящие данные клиентов не должны остаться в тестовой базе.
+            match &schema {
+                Some(schema) => match db
+                    .execute_unprepared(&format!("DROP SCHEMA \"{schema}\" CASCADE"))
+                    .await
+                {
+                    Ok(_) => println!("[{label}] схема удалена"),
+                    Err(_) => failures.push(format!("{label}: схему не удалось удалить")),
+                },
+                None => failures.push(format!("{label}: имя схемы не определено")),
+            }
         }
     }
     assert!(failures.is_empty(), "расхождения:\n{}", failures.join("\n"));
 }
 
-async fn scalar_text(core: &Core, sql: &str) -> String {
-    let db = core.db();
+async fn query_text(db: &DatabaseConnection, sql: &str) -> Option<String> {
     db.query_one_raw(Statement::from_string(db.get_database_backend(), sql))
         .await
-        .unwrap()
-        .unwrap()
+        .ok()??
         .try_get("", "n")
-        .unwrap()
+        .ok()
 }
