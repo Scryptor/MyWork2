@@ -21,4 +21,4 @@ sqlx = { workspace = true }
 [dev-dependencies]
 url = "2"
 tempfile = { workspace = true }
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
