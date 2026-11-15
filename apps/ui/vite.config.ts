@@ -21,6 +21,7 @@ export default defineConfig({
 	],
 	test: {
 		environment: 'jsdom',
+		css: { include: [/\.css\?raw/] },
 		setupFiles: ['src/test-setup.ts'],
 		include: ['src/**/*.test.ts', 'scripts/**/*.test.ts'],
 		expect: { requireAssertions: true }
