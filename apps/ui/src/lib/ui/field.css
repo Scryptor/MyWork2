@@ -1,0 +1,71 @@
+/* Shared look of text-like controls: a bordered box with a borderless input inside. */
+.mw-box {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	box-sizing: border-box;
+	width: 100%;
+	height: var(--control-md);
+	padding: 0 var(--space-3);
+	border: 1px solid var(--border-strong);
+	border-radius: var(--radius-md);
+	background: var(--surface);
+	color: var(--text);
+	font-size: var(--text-md);
+	transition: border-color var(--duration-fast);
+}
+.mw-box.sm {
+	height: var(--control-sm);
+	padding: 0 var(--space-2);
+}
+.mw-box:hover:not(.disabled) {
+	border-color: var(--text-3);
+}
+.mw-box:focus-within {
+	outline: 2px solid var(--focus);
+	outline-offset: 1px;
+	box-shadow: var(--shadow-sm);
+}
+.mw-box.invalid {
+	border-color: var(--danger);
+}
+.mw-box.disabled {
+	background: var(--surface-2);
+	color: var(--text-disabled);
+	cursor: not-allowed;
+}
+.mw-box.multiline {
+	height: auto;
+	padding: var(--space-2) var(--space-3);
+	align-items: stretch;
+}
+.mw-input {
+	flex: 1;
+	min-width: 0;
+	height: 100%;
+	padding: 0;
+	border: 0;
+	outline: none;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	text-overflow: ellipsis;
+}
+.mw-input::placeholder {
+	color: var(--text-3);
+}
+.mw-input:disabled {
+	cursor: not-allowed;
+}
+.mw-affix {
+	display: inline-flex;
+	align-items: center;
+	color: var(--text-3);
+	flex: none;
+}
+@media (pointer: coarse) {
+	.mw-box {
+		min-height: 2.75rem;
+		font-size: max(16px, var(--text-lg));
+	}
+}

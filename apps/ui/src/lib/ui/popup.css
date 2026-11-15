@@ -1,0 +1,45 @@
+/* Shared look of floating lists (Select, Combobox) and the calendar popover. */
+.mw-popup {
+	z-index: var(--z-popover);
+	box-sizing: border-box;
+	min-width: var(--bits-select-anchor-width, 12rem);
+	max-height: min(20rem, var(--bits-select-content-available-height, 20rem));
+	overflow-y: auto;
+	padding: var(--space-1);
+	border: 1px solid var(--border-strong);
+	border-radius: var(--radius-md);
+	background: var(--surface);
+	color: var(--text);
+	box-shadow: var(--shadow-md);
+	font-size: var(--text-md);
+}
+.mw-option {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-3);
+	min-height: var(--control-sm);
+	padding: 0 var(--space-2);
+	border-radius: var(--radius-sm);
+	cursor: pointer;
+}
+.mw-option[data-highlighted] {
+	background: var(--surface-3);
+}
+.mw-option[data-selected] {
+	font-weight: 500;
+	color: var(--accent-text);
+}
+.mw-option[data-disabled] {
+	color: var(--text-disabled);
+	cursor: not-allowed;
+}
+.mw-option .mw-hint {
+	color: var(--text-3);
+	font-size: var(--text-sm);
+	font-weight: 400;
+}
+.mw-empty {
+	padding: var(--space-2);
+	color: var(--text-3);
+}
