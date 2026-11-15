@@ -1,3 +1,5 @@
+import { untrack } from 'svelte';
+
 export type ThemePref = 'system' | 'light' | 'dark';
 export type Density = 'compact' | 'comfortable';
 export type UiScale = 0.9375 | 1 | 1.125 | 1.25;
@@ -73,20 +75,25 @@ export const prefs = {
 		apply();
 	},
 	init(): () => void {
-		value = parsePrefs(readStored());
-		let mq: MediaQueryList | null = null;
-		const onChange = (e: MediaQueryListEvent) => {
-			systemDark = e.matches;
-			apply();
-		};
-		try {
-			mq = window.matchMedia('(prefers-color-scheme: dark)');
-			systemDark = mq.matches;
-			mq.addEventListener('change', onChange);
-		} catch {
-			systemDark = false;
-		}
-		apply();
-		return () => mq?.removeEventListener('change', onChange);
+		// untracked: safe to call inside $effect without re-running on every pref change
+		return untrack(initPrefs);
 	}
 };
+
+function initPrefs(): () => void {
+	value = parsePrefs(readStored());
+	let mq: MediaQueryList | null = null;
+	const onChange = (e: MediaQueryListEvent) => {
+		systemDark = e.matches;
+		apply();
+	};
+	try {
+		mq = window.matchMedia('(prefers-color-scheme: dark)');
+		systemDark = mq.matches;
+		mq.addEventListener('change', onChange);
+	} catch {
+		systemDark = false;
+	}
+	apply();
+	return () => mq?.removeEventListener('change', onChange);
+}

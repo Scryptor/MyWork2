@@ -19,7 +19,7 @@ function parseVars(body: string): Map<string, string> {
 	return map;
 }
 
-const light = parseVars(blockBody(css, ':root'));
+const light = parseVars(blockBody(css, ":root,\n[data-theme='light']"));
 const dark = parseVars(blockBody(css, "[data-theme='dark']"));
 
 function get(map: Map<string, string>, name: string): string {

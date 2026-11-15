@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { contrastRatio } from '#lib/design/contrast.js';
 	import { STATUS_HUES } from '#lib/design/status-colors.js';
-	import { prefs } from '#lib/design/prefs.svelte.js';
 
 	const COLOR_TOKENS = [
 		'bg',
@@ -35,39 +34,54 @@
 	];
 	const TEXT_SIZES = ['xs', 'sm', 'md', 'lg', 'xl', '2xl'];
 
-	let swatches = $state<{ name: string; value: string; ratio: string }[]>([]);
+	type Swatch = { name: string; value: string; ratio: string };
+	const THEMES = [
+		{ id: 'light', title: 'Светлая тема' },
+		{ id: 'dark', title: 'Тёмная тема' }
+	] as const;
 
-	function computed(name: string): string {
-		return getComputedStyle(document.documentElement).getPropertyValue(`--${name}`).trim();
-	}
+	let panels = $state<Partial<Record<'light' | 'dark', HTMLElement>>>({});
+	let swatches = $state<Partial<Record<'light' | 'dark', Swatch[]>>>({});
 
 	$effect(() => {
-		void prefs.resolvedTheme;
-		const surface = computed('surface');
-		swatches = COLOR_TOKENS.map((name) => {
-			const value = computed(name);
-			let ratio: string;
-			try {
-				ratio = contrastRatio(value, surface).toFixed(2);
-			} catch {
-				ratio = '';
-			}
-			return { name, value, ratio };
-		});
+		for (const { id } of THEMES) {
+			const el = panels[id];
+			if (!el) continue;
+			const cs = getComputedStyle(el);
+			const read = (name: string) => cs.getPropertyValue(`--${name}`).trim();
+			const surface = read('surface');
+			swatches[id] = COLOR_TOKENS.map((name) => {
+				const value = read(name);
+				let ratio: string;
+				try {
+					ratio = contrastRatio(value, surface).toFixed(2);
+				} catch {
+					ratio = '';
+				}
+				return { name, value, ratio };
+			});
+		}
 	});
 </script>
 
-<h3>Цвета ({prefs.resolvedTheme === 'dark' ? 'тёмная' : 'светлая'} тема)</h3>
-<ul class="swatches">
-	{#each swatches as s (s.name)}
-		<li>
-			<span class="chip" style:background={`var(--${s.name})`}></span>
-			<code>--{s.name}</code>
-			<span class="num muted">{s.value}</span>
-			<span class="num muted">{s.ratio ? `${s.ratio}:1` : ''}</span>
-		</li>
+<h3>Цвета</h3>
+<div class="themes">
+	{#each THEMES as theme (theme.id)}
+		<div class="panel" data-theme={theme.id} bind:this={panels[theme.id]}>
+			<h4>{theme.title}</h4>
+			<ul class="swatches">
+				{#each swatches[theme.id] ?? [] as s (s.name)}
+					<li>
+						<span class="chip" style:background={`var(--${s.name})`}></span>
+						<code>--{s.name}</code>
+						<span class="num muted">{s.value}</span>
+						<span class="num muted">{s.ratio ? `${s.ratio}:1` : ''}</span>
+					</li>
+				{/each}
+			</ul>
+		</div>
 	{/each}
-</ul>
+</div>
 
 <h3>Шкала текста</h3>
 {#each TEXT_SIZES as size (size)}
@@ -88,11 +102,26 @@
 </div>
 
 <style>
+	.themes {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+		gap: var(--space-4);
+	}
+	.panel {
+		background: var(--surface);
+		color: var(--text);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-lg);
+		padding: var(--space-4);
+	}
+	h4 {
+		margin: 0 0 var(--space-2);
+	}
 	.swatches {
 		list-style: none;
 		padding: 0;
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+		grid-template-columns: 1fr;
 		gap: var(--space-2);
 	}
 	li {
