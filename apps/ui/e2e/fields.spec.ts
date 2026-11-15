@@ -93,6 +93,17 @@ test.describe('coarse pointer', () => {
 			await loc.first().scrollIntoViewIfNeeded();
 			expect(await height(loc)).toBeGreaterThanOrEqual(44);
 		}
+		await calendar.first().click();
+		const popup = page.locator('.mw-popup.cal');
+		await expect(popup).toBeVisible();
+		for (const loc of [
+			popup.locator('.cal-nav').first(),
+			popup.locator('.cal-nav').last(),
+			popup.locator('.cal-day:not([data-outside-month])')
+		]) {
+			expect(await height(loc)).toBeGreaterThanOrEqual(44);
+		}
+		await page.keyboard.press('Escape');
 		const font = (loc: ReturnType<typeof page.locator>) =>
 			loc.first().evaluate((e) => parseFloat(getComputedStyle(e).fontSize));
 		expect(await font(page.getByLabel('Обычное'))).toBeGreaterThanOrEqual(16);

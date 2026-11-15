@@ -186,22 +186,6 @@
 		color: var(--text-3);
 		cursor: pointer;
 	}
-	@media (pointer: coarse) {
-		:global(.cal-btn) {
-			justify-content: center;
-			min-width: 2.75rem;
-			min-height: 2.75rem;
-			margin: 0 calc(-1 * var(--space-3));
-		}
-		:global(.cal-nav),
-		:global(.cal-day) {
-			width: 2.75rem;
-			height: 2.75rem;
-		}
-		:global(.cal-headcell) {
-			width: 2.75rem;
-		}
-	}
 	:global(.cal-btn:hover) {
 		color: var(--text);
 	}
@@ -278,5 +262,21 @@
 		color: var(--text-disabled);
 		cursor: not-allowed;
 		text-decoration: line-through;
+	}
+	@media (pointer: coarse) {
+		:global(.cal-btn) {
+			justify-content: center;
+			min-width: 2.75rem;
+			min-height: 2.75rem;
+			margin: 0 calc(-1 * var(--space-3));
+		}
+		:global(.cal-nav),
+		:global(.cal-day) {
+			width: 2.75rem;
+			height: 2.75rem;
+		}
+		:global(.cal-headcell) {
+			width: 2.75rem;
+		}
 	}
 </style>
