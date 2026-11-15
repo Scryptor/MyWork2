@@ -59,19 +59,3 @@ body {
 	text-transform: uppercase;
 	color: var(--text-3);
 }
-
-.st-gray,
-.st-red,
-.st-orange,
-.st-amber,
-.st-lime,
-.st-green,
-.st-teal,
-.st-cyan,
-.st-blue,
-.st-indigo,
-.st-violet,
-.st-pink {
-	background: var(--st-bg);
-	color: var(--st-fg);
-}

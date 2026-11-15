@@ -19,6 +19,8 @@
 		display: inline-flex;
 		align-items: center;
 		gap: var(--space-1-5);
+		background: var(--st-bg);
+		color: var(--st-fg);
 		border-radius: var(--radius-full);
 		font-weight: 500;
 		white-space: nowrap;

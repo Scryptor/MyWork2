@@ -146,6 +146,8 @@
 		gap: var(--space-2);
 	}
 	.pill {
+		background: var(--st-bg);
+		color: var(--st-fg);
 		display: inline-flex;
 		align-items: center;
 		gap: var(--space-1-5);

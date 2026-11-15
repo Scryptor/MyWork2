@@ -24,16 +24,19 @@
 </script>
 
 <Tooltip text={label}>
-	<button
-		type="button"
-		class="ib {variant} {size}"
-		aria-label={label}
-		aria-pressed={pressed}
-		{disabled}
-		{onclick}
-	>
-		<Icon size={size === 'sm' ? 14 : 16} aria-hidden="true" />
-	</button>
+	{#snippet children(triggerProps)}
+		<button
+			{...triggerProps}
+			type="button"
+			class="ib {variant} {size}"
+			aria-label={label}
+			aria-pressed={pressed}
+			{disabled}
+			{onclick}
+		>
+			<Icon size={size === 'sm' ? 14 : 16} aria-hidden="true" />
+		</button>
+	{/snippet}
 </Tooltip>
 
 <style>

@@ -6,26 +6,28 @@
 		text,
 		side = 'top',
 		children
-	}: { text: string; side?: 'top' | 'bottom' | 'left' | 'right'; children: Snippet } = $props();
+	}: {
+		text: string;
+		side?: 'top' | 'bottom' | 'left' | 'right';
+		children: Snippet<[Record<string, unknown>]>;
+	} = $props();
 </script>
 
 <Tooltip.Root>
 	<Tooltip.Trigger>
 		{#snippet child({ props })}
-			<span {...props} class="trigger">{@render children()}</span>
+			{@render children(props)}
 		{/snippet}
 	</Tooltip.Trigger>
 	<Tooltip.Portal>
-		<Tooltip.Content {side} sideOffset={6} class="mw-tooltip">{text}</Tooltip.Content>
+		<Tooltip.Content {side} sideOffset={6} class="mw-tooltip" role="tooltip">{text}</Tooltip.Content
+		>
 	</Tooltip.Portal>
 </Tooltip.Root>
 
 <style>
-	.trigger {
-		display: inline-flex;
-	}
 	:global(.mw-tooltip) {
-		z-index: var(--z-tooltip, 60);
+		z-index: var(--z-tooltip);
 		background: var(--text);
 		color: var(--bg);
 		font-size: var(--text-xs);
