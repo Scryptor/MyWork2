@@ -312,6 +312,11 @@ async fn real_mywork2_folder_imports_without_loss() {
         } else {
             None
         };
+        if is_postgres && schema.is_none() {
+            // Настоящие данные нельзя писать в схему, которую потом не удастся удалить.
+            failures.push(format!("{label}: имя схемы не определено, импорт пропущен"));
+            continue;
+        }
         // Паника внутри задачи становится `JoinError`; её текст может содержать данные и не печатается.
         let task = tokio::spawn({
             let (db, source, want) = (db.clone(), source.clone(), Arc::clone(&want));

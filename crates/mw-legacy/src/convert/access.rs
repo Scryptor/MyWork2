@@ -278,9 +278,14 @@ pub(crate) fn convert_access(
     (roles.list, users, rows)
 }
 
-/// Если пользователи есть, а права «Пользователи и права» нет ни у одной их роли, выдаёт её роли первого.
+/// Если пользователи есть, а права «Пользователи и права» нет ни у одной их роли, выдаёт её роли первого
+/// пользователя с перенесённым паролем (иначе первого).
 fn grant_users_manage(roles: &mut Roles, users: &[ImportedUser], w: &mut Warnings) {
-    let Some(first) = users.first() else {
+    let Some(first) = users
+        .iter()
+        .find(|u| !u.legacy_sha1.is_empty())
+        .or_else(|| users.first())
+    else {
         return;
     };
     let has_manager = users.iter().any(|u| {
@@ -302,7 +307,7 @@ fn grant_users_manage(roles: &mut Roles, users: &[ImportedUser], w: &mut Warning
             "",
             "",
             &format!(
-                "Ни у одной роли пользователей не было права «Пользователи и права»: оно выдано роли «{}».",
+                "Ни у одной роли пользователей не было права «Пользователи и права»: оно выдано роли «{}». Если войти не удаётся, создайте администратора командой mw-server create-admin.",
                 role.name
             ),
         );

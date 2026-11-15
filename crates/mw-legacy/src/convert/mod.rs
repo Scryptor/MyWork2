@@ -16,7 +16,7 @@ use serde_json::json;
 
 use crate::folder::LegacyFolder;
 use crate::report::{WarningCode, Warnings};
-use crate::source::{FULL_CATALOG_COLUMNS, LegacyDb, SchemaSummary};
+use crate::source::{FULL_CATALOG_COLUMNS, LegacyDb, LegacyValue, SchemaSummary};
 
 /// Файл, который нужно скопировать в `attachments`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -144,6 +144,65 @@ fn warn_unknown_columns(db: &LegacyDb, w: &mut Warnings) {
                 &filled.to_string(),
                 "Неизвестная колонка: значения сохранены только в исходной строке (legacy_rows).",
             );
+        }
+    }
+}
+
+fn warn_skipped_entries(folder: &LegacyFolder, w: &mut Warnings) {
+    for entry in &folder.skipped {
+        w.push(
+            WarningCode::FileUnreadable,
+            entry.source,
+            &entry.path,
+            "",
+            "",
+            "Ссылка или особый файл не перенесён.",
+        );
+    }
+}
+
+/// Таблицы, ячейки которых попадают в поля нового заказа, клиента, истории, пользователей и ролей.
+const TEXT_CHECKED_TABLES: [&str; 6] = [
+    "Catalog",
+    "ClientsMap",
+    "StatesMap",
+    "HistoryBD",
+    "Users",
+    "GroupDostup",
+];
+
+/// По одному предупреждению на испорченную ячейку (не UTF-8, двоичная) или ячейку с символом NUL; значение не печатается.
+fn warn_text_cells(db: &LegacyDb, w: &mut Warnings) {
+    for name in TEXT_CHECKED_TABLES {
+        let Some(table) = db.table(name) else {
+            continue;
+        };
+        for (n, row) in table.rows.iter().enumerate() {
+            let id = table.text(row, "id");
+            let key = if id.trim().is_empty() {
+                format!("строка {}", n + 1)
+            } else {
+                id.trim().to_owned()
+            };
+            for (column, value) in table.columns.iter().zip(row) {
+                let message = match value {
+                    LegacyValue::InvalidText(_) | LegacyValue::Blob(_) => {
+                        "Текст не является корректным UTF-8: нечитаемые символы заменены, исходные байты сохранены в legacy_rows."
+                    }
+                    LegacyValue::Text(s) if s.contains('\0') => {
+                        "В тексте есть символ NUL: он удалён, исходное значение сохранено в legacy_rows."
+                    }
+                    _ => continue,
+                };
+                w.push(
+                    WarningCode::TextInvalidUtf8,
+                    &table.name,
+                    &key,
+                    column,
+                    "",
+                    message,
+                );
+            }
         }
     }
 }
@@ -315,6 +374,8 @@ pub(crate) fn convert(db: &LegacyDb, folder: &LegacyFolder, now: NaiveDateTime) 
     clients::fill_created_at(&mut stage, &converted);
     let history = history::convert_history(db, &converted, now, &mut w);
     warn_unknown_columns(db, &mut w);
+    warn_text_cells(db, &mut w);
+    warn_skipped_entries(folder, &mut w);
 
     let (settings, setting_rows) = settings::convert_settings(folder, &catalogs, &mut w);
     let (roles, users, access_rows) = access::convert_access(db, &mut w);
@@ -369,10 +430,11 @@ mod tests {
     use std::collections::BTreeSet;
 
     use crate::fixture::FixtureVersion::{V25, V32};
-    use crate::report::Severity;
+    use crate::report::{Severity, WarningCode};
     use crate::test_support::{client, conversion_of, dt, order, rub};
     use mw_domain::barcode::order_barcode;
     use mw_domain::money::Money;
+    use serde_json::json;
 
     #[tokio::test]
     async fn v32_bundle_matches_the_fixture() {
@@ -461,7 +523,7 @@ mod tests {
                 ("123456".into(), String::new())
             ]
         );
-        assert_eq!(client(b, 7).note, "Телефон: нет телефона");
+        assert_eq!(client(b, 7).note, "Заметка 7\nТелефон: нет телефона");
         assert!(client(b, 2).blacklisted && client(b, 4).blacklisted && !client(b, 5).blacklisted);
         let h2: Vec<_> = b
             .history
@@ -492,6 +554,124 @@ mod tests {
             (11, 9, 3, 2, 1)
         );
         assert_eq!(c.files.len(), 7);
+    }
+
+    #[tokio::test]
+    async fn invalid_utf8_cell_is_reported_without_its_content_and_kept_as_hex() {
+        let c = conversion_of(V32).await;
+        let found: Vec<_> = c
+            .warnings
+            .list()
+            .iter()
+            .filter(|w| w.code == WarningCode::TextInvalidUtf8)
+            .collect();
+        assert_eq!(found.len(), 1);
+        let w = found[0];
+        assert_eq!(
+            (
+                w.source.as_str(),
+                w.key.as_str(),
+                w.field.as_str(),
+                w.value.as_str()
+            ),
+            ("Catalog", "7", "SerialNumber", "")
+        );
+        let raw = c
+            .bundle
+            .legacy_rows
+            .iter()
+            .find(|r| r.source == "Catalog" && r.source_key == "7")
+            .unwrap();
+        assert_eq!(raw.raw["SerialNumber"], json!({"hex": "c0"}));
+        assert_eq!(order(&c.bundle, 7).serial, "\u{FFFD}");
+    }
+
+    #[tokio::test]
+    async fn nul_is_stripped_and_reported_and_user_passwords_are_never_printed() {
+        let c = crate::test_support::conversion_with_sql(
+            V32,
+            &[
+                "UPDATE Catalog SET model = 'A' || char(0) || 'B' WHERE id = 2",
+                "UPDATE Users SET user_pwd = CAST(X'C0FF' AS TEXT) WHERE id = 1",
+            ],
+        )
+        .await;
+        assert_eq!(order(&c.bundle, 2).model, "AB");
+        let row = c
+            .bundle
+            .legacy_rows
+            .iter()
+            .find(|r| r.source == "Catalog" && r.source_key == "2")
+            .unwrap();
+        assert_eq!(row.raw["model"], json!({"hex": "410042"}));
+        let found: Vec<_> = c
+            .warnings
+            .list()
+            .iter()
+            .filter(|w| w.code == WarningCode::TextInvalidUtf8)
+            .map(|w| {
+                (
+                    w.source.as_str(),
+                    w.key.as_str(),
+                    w.field.as_str(),
+                    w.value.as_str(),
+                )
+            })
+            .collect();
+        assert!(found.contains(&("Catalog", "2", "model", "")));
+        assert!(found.contains(&("Users", "1", "user_pwd", "")));
+    }
+
+    /// Спецификация §6: у каждой строки старой базы все текстовые поля совпадают с ячейкой после обрезки пробелов.
+    #[tokio::test]
+    async fn every_text_field_matches_its_source_cell_for_every_version() {
+        use crate::fixture::FixtureVersion;
+        for version in FixtureVersion::ALL {
+            let (db, _folder) = crate::test_support::prepared(version).await;
+            let c = conversion_of(version).await;
+            let catalog = db.table("Catalog").unwrap();
+            let mut checked = 0;
+            for row in &catalog.rows {
+                let id: i64 = catalog.text(row, "id").parse().unwrap();
+                let o = order(&c.bundle, id);
+                let cell = |name: &str| catalog.text(row, name).trim().to_owned();
+                let got = [
+                    ("WhatRemont", &o.device_type),
+                    ("brand", &o.brand),
+                    ("model", &o.model),
+                    ("SerialNumber", &o.serial),
+                    ("DeviceColour", &o.color),
+                    ("komplektonst", &o.completeness),
+                    ("sostoyanie", &o.device_condition),
+                    ("polomka", &o.malfunction),
+                    ("vipolnenie_raboti", &o.work_done),
+                    ("kommentarij", &o.internal_comment),
+                    ("master", &o.master),
+                    ("Garanty", &o.warranty),
+                ];
+                for (column, value) in got {
+                    assert_eq!(*value, cell(column), "{version:?} order {id} {column}");
+                }
+                checked += 1;
+            }
+            assert_eq!(checked, 11, "{version:?}");
+            if version >= FixtureVersion::V30 {
+                let clients = db.table("ClientsMap").unwrap();
+                for row in &clients.rows {
+                    let id: i64 = clients.text(row, "id").parse().unwrap();
+                    let k = client(&c.bundle, id);
+                    let cell = |name: &str| clients.text(row, name).trim().to_owned();
+                    assert_eq!(k.address, cell("Adress"), "{version:?} client {id}");
+                    assert_eq!(k.source, cell("aboutUs"), "{version:?} client {id}");
+                    assert!(
+                        k.note.starts_with(&cell("Primechanie")),
+                        "{version:?} client {id}"
+                    );
+                    assert!(!cell("Primechanie").is_empty());
+                }
+                assert_eq!(clients.rows.len(), 9);
+            }
+        }
     }
 
     #[tokio::test]
@@ -531,6 +711,7 @@ mod tests {
                 ("received_at_missing", "Catalog", "4"),
                 ("received_at_missing", "Catalog", "5"),
                 ("status_empty", "Catalog", "8"),
+                ("text_invalid_utf8", "Catalog", "7"),
                 ("user_group_missing", "Users", "3"),
                 ("user_password_invalid", "Users", "4"),
             ]

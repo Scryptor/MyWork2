@@ -306,6 +306,16 @@ mod tests {
     use super::*;
 
     #[test]
+    fn serialized_code_equals_as_str_for_every_code() {
+        for code in WarningCode::ALL {
+            assert_eq!(
+                serde_json::to_value(code).unwrap(),
+                serde_json::Value::String(code.as_str().to_owned()),
+                "{code:?}"
+            );
+        }
+    }
+    #[test]
     fn codes_are_unique_and_levels_follow_the_table() {
         let mut seen = std::collections::BTreeSet::new();
         for code in WarningCode::ALL {

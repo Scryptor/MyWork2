@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use serde_json::{Map, Number, Value};
+use serde_json::{Map, Number, Value, json};
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode};
 use sqlx::{AssertSqlSafe, Connection, Row};
 
@@ -64,8 +64,8 @@ impl LegacyValue {
             Self::Null => String::new(),
             Self::Integer(n) => n.to_string(),
             Self::Real(x) => x.to_string(),
-            Self::Text(s) => s.clone(),
-            Self::InvalidText(b) | Self::Blob(b) => String::from_utf8_lossy(b).into_owned(),
+            Self::Text(s) => s.replace('\0', ""),
+            Self::InvalidText(b) | Self::Blob(b) => String::from_utf8_lossy(b).replace('\0', ""),
         }
     }
 
@@ -74,8 +74,10 @@ impl LegacyValue {
             Self::Null => Value::Null,
             Self::Integer(n) => Value::from(*n),
             Self::Real(x) => Number::from_f64(*x).map_or(Value::Null, Value::Number),
+            // PostgreSQL не принимает NUL в тексте и в jsonb: такие значения хранятся шестнадцатеричной записью.
+            Self::Text(s) if s.contains('\0') => json!({ "hex": hex::encode(s.as_bytes()) }),
             Self::Text(s) => Value::String(s.clone()),
-            Self::InvalidText(b) | Self::Blob(b) => serde_json::json!({ "hex": hex::encode(b) }),
+            Self::InvalidText(b) | Self::Blob(b) => json!({ "hex": hex::encode(b) }),
         }
     }
 }

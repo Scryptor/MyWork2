@@ -41,8 +41,17 @@ const KNOWN_TEMPLATES: &[&str] = &[
     "Shablon_Priem.htm",
 ];
 
+/// Ссылка или особый файл, который не перенесён.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SkippedEntry {
+    /// `file` (настройки) или `ClientFiles`.
+    pub source: &'static str,
+    /// Путь относительно старой папки, через `/`.
+    pub path: String,
+}
+
 /// Что найдено в папке старой программы.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct LegacyFolder {
     pub root: PathBuf,
     pub db_file: PathBuf,
@@ -51,6 +60,22 @@ pub(crate) struct LegacyFolder {
     pub text_files: BTreeMap<String, Vec<u8>>,
     /// Пути внутри `ClientFiles` через `/`, по алфавиту.
     pub client_files: Vec<String>,
+    /// Ссылки и особые файлы, которые не прослеживаются и не переносятся.
+    pub skipped: Vec<SkippedEntry>,
+}
+
+impl std::fmt::Debug for LegacyFolder {
+    /// Без содержимого файлов: в `Config.ini` лежит токен SMS.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LegacyFolder")
+            .field("root", &self.root)
+            .field("db_file", &self.db_file)
+            .field("config_ini_len", &self.config_ini.as_ref().map(Vec::len))
+            .field("text_files", &self.text_files.keys().collect::<Vec<_>>())
+            .field("client_files", &self.client_files.len())
+            .field("skipped", &self.skipped)
+            .finish()
+    }
 }
 
 impl LegacyFolder {
@@ -105,8 +130,11 @@ fn read_file(path: &Path) -> Result<Vec<u8>, LegacyError> {
     )))
 }
 
-/// Обычные файлы папки (без вложенных папок и ссылок), по имени.
-fn list_files(dir: &Path) -> Result<Vec<(String, PathBuf)>, LegacyError> {
+/// Обычные файлы папки (без вложенных папок), по имени; ссылки и особые файлы уходят в `skipped`.
+fn list_files(
+    dir: &Path,
+    skipped: &mut Vec<PathBuf>,
+) -> Result<Vec<(String, PathBuf)>, LegacyError> {
     let mut files = Vec::new();
     let entries = std::fs::read_dir(dir).map_err(io_error(format!(
         "Не удалось прочитать папку {}",
@@ -117,11 +145,13 @@ fn list_files(dir: &Path) -> Result<Vec<(String, PathBuf)>, LegacyError> {
             "Не удалось прочитать папку {}",
             dir.display()
         )))?;
-        if entry.file_type().is_ok_and(|t| t.is_file()) {
-            files.push((
+        match entry.file_type() {
+            Ok(t) if t.is_file() => files.push((
                 entry.file_name().to_string_lossy().into_owned(),
                 entry.path(),
-            ));
+            )),
+            Ok(t) if t.is_dir() => {}
+            _ => skipped.push(entry.path()),
         }
     }
     files.sort();
@@ -142,8 +172,9 @@ fn collect_texts(
     suffix: &str,
     name_filter: impl Fn(&str) -> bool,
     out: &mut BTreeMap<String, Vec<u8>>,
+    skipped: &mut Vec<PathBuf>,
 ) -> Result<(), LegacyError> {
-    for (name, path) in list_files(dir)? {
+    for (name, path) in list_files(dir, skipped)? {
         let lower = name.to_lowercase();
         if lower.ends_with(suffix) && name_filter(&lower) {
             out.insert(
@@ -155,7 +186,12 @@ fn collect_texts(
     Ok(())
 }
 
-fn collect_tree(dir: &Path, prefix: &str, out: &mut Vec<String>) -> Result<(), LegacyError> {
+fn collect_tree(
+    dir: &Path,
+    prefix: &str,
+    out: &mut Vec<String>,
+    skipped: &mut Vec<PathBuf>,
+) -> Result<(), LegacyError> {
     let entries = std::fs::read_dir(dir).map_err(io_error(format!(
         "Не удалось прочитать папку {}",
         dir.display()
@@ -166,13 +202,12 @@ fn collect_tree(dir: &Path, prefix: &str, out: &mut Vec<String>) -> Result<(), L
             dir.display()
         )))?;
         let name = entry.file_name().to_string_lossy().into_owned();
-        let Ok(kind) = entry.file_type() else {
-            continue;
-        };
-        if kind.is_dir() {
-            collect_tree(&entry.path(), &format!("{prefix}{name}/"), out)?;
-        } else if kind.is_file() {
-            out.push(format!("{prefix}{name}"));
+        match entry.file_type() {
+            Ok(kind) if kind.is_dir() => {
+                collect_tree(&entry.path(), &format!("{prefix}{name}/"), out, skipped)?;
+            }
+            Ok(kind) if kind.is_file() => out.push(format!("{prefix}{name}")),
+            _ => skipped.push(entry.path()),
         }
     }
     Ok(())
@@ -196,9 +231,17 @@ pub(crate) fn scan_folder(source: &Path) -> Result<LegacyFolder, LegacyError> {
         (source.to_path_buf(), db)
     };
 
-    let config_ini = match find_child(&root, "Config.ini").filter(|p| p.is_file()) {
-        Some(path) => Some(read_file(&path)?),
-        None => None,
+    let mut skipped_settings = Vec::new();
+    let mut skipped_files = Vec::new();
+    let config_ini = match find_child(&root, "Config.ini") {
+        Some(path)
+            if std::fs::symlink_metadata(&path).is_ok_and(|m| m.file_type().is_symlink()) =>
+        {
+            skipped_settings.push(path);
+            None
+        }
+        Some(path) if path.is_file() => Some(read_file(&path)?),
+        _ => None,
     };
 
     let mut text_files = BTreeMap::new();
@@ -209,6 +252,7 @@ pub(crate) fn scan_folder(source: &Path) -> Result<LegacyFolder, LegacyError> {
         ".htm",
         |n| n.starts_with("shablon_"),
         &mut text_files,
+        &mut skipped_settings,
     )?;
     if let Some(settings) = find_dir(&root, "settings") {
         collect_texts(
@@ -218,6 +262,7 @@ pub(crate) fn scan_folder(source: &Path) -> Result<LegacyFolder, LegacyError> {
             ".txt",
             |_| true,
             &mut text_files,
+            &mut skipped_settings,
         )?;
         if let Some(acts) = find_dir(&settings, "Akts") {
             collect_texts(
@@ -227,6 +272,7 @@ pub(crate) fn scan_folder(source: &Path) -> Result<LegacyFolder, LegacyError> {
                 ".txt",
                 |_| true,
                 &mut text_files,
+                &mut skipped_settings,
             )?;
         }
         if let Some(stock) = find_dir(&settings, "Stock") {
@@ -237,15 +283,37 @@ pub(crate) fn scan_folder(source: &Path) -> Result<LegacyFolder, LegacyError> {
                 ".txt",
                 |_| true,
                 &mut text_files,
+                &mut skipped_settings,
             )?;
         }
     }
 
     let mut client_files = Vec::new();
     if let Some(dir) = find_dir(&root, "ClientFiles") {
-        collect_tree(&dir, "", &mut client_files)?;
+        collect_tree(&dir, "", &mut client_files, &mut skipped_files)?;
     }
     client_files.sort();
+
+    let relative = |path: &Path| {
+        path.strip_prefix(&root)
+            .unwrap_or(path)
+            .components()
+            .map(|c| c.as_os_str().to_string_lossy().into_owned())
+            .collect::<Vec<_>>()
+            .join("/")
+    };
+    let mut skipped: Vec<SkippedEntry> = skipped_settings
+        .iter()
+        .map(|p| SkippedEntry {
+            source: "file",
+            path: relative(p),
+        })
+        .chain(skipped_files.iter().map(|p| SkippedEntry {
+            source: "ClientFiles",
+            path: relative(p),
+        }))
+        .collect();
+    skipped.sort_by(|a, b| a.path.cmp(&b.path));
 
     Ok(LegacyFolder {
         root,
@@ -253,6 +321,7 @@ pub(crate) fn scan_folder(source: &Path) -> Result<LegacyFolder, LegacyError> {
         config_ini,
         text_files,
         client_files,
+        skipped,
     })
 }
 
@@ -276,6 +345,50 @@ mod tests {
         assert_eq!(f.client_files, ["1/1/a.jpg"]);
         assert!(!f.text_files.keys().any(|k| k.contains("backup")));
         assert_eq!(scan_folder(&p.join("BAZA.SQLITE")).unwrap().root, f.root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn links_are_not_followed_but_reported() {
+        use std::os::unix::fs::symlink;
+        let outer = tempfile::tempdir().unwrap();
+        let outside = outer.path().join("outside");
+        std::fs::create_dir_all(outside.join("sub")).unwrap();
+        std::fs::write(outside.join("sub/secret.jpg"), b"x").unwrap();
+        std::fs::write(outside.join("brands.txt"), b"x").unwrap();
+        let root = outer.path().join("old");
+        std::fs::create_dir_all(root.join("ClientFiles/1")).unwrap();
+        std::fs::create_dir_all(root.join("settings")).unwrap();
+        std::fs::write(root.join("baza.sqlite"), b"x").unwrap();
+        std::fs::write(root.join("ClientFiles/1/ok.jpg"), b"x").unwrap();
+        symlink(outside.join("sub"), root.join("ClientFiles/1/linked")).unwrap();
+        symlink(outside.join("brands.txt"), root.join("settings/brands.txt")).unwrap();
+        let f = scan_folder(&root).unwrap();
+        assert_eq!(f.client_files, ["1/ok.jpg"]);
+        assert!(f.text_files.is_empty());
+        assert_eq!(
+            f.skipped,
+            [
+                SkippedEntry {
+                    source: "ClientFiles",
+                    path: "ClientFiles/1/linked".to_owned()
+                },
+                SkippedEntry {
+                    source: "file",
+                    path: "settings/brands.txt".to_owned()
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn debug_hides_file_contents() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("baza.sqlite"), b"x").unwrap();
+        std::fs::write(dir.path().join("Config.ini"), b"Token=SECRETVALUE").unwrap();
+        let f = scan_folder(dir.path()).unwrap();
+        let shown = format!("{f:?}");
+        assert!(!shown.contains("SECRETVALUE") && shown.contains("config_ini_len"));
     }
 
     #[test]

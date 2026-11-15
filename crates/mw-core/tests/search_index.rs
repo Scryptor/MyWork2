@@ -81,7 +81,12 @@ async fn manual_reindex_needs_settings_right_and_audits() -> Result<(), CoreErro
         let stats = t.core.reindex_search(&admin()).await?;
         assert_eq!((stats.clients, stats.orders), (0, 0), "{}", t.label);
         assert_eq!(count_audit(&t.core, "search.reindexed").await, 1);
-        let _ = setting_value(&t.core, "search_index_version").await;
+        assert_eq!(
+            setting_value(&t.core, "search_index_version").await,
+            json!(SEARCH_INDEX_VERSION),
+            "{}",
+            t.label
+        );
     }
     Ok(())
 }

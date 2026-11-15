@@ -710,8 +710,6 @@ impl Core {
             .collect();
         insert_chunked::<legacy_row::Entity>(tx, rows).await?;
 
-        set_next_id(tx, IdTable::Orders, b.next_order_id).await?;
-        set_next_id(tx, IdTable::Clients, b.next_client_id).await?;
         write_settings(tx, b, &point_ids, timezone).await?;
 
         let dictionary_items: u64 = b.dictionary.iter().map(|(_, v)| v.len() as u64).sum();
@@ -727,6 +725,10 @@ impl Core {
         expect_count::<audit_log::Entity>(tx, "журнал", b.history.len() as u64 + 1).await?;
         expect_count::<legacy_row::Entity>(tx, "следы", b.legacy_rows.len() as u64).await?;
         expect_count::<legacy_import::Entity>(tx, "импорты", 1).await?;
+
+        // Последним: `setval` в PostgreSQL не откатывается вместе с транзакцией.
+        set_next_id(tx, IdTable::Orders, b.next_order_id).await?;
+        set_next_id(tx, IdTable::Clients, b.next_client_id).await?;
 
         Ok(ImportSummary {
             import_id,

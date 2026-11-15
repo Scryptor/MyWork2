@@ -127,3 +127,39 @@ async fn files_not_placed_still_writes_reports_and_names_staging() {
         assert!(text_report.exists() && json_report.exists(), "{label}");
     }
 }
+
+#[tokio::test]
+async fn data_dir_inside_the_old_folder_is_refused_before_connecting() {
+    use clap::Parser;
+    let src = tempfile::tempdir().unwrap();
+    write_fixture(
+        src.path(),
+        &FixtureOptions {
+            version: FixtureVersion::V32,
+            extra_orders: 0,
+        },
+    )
+    .await
+    .unwrap();
+    let before: Vec<_> = std::fs::read_dir(src.path())
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .collect();
+    for data in [src.path().join("data"), src.path().join("missing/../data")] {
+        let cli = mw_server::Cli::parse_from([
+            "mw-server".as_ref(),
+            "--data-dir".as_ref(),
+            data.as_os_str(),
+            "import-legacy".as_ref(),
+            src.path().as_os_str(),
+        ]);
+        let error = mw_server::run(cli).await.unwrap_err().to_string();
+        assert!(error.contains("лежит внутри старой папки"), "{error}");
+        let after: Vec<_> = std::fs::read_dir(src.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(before, after, "в старой папке ничего не создаётся");
+        assert!(!src.path().join("data").exists());
+    }
+}

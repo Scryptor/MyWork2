@@ -9,7 +9,7 @@ pub(crate) enum DateValue {
     Empty,
     /// Дата разобрана.
     Parsed(NaiveDateTime),
-    /// Дата через «/» с месяцем больше 12 прочитана как «месяц/день».
+    /// Дата с AM/PM или через «/» с месяцем больше 12 прочитана как «месяц/день».
     MonthFirst(NaiveDateTime),
     /// Не дата.
     Invalid,
@@ -26,7 +26,11 @@ pub(crate) fn parse_date(raw: &str) -> DateValue {
 
 fn parse_non_empty(text: &str) -> Option<DateValue> {
     let (date_text, time_text) = split_date_time(text);
-    let (date, month_first) = parse_date_part(date_text)?;
+    let has_meridiem = time_text.is_some_and(|t| {
+        let upper = t.trim().to_uppercase();
+        upper.ends_with("AM") || upper.ends_with("PM")
+    });
+    let (date, month_first) = parse_date_part(date_text, has_meridiem)?;
     let time = match time_text {
         None => NaiveTime::MIN,
         Some(t) => parse_time_part(t)?,
@@ -50,14 +54,15 @@ fn split_date_time(text: &str) -> (&str, Option<&str>) {
     }
 }
 
-fn parse_date_part(text: &str) -> Option<(NaiveDate, bool)> {
+/// `meridiem` — во времени есть AM/PM: так пишет en-US, значит порядок «месяц/день».
+fn parse_date_part(text: &str, meridiem: bool) -> Option<(NaiveDate, bool)> {
     let sep = text.chars().find(|c| matches!(c, '-' | '.' | '/'))?;
     let parts: Vec<&str> = text.split(sep).collect();
     let [a, b, c] = parts[..] else { return None };
     let (first, second, third) = (number(a)?, number(b)?, number(c)?);
     let (year, month, day, month_first) = if a.len() == 4 {
         (first, second, third, false)
-    } else if sep == '/' && second > 12 && first <= 12 {
+    } else if meridiem || (sep == '/' && second > 12 && first <= 12) {
         (expand_year(c, third)?, first, second, true)
     } else {
         (expand_year(c, third)?, second, first, false)
@@ -193,9 +198,14 @@ mod tests {
             DateValue::Parsed(dt("2015-03-05 14:20:00"))
         );
         assert_eq!(parse_date("12 AM"), DateValue::Invalid);
+        // AM/PM пишет en-US: порядок «месяц/день» и предупреждение.
         assert_eq!(
             parse_date("01/02/2015 12:00 AM"),
-            DateValue::Parsed(dt("2015-02-01 00:00:00"))
+            DateValue::MonthFirst(dt("2015-01-02 00:00:00"))
+        );
+        assert_eq!(
+            parse_date("03/04/2015 9:15:00 PM"),
+            DateValue::MonthFirst(dt("2015-03-04 21:15:00"))
         );
     }
 }

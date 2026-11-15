@@ -109,6 +109,7 @@ pub async fn run(cli: Cli) -> Result<(), ServerError> {
             Ok(())
         }
         Some(Command::ImportLegacy { source, replace }) => {
+            crate::import::refuse_inside_source(&config, &source)?;
             let db = connect_and_migrate(&config).await?;
             let result = run_import_with_db(&config, db.clone(), &source, replace).await;
             let _ = db.close().await;
@@ -125,8 +126,14 @@ pub async fn run(cli: Cli) -> Result<(), ServerError> {
                 Err(error) => return Err(error),
             };
             println!("{}", outcome.report.summary_text());
-            println!("Полный отчёт: {}", outcome.text_report.display());
-            println!("Отчёт в формате JSON: {}", outcome.json_report.display());
+            println!(
+                "Полный отчёт (содержит данные клиентов): {}",
+                outcome.text_report.display()
+            );
+            println!(
+                "Отчёт в формате JSON (содержит данные клиентов): {}",
+                outcome.json_report.display()
+            );
             if outcome.open_mode {
                 println!(
                     "Пользователей нет: на этом компьютере вход без пароля, как в MyWork 2. Для работы по сети создайте администратора: mw-server create-admin"

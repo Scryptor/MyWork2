@@ -31,6 +31,25 @@ pub fn import_error_message(error: &LegacyError) -> String {
     }
 }
 
+/// Проверяет до подключения к базе, что папка данных и файл SQLite лежат вне старой папки MyWork 2:
+/// подключение создаёт файлы, а в старую папку ничего не пишется.
+pub fn refuse_inside_source(config: &Config, source: &Path) -> Result<(), ServerError> {
+    let mut targets = vec![config.data_dir.clone()];
+    let url = config.database_url();
+    if let Ok(parsed) = url::Url::parse(&url)
+        && parsed.scheme() == "sqlite"
+        && let Ok(file) = parsed.to_file_path()
+    {
+        targets.push(file);
+    }
+    for target in targets {
+        if mw_legacy::lies_inside_source(&target, source) {
+            return Err(ServerError::Import(LegacyError::InsideSource(target)));
+        }
+    }
+    Ok(())
+}
+
 /// Открывает `Core` на готовой базе, переносит папку и пишет отчёты в `data_dir/import-reports`.
 pub async fn run_import_with_db(
     config: &Config,

@@ -415,11 +415,18 @@ fn catalog_row(version: FixtureVersion, id: i64, overrides: &[(&str, &str)]) -> 
                 return value;
             }
             match column {
-                "WhatRemont" => "ТЕЛЕФОН".to_owned(),
-                "brand" => "SAMSUNG".to_owned(),
-                "model" => "A52".to_owned(),
-                "polomka" => "Разбит экран".to_owned(),
-                "master" => "ПЕТРОВ".to_owned(),
+                // Каждое текстовое поле у каждого заказа своё: перепутанные поля поймает сверка «строка → поле».
+                "WhatRemont" => format!("Устройство {id}"),
+                "brand" => format!("Бренд {id}"),
+                "model" => format!("Модель {id}"),
+                "polomka" => format!("Поломка {id}"),
+                "master" => format!("Мастер {id}"),
+                "SerialNumber" => format!("SN-{id}"),
+                "sostoyanie" => format!("Состояние {id}"),
+                "komplektonst" => format!("Комплект {id}"),
+                "DeviceColour" => format!("ЦВЕТ {id}"),
+                "vipolnenie_raboti" => format!("Работа {id}"),
+                "kommentarij" => format!("Комментарий {id}"),
                 "Barcode" => upc_a(400_000 + id as u64),
                 // До версии 30 клиент хранился прямо в заказе.
                 "surname" if version < FixtureVersion::V30 => match (id, client) {
@@ -598,11 +605,19 @@ async fn fill_database(
                 id.to_string(),
                 fio.into(),
                 phone.into(),
-                String::new(),
-                note.into(),
+                format!("Адрес {id}"),
+                if note.is_empty() {
+                    format!("Заметка {id}")
+                } else {
+                    note.into()
+                },
                 blist.into(),
                 date.into(),
-                about.into(),
+                if about.is_empty() {
+                    format!("Источник {id}")
+                } else {
+                    about.into()
+                },
             ];
             insert(
                 conn,
@@ -621,6 +636,14 @@ async fn fill_database(
             )
             .await?;
         }
+    }
+    if version == FixtureVersion::V32 {
+        // Испорченный текст: один байт, не являющийся UTF-8 (серийный номер заказа 7).
+        exec(
+            conn,
+            "UPDATE Catalog SET SerialNumber = CAST(X'C0' AS TEXT) WHERE id = 7",
+        )
+        .await?;
     }
     if version >= FixtureVersion::V27 {
         for (id, order, state, date) in STATES {

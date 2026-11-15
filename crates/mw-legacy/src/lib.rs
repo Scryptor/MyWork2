@@ -47,27 +47,57 @@ fn backup_folder(backups_dir: &Path, stamp: &str) -> PathBuf {
     dir
 }
 
-/// Лежит ли `dir` внутри `root`: путь может ещё не существовать, тогда берётся ближайшая существующая папка выше.
+/// Лежит ли `dir` внутри `root`: путь может ещё не существовать — тогда берётся ближайшая существующая папка выше,
+/// а `.` и `..` в несуществующем хвосте убираются по тексту. Если решить нельзя, считается, что лежит внутри
+/// (лучше отказать, чем записать в старую папку).
 fn lies_inside(dir: &Path, root: &Path) -> bool {
+    use std::path::Component;
     let Ok(root) = root.canonicalize() else {
-        return false;
+        return true;
     };
-    let Ok(mut current) = std::path::absolute(dir) else {
-        return false;
+    let Ok(absolute) = std::path::absolute(dir) else {
+        return true;
     };
-    let mut tail = Vec::new();
-    loop {
-        if let Ok(canonical) = current.canonicalize() {
-            return canonical
-                .join(tail.iter().rev().collect::<PathBuf>())
-                .starts_with(&root);
+    let components: Vec<Component> = absolute.components().collect();
+    // Самый длинный существующий префикс.
+    let mut existing = components.len();
+    let canonical = loop {
+        let prefix: PathBuf = components[..existing].iter().collect();
+        if let Ok(canonical) = prefix.canonicalize() {
+            break canonical;
         }
-        let (Some(name), Some(parent)) = (current.file_name(), current.parent()) else {
-            return false;
-        };
-        tail.push(name.to_owned());
-        current = parent.to_path_buf();
+        if existing <= 1 {
+            return true;
+        }
+        existing -= 1;
+    };
+    let mut resolved = canonical;
+    for component in &components[existing..] {
+        match component {
+            Component::Normal(name) => resolved.push(name),
+            Component::ParentDir => {
+                if !resolved.pop() {
+                    return true;
+                }
+            }
+            Component::CurDir => {}
+            Component::RootDir | Component::Prefix(_) => return true,
+        }
     }
+    resolved.starts_with(&root)
+}
+
+/// Лежит ли `path` внутри старой папки; `source` — папка MyWork 2 или файл `baza.sqlite` в ней.
+pub fn lies_inside_source(path: &Path, source: &Path) -> bool {
+    let root = if source.is_file() {
+        source
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or(Path::new("."))
+    } else {
+        source
+    };
+    lies_inside(path, root)
 }
 
 /// Импортирует папку MyWork 2: читает, преобразует, копирует файлы через промежуточную папку,
@@ -204,4 +234,37 @@ pub async fn import_folder(
     }
     tracing::info!("импорт: файлы поставлены на место");
     Ok(report)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lies_inside_resolves_dotdot_in_missing_tail_and_fails_closed() {
+        let outer = tempfile::tempdir().unwrap();
+        let old = outer.path().join("old");
+        std::fs::create_dir_all(&old).unwrap();
+        // `..` после несуществующей папки не должно скрывать путь внутри старой папки.
+        assert!(lies_inside(&old.join("missing/../x"), &old));
+        assert!(lies_inside(&old.join("a/b/../../x/./y"), &old));
+        // Выход из старой папки через `..` — снаружи.
+        assert!(!lies_inside(&old.join("missing/../../other"), &old));
+        assert!(!lies_inside(&outer.path().join("data"), &old));
+        // Не удалось раскрыть саму старую папку — отказ.
+        assert!(lies_inside(
+            &outer.path().join("data"),
+            &outer.path().join("nope")
+        ));
+        // Файл `baza.sqlite` вместо папки.
+        std::fs::write(old.join("baza.sqlite"), b"x").unwrap();
+        assert!(lies_inside_source(
+            &old.join("data"),
+            &old.join("baza.sqlite")
+        ));
+        assert!(!lies_inside_source(
+            &outer.path().join("data"),
+            &old.join("baza.sqlite")
+        ));
+    }
 }

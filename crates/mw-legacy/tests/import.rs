@@ -92,7 +92,7 @@ async fn v32_files_and_warnings_round_trip() -> Res {
                 .iter()
                 .filter(|w| w.code.severity() == Severity::Warning)
                 .count(),
-            26,
+            27,
             "{}",
             t.label
         );
