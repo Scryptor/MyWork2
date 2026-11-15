@@ -47,6 +47,29 @@ fn backup_folder(backups_dir: &Path, stamp: &str) -> PathBuf {
     dir
 }
 
+/// Лежит ли `dir` внутри `root`: путь может ещё не существовать, тогда берётся ближайшая существующая папка выше.
+fn lies_inside(dir: &Path, root: &Path) -> bool {
+    let Ok(root) = root.canonicalize() else {
+        return false;
+    };
+    let Ok(mut current) = std::path::absolute(dir) else {
+        return false;
+    };
+    let mut tail = Vec::new();
+    loop {
+        if let Ok(canonical) = current.canonicalize() {
+            return canonical
+                .join(tail.iter().rev().collect::<PathBuf>())
+                .starts_with(&root);
+        }
+        let (Some(name), Some(parent)) = (current.file_name(), current.parent()) else {
+            return false;
+        };
+        tail.push(name.to_owned());
+        current = parent.to_path_buf();
+    }
+}
+
 /// Импортирует папку MyWork 2: читает, преобразует, копирует файлы через промежуточную папку,
 /// пишет пакет одной транзакцией и только после успеха ставит файлы на место.
 pub async fn import_folder(
@@ -54,7 +77,13 @@ pub async fn import_folder(
     actor: &Actor,
     options: &ImportOptions,
 ) -> Result<ImportReport, LegacyError> {
+    core.check_import_rights(actor)?;
     let folder = folder::scan_folder(&options.source)?;
+    for dir in [&options.attachments_dir, &options.backups_dir] {
+        if lies_inside(dir, &folder.root) {
+            return Err(LegacyError::InsideSource(dir.clone()));
+        }
+    }
     let db = source::read_database(&folder.db_file).await?;
     tracing::info!(tables = db.tables.len(), "импорт: старая база прочитана");
 
@@ -142,11 +171,7 @@ pub async fn import_folder(
         "импорт: данные записаны в базу"
     );
 
-    let previous = backup.as_ref().map(|dir| dir.join("attachments"));
-    staging.commit(&options.attachments_dir, previous.as_deref())?;
-    tracing::info!("импорт: файлы поставлены на место");
-
-    Ok(ImportReport {
+    let mut report = ImportReport {
         started_at,
         source: options.source.clone(),
         schema: conversion.schema,
@@ -154,5 +179,29 @@ pub async fn import_folder(
         files: file_stats,
         backup,
         warnings: warnings.list().to_vec(),
-    })
+    };
+    let previous = report.backup.as_ref().map(|dir| dir.join("attachments"));
+    let staging_path = staging.path().to_path_buf();
+    let mut after = report::Warnings::default();
+    let placed = staging.commit(&options.attachments_dir, previous.as_deref(), &mut after);
+    if let Err(e) = &placed {
+        after.push(
+            WarningCode::FileUnreadable,
+            "file",
+            &staging_path.display().to_string(),
+            "",
+            "",
+            &format!("Файлы не поставлены на место: {e}."),
+        );
+    }
+    report.warnings.extend(after.list().iter().cloned());
+    if placed.is_err() {
+        tracing::info!("импорт: файлы не поставлены на место");
+        return Err(LegacyError::FilesNotPlaced {
+            staging: staging_path,
+            report: Box::new(report),
+        });
+    }
+    tracing::info!("импорт: файлы поставлены на место");
+    Ok(report)
 }

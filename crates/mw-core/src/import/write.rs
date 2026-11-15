@@ -547,6 +547,12 @@ where
 }
 
 impl Core {
+    /// Права, нужные для импорта (`settings_manage`, затем `users_manage`); проверяются до копирования файлов.
+    pub fn check_import_rights(&self, actor: &Actor) -> Result<(), CoreError> {
+        actor.require(Permission::SettingsManage)?;
+        actor.require(Permission::UsersManage)
+    }
+
     /// Какая СУБД под `Core`.
     pub fn database_kind(&self) -> DatabaseKind {
         match self.db.get_database_backend() {
@@ -568,8 +574,7 @@ impl Core {
         bundle: ImportBundle,
         mode: ImportMode,
     ) -> Result<ImportSummary, CoreError> {
-        actor.require(Permission::SettingsManage)?;
-        actor.require(Permission::UsersManage)?;
+        self.check_import_rights(actor)?;
         validate_bundle(&bundle)?;
         if matches!(mode, ImportMode::Replace { .. })
             && self.database_kind() != DatabaseKind::Sqlite

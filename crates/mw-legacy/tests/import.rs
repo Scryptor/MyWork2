@@ -1,8 +1,10 @@
 //! Импорт папки MyWork 2 целиком: файлы, отчёт, вход, повторный импорт.
+#![allow(clippy::unwrap_used)]
 mod common;
 
 use common::*;
-use mw_core::{CoreError, NewClient};
+use mw_core::{Actor, CoreError, DatabaseKind, NewClient};
+use mw_domain::permission::{Permission, PermissionSet};
 use mw_legacy::fixture::FIXTURE_SMS_TOKEN;
 use mw_legacy::fixture::FixtureVersion::{self, V30, V32};
 use mw_legacy::{LegacyError, Severity, WarningCode, import_folder};
@@ -212,6 +214,98 @@ async fn large_fixture_imports_on_every_backend() -> Res {
         let (src, data) = (fixture_dir_with(V32, 3000).await, tempfile::tempdir()?);
         let r = import_folder(&t.core, &admin(), &options(src.path(), data.path(), false)).await?;
         assert_eq!(r.summary.orders, 3011, "{}", t.label);
+    }
+    Ok(())
+}
+
+fn no_staging_left(dir: &std::path::Path) -> bool {
+    !dir.exists()
+        || std::fs::read_dir(dir).unwrap().all(|e| {
+            !e.unwrap()
+                .file_name()
+                .to_string_lossy()
+                .starts_with(".import")
+        })
+}
+
+#[tokio::test]
+async fn empty_attachment_folders_do_not_block_placing_files() -> Res {
+    for t in cores().await {
+        let (src, data) = (fixture_dir(V32).await, tempfile::tempdir()?);
+        let att = data.path().join("attachments");
+        std::fs::create_dir_all(att.join("orders"))?;
+        std::fs::create_dir_all(att.join("stock"))?;
+        import_folder(&t.core, &admin(), &options(src.path(), data.path(), false)).await?;
+        assert!(att.join("orders/1/photo.jpg").exists(), "{}", t.label);
+        assert!(att.join("stock/1/abc123.jpg").exists(), "{}", t.label);
+        assert!(no_staging_left(&att));
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn missing_rights_are_refused_before_any_file_is_copied() -> Res {
+    for t in cores().await {
+        let (src, data) = (fixture_dir(V32).await, tempfile::tempdir()?);
+        let mut set = PermissionSet::empty();
+        set.insert(Permission::SettingsManage);
+        let weak = Actor::for_tests(None, "Тест", set);
+        let r = import_folder(&t.core, &weak, &options(src.path(), data.path(), false)).await;
+        assert!(
+            matches!(
+                r,
+                Err(LegacyError::Core(CoreError::Forbidden(
+                    Permission::UsersManage
+                )))
+            ),
+            "{}",
+            t.label
+        );
+        let att = data.path().join("attachments");
+        assert!(!att.exists() || std::fs::read_dir(&att)?.next().is_none());
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn replace_on_postgres_is_refused_without_staging() -> Res {
+    for t in cores().await {
+        if t.core.database_kind() != DatabaseKind::Postgres {
+            continue;
+        }
+        let (src, data) = (fixture_dir(V32).await, tempfile::tempdir()?);
+        let r = import_folder(&t.core, &admin(), &options(src.path(), data.path(), true)).await;
+        assert!(matches!(r, Err(LegacyError::ReplaceUnsupported)));
+        assert!(no_staging_left(&data.path().join("attachments")));
+        assert!(!data.path().join("attachments").exists());
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn nothing_is_written_into_the_old_folder() -> Res {
+    for t in cores().await {
+        let src = fixture_dir(V32).await;
+        let before = hash_tree(src.path());
+        let mut o = options(src.path(), src.path(), false);
+        o.attachments_dir = src.path().join("new/attachments");
+        let r = import_folder(&t.core, &admin(), &o).await;
+        assert!(
+            matches!(r, Err(LegacyError::InsideSource(_))),
+            "{}",
+            t.label
+        );
+        let data = tempfile::tempdir()?;
+        let mut o = options(src.path(), data.path(), false);
+        o.backups_dir = src.path().join("ClientFiles/backups");
+        let r = import_folder(&t.core, &admin(), &o).await;
+        assert!(
+            matches!(r, Err(LegacyError::InsideSource(_))),
+            "{}",
+            t.label
+        );
+        assert_eq!(hash_tree(src.path()), before);
+        assert!(!src.path().join("new").exists());
     }
     Ok(())
 }

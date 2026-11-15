@@ -2,6 +2,8 @@ use std::path::PathBuf;
 
 use mw_core::{CoreError, ImportTarget};
 
+use crate::report::ImportReport;
+
 /// Ошибки чтения старой папки и импорта.
 #[derive(Debug, thiserror::Error)]
 pub enum LegacyError {
@@ -29,4 +31,14 @@ pub enum LegacyError {
     AttachmentsNotEmpty(PathBuf),
     #[error("Замена данных для этой базы не поддерживается")]
     ReplaceUnsupported,
+    #[error("Папка {0} лежит внутри старой папки MyWork 2: в неё ничего не записывается")]
+    InsideSource(PathBuf),
+    #[error(
+        "База импортирована, но файлы не поставлены на место: они лежат в папке {}",
+        .staging.display()
+    )]
+    FilesNotPlaced {
+        staging: PathBuf,
+        report: Box<ImportReport>,
+    },
 }

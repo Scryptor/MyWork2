@@ -20,6 +20,8 @@ pub(crate) const IMPORT_DIRS: [&str; 3] = ["orders", "stock", "legacy"];
 #[derive(Debug)]
 pub(crate) struct Staging {
     dir: PathBuf,
+    /// Папку убирает `Drop`, пока не вызваны `abort` или `commit`.
+    armed: bool,
 }
 
 fn io_error(context: String) -> impl FnOnce(std::io::Error) -> LegacyError {
@@ -138,7 +140,7 @@ pub(crate) fn stage(
         "Не удалось создать папку {}",
         dir.display()
     )))?;
-    let staging = Staging { dir };
+    let staging = Staging { dir, armed: true };
     match copy_all(folder, files, &staging, warnings) {
         Ok((rows, stats)) => Ok((staging, rows, stats)),
         Err(e) => {
@@ -205,16 +207,18 @@ fn copy_all(
     Ok((rows, stats))
 }
 
-/// Переносит папку; между дисками — копированием.
-fn move_dir(from: &Path, to: &Path) -> Result<(), LegacyError> {
+/// Переносит папку; между дисками — копированием. `Some(текст)` — перенос удался, но исходную папку убрать не вышло.
+fn move_dir(from: &Path, to: &Path) -> Result<Option<String>, LegacyError> {
     if std::fs::rename(from, to).is_ok() {
-        return Ok(());
+        return Ok(None);
     }
     copy_dir(from, to)?;
-    std::fs::remove_dir_all(from).map_err(io_error(format!(
-        "Не удалось убрать папку {}",
-        from.display()
-    )))
+    Ok(std::fs::remove_dir_all(from).err().map(|e| {
+        format!(
+            "Папка {} перенесена, но не удалена на старом месте: {e}.",
+            from.display()
+        )
+    }))
 }
 
 fn copy_dir(from: &Path, to: &Path) -> Result<(), LegacyError> {
@@ -244,18 +248,48 @@ fn copy_dir(from: &Path, to: &Path) -> Result<(), LegacyError> {
     Ok(())
 }
 
+impl Drop for Staging {
+    fn drop(&mut self) {
+        if self.armed
+            && let Err(e) = std::fs::remove_dir_all(&self.dir)
+        {
+            tracing::debug!(error = %e, "промежуточная папка не удалена");
+        }
+    }
+}
+
+fn cleanup_warning(warnings: &mut Warnings, path: &Path, message: &str) {
+    warnings.push(
+        WarningCode::FileUnreadable,
+        "file",
+        &path.display().to_string(),
+        "",
+        "",
+        message,
+    );
+}
+
 impl Staging {
+    pub(crate) fn path(&self) -> &Path {
+        &self.dir
+    }
+
     /// Удаляет промежуточную папку со всем содержимым.
-    pub(crate) fn abort(self) {
+    pub(crate) fn abort(mut self) {
+        self.armed = false;
         std::fs::remove_dir_all(&self.dir).ok();
     }
 
     /// Ставит файлы на место. С `previous` (папка копии) прежние `orders`, `stock` и `legacy` уходят туда.
+    /// Ошибка — файлы не поставлены (остаются в промежуточной папке); неудачная уборка — только предупреждение.
     pub(crate) fn commit(
-        self,
+        mut self,
         attachments_dir: &Path,
         previous: Option<&Path>,
+        warnings: &mut Warnings,
     ) -> Result<(), LegacyError> {
+        // База уже записана: промежуточную папку после этого не удаляем, пока файлы не на месте.
+        self.armed = false;
         if let Some(previous) = previous {
             for name in IMPORT_DIRS {
                 let old = attachments_dir.join(name);
@@ -264,7 +298,9 @@ impl Staging {
                         "Не удалось создать папку {}",
                         previous.display()
                     )))?;
-                    move_dir(&old, &previous.join(name))?;
+                    if let Some(note) = move_dir(&old, &previous.join(name))? {
+                        cleanup_warning(warnings, &old, &note);
+                    }
                 }
             }
         }
@@ -273,15 +309,25 @@ impl Staging {
             if staged.exists() {
                 let target = attachments_dir.join(name);
                 if target.exists() {
-                    return Err(LegacyError::AttachmentsNotEmpty(target));
+                    // Пустую папку (`remove_dir` не удаляет непустую) можно заменить.
+                    std::fs::remove_dir(&target).ok();
+                    if target.exists() {
+                        return Err(LegacyError::AttachmentsNotEmpty(target));
+                    }
                 }
-                move_dir(&staged, &target)?;
+                if let Some(note) = move_dir(&staged, &target)? {
+                    cleanup_warning(warnings, &staged, &note);
+                }
             }
         }
-        std::fs::remove_dir_all(&self.dir).map_err(io_error(format!(
-            "Не удалось убрать папку {}",
-            self.dir.display()
-        )))
+        if let Err(e) = std::fs::remove_dir_all(&self.dir) {
+            cleanup_warning(
+                warnings,
+                &self.dir,
+                &format!("Промежуточная папка не удалена: {e}."),
+            );
+        }
+        Ok(())
     }
 }
 
@@ -344,5 +390,49 @@ mod tests {
         assert_eq!(rows[1].raw["stored_as"], "attachments/orders/1/A (2).jpg");
         assert_eq!(w.list().len(), 2);
         staging.abort();
+    }
+
+    #[tokio::test]
+    async fn commit_replaces_empty_folder_and_reports_conflicts() {
+        let src = fixture(V32).await;
+        let folder = scan_folder(src.path()).unwrap();
+        let files = [planned("ClientFiles/1/1/photo.jpg", "orders/1/photo.jpg")];
+
+        let attachments = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(attachments.path().join("orders")).unwrap();
+        let mut w = Warnings::default();
+        let (staging, _, _) = stage(&folder, &files, attachments.path(), "a", &mut w).unwrap();
+        staging.commit(attachments.path(), None, &mut w).unwrap();
+        assert!(attachments.path().join("orders/1/photo.jpg").exists());
+        assert!(w.list().is_empty());
+        assert!(!attachments.path().join(".import-a").exists());
+
+        let attachments = tempfile::tempdir().unwrap();
+        let (staging, _, _) = stage(&folder, &files, attachments.path(), "b", &mut w).unwrap();
+        std::fs::create_dir_all(attachments.path().join("orders/keep")).unwrap();
+        std::fs::write(attachments.path().join("orders/keep/f"), b"x").unwrap();
+        let err = staging
+            .commit(attachments.path(), None, &mut w)
+            .unwrap_err();
+        assert!(matches!(err, LegacyError::AttachmentsNotEmpty(_)));
+        // Файлы остались в промежуточной папке.
+        assert!(
+            attachments
+                .path()
+                .join(".import-b/orders/1/photo.jpg")
+                .exists()
+        );
+    }
+
+    #[tokio::test]
+    async fn dropping_staging_removes_the_folder() {
+        let src = fixture(V32).await;
+        let folder = scan_folder(src.path()).unwrap();
+        let attachments = tempfile::tempdir().unwrap();
+        let mut w = Warnings::default();
+        let files = [planned("ClientFiles/1/1/photo.jpg", "orders/1/photo.jpg")];
+        let (staging, _, _) = stage(&folder, &files, attachments.path(), "c", &mut w).unwrap();
+        drop(staging);
+        assert_eq!(std::fs::read_dir(attachments.path()).unwrap().count(), 0);
     }
 }
