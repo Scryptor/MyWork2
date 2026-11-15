@@ -120,6 +120,8 @@ pub enum ServerError {
     Database(String),
     #[error(transparent)]
     Core(#[from] CoreError),
+    #[error("{}", crate::import::import_error_message(.0))]
+    Import(mw_legacy::LegacyError),
 }
 
 #[cfg(test)]

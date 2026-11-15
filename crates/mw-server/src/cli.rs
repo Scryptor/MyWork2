@@ -1,5 +1,6 @@
 use crate::admin::{create_admin, read_password};
 use crate::config::{Config, DEFAULT_LISTEN, ServerError, redact_database_url, validate_timezone};
+use crate::import::run_import_with_db;
 use crate::paths::{os_data_dir, resolve_data_dir};
 use crate::server::{Server, connect_and_migrate, log_timezone, shutdown_signal, system_timezone};
 use clap::{Parser, Subcommand};
@@ -56,6 +57,13 @@ pub enum Command {
         #[arg(long, default_value = "")]
         name: String,
     },
+    /// Перенести данные из папки MyWork 2 (или файла baza.sqlite в ней). Импорт — только в пустую базу; --replace заменяет данные SQLite-базы, сначала сохранив копию.
+    ImportLegacy {
+        /// Папка MyWork 2 или файл baza.sqlite в ней.
+        source: PathBuf,
+        #[arg(long)]
+        replace: bool,
+    },
 }
 
 impl Cli {
@@ -98,6 +106,22 @@ pub async fn run(cli: Cli) -> Result<(), ServerError> {
             let _ = db.close().await;
             let user = result?;
             println!("Администратор создан: {}", user.login);
+            Ok(())
+        }
+        Some(Command::ImportLegacy { source, replace }) => {
+            let db = connect_and_migrate(&config).await?;
+            let result = run_import_with_db(&config, db.clone(), &source, replace).await;
+            let _ = db.close().await;
+            let outcome = result?;
+            println!("{}", outcome.report.summary_text());
+            println!("Полный отчёт: {}", outcome.text_report.display());
+            println!("Отчёт в формате JSON: {}", outcome.json_report.display());
+            if outcome.open_mode {
+                println!(
+                    "Пользователей нет: на этом компьютере вход без пароля, как в MyWork 2. Для работы по сети создайте администратора: mw-server create-admin"
+                );
+            }
+            println!("Если сервер уже запущен с этой базой, перезапустите его");
             Ok(())
         }
     }
@@ -167,5 +191,19 @@ mod tests {
         assert!(
             matches!(cli.command, Some(Command::CreateAdmin { ref login, .. }) if login == "boss")
         );
+    }
+
+    #[test]
+    fn parses_import_legacy() {
+        let cli = Cli::try_parse_from(["mw-server", "import-legacy", "/old", "--replace"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Some(Command::ImportLegacy { ref source, replace: true }) if source == std::path::Path::new("/old")
+        ));
+        let cli = Cli::try_parse_from(["mw-server", "import-legacy", "/old"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Some(Command::ImportLegacy { replace: false, .. })
+        ));
     }
 }

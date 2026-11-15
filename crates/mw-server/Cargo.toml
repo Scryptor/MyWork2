@@ -21,6 +21,7 @@ mw-api = { path = "../mw-api" }
 mw-core = { path = "../mw-core" }
 mw-db = { path = "../mw-db" }
 mw-domain = { path = "../mw-domain" }
+mw-legacy = { path = "../mw-legacy" }
 axum = { workspace = true }
 sea-orm = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "signal", "sync"] }
@@ -32,7 +33,10 @@ iana-time-zone = { workspace = true }
 chrono-tz = { workspace = true }
 url = { workspace = true }
 thiserror = { workspace = true }
+serde_json = { workspace = true }
 
 [dev-dependencies]
+mw-legacy = { path = "../mw-legacy", features = ["fixtures"] }
+tempfile = { workspace = true }
 mw-db = { path = "../mw-db" }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "signal", "sync", "time", "io-util"] }
