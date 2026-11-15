@@ -9,5 +9,6 @@ export const ru = {
 		nothingFound: 'Ничего не найдено',
 		back: 'Назад'
 	},
+	flags: { needCall: 'Позвонить', needParts: 'Заказать запчасть', blacklisted: 'Чёрный список' },
 	save: { saving: 'Сохраняю…', saved: 'Сохранено', failed: 'Не сохранено' }
 } as const;
