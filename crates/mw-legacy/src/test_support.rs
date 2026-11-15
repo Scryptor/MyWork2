@@ -92,3 +92,26 @@ pub(crate) fn order(b: &mw_core::ImportBundle, id: i64) -> &mw_core::ImportedOrd
 pub(crate) fn client(b: &mw_core::ImportBundle, id: i64) -> &mw_core::ImportedClient {
     b.clients.iter().find(|c| c.id == id).unwrap()
 }
+
+/// Как `conversion_of`, но перед чтением выполняет SQL над базой фикстуры.
+pub(crate) async fn conversion_with_sql(
+    version: FixtureVersion,
+    statements: &[&str],
+) -> crate::convert::Conversion {
+    use sqlx::Connection;
+    let dir = fixture(version).await;
+    let db_path = dir.path().join("baza.sqlite");
+    let mut conn = sqlx::SqliteConnection::connect(&format!("sqlite://{}", db_path.display()))
+        .await
+        .unwrap();
+    for sql in statements {
+        sqlx::query(sqlx::AssertSqlSafe((*sql).to_owned()))
+            .execute(&mut conn)
+            .await
+            .unwrap();
+    }
+    conn.close().await.unwrap();
+    let folder = scan_folder(dir.path()).unwrap();
+    let db = read_database(&folder.db_file).await.unwrap();
+    crate::convert::convert(&db, &folder, dt("2026-11-12 10:00:00"))
+}

@@ -4,6 +4,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use chrono::NaiveDateTime;
 use mw_core::{ImportedHistory, ImportedOrder};
+use mw_domain::search::normalize_search;
 use serde_json::{Value, json};
 
 use crate::parse::{DateValue, StateEvent, parse_date, read_states_row};
@@ -57,7 +58,7 @@ pub(crate) fn history_hints(db: &LegacyDb) -> HistoryHints {
             let at = known(parse_date(&table.text(row, "DATA")));
             note(&mut hints, order, at);
             if let (Some(order), Some(at)) = (order, at)
-                && table.text(row, "WHAT").trim().to_uppercase() == "УДАЛЕНИЕ"
+                && normalize_search(&table.text(row, "WHAT")) == "удаление"
             {
                 hints
                     .deleted

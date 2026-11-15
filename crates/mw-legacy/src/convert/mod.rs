@@ -16,7 +16,7 @@ use serde_json::json;
 
 use crate::folder::LegacyFolder;
 use crate::report::{WarningCode, Warnings};
-use crate::source::{LegacyDb, SchemaSummary};
+use crate::source::{FULL_CATALOG_COLUMNS, LegacyDb, SchemaSummary};
 
 /// Файл, который нужно скопировать в `attachments`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,6 +54,7 @@ const KNOWN_TABLES: [&str; 8] = [
 fn table_rows(
     db: &LegacyDb,
     name: &str,
+    by_row: bool,
     target: impl Fn(&str) -> Option<LegacyTarget>,
 ) -> Vec<ImportedLegacyRow> {
     let Some(table) = db.table(name) else {
@@ -65,7 +66,7 @@ fn table_rows(
         .enumerate()
         .map(|(i, row)| {
             let id = table.text(row, "id");
-            let key = if id.trim().is_empty() {
+            let key = if by_row || id.trim().is_empty() {
                 format!("строка {}", i + 1)
             } else {
                 id.trim().to_owned()
@@ -80,6 +81,73 @@ fn table_rows(
         .collect()
 }
 
+/// Колонки, которые знает конвертер, по таблицам (`Stock` и `StockMap` сохраняются целиком).
+fn known_columns(table: &str) -> Option<&'static [&'static str]> {
+    Some(match table.to_lowercase().as_str() {
+        "catalog" => &FULL_CATALOG_COLUMNS,
+        "clientsmap" => &[
+            "id",
+            "FIO",
+            "Phone",
+            "Adress",
+            "Primechanie",
+            "Blist",
+            "date",
+            "aboutUs",
+        ],
+        "statesmap" => &["id", "clientId", "State", "date"],
+        "historybd" => &["id", "WHO", "WHAT", "FULLWHAT", "DATA", "IDINCATALOG"],
+        "users" => &["id", "type", "name", "id_gruppi_dostupa", "user_pwd"],
+        "groupdostup" => &[
+            "id",
+            "grName",
+            "delZapis",
+            "addZapis",
+            "saveZapis",
+            "graf",
+            "sms",
+            "stock",
+            "clients",
+            "stockAdd",
+            "stockDel",
+            "stockEdit",
+            "clientAdd",
+            "clientDel",
+            "clientConcat",
+            "settings",
+            "dates",
+            "editDates",
+        ],
+        _ => return None,
+    })
+}
+
+fn warn_unknown_columns(db: &LegacyDb, w: &mut Warnings) {
+    for table in &db.tables {
+        let Some(known) = known_columns(&table.name) else {
+            continue;
+        };
+        for (i, column) in table.columns.iter().enumerate() {
+            if known.iter().any(|k| k.eq_ignore_ascii_case(column)) {
+                continue;
+            }
+            let filled = table
+                .rows
+                .iter()
+                .filter(|r| r.get(i).is_some_and(|v| !v.as_text().trim().is_empty()))
+                .count();
+            w.push(
+                WarningCode::UnknownColumn,
+                &table.name,
+                column,
+                column,
+                &filled.to_string(),
+                "Неизвестная колонка: значения сохранены только в исходной строке (legacy_rows).",
+            );
+        }
+    }
+}
+
 fn legacy_rows(
     db: &LegacyDb,
     orders: &[ImportedOrder],
@@ -87,7 +155,7 @@ fn legacy_rows(
     w: &mut Warnings,
 ) -> Vec<ImportedLegacyRow> {
     let order_ids: BTreeSet<i64> = orders.iter().map(|o| o.id).collect();
-    let mut rows = table_rows(db, "Catalog", |key| {
+    let mut rows = table_rows(db, "Catalog", false, |key| {
         key.parse()
             .ok()
             .filter(|id| order_ids.contains(id))
@@ -95,7 +163,7 @@ fn legacy_rows(
     });
     rows.extend(client_rows);
     for name in ["Stock", "StockMap"] {
-        rows.extend(table_rows(db, name, |_| None));
+        rows.extend(table_rows(db, name, false, |_| None));
     }
     if let Some(stock) = db.table("Stock").filter(|t| !t.rows.is_empty()) {
         w.push(
@@ -120,7 +188,7 @@ fn legacy_rows(
             &table.rows.len().to_string(),
             "Неизвестная таблица сохранена в исходном виде.",
         );
-        rows.extend(table_rows(db, &table.name, |_| None));
+        rows.extend(table_rows(db, &table.name, true, |_| None));
     }
     for (name, seq) in &db.sequences {
         rows.push(ImportedLegacyRow {
@@ -135,6 +203,13 @@ fn legacy_rows(
 
 fn file_name(path: &str) -> &str {
     path.rsplit(['/', '\\']).next().unwrap_or(path)
+}
+
+/// Путь несуществующего фото: только простое имя файла внутри папки фото, иначе заведомо несуществующая заглушка.
+fn missing_photo_source(name: &str) -> PathBuf {
+    let plain = !name.is_empty() && name != "." && name != ".." && !name.contains(':');
+    let leaf = if plain { name } else { "<missing>" };
+    PathBuf::from(format!("settings/Stock/Photos/{leaf}"))
 }
 
 fn relative_to_root(folder: &LegacyFolder, found: PathBuf) -> PathBuf {
@@ -209,7 +284,7 @@ fn stock_photo_plan(db: &LegacyDb, folder: &LegacyFolder) -> Vec<PlannedFile> {
                 .find_file(raw)
                 .or_else(|| folder.find_file(&format!("settings/Stock/Photos/{name}")));
             let source = found.map_or_else(
-                || PathBuf::from(raw.replace('\\', "/")),
+                || missing_photo_source(name),
                 |f| relative_to_root(folder, f),
             );
             let mut dest = format!("stock/{}/{name}", id.trim());
@@ -239,6 +314,7 @@ pub(crate) fn convert(db: &LegacyDb, folder: &LegacyFolder, now: NaiveDateTime) 
     let converted = orders::convert_orders(db, &catalogs, &stage.order_client, &hints, now, &mut w);
     clients::fill_created_at(&mut stage, &converted);
     let history = history::convert_history(db, &converted, now, &mut w);
+    warn_unknown_columns(db, &mut w);
 
     let (settings, setting_rows) = settings::convert_settings(folder, &catalogs, &mut w);
     let (roles, users, access_rows) = access::convert_access(db, &mut w);
@@ -290,6 +366,8 @@ pub(crate) fn convert(db: &LegacyDb, folder: &LegacyFolder, now: NaiveDateTime) 
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+
     use crate::fixture::FixtureVersion::{V25, V32};
     use crate::report::Severity;
     use crate::test_support::{client, conversion_of, dt, order, rub};
@@ -491,5 +569,143 @@ mod tests {
             "Клиент не указан"
         );
         assert!(b.orders.iter().all(|o| !o.need_call));
+    }
+
+    use crate::test_support::conversion_with_sql;
+
+    fn warned(c: &super::Conversion, code: &str, source: &str, key: &str) -> Option<String> {
+        c.warnings
+            .list()
+            .iter()
+            .find(|w| w.code.as_str() == code && w.source == source && w.key == key)
+            .map(|w| w.value.clone())
+    }
+
+    #[tokio::test]
+    async fn junk_phone_orders_get_separate_placeholder_clients() {
+        let c = conversion_with_sql(
+            V32,
+            &[
+                "UPDATE Catalog SET ClientId = '', surname = '', phone = '-' WHERE id = 3",
+                "UPDATE Catalog SET ClientId = '', surname = '', phone = 'нет телефона' WHERE id = 4",
+            ],
+        )
+        .await;
+        let b = &c.bundle;
+        let (a, d) = (order(b, 3).client_id, order(b, 4).client_id);
+        assert_ne!(a, d);
+        assert_eq!(client(b, a).full_name, "Клиент не указан");
+        assert_eq!(client(b, d).full_name, "Клиент не указан");
+        assert_eq!(client(b, d).note, "Телефон: нет телефона");
+        assert!(warned(&c, "order_without_client", "Catalog", "3").is_some());
+        assert!(warned(&c, "order_without_client", "Catalog", "4").is_some());
+    }
+
+    #[tokio::test]
+    async fn unknown_columns_are_reported_and_kept_in_the_raw_row() {
+        let c = conversion_with_sql(
+            V32,
+            &[
+                "ALTER TABLE Catalog ADD COLUMN Extra",
+                "UPDATE Catalog SET Extra = 'x' WHERE id = 2",
+            ],
+        )
+        .await;
+        assert_eq!(
+            warned(&c, "unknown_column", "Catalog", "Extra").as_deref(),
+            Some("1")
+        );
+        assert_eq!(
+            c.warnings
+                .list()
+                .iter()
+                .filter(|w| w.code.as_str() == "unknown_column")
+                .count(),
+            1
+        );
+        let row = c
+            .bundle
+            .legacy_rows
+            .iter()
+            .find(|r| r.source == "Catalog" && r.source_key == "2")
+            .unwrap();
+        assert_eq!(row.raw["Extra"], "x");
+    }
+
+    #[tokio::test]
+    async fn missing_stock_photos_never_leave_the_folder() {
+        let c = conversion_with_sql(
+            V32,
+            &["UPDATE Stock SET Photo = '..\\..\\secret.jpg', Photo2 = 'C:\\x\\y.jpg', Photo3 = '..' WHERE id = 1"],
+        )
+        .await;
+        let photos: Vec<_> = c
+            .files
+            .iter()
+            .filter(|f| f.legacy_source == "Stock.Photo")
+            .collect();
+        assert_eq!(photos.len(), 3);
+        for f in photos {
+            let text = f.source.to_string_lossy().into_owned();
+            assert!(!text.split('/').any(|s| s == ".."), "{text}");
+            assert!(
+                !text.starts_with('/') && !text.contains(':') && !text.contains('\\'),
+                "{text}"
+            );
+            assert!(text.starts_with("settings/Stock/Photos/"), "{text}");
+        }
+    }
+
+    #[tokio::test]
+    async fn unparseable_final_price_stays_empty_even_when_issued() {
+        let c = conversion_with_sql(
+            V32,
+            &["UPDATE Catalog SET okonchatelnaya_stoimost_remonta = 'abc' WHERE id = 1"],
+        )
+        .await;
+        assert_eq!(order(&c.bundle, 1).final_price, None);
+        assert!(warned(&c, "money_unparsed", "Catalog", "1").is_some());
+    }
+
+    #[tokio::test]
+    async fn merged_restored_client_takes_first_non_empty_address() {
+        let c = conversion_with_sql(
+            crate::fixture::FixtureVersion::V26,
+            &["UPDATE Catalog SET Adress = 'Мира, 1' WHERE id = 8"],
+        )
+        .await;
+        let b = &c.bundle;
+        assert_eq!(order(b, 8).client_id, order(b, 1).client_id);
+        assert_eq!(client(b, order(b, 1).client_id).address, "Мира, 1");
+    }
+
+    #[tokio::test]
+    async fn unknown_table_rows_have_unique_keys_and_duplicates_list_client_ids() {
+        let c = conversion_with_sql(
+            V32,
+            &[
+                "CREATE TABLE Junk (id TEXT, v TEXT)",
+                "INSERT INTO Junk VALUES (' 1', 'a'), ('1', 'b'), ('1', 'c')",
+                "UPDATE HistoryBD SET WHAT = 'Удаление' WHERE id = 3",
+            ],
+        )
+        .await;
+        let keys: Vec<_> = c
+            .bundle
+            .legacy_rows
+            .iter()
+            .filter(|r| r.source == "Junk")
+            .map(|r| r.source_key.clone())
+            .collect();
+        assert_eq!(keys.len(), 3);
+        assert_eq!(keys.iter().collect::<BTreeSet<_>>().len(), 3);
+        assert_eq!(
+            order(&c.bundle, 8).deleted_at,
+            Some(dt("2015-03-16 12:00:00"))
+        );
+        assert_eq!(
+            warned(&c, "client_duplicates", "ClientsMap", "").as_deref(),
+            Some("1, 5")
+        );
     }
 }

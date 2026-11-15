@@ -10,7 +10,7 @@ use sqlx::{AssertSqlSafe, Connection, Row};
 use crate::error::LegacyError;
 
 /// Полный набор колонок `Catalog` (версия 32).
-const FULL_CATALOG_COLUMNS: [&str; 32] = [
+pub(crate) const FULL_CATALOG_COLUMNS: [&str; 32] = [
     "id",
     "Data_priema",
     "Data_vidachi",

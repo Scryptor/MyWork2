@@ -253,7 +253,8 @@ pub(crate) fn convert_clients(db: &LegacyDb, now: NaiveDateTime, w: &mut Warning
             }
             let (fio, phone) = (table.text(row, "surname"), table.text(row, "phone"));
             let key = order.to_string();
-            let has_data = !fio.trim().is_empty() || !phone.trim().is_empty();
+            let split = split_phones(&phone);
+            let has_data = !fio.trim().is_empty() || !split.phones.is_empty();
             let id = if has_data {
                 if has_client_column {
                     w.push(
@@ -267,6 +268,16 @@ pub(crate) fn convert_clients(db: &LegacyDb, now: NaiveDateTime, w: &mut Warning
                 }
                 let merge = merge_key(&fio, &phone);
                 if let Some(id) = restored.get(&merge) {
+                    if let Some(client) = stage.clients.iter_mut().find(|c| c.id == *id) {
+                        let (address, about) =
+                            (table.text(row, "Adress"), table.text(row, "AboutUs"));
+                        if client.address.is_empty() {
+                            client.address = address.trim().to_owned();
+                        }
+                        if client.source.is_empty() {
+                            client.source = about.trim().to_owned();
+                        }
+                    }
                     *id
                 } else {
                     let raw = Raw {
@@ -300,7 +311,11 @@ pub(crate) fn convert_clients(db: &LegacyDb, now: NaiveDateTime, w: &mut Warning
                     full_name: NOT_GIVEN.to_owned(),
                     phones: Vec::new(),
                     address: String::new(),
-                    note: String::new(),
+                    note: if split.text_without_number.is_empty() {
+                        String::new()
+                    } else {
+                        format!("Телефон: {}", split.text_without_number)
+                    },
                     source: String::new(),
                     blacklisted: false,
                     created_at: now,
@@ -317,18 +332,23 @@ pub(crate) fn convert_clients(db: &LegacyDb, now: NaiveDateTime, w: &mut Warning
 }
 
 fn warn_duplicates(keys: &[(i64, String)], w: &mut Warnings) {
-    let mut groups: HashMap<&str, usize> = HashMap::new();
-    for (_, key) in keys {
-        *groups.entry(key).or_default() += 1;
+    let mut groups: BTreeMap<&str, Vec<i64>> = BTreeMap::new();
+    for (id, key) in keys {
+        groups.entry(key).or_default().push(*id);
     }
-    let count = groups.values().filter(|n| **n > 1).count();
-    if count > 0 {
+    let mut found: Vec<Vec<i64>> = groups.into_values().filter(|g| g.len() > 1).collect();
+    found.sort();
+    if !found.is_empty() {
+        let value: Vec<String> = found
+            .iter()
+            .map(|g| g.iter().map(i64::to_string).collect::<Vec<_>>().join(", "))
+            .collect();
         w.push(
             WarningCode::ClientDuplicates,
             "ClientsMap",
             "",
             "",
-            &count.to_string(),
+            &value.join("; "),
             "Есть клиенты с одинаковыми ФИО и телефоном; они не объединены.",
         );
     }

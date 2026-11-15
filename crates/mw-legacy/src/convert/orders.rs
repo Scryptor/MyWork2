@@ -278,10 +278,13 @@ fn build_order(
     let estimate = money("predvaritelnaya_stoimost").filter(|m| *m != Money::ZERO);
     let prepayment = money("Predoplata").unwrap_or(Money::ZERO);
     let extra_costs = money("Zatrati").unwrap_or(Money::ZERO);
+    let final_text = inp.table.text(row, "okonchatelnaya_stoimost_remonta");
+    let final_invalid = matches!(parse_money(&final_text), MoneyValue::Invalid);
     let final_raw = money("okonchatelnaya_stoimost_remonta");
     let discount = money("Skidka").unwrap_or(Money::ZERO);
     let final_price = match final_raw {
         Some(m) if m != Money::ZERO => Some(m),
+        _ if final_invalid => None,
         _ if issued => Some(Money::ZERO),
         _ => None,
     };
