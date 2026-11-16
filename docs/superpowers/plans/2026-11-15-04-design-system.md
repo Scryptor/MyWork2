@@ -769,7 +769,9 @@ Run: `npx vitest run src/lib/ui && npx playwright test e2e/fields.spec.ts` → F
 - **`Field`:** id подсказки и ошибки — `${id}-hint` и `${id}-error`. Если `id` не передан, поля создают его через
   `$props.id()`.
 - **`Textarea`:** авторазмер по `scrollHeight` между `minRows` и `maxRows`.
-- **`MoneyInput`:** `inputmode="decimal"`; разбор — только при уходе из поля и Enter.
+- **`MoneyInput`:** `inputmode="decimal"`; разбор — только при уходе из поля и Enter. *Изменено после финальной
+  проверки:* сумма берётся при вводе, как только текст стал суммой; ошибка — при уходе из поля и Enter; значение,
+  изменённое снаружи, заменяет текст; без ввода ничего не записывается; `invalid` останавливает отправку формы.
 - **`Checkbox`, `Switch`, `SegmentedControl`:** нативные `input` (checkbox, `role="switch"`, radio) со своим видом.
 - **`ChipGroup`:** кнопки с `aria-pressed`. Дубль ищется через `normalizeSearch`.
 - **`Select`, `Combobox`, `DateInput`:** обёртки bits-ui.
