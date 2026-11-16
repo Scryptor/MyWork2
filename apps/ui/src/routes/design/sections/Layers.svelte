@@ -87,17 +87,13 @@
 <div class="row">
 	<Popover>
 		{#snippet trigger(props)}
-			<button {...props} type="button" class="trigger">
-				<Info size={16} aria-hidden="true" />Подробнее
-			</button>
+			<Button {...props} icon={Info}>Подробнее</Button>
 		{/snippet}
 		<p class="pop">Гарантия 30 дней с даты выдачи.</p>
 	</Popover>
 	<DropdownMenu items={MENU} label="Действия с заказом">
 		{#snippet trigger(props)}
-			<button {...props} type="button" class="trigger">
-				Действия<ChevronDown size={16} aria-hidden="true" />
-			</button>
+			<Button {...props} iconEnd={ChevronDown}>Действия</Button>
 		{/snippet}
 	</DropdownMenu>
 	<span class="muted">Выбрано: {picked || 'ничего'}</span>
@@ -228,29 +224,5 @@
 	.pop {
 		margin: 0;
 		max-width: 16rem;
-	}
-	.trigger {
-		display: inline-flex;
-		align-items: center;
-		gap: var(--space-2);
-		box-sizing: border-box;
-		height: var(--control-md);
-		padding: 0 var(--space-3);
-		border: 1px solid var(--border-strong);
-		border-radius: var(--radius-md);
-		background: var(--surface);
-		color: var(--text);
-		font: inherit;
-		font-size: var(--text-md);
-		font-weight: 500;
-		cursor: pointer;
-	}
-	.trigger:hover {
-		background: var(--surface-3);
-	}
-	@media (pointer: coarse) {
-		.trigger {
-			min-height: 2.75rem;
-		}
 	}
 </style>

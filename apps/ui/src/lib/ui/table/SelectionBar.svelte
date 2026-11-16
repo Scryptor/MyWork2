@@ -1,6 +1,7 @@
 <script lang="ts">
 	import X from '@lucide/svelte/icons/x';
 	import type { Snippet } from 'svelte';
+	import { groupDigits } from '#lib/format/digits.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import IconButton from '../IconButton.svelte';
 
@@ -9,7 +10,7 @@
 		$props();
 
 	// Thousands separated by a narrow no-break space, as in sums: «Выбрано 2 500».
-	const shown = $derived(String(count).replace(/\B(?=(\d{3})+$)/g, ' '));
+	const shown = $derived(groupDigits(String(count)));
 </script>
 
 {#if count > 0}

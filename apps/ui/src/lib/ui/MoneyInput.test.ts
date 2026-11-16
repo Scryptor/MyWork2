@@ -44,29 +44,32 @@ describe('MoneyInput', () => {
 			expect(screen.getByTestId('out')).toHaveTextContent(JSON.stringify(money));
 		}
 	);
-	it('a value changed from outside while focused replaces the text; leaving writes nothing', async () => {
+	it('keeps typed text while focused when value changes from outside; leaving shows the value', async () => {
 		const onwrite = vi.fn();
-		const { rerender } = render(Harness, { kind: 'money', money: 990000, onwrite });
+		const { rerender } = render(Harness, { kind: 'money', money: 50_00, onwrite });
 		const input = screen.getByLabelText('Сумма');
 		await userEvent.click(input);
-		expect(input).toHaveValue('9900');
-		await rerender({ money: 1025000 });
+		selectAll(input);
+		await userEvent.keyboard('4 5');
+		expect(screen.getByTestId('out')).toHaveTextContent('4500');
+		onwrite.mockClear();
+		await rerender({ money: 100_00 }); // a late server answer
 		expect(input).toHaveFocus();
-		expect(input).toHaveValue('10250');
+		expect(input).toHaveValue('4 5');
 		await userEvent.tab();
-		expect(input).toHaveValue(`10${NNBSP}250`);
-		expect(screen.getByTestId('out')).toHaveTextContent('1025000');
+		expect(input).toHaveValue('100');
+		expect(screen.getByTestId('out')).toHaveTextContent(/^10000$/);
 		expect(onwrite).not.toHaveBeenCalled();
 	});
-	it('an empty field switched to a record with an amount shows it and does not erase it', async () => {
+	it('an untouched focused field follows a value from outside (another record); leaving writes nothing', async () => {
 		const onwrite = vi.fn();
 		const { rerender } = render(Harness, { kind: 'money', money: null, onwrite });
 		const input = screen.getByLabelText('Сумма');
 		await userEvent.click(input);
-		expect(input).toHaveValue('');
 		await rerender({ money: 990000 });
 		expect(input).toHaveValue('9900');
 		await userEvent.tab();
+		expect(input).toHaveValue(`9${NNBSP}900`);
 		expect(screen.getByTestId('out')).toHaveTextContent('990000');
 		expect(onwrite).not.toHaveBeenCalled();
 	});

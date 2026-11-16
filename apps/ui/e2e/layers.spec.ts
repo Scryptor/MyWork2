@@ -246,6 +246,18 @@ test.describe('layers', () => {
 		await page.keyboard.press('Escape');
 		await expect(text).toBeHidden();
 	});
+
+	test('an icon button is a popover trigger and keeps its tooltip: «Колонки»', async ({ page }) => {
+		await page.goto('/design/orders');
+		const trigger = page.getByRole('button', { name: 'Колонки' });
+		await trigger.click();
+		await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+		await expect(page.getByRole('checkbox', { name: 'Статус' }).first()).toBeVisible();
+		await page.keyboard.press('Escape');
+		await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+		await trigger.hover();
+		await expect(page.getByRole('tooltip', { name: 'Колонки' })).toBeVisible();
+	});
 });
 
 test.describe('toaster', () => {

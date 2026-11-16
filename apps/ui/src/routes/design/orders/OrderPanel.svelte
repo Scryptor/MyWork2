@@ -20,6 +20,7 @@
 		ChipGroup,
 		DropdownMenu,
 		FileDrop,
+		IconButton,
 		MoneyInput,
 		PhotoStrip,
 		Section,
@@ -110,9 +111,7 @@
 					label="Ещё действия"
 				>
 					{#snippet trigger(props)}
-						<button {...props} type="button" class="trigger square ghost" aria-label="Ещё действия">
-							<Ellipsis size={16} aria-hidden="true" />
-						</button>
+						<IconButton {...props} label="Ещё действия" icon={Ellipsis} />
 					{/snippet}
 				</DropdownMenu>
 			{/if}
@@ -272,19 +271,12 @@
 			{:else}
 				<DropdownMenu items={printItems} label="Печать">
 					{#snippet trigger(props)}
-						<button {...props} type="button" class="trigger">
-							<Printer size={16} aria-hidden="true" />Печать<ChevronDown
-								size={16}
-								aria-hidden="true"
-							/>
-						</button>
+						<Button {...props} icon={Printer} iconEnd={ChevronDown}>Печать</Button>
 					{/snippet}
 				</DropdownMenu>
 				<DropdownMenu items={moreItems} label="Ещё действия">
 					{#snippet trigger(props)}
-						<button {...props} type="button" class="trigger square" aria-label="Ещё действия">
-							<Ellipsis size={16} aria-hidden="true" />
-						</button>
+						<IconButton {...props} label="Ещё действия" icon={Ellipsis} variant="secondary" />
 					{/snippet}
 				</DropdownMenu>
 				<span class="grow"></span>
@@ -372,42 +364,7 @@
 	.grow {
 		flex: 1;
 	}
-	.trigger {
-		display: inline-flex;
-		align-items: center;
-		gap: var(--space-2);
-		box-sizing: border-box;
-		height: var(--control-md);
-		padding: 0 var(--space-3);
-		border: 1px solid var(--border-strong);
-		border-radius: var(--radius-md);
-		background: var(--surface);
-		color: var(--text);
-		font: inherit;
-		font-size: var(--text-md);
-		font-weight: 500;
-		cursor: pointer;
-	}
-	.trigger.square {
-		justify-content: center;
-		width: var(--control-md);
-		padding: 0;
-	}
-	.trigger.ghost {
-		border-color: transparent;
-		background: transparent;
-		color: var(--text-2);
-	}
-	.trigger:hover {
-		background: var(--surface-3);
-	}
 	@media (pointer: coarse) {
-		.trigger {
-			min-height: 2.75rem;
-		}
-		.trigger.square {
-			min-width: 2.75rem;
-		}
 		.reveal {
 			min-width: 2.75rem;
 			min-height: 2.75rem;

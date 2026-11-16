@@ -2,7 +2,7 @@ import { render, screen, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { createRawSnippet } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import DataTable from './DataTable.svelte';
+import DataTable from './DataTableHarness.test-helper.svelte';
 import type { Column } from './types.js';
 
 interface Item {

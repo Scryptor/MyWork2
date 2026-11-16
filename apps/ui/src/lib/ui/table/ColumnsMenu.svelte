@@ -5,6 +5,7 @@
 	import { tick } from 'svelte';
 	import { ru } from '#lib/i18n/ru.js';
 	import Checkbox from '../Checkbox.svelte';
+	import IconButton from '../IconButton.svelte';
 	import Popover from '../Popover.svelte';
 	import type { Column, ColumnPrefs } from './types.js';
 
@@ -41,15 +42,7 @@
 
 <Popover width="18rem" align="end">
 	{#snippet trigger(props)}
-		<button
-			{...props}
-			type="button"
-			class="trigger"
-			aria-label={ru.table.columns}
-			title={ru.table.columns}
-		>
-			<Columns3Cog size={16} aria-hidden="true" />
-		</button>
+		<IconButton {...props} label={ru.table.columns} icon={Columns3Cog} size="sm" />
 	{/snippet}
 	<p class="title label-caps" id="{uid}-title">{ru.table.columns}</p>
 	<ul class="list" aria-labelledby="{uid}-title">
@@ -90,7 +83,6 @@
 </Popover>
 
 <style>
-	.trigger,
 	.move {
 		display: inline-flex;
 		align-items: center;
@@ -105,11 +97,6 @@
 		color: var(--text-2);
 		cursor: pointer;
 	}
-	.trigger {
-		max-height: 100%;
-	}
-	.trigger:hover,
-	.trigger[data-state='open'],
 	.move:hover:not(:disabled) {
 		background: var(--surface-3);
 		color: var(--text);

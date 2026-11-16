@@ -661,10 +661,9 @@
 					{#if !phone.current}
 						<DropdownMenu items={pointItems} label="Точка обслуживания">
 							{#snippet trigger(props)}
-								<button {...props} type="button" class="trigger">
+								<Button {...props} iconEnd={ChevronDown}>
 									Точка: {point === null ? 'все' : pointName(point)}
-									<ChevronDown size={16} aria-hidden="true" />
-								</button>
+								</Button>
 							{/snippet}
 						</DropdownMenu>
 						<Button variant="primary" icon={Plus} shortcut="N" onclick={toIntake}>Принять</Button>
@@ -762,9 +761,7 @@
 						<SelectionBar count={selected.size} onclear={() => (selected = new Set())}>
 							<DropdownMenu items={bulkItems} label="Сменить статус">
 								{#snippet trigger(props)}
-									<button {...props} type="button" class="trigger small">
-										Статус<ChevronDown size={16} aria-hidden="true" />
-									</button>
+									<Button {...props} variant="ghost" size="sm" iconEnd={ChevronDown}>Статус</Button>
 								{/snippet}
 							</DropdownMenu>
 							<Button size="sm" variant="ghost" icon={Printer} onclick={printSelected}
@@ -892,34 +889,7 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
-	.trigger {
-		display: inline-flex;
-		align-items: center;
-		gap: var(--space-2);
-		box-sizing: border-box;
-		height: var(--control-md);
-		padding: 0 var(--space-3);
-		border: 1px solid var(--border-strong);
-		border-radius: var(--radius-md);
-		background: var(--surface);
-		color: var(--text);
-		font: inherit;
-		font-size: var(--text-md);
-		font-weight: 500;
-		white-space: nowrap;
-		cursor: pointer;
-	}
-	.trigger.small {
-		height: var(--control-sm);
-		padding: 0 var(--space-2);
-		border-color: transparent;
-		background: transparent;
-	}
-	.trigger:hover {
-		background: var(--surface-3);
-	}
 	@media (pointer: coarse) {
-		.trigger,
 		.find {
 			min-height: 2.75rem;
 		}

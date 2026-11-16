@@ -6,6 +6,7 @@
 	import { afterNavigate } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { registerHotkey } from '#lib/design/hotkeys.svelte.js';
+	import { readStorage, writeStorage } from '#lib/design/storage.js';
 	import { DEMO_NOW, DEMO_STATUSES, makeDictionaries, makeOrders } from '#lib/demo/fake.js';
 	import {
 		emptyDraft,
@@ -100,27 +101,20 @@
 	});
 
 	function readDraft(): IntakeDraft {
-		try {
-			return parseDraft(localStorage.getItem(INTAKE_DRAFT_KEY));
-		} catch {
-			return emptyDraft();
-		}
+		return parseDraft(readStorage(INTAKE_DRAFT_KEY));
 	}
 	// Every change of the form is kept on the device at once.
 	$effect(() => {
 		const json = JSON.stringify(draft);
 		untrack(() => {
-			try {
-				localStorage.setItem(INTAKE_DRAFT_KEY, json);
-			} catch {
-				// storage unavailable: the draft lives as long as the page
-			}
+			// storage unavailable: the draft lives as long as the page
+			writeStorage(INTAKE_DRAFT_KEY, json);
 		});
 	});
 
 	function readPrinting(): { act: boolean; label: boolean } {
 		try {
-			const saved: unknown = JSON.parse(localStorage.getItem(PRINT_KEY) ?? 'null');
+			const saved: unknown = JSON.parse(readStorage(PRINT_KEY) ?? 'null');
 			if (typeof saved === 'object' && saved !== null) {
 				const { act, label } = saved as Record<string, unknown>;
 				return { act: act !== false, label: label !== false };
@@ -132,11 +126,8 @@
 	}
 	function setPrinting(patch: Partial<{ act: boolean; label: boolean }>) {
 		printing = { ...printing, ...patch };
-		try {
-			localStorage.setItem(PRINT_KEY, JSON.stringify(printing));
-		} catch {
-			// storage unavailable: the switches work for this page
-		}
+		// storage unavailable: the switches work for this page
+		writeStorage(PRINT_KEY, JSON.stringify(printing));
 	}
 
 	const client = $derived(findClient(draft.phone, ORDERS));

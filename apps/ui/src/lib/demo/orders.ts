@@ -4,7 +4,7 @@ import type { OrderListItem } from '$api/OrderListItem';
 import type { Status } from '$api/Status';
 import type { StatusKind } from '$api/StatusKind';
 import type { ScanResult } from '#lib/design/scanner.js';
-import { parseLocalDateTime, type LocalDateTime } from '#lib/format/date.js';
+import { dayNumber, parseLocalDateTime, type LocalDateTime } from '#lib/format/date.js';
 import { formatMoney } from '#lib/format/money.js';
 import { formatPhone } from '#lib/format/phone.js';
 import { normalizeSearch } from '#lib/format/search.js';
@@ -84,8 +84,6 @@ export function estimateText(o: Pick<OrderListItem, 'estimate_from' | 'estimate_
 	const money = (v: number) => formatMoney(v, { currency: null });
 	return to === undefined || to === from ? money(from) : `${money(from)}–${money(to)}`;
 }
-
-const dayNumber = (t: LocalDateTime) => Date.UTC(t.year, t.month - 1, t.day) / 86_400_000;
 
 /** Calendar days from a local date to `now`; null when the date cannot be read. */
 export function daysSince(value: string, now: LocalDateTime): number | null {

@@ -1,5 +1,7 @@
 <script lang="ts">
 	import type { Component } from 'svelte';
+	import type { HTMLButtonAttributes } from 'svelte/elements';
+	import { mergeTriggerProps } from './merge-props.js';
 	import Tooltip from './Tooltip.svelte';
 
 	let {
@@ -9,8 +11,9 @@
 		variant = 'ghost',
 		disabled = false,
 		pressed,
-		onclick
-	}: {
+		onclick,
+		...rest
+	}: Omit<HTMLButtonAttributes, 'children' | 'class' | 'type' | 'onclick' | 'disabled'> & {
 		label: string;
 		icon: Component;
 		size?: 'sm' | 'md';
@@ -26,13 +29,12 @@
 <Tooltip text={label}>
 	{#snippet children(triggerProps)}
 		<button
-			{...triggerProps}
+			{...mergeTriggerProps(triggerProps, { ...rest, onclick })}
 			type="button"
 			class="ib {variant} {size}"
 			aria-label={label}
 			aria-pressed={pressed}
 			{disabled}
-			{onclick}
 		>
 			<Icon size={size === 'sm' ? 14 : 16} aria-hidden="true" />
 		</button>

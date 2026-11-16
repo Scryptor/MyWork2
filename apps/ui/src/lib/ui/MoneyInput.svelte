@@ -34,6 +34,8 @@
 	const uid = $props.id();
 	const fid = $derived(id ?? uid);
 	let focused = $state(false);
+	/** The user typed in the field since it got focus: the text is theirs, not a copy of the value. */
+	let dirty = false;
 	/** What the field shows while focused or wrong: the typed text, or the value as plain digits. */
 	let text = $state('');
 	/** The error shows once the field is left or Enter is pressed and goes as soon as the text is an amount. */
@@ -51,12 +53,12 @@
 		return parseMoney(t) ?? undefined;
 	}
 
-	// A value from outside replaces the text, also while focused: what was typed and parsed is already in
-	// the previous value, and a text that is not an amount belonged to it too.
+	// A value from outside replaces the text, unless the field has focus: the user's own text stays until
+	// they leave it, then the field shows the value (see `leave`).
 	$effect.pre(() => {
 		const v = value;
 		untrack(() => {
-			if (v === synced) return;
+			if (v === synced || (focused && dirty)) return;
 			synced = v;
 			text = plain(v);
 			showError = false;
@@ -71,6 +73,7 @@
 	/** The value changes only here, as the user types: an amount is written at once, anything else is not. */
 	function input(next: string) {
 		text = next;
+		dirty = true;
 		const amount = amountOf(next);
 		const bad = amount === undefined;
 		if (bad !== invalid) invalid = bad;
@@ -78,6 +81,21 @@
 		showError = false;
 		synced = amount;
 		if (amount !== value) value = amount;
+	}
+
+	function leave() {
+		focused = false;
+		const own = dirty;
+		dirty = false;
+		if (own && value !== synced) {
+			// the value changed from outside while the user was typing
+			synced = value;
+			text = plain(value);
+			showError = false;
+			if (invalid) invalid = false;
+			return;
+		}
+		showError = invalid;
 	}
 </script>
 
@@ -104,12 +122,10 @@
 				onfocus={() => {
 					if (!showError) text = plain(value);
 					focused = true;
+					dirty = false;
 				}}
 				oninput={(e) => input(e.currentTarget.value)}
-				onblur={() => {
-					showError = invalid;
-					focused = false;
-				}}
+				onblur={leave}
 				onkeydown={(e) => {
 					if (e.key === 'Enter') showError = invalid;
 				}}

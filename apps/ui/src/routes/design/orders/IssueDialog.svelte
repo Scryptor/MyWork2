@@ -13,6 +13,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { registerHotkey } from '#lib/design/hotkeys.svelte.js';
+	import { readStorage, writeStorage } from '#lib/design/storage.js';
 	import { makeDictionaries } from '#lib/demo/fake.js';
 	import { toPay, type DemoOrder } from '#lib/demo/orders.js';
 	import { displayName, formatMoney } from '#lib/format/index.js';
@@ -54,19 +55,12 @@
 	let discountInvalid = $state(false);
 
 	function readPrintAct(): boolean {
-		try {
-			return localStorage.getItem(PRINT_KEY) !== 'false';
-		} catch {
-			return true;
-		}
+		return readStorage(PRINT_KEY) !== 'false';
 	}
 	function rememberPrintAct(value: boolean) {
 		printAct = value;
-		try {
-			localStorage.setItem(PRINT_KEY, String(value));
-		} catch {
-			// storage unavailable: the switch works for this session
-		}
+		// storage unavailable: the switch works for this session
+		writeStorage(PRINT_KEY, String(value));
 	}
 
 	// Every opening starts from the order as it is now.

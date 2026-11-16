@@ -67,7 +67,8 @@ export function nowLocal(): LocalDateTime {
 
 const p2 = (n: number) => String(n).padStart(2, '0');
 const time = (t: LocalDateTime) => `${p2(t.hour)}:${p2(t.minute)}`;
-const dayNumber = (t: LocalDateTime) => Date.UTC(t.year, t.month - 1, t.day) / 86_400_000;
+/** Day number for differences in calendar days; the time of day is ignored. */
+export const dayNumber = (t: LocalDateTime) => Date.UTC(t.year, t.month - 1, t.day) / 86_400_000;
 
 function dotted(t: LocalDateTime): string {
 	return `${p2(t.day)}.${p2(t.month)}.${t.year}`;

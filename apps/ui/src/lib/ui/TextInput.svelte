@@ -8,6 +8,8 @@
 
 	let {
 		value = $bindable(''),
+		ref = $bindable(null),
+		ariaLabel,
 		type = 'text',
 		placeholder,
 		revealable = false,
@@ -29,6 +31,9 @@
 		id
 	}: {
 		value: string;
+		ref?: HTMLInputElement | null;
+		/** The name of the field when there is no visible `label` (a filter, a search box). */
+		ariaLabel?: string;
 		type?: 'text' | 'search' | 'password' | 'tel' | 'email';
 		placeholder?: string;
 		revealable?: boolean;
@@ -66,6 +71,8 @@
 				id={f.id}
 				type={shownType}
 				bind:value
+				bind:this={ref}
+				aria-label={ariaLabel}
 				{placeholder}
 				{readonly}
 				{disabled}

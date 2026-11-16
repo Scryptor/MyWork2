@@ -1,3 +1,5 @@
+import { groupDigits } from './digits.js';
+
 export type PluralForms = readonly [one: string, few: string, many: string];
 
 const rules = new Intl.PluralRules('ru');
@@ -17,6 +19,6 @@ export function plural(n: number, forms: PluralForms): string {
 
 export function countLabel(n: number, forms: PluralForms): string {
 	const sign = n < 0 ? '−' : '';
-	const digits = String(Math.abs(Math.trunc(n))).replace(/\B(?=(\d{3})+$)/g, ' ');
+	const digits = groupDigits(String(Math.abs(Math.trunc(n))));
 	return `${sign}${digits} ${plural(n, forms)}`;
 }

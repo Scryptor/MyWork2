@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatDate, formatFull, formatRelative, parseLocalDateTime } from './date.js';
+import { dayNumber, formatDate, formatFull, formatRelative, parseLocalDateTime } from './date.js';
 
 const now = { year: 2026, month: 11, day: 15, hour: 12, minute: 0, second: 0 };
 
@@ -57,5 +57,13 @@ describe('formatFull / formatDate', () => {
 	it('formats', () => {
 		expect(formatFull('2024-11-12T09:51:00')).toBe('12 ноября 2024, 09:51');
 		expect(formatDate('2024-11-12T09:51:00')).toBe('12.11.2024');
+	});
+});
+
+describe('dayNumber', () => {
+	it('differs by one for consecutive days and ignores the time', () => {
+		const a = { ...now, hour: 23, minute: 59 };
+		const b = { ...now, day: 14, hour: 0, minute: 0 };
+		expect(dayNumber(a) - dayNumber(b)).toBe(1);
 	});
 });

@@ -29,8 +29,9 @@ describe('DateInput', () => {
 	it('a date out of range is invalid too and keeps the value', async () => {
 		render(Harness, { kind: 'date', date: '2026-03-01', min: '2026-01-01' });
 		const input = screen.getByLabelText('Дата');
-		await userEvent.clear(input);
-		await userEvent.type(input, '31.12.2025');
+		await userEvent.click(input);
+		(input as HTMLInputElement).setSelectionRange(0, 10);
+		await userEvent.keyboard('31.12.2025');
 		expect(screen.getByTestId('invalid')).toHaveTextContent('true');
 		await userEvent.keyboard('{Enter}');
 		expect(screen.getByText(RANGE_ERROR)).toBeInTheDocument();
@@ -47,5 +48,32 @@ describe('DateInput', () => {
 		expect(screen.getByTestId('invalid')).toHaveTextContent('false');
 		expect(input).toHaveValue('15.11.2026');
 		expect(screen.queryByText(DATE_ERROR)).toBeNull();
+	});
+	it('updates value on every keystroke that makes a valid date', async () => {
+		render(Harness, { kind: 'date', date: null });
+		const input = screen.getByLabelText('Дата');
+		await userEvent.click(input);
+		await userEvent.type(input, '15.11.2026');
+		expect(input).toHaveFocus();
+		expect(screen.getByTestId('out')).toHaveTextContent('"2026-11-15"');
+		await userEvent.type(input, '7');
+		expect(screen.getByTestId('invalid')).toHaveTextContent('true');
+		expect(screen.queryByText(DATE_ERROR)).toBeNull();
+		expect(screen.getByTestId('out')).toHaveTextContent('"2026-11-15"');
+		await userEvent.tab();
+		expect(screen.getByText(DATE_ERROR)).toBeInTheDocument();
+	});
+	it('keeps typed text while focused when value changes from outside; leaving shows the value', async () => {
+		const { rerender } = render(Harness, { kind: 'date', date: '2026-03-01' });
+		const input = screen.getByLabelText('Дата');
+		await userEvent.click(input);
+		await userEvent.clear(input);
+		await userEvent.type(input, '15.11.2026');
+		await rerender({ date: '2026-12-31' }); // a late server answer
+		expect(input).toHaveFocus();
+		expect(input).toHaveValue('15.11.2026');
+		await userEvent.tab();
+		expect(input).toHaveValue('31.12.2026');
+		expect(screen.getByTestId('out')).toHaveTextContent('"2026-12-31"');
 	});
 });

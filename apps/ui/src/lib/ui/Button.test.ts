@@ -41,3 +41,16 @@ describe('IconButton', () => {
 		);
 	});
 });
+
+describe('Button rest attributes', () => {
+	it('passes other attributes to the <button> so it can be a trigger target', () => {
+		render(Button, { children: label, 'aria-haspopup': 'menu', 'data-state': 'closed' });
+		const btn = screen.getByRole('button');
+		expect(btn).toHaveAttribute('aria-haspopup', 'menu');
+		expect(btn).toHaveAttribute('data-state', 'closed');
+	});
+	it('iconEnd renders after the text', () => {
+		const { container } = render(Button, { children: label, iconEnd: Phone });
+		expect(container.querySelector('svg')).not.toBeNull();
+	});
+});

@@ -40,6 +40,11 @@
 	let open = $state(false);
 	let text = $state('');
 	let problem = $state<string | undefined>();
+	let focused = false;
+	/** The user typed in the field since it got focus: the text is theirs, not a copy of the value. */
+	let dirty = false;
+	/** The value the text stands for; any other value came from outside (another record, the calendar). */
+	let synced: string | null | undefined;
 
 	function toIso(d: CalendarDate): string {
 		return d.toString();
@@ -64,11 +69,19 @@
 		return tryIso(iso);
 	}
 
-	$effect(() => {
-		text = toDisplay(value);
+	function show(v: string | null) {
+		synced = v;
+		text = toDisplay(v);
 		problem = undefined;
+		if (invalid) invalid = false;
+	}
+
+	// A value from outside replaces the text, unless the field has focus: the user's own text stays until
+	// they leave it, then the field shows the value (see `commit`).
+	$effect.pre(() => {
+		const v = value;
 		untrack(() => {
-			if (invalid) invalid = false;
+			if (v !== synced && !(focused && dirty)) show(v);
 		});
 	});
 	$effect(() => {
@@ -95,7 +108,21 @@
 		if (bad !== invalid) invalid = bad;
 	}
 
-	function commit() {
+	/** The value changes as the user types: a text that is a date (or empty) is written at once. */
+	function input(next: string) {
+		dirty = true;
+		const r = check(next);
+		markInvalid('problem' in r);
+		if ('problem' in r) return;
+		problem = undefined;
+		const iso = r.date === null ? null : toIso(r.date);
+		synced = iso;
+		if (iso !== value) value = iso;
+	}
+
+	/** On leaving the field or Enter: the error shows; a value that came from outside meanwhile wins. */
+	function commit(own = true) {
+		if (own && value !== synced) return show(value);
 		const r = check(text);
 		markInvalid('problem' in r);
 		if ('problem' in r) {
@@ -103,7 +130,6 @@
 			return;
 		}
 		problem = undefined;
-		value = r.date === null ? null : toIso(r.date);
 		if (r.date) text = toDisplay(value);
 	}
 </script>
@@ -123,8 +149,17 @@
 				aria-describedby={f.describedBy}
 				aria-invalid={f.invalid ? 'true' : undefined}
 				aria-required={required ? 'true' : undefined}
-				oninput={(e) => markInvalid('problem' in check(e.currentTarget.value))}
-				onblur={commit}
+				onfocus={() => {
+					focused = true;
+					dirty = false;
+				}}
+				oninput={(e) => input(e.currentTarget.value)}
+				onblur={() => {
+					focused = false;
+					const own = dirty;
+					dirty = false;
+					commit(own);
+				}}
 				onkeydown={(e) => {
 					if (e.key === 'Enter') commit();
 				}}
@@ -144,7 +179,9 @@
 							{maxValue}
 							onValueChange={(v) => {
 								if (v) {
-									value = toIso(new CalendarDate(v.year, v.month, v.day));
+									const iso = toIso(new CalendarDate(v.year, v.month, v.day));
+									show(iso);
+									value = iso;
 									open = false;
 								}
 							}}

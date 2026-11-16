@@ -1,11 +1,8 @@
+import { groupDigits } from './digits.js';
+
 export const MAX_MONEY_KOPECKS = 99_999_999_999;
 
-const NNBSP = ' ';
 const NBSP = ' ';
-
-function group(digits: string): string {
-	return digits.replace(/\B(?=(\d{3})+$)/g, NNBSP);
-}
 
 export function formatMoney(kopecks: number, opts?: { currency?: string | null }): string {
 	const currency = opts?.currency === undefined ? '₽' : opts.currency;
@@ -13,7 +10,7 @@ export function formatMoney(kopecks: number, opts?: { currency?: string | null }
 	const abs = Math.abs(Math.trunc(kopecks));
 	const whole = Math.floor(abs / 100);
 	const frac = abs % 100;
-	let text = group(String(whole));
+	let text = groupDigits(String(whole));
 	if (frac !== 0) text += ',' + String(frac).padStart(2, '0');
 	if (negative) text = '−' + text;
 	return currency ? text + NBSP + currency : text;

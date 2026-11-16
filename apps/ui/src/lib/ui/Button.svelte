@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Component, Snippet } from 'svelte';
+	import type { HTMLButtonAttributes } from 'svelte/elements';
 	import Kbd from './Kbd.svelte';
 	import Spinner from './Spinner.svelte';
 
@@ -10,18 +11,22 @@
 		busy = false,
 		disabled = false,
 		icon,
+		iconEnd,
 		shortcut,
 		href,
 		onclick,
 		children,
-		class: className = ''
-	}: {
+		class: className = '',
+		...rest
+	}: Omit<HTMLButtonAttributes, 'children' | 'class' | 'type' | 'onclick' | 'disabled'> & {
 		variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
 		size?: 'sm' | 'md' | 'lg';
 		type?: 'button' | 'submit';
 		busy?: boolean;
 		disabled?: boolean;
 		icon?: Component;
+		/** An icon after the text, such as the chevron of a menu button. */
+		iconEnd?: Component;
 		shortcut?: string;
 		href?: string;
 		onclick?: (e: MouseEvent) => void;
@@ -30,6 +35,7 @@
 	} = $props();
 
 	const Icon = $derived(icon);
+	const IconEnd = $derived(iconEnd);
 
 	function handle(e: MouseEvent) {
 		if (busy || disabled) {
@@ -44,6 +50,7 @@
 	<span class="inner" class:hidden={busy}>
 		{#if Icon}<Icon size={16} aria-hidden="true" />{/if}
 		{#if children}<span>{@render children()}</span>{/if}
+		{#if IconEnd}<IconEnd size={16} aria-hidden="true" />{/if}
 		{#if shortcut}<Kbd {shortcut} />{/if}
 	</span>
 	{#if busy}<span class="spin"><Spinner size="sm" /></span>{/if}
@@ -54,6 +61,7 @@
 	<a class="btn {variant} {size} {className}" {href} onclick={handle}>{@render content()}</a>
 {:else}
 	<button
+		{...rest}
 		class="btn {variant} {size} {className}"
 		{type}
 		{disabled}

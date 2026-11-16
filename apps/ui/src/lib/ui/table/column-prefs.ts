@@ -1,3 +1,4 @@
+import { readStorage, writeStorage } from '#lib/design/storage.js';
 import type { Column, ColumnPrefs } from './types.js';
 
 export const COLUMN_MIN_WIDTH = 60;
@@ -18,7 +19,7 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 
 function readStored(key: string): unknown {
 	try {
-		const raw = localStorage.getItem(key);
+		const raw = readStorage(key);
 		return raw === null ? null : JSON.parse(raw);
 	} catch {
 		return null;
@@ -65,9 +66,6 @@ export function loadColumnPrefs(storageKey: string, columns: Column<never>[]): C
 }
 
 export function saveColumnPrefs(storageKey: string, prefs: ColumnPrefs): void {
-	try {
-		localStorage.setItem(columnPrefsKey(storageKey), JSON.stringify(prefs));
-	} catch {
-		// storage unavailable: the table keeps working with what it has in memory
-	}
+	// storage unavailable: the table keeps working with what it has in memory
+	writeStorage(columnPrefsKey(storageKey), JSON.stringify(prefs));
 }

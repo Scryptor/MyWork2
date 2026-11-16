@@ -1,4 +1,5 @@
 import { untrack } from 'svelte';
+import { readStorage, writeStorage } from './storage.js';
 
 export type ThemePref = 'system' | 'light' | 'dark';
 export type Density = 'compact' | 'comfortable';
@@ -42,14 +43,6 @@ export function applyPrefs(p: Prefs, root: HTMLElement, systemDark: boolean): vo
 	root.style.setProperty('--ui-scale', String(p.scale));
 }
 
-function readStored(): string | null {
-	try {
-		return localStorage.getItem(PREFS_KEY);
-	} catch {
-		return null;
-	}
-}
-
 let value = $state<Prefs>({ ...DEFAULT_PREFS });
 let systemDark = $state(false);
 const resolvedTheme = $derived(resolveTheme(value, systemDark));
@@ -67,11 +60,8 @@ export const prefs = {
 	},
 	set(patch: Partial<Prefs>): void {
 		value = parsePrefs(JSON.stringify({ ...value, ...patch }));
-		try {
-			localStorage.setItem(PREFS_KEY, JSON.stringify(value));
-		} catch {
-			// storage unavailable: keep working in memory
-		}
+		// storage unavailable: keep working in memory
+		writeStorage(PREFS_KEY, JSON.stringify(value));
 		apply();
 	},
 	init(): () => void {
@@ -81,7 +71,7 @@ export const prefs = {
 };
 
 function initPrefs(): () => void {
-	value = parsePrefs(readStored());
+	value = parsePrefs(readStorage(PREFS_KEY));
 	let mq: MediaQueryList | null = null;
 	const onChange = (e: MediaQueryListEvent) => {
 		systemDark = e.matches;
