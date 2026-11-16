@@ -214,21 +214,45 @@ test.describe('layers', () => {
 	});
 
 	test('dialog returns focus to main when its opener is gone', async ({ page }) => {
-		// From the keyboard: a click focuses the button in Chromium, but not in WebKit.
+		// With the mouse: a click focuses the button in Chromium; WebKit leaves focus on <main> around it.
 		const section = page.locator('#layers');
 		const opener = section.getByRole('button', { name: 'Черновик заказа' });
-		await opener.focus();
-		await page.keyboard.press('Enter');
 		const dialog = page.getByRole('dialog', { name: 'Черновик заказа' });
+		await opener.click();
 		await expect(dialog).toBeVisible();
-		await dialog.getByRole('button', { name: 'Удалить черновик' }).focus();
-		await page.keyboard.press('Enter');
+		await dialog.getByRole('button', { name: 'Удалить черновик' }).click();
 		await expect(dialog).toBeHidden();
 		await expect(opener).toHaveCount(0);
 		await expect(page.getByRole('main', { name: 'Дизайн-система' })).toBeFocused();
 
-		// An opener that stays gets the focus back as before.
+		// From the keyboard, the same.
 		await section.getByRole('button', { name: 'Вернуть черновик' }).click();
+		await opener.focus();
+		await page.keyboard.press('Enter');
+		await expect(dialog).toBeVisible();
+		await dialog.getByRole('button', { name: 'Удалить черновик' }).focus();
+		await page.keyboard.press('Enter');
+		await expect(dialog).toBeHidden();
+		await expect(page.getByRole('main', { name: 'Дизайн-система' })).toBeFocused();
+	});
+
+	test('dialog returns focus to its opener, opened with the mouse or the keyboard', async ({
+		page
+	}) => {
+		const opener = page.locator('#layers').getByRole('button', { name: 'Черновик заказа' });
+		const dialog = page.getByRole('dialog', { name: 'Черновик заказа' });
+		await opener.click();
+		await expect(dialog).toBeVisible();
+		await dialog.getByRole('button', { name: 'Закрыть' }).first().click();
+		await expect(dialog).toBeHidden();
+		await expect(opener).toBeFocused();
+
+		await opener.click();
+		await expect(dialog).toBeVisible();
+		await page.keyboard.press('Escape');
+		await expect(dialog).toBeHidden();
+		await expect(opener).toBeFocused();
+
 		await opener.focus();
 		await page.keyboard.press('Enter');
 		await expect(dialog).toBeVisible();
