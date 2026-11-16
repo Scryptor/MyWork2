@@ -29,12 +29,25 @@
 	const phone = new MediaQuery(PHONE_QUERY);
 	const current = $derived(statuses.find((s) => s.id === value));
 	let listOpen = $state(false);
+	let group = $state<HTMLElement | null>(null);
 
+	/**
+	 * With `onchange` the parent decides: it sets the new `value`, or keeps the old one to refuse the change
+	 * (issuing, for one, goes through a dialog). Without `onchange` a bound `value` takes the choice.
+	 */
 	function pick(id: number) {
 		const previous = value;
 		if (disabled || id === previous) return;
-		value = id;
-		onchange?.(id, previous);
+		if (onchange) onchange(id, previous);
+		else value = id;
+		syncRadios();
+	}
+
+	/** The browser has checked the radio that was clicked or reached by an arrow: show `value` instead. */
+	function syncRadios() {
+		for (const input of group?.querySelectorAll<HTMLInputElement>('input[type="radio"]') ?? []) {
+			input.checked = Number(input.value) === value;
+		}
 	}
 
 	function choose(id: number) {
@@ -74,6 +87,7 @@
 	</Dialog>
 {:else}
 	<div
+		bind:this={group}
 		class="picker"
 		class:disabled
 		role="radiogroup"

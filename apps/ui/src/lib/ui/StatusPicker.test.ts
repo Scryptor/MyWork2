@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEMO_STATUSES } from '#lib/demo/fake.js';
 import StatusPicker from './StatusPicker.svelte';
+import Harness from './StatusPickerHarness.test-helper.svelte';
 
 /** jsdom has no matchMedia: pretend to be a computer or a phone. */
 function screenWidth(phone: boolean) {
@@ -38,16 +39,42 @@ describe('StatusPicker', () => {
 		);
 	});
 
-	it('a pick reports the new and the previous status', async () => {
+	it('with onchange the parent decides: a status it takes is shown', async () => {
 		screenWidth(false);
-		const onchange = vi.fn();
-		render(StatusPicker, { statuses: DEMO_STATUSES, value: 1, onchange, label: 'Статус заказа' });
-		const group = screen.getByRole('radiogroup', { name: 'Статус заказа' });
+		render(Harness, { mode: 'take' });
+		const group = screen.getByRole('radiogroup', { name: 'Статус' });
 		await userEvent.click(within(group).getByRole('radio', { name: 'Готов' }));
-		expect(onchange).toHaveBeenCalledWith(7, 1);
+		expect(screen.getByTestId('changes')).toHaveTextContent('1→7');
+		expect(screen.getByTestId('value')).toHaveTextContent('7');
 		expect(within(group).getByRole('radio', { name: 'Готов' })).toBeChecked();
 		await userEvent.click(within(group).getByRole('radio', { name: 'Готов' }));
-		expect(onchange).toHaveBeenCalledOnce();
+		expect(screen.getByTestId('changes')).toHaveTextContent(/^1→7$/);
+	});
+
+	it('a parent that keeps the old value refuses the change: the old radio is checked again', async () => {
+		screenWidth(false);
+		render(Harness, { mode: 'keep' });
+		const group = screen.getByRole('radiogroup', { name: 'Статус' });
+		const ready = within(group).getByRole('radio', { name: 'Готов' });
+		await userEvent.click(ready);
+		expect(screen.getByTestId('changes')).toHaveTextContent('1→7');
+		expect(screen.getByTestId('value')).toHaveTextContent('1');
+		expect(ready).not.toBeChecked();
+		expect(within(group).getByRole('radio', { name: 'Диагностика' })).toBeChecked();
+		expect(ready.closest('label')).not.toHaveClass('on');
+
+		// Refused again: the picker asks every time, it does not remember the refused choice.
+		await userEvent.click(ready);
+		expect(screen.getByTestId('changes')).toHaveTextContent('1→7 1→7');
+		expect(ready).not.toBeChecked();
+	});
+
+	it('without onchange a bound value takes the choice', async () => {
+		screenWidth(false);
+		render(Harness, { mode: 'bind' });
+		await userEvent.click(screen.getByRole('radio', { name: 'Ждёт запчасть' }));
+		expect(screen.getByTestId('value')).toHaveTextContent('5');
+		expect(screen.getByRole('radio', { name: 'Ждёт запчасть' })).toBeChecked();
 	});
 
 	it('disabled: nothing can be picked', () => {

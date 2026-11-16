@@ -7,6 +7,8 @@ const SECOND = 11998;
 const THIRD = 11997;
 // «Готов», final price 4 050 ₽, prepayment 2 300 ₽.
 const READY = 11944;
+// The newest order, «Готов»: first under the quick filter «Готов».
+const NEWEST_READY = 12000;
 
 /** The modifier the app reads as Mod: ⌘ where navigator.platform says Mac, Ctrl elsewhere. */
 async function mod(page: Page): Promise<'Meta' | 'Control'> {
@@ -158,7 +160,7 @@ test.describe('orders demo', () => {
 		await expect(work).toHaveValue('Замена разъёма зарядки');
 	});
 
-	test('«Выдать»: «К оплате» = итог − предоплата − скидка, empty required is marked, Ctrl/⌘+Enter issues', async ({
+	test('«Выдать»: «К оплате» = итог − предоплата − скидка, empty required is marked, Ctrl/⌘+Enter issues, «Отменить» gives everything back', async ({
 		page
 	}) => {
 		await page
@@ -167,9 +169,16 @@ test.describe('orders demo', () => {
 			.click();
 		await filterOf(page).fill(String(READY));
 		await openRow(page, READY);
-		await panelOf(page)
-			.getByRole('button', { name: /^Выдать/ })
-			.click();
+		const panel = panelOf(page);
+		const statuses = panel.getByRole('radiogroup', { name: 'Статус' });
+		const panelWork = panel.getByRole('textbox', { name: 'Выполненные работы' });
+		const panelTotal = panel.getByRole('textbox', { name: 'Итог' });
+		const panelDiscount = panel.getByRole('textbox', { name: 'Скидка' });
+		const workBefore = await panelWork.inputValue();
+		await expect(panelTotal).toHaveValue(/^4\s050$/);
+		await expect(panelDiscount).toHaveValue('0');
+		await expect(rowOf(page, READY)).toContainText(/4\s050\s₽/);
+		await panel.getByRole('button', { name: /^Выдать/ }).click();
 
 		const dialog = page.getByRole('dialog', { name: `Выдача заказа № ${READY}` });
 		await expect(dialog).toBeVisible();
@@ -179,6 +188,12 @@ test.describe('orders demo', () => {
 		await discount.fill('250');
 		await discount.press('Tab');
 		await expect(toPay).toHaveText(/^К оплате\s1\s500\s₽$/);
+		const price = dialog.getByRole('textbox', { name: /^Итоговая цена/ });
+		// Focus first: MoneyInput turns «4 050» into «4050» on focus, which would undo fill()'s select-all.
+		await price.click();
+		await price.fill('5000');
+		await price.press('Tab');
+		await expect(toPay).toHaveText(/^К оплате\s2\s450\s₽$/);
 
 		const work = dialog.getByRole('textbox', { name: /^Выполненные работы/ });
 		await work.fill('');
@@ -190,13 +205,61 @@ test.describe('orders demo', () => {
 		await expect(work).not.toHaveAttribute('aria-invalid', 'true');
 		await page.keyboard.press(`${await mod(page)}+Enter`);
 		await expect(dialog).toBeHidden();
-		await expect(
-			panelOf(page)
-				.getByRole('radiogroup', { name: 'Статус' })
-				.getByRole('radio', { name: 'Выдан' })
-		).toBeChecked();
+		await expect(statuses.getByRole('radio', { name: 'Выдан' })).toBeChecked();
+		await expect(panelWork).toHaveValue('Замена аккумулятора');
+		await expect(panelTotal).toHaveValue(/^5\s000$/);
 		await expect(rowOf(page, READY)).toContainText('Выдан');
+		await expect(rowOf(page, READY)).toContainText(/5\s000\s₽/);
 		await expect(toastsOf(page)).toContainText(`№ ${READY} → Выдан`);
+
+		// «Отменить» gives back the status and everything the dialog filled in.
+		await toastsOf(page).getByRole('button', { name: 'Отменить' }).click();
+		await expect(statuses.getByRole('radio', { name: 'Готов' })).toBeChecked();
+		await expect(panelWork).toHaveValue(workBefore);
+		await expect(panelTotal).toHaveValue(/^4\s050$/);
+		await expect(panelDiscount).toHaveValue('0');
+		await expect(rowOf(page, READY)).toContainText('Готов');
+		await expect(rowOf(page, READY)).toContainText(/4\s050\s₽/);
+		await expect(rowOf(page, READY)).not.toContainText('Выдан');
+	});
+
+	test('an issued status picked in the panel opens «Выдать»: the status stays until the dialog issues; arrows onto it do not issue', async ({
+		page
+	}) => {
+		await openRow(page, FIRST);
+		const statuses = panelOf(page).getByRole('radiogroup', { name: 'Статус' });
+		await statuses.getByRole('radio', { name: 'Выдан' }).click();
+		const dialog = page.getByRole('dialog', { name: `Выдача заказа № ${FIRST}` });
+		await expect(dialog).toBeVisible();
+		await expect(dialog.getByRole('textbox', { name: /^Выполненные работы/ })).toHaveAttribute(
+			'aria-invalid',
+			'true'
+		);
+		await page.keyboard.press('Escape');
+		await expect(dialog).toBeHidden();
+		await expect(statuses.getByRole('radio', { name: 'Диагностика' })).toBeChecked();
+		await expect(statuses.getByRole('radio', { name: 'Выдан' })).not.toBeChecked();
+		await expect(rowOf(page, FIRST)).toContainText('Диагностика');
+		await expect(toastsOf(page)).not.toContainText('→ Выдан');
+
+		// → from «Готов» lands on «Выдан»: the dialog again, the order stays «Готов».
+		await page.keyboard.press('Escape');
+		await page
+			.getByRole('group', { name: 'Быстрые фильтры' })
+			.getByRole('button', { name: /^Готов/ })
+			.click();
+		await openRow(page, NEWEST_READY);
+		await statuses.getByRole('radio', { name: 'Готов' }).focus();
+		await page.keyboard.press('ArrowRight');
+		const again = page.getByRole('dialog', { name: `Выдача заказа № ${NEWEST_READY}` });
+		await expect(again).toBeVisible();
+		await page.keyboard.press('Escape');
+		await expect(again).toBeHidden();
+		await expect(statuses.getByRole('radio', { name: 'Готов' })).toBeChecked();
+		await expect(statuses.getByRole('radio', { name: 'Выдан' })).not.toBeChecked();
+		await expect(rowOf(page, NEWEST_READY)).toContainText('Готов');
+		await expect(rowOf(page, NEWEST_READY)).not.toContainText('Выдан');
+		await expect(toastsOf(page)).not.toContainText('→ Выдан');
 	});
 
 	test('a scanned barcode opens its order; an unknown barcode is reported', async ({ page }) => {
@@ -295,5 +358,46 @@ test.describe('orders demo on a phone', () => {
 		await expect(list).toBeHidden();
 		await expect(button).toContainText('Готов');
 		await expect(toastsOf(page)).toContainText(`№ ${FIRST} → Готов`);
+	});
+
+	test('390: «Выдан» from the status list opens «Выдать»; «⋯» at the top gives an issued order back to work', async ({
+		page
+	}) => {
+		await page.goto('/design/orders');
+		await page.getByRole('button', { name: new RegExp(`^№ ${FIRST}\\b`) }).click();
+		const panel = panelOf(page);
+		const button = panel.getByRole('button', { name: /^Статус/ });
+		await button.click();
+		await page
+			.getByRole('dialog', { name: 'Статус' })
+			.getByRole('button', { name: 'Выдан', exact: true })
+			.click();
+		const dialog = page.getByRole('dialog', { name: `Выдача заказа № ${FIRST}` });
+		await expect(dialog).toBeVisible();
+		await page.keyboard.press('Escape');
+		await expect(dialog).toBeHidden();
+		await expect(button).toContainText('Диагностика');
+
+		await button.click();
+		await page
+			.getByRole('dialog', { name: 'Статус' })
+			.getByRole('button', { name: 'Выдан', exact: true })
+			.click();
+		await expect(dialog).toBeVisible();
+		await dialog.getByRole('textbox', { name: /^Выполненные работы/ }).fill('Замена разъёма');
+		await dialog.getByRole('combobox', { name: /^Мастер/ }).click();
+		await page.getByRole('option', { name: 'Антон' }).click();
+		await dialog.getByRole('textbox', { name: /^Итоговая цена/ }).fill('3500');
+		await dialog.getByRole('button', { name: /^Выдать/ }).click();
+		await expect(dialog).toBeHidden();
+		await expect(button).toContainText('Выдан');
+		await expect(button).toBeDisabled();
+		await expect(toastsOf(page)).toContainText(`№ ${FIRST} → Выдан`);
+
+		await panel.getByRole('button', { name: 'Ещё действия' }).click();
+		await page.getByRole('menuitem', { name: 'Вернуть в работу' }).click();
+		await expect(button).toContainText('Принят в работу');
+		await expect(button).toBeEnabled();
+		await expect(toastsOf(page)).toContainText(`№ ${FIRST} → Принят в работу`);
 	});
 });

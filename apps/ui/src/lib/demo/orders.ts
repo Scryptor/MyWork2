@@ -294,6 +294,44 @@ export function sortOrders<T extends OrderListItem>(
 	return keyed.map((x) => x.o);
 }
 
+/**
+ * A new status for an order, with the fields that come with it (the issue dialog's); the issue date
+ * follows the status kind, the change goes to the history. `undo` gives back the status, the issue
+ * date and every patched field as they were and drops the history entry; later edits of other fields
+ * stay.
+ */
+export function withStatus(
+	o: DemoOrder,
+	status: Pick<Status, 'id' | 'name' | 'kind'>,
+	at: string,
+	patch: Partial<DemoOrder> = {}
+): { order: DemoOrder; undo: (current: DemoOrder) => DemoOrder } {
+	const entry: HistoryEntry = {
+		id: Math.max(0, ...o.history.map((h) => h.id)) + 1,
+		at,
+		text: `Статус «${status.name}»`
+	};
+	const before = Object.fromEntries(
+		Object.keys(patch).map((key) => [key, o[key as keyof DemoOrder]])
+	) as Partial<DemoOrder>;
+	return {
+		order: {
+			...o,
+			...patch,
+			status_id: status.id,
+			issued_at: status.kind === 'issued' ? (o.issued_at ?? at) : null,
+			history: [...o.history, entry]
+		},
+		undo: (current) => ({
+			...current,
+			...before,
+			status_id: o.status_id,
+			issued_at: o.issued_at,
+			history: current.history.filter((h) => h !== entry)
+		})
+	};
+}
+
 /** «К оплате» (spec 6.2): final price minus prepayment and discount; null without a final price. */
 export function toPay(o: { final_price: number | null; prepayment: number; discount: number }) {
 	return o.final_price === null ? null : o.final_price - o.prepayment - o.discount;

@@ -18,7 +18,8 @@ import {
 	searchOrders,
 	sortOrders,
 	toPay,
-	withDetails
+	withDetails,
+	withStatus
 } from './orders.js';
 
 function order(patch: Partial<OrderListItem> = {}): OrderListItem {
@@ -233,6 +234,41 @@ describe('sortOrders', () => {
 	it('by client in Russian order and by the status order', () => {
 		expect(ids({ columnId: 'client', descending: false })).toEqual([2, 1, 3]);
 		expect(ids({ columnId: 'status', descending: false })).toEqual([2, 3, 1]);
+	});
+});
+
+describe('withStatus', () => {
+	const NOW = '2026-11-15T18:00:00';
+	const ready = { id: 7, name: 'Готов', kind: 'ready' as const };
+	const issued = { id: 8, name: 'Выдан', kind: 'issued' as const };
+	const base = withDetails(
+		order({ status_id: 7, final_price: 405000, prepayment: 230000, master: 'АНТОН' }),
+		'ready'
+	);
+
+	it('sets the status, writes it to the history; the issue date follows the kind', () => {
+		const { order: next } = withStatus(base, issued, NOW);
+		expect(next.status_id).toBe(8);
+		expect(next.issued_at).toBe(NOW);
+		expect(next.history.at(-1)).toMatchObject({ at: NOW, text: 'Статус «Выдан»' });
+		expect(withStatus(next, ready, NOW).order.issued_at).toBeNull();
+		const already = { ...base, issued_at: '2026-11-01T10:00:00' };
+		expect(withStatus(already, issued, NOW).order.issued_at).toBe('2026-11-01T10:00:00');
+	});
+
+	it('undo gives back the status, the issue date and every field that came with it', () => {
+		const patch = {
+			work_done: 'Замена аккумулятора',
+			master: 'ИРИНА',
+			final_price: 500000,
+			discount: 25000,
+			warranty: '90 дней'
+		};
+		const { order: next, undo } = withStatus(base, issued, NOW, patch);
+		expect(next).toMatchObject({ ...patch, status_id: 8 });
+		// An edit made after the change is not undone with it.
+		const edited = { ...next, internal_comment: 'Позвонить после 18:00' };
+		expect(undo(edited)).toEqual({ ...base, internal_comment: 'Позвонить после 18:00' });
 	});
 });
 

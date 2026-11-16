@@ -76,8 +76,11 @@
 <div class="stack">
 	<StatusPicker
 		statuses={DEMO_STATUSES}
-		bind:value={status}
-		onchange={(id, previous) => (change = `${nameOf(previous)} → ${nameOf(id)}`)}
+		value={status}
+		onchange={(id, previous) => {
+			status = id;
+			change = `${nameOf(previous)} → ${nameOf(id)}`;
+		}}
 	/>
 	<p class="muted">Смена: {change || 'ещё не было'}. Стрелки меняют выбор.</p>
 	<StatusPicker statuses={DEMO_STATUSES} value={8} label="Статус выданного заказа" disabled />

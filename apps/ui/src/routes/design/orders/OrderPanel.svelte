@@ -102,6 +102,21 @@
 		{onnext}
 		{returnFocusTo}
 	>
+		{#snippet actions()}
+			<!-- Phone: «←», number, «⋯» at the top (spec 6.12); the bottom bar has call, photo, status. -->
+			{#if phone.current}
+				<DropdownMenu
+					items={[...printItems, { separator: true }, ...moreItems]}
+					label="Ещё действия"
+				>
+					{#snippet trigger(props)}
+						<button {...props} type="button" class="trigger square ghost" aria-label="Ещё действия">
+							<Ellipsis size={16} aria-hidden="true" />
+						</button>
+					{/snippet}
+				</DropdownMenu>
+			{/if}
+		{/snippet}
 		{#snippet header()}
 			<p class="meta num">
 				<span>принят {formatRelative(o.received_at, DEMO_NOW)}</span>
@@ -377,6 +392,11 @@
 		justify-content: center;
 		width: var(--control-md);
 		padding: 0;
+	}
+	.trigger.ghost {
+		border-color: transparent;
+		background: transparent;
+		color: var(--text-2);
 	}
 	.trigger:hover {
 		background: var(--surface-3);

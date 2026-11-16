@@ -43,10 +43,10 @@
 		searchOrders,
 		sortOrders,
 		withDetails,
+		withStatus,
 		type AttentionKey,
 		type DemoOrder,
-		type DemoPhoto,
-		type HistoryEntry
+		type DemoPhoto
 	} from '#lib/demo/orders.js';
 	import {
 		countLabel,
@@ -219,7 +219,7 @@
 		saving();
 	}
 
-	/** A new status, written to the history; returns its undo. The issue date follows the status kind. */
+	/** A new status (and what comes with it); returns the undo, which gives all of it back. */
 	function setStatus(
 		id: number,
 		statusId: number,
@@ -228,46 +228,43 @@
 		const before = byId.get(id);
 		const status = statusById.get(statusId);
 		if (!before || !status || before.status_id === statusId) return undefined;
-		const entry: HistoryEntry = {
-			id: Math.max(0, ...before.history.map((h) => h.id)) + 1,
-			at: NOW,
-			text: `Статус «${status.name}»`
-		};
-		update(id, (o) => ({
-			...o,
-			...patch,
-			status_id: statusId,
-			issued_at: status.kind === 'issued' ? (o.issued_at ?? NOW) : null,
-			history: [...o.history, entry]
-		}));
+		const change = withStatus(before, status, NOW, patch);
+		update(id, () => change.order);
 		if (id === openedId) saving();
-		return () =>
-			update(id, (o) => ({
-				...o,
-				status_id: before.status_id,
-				issued_at: before.issued_at,
-				history: o.history.filter((h) => h !== entry)
-			}));
+		return () => update(id, change.undo);
 	}
 
+	/**
+	 * A status picked in the panel. An issued one is not set here: it opens «Выдать» with its checks
+	 * (spec 6.4) and the order keeps its status unless the dialog issues it.
+	 */
 	function changeStatus(statusId: number) {
 		if (openedId === null) return;
+		if (kindOf(statusId) === 'issued') {
+			openIssue(statusId);
+			return;
+		}
 		const id = openedId;
 		const undo = setStatus(id, statusId);
 		if (undo) toast.undoable(`№ ${id} → ${statusById.get(statusId)?.name ?? ''}`, undo);
 	}
 
 	let issueOpen = $state(false);
-	function openIssue() {
-		if (canIssue) issueOpen = true;
+	/** The issued status the dialog sets: «Выдан», or the issued one picked in the panel. */
+	let issueTo = $state(ISSUED.id);
+	function openIssue(statusId: number = ISSUED.id) {
+		if (!canIssue) return;
+		issueTo = statusId;
+		issueOpen = true;
 	}
 	async function issue(patch: IssuePatch, printAct: boolean) {
 		if (openedId === null) return;
 		const id = openedId;
-		const undo = setStatus(id, ISSUED.id, patch);
+		const status = statusById.get(issueTo) ?? ISSUED;
+		const undo = setStatus(id, status.id, patch);
 		// Toasts cannot be used under a modal: they appear once the dialog has gone.
 		await tick();
-		if (undo) toast.undoable(`№ ${id} → ${ISSUED.name}`, undo);
+		if (undo) toast.undoable(`№ ${id} → ${status.name}`, undo);
 		if (printAct) toast.show({ message: 'Акт выдачи отправлен на принтер «Приёмка»' });
 	}
 	function reopen() {
@@ -309,11 +306,14 @@
 		for (const url of photoUrls) URL.revokeObjectURL(url);
 	});
 
-	// Bulk actions on the selected rows.
-	const bulkItems: MenuItem[] = DEMO_STATUSES.filter((s) => !s.archived).map((s) => ({
-		label: s.name,
-		onselect: () => bulkStatus(s.id)
-	}));
+	// Bulk actions on the selected rows. Issued statuses are left out: issuing many orders at once has to
+	// ask for the issue date (plan 5); one order is issued through «Выдать».
+	const bulkItems: MenuItem[] = DEMO_STATUSES.filter((s) => !s.archived && s.kind !== 'issued').map(
+		(s) => ({
+			label: s.name,
+			onselect: () => bulkStatus(s.id)
+		})
+	);
 	function bulkStatus(statusId: number) {
 		const undos = [...selected].flatMap((id) => {
 			const undo = typeof id === 'number' ? setStatus(id, statusId) : undefined;
@@ -520,7 +520,7 @@
 	$effect(() => registerHotkey('/', () => filterEl?.focus()));
 	$effect(() => {
 		if (!canIssue) return;
-		return registerHotkey('Mod+Enter', openIssue, { allowInFields: true });
+		return registerHotkey('Mod+Enter', () => openIssue(), { allowInFields: true });
 	});
 
 	// A scanner works from anywhere outside fields and modals (spec 6.10).
@@ -790,7 +790,7 @@
 	onedit={edit}
 	onflush={flush}
 	onstatus={changeStatus}
-	onissue={openIssue}
+	onissue={() => openIssue()}
 	onreopen={reopen}
 	onprint={printDocument}
 	onaddphotos={addPhotos}

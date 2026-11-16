@@ -16,6 +16,7 @@
 		open = $bindable(false),
 		title,
 		width = 'min(30rem, 100vw - 3rem)',
+		actions,
 		header,
 		children,
 		footer,
@@ -27,6 +28,8 @@
 		open: boolean;
 		title: string;
 		width?: string;
+		/** Buttons in the top bar after the title, e.g. «⋯» on a phone (spec 6.12). */
+		actions?: Snippet;
 		header?: Snippet;
 		children: Snippet;
 		footer?: Snippet;
@@ -141,6 +144,7 @@
 							onclick={() => step(onnext)}
 						/>
 					{/if}
+					{@render actions?.()}
 					{#if !phone.current}
 						<IconButton label={ru.common.close} icon={X} onclick={close} />
 					{/if}
