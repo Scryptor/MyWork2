@@ -1,4 +1,7 @@
-import { isEditableTarget } from './hotkeys.svelte.js';
+import { isEditableTarget } from './editable.js';
+
+/** The longest pause between two characters of a scan, ms. Hotkeys of one key wait this long too. */
+export const SCAN_GAP_MS = 35;
 
 /** Recognises a barcode scanner: a fast burst of characters ended with Enter. */
 export class ScanDetector {
@@ -9,7 +12,7 @@ export class ScanDetector {
 
 	constructor(opts?: { minLength?: number; maxIntervalMs?: number }) {
 		this.minLength = opts?.minLength ?? 6;
-		this.maxIntervalMs = opts?.maxIntervalMs ?? 35;
+		this.maxIntervalMs = opts?.maxIntervalMs ?? SCAN_GAP_MS;
 	}
 
 	feed(key: string, timeMs: number): string | null {

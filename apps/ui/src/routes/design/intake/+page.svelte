@@ -3,9 +3,8 @@
 <script lang="ts">
 	import Plus from '@lucide/svelte/icons/plus';
 	import { tick, untrack } from 'svelte';
-	import { afterNavigate } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { registerHotkey } from '#lib/design/hotkeys.svelte.js';
+	import { registerHotkey, submitShortcut } from '#lib/design/hotkeys.svelte.js';
 	import { readStorage, writeStorage } from '#lib/design/storage.js';
 	import { DEMO_NOW, DEMO_STATUSES, makeDictionaries, makeOrders } from '#lib/demo/fake.js';
 	import {
@@ -77,7 +76,8 @@
 	const sourceItems = DICTIONARIES.source.map((value) => ({ value }));
 	const frequent = DICTIONARIES.malfunction.slice(0, 8);
 
-	let open = $state(false);
+	// Open from the start, also while the navigation here is still going: Sheet waits for it to focus a field.
+	let open = $state(true);
 	let draft = $state<IntakeDraft>(readDraft());
 	let attempted = $state(false);
 	let photos = $state.raw<DemoPhoto[]>([]);
@@ -92,13 +92,6 @@
 	let nextNumber = Math.max(...ORDERS.map((o) => o.id)) + 1;
 	let photoSeq = 0;
 	let drop = $state<ReturnType<typeof FileDrop>>();
-
-	// The panel opens once the navigation has settled. After a navigation SvelteKit focuses <body> and,
-	// on a timer, clears the selection if it looks unchanged; in WebKit that also takes the caret out of
-	// «Телефон» focused in between, and typing goes nowhere. This timer runs after SvelteKit's.
-	afterNavigate(() => {
-		setTimeout(() => (open = true));
-	});
 
 	function readDraft(): IntakeDraft {
 		return parseDraft(readStorage(INTAKE_DRAFT_KEY));
@@ -198,15 +191,11 @@
 
 	$effect(() => registerHotkey('N', () => (open = true)));
 	$effect(() => {
-		if (!open) return;
-		return registerHotkey('Mod+Enter', () => void accept(), {
-			allowInFields: true,
-			allowWithOverlay: true
-		});
+		if (open) return submitShortcut(() => void accept());
 	});
 </script>
 
-<main class="page">
+<main class="page" tabindex="-1">
 	<header class="head">
 		<h1>Приём устройства</h1>
 		<nav class="links" aria-label="Демо">

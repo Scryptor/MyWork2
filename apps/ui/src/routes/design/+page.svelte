@@ -27,65 +27,68 @@
 	] as const;
 </script>
 
-<header class="bar">
-	<h1>Дизайн-система</h1>
-	<nav class="demos" aria-label="Демо-экраны">
-		<a href={resolve('/design/orders')}>Демо: главный экран</a>
-		<a href={resolve('/design/intake')}>Демо: приём</a>
-	</nav>
-	<div class="prefs">
-		<SegmentedControl
-			label="Тема"
-			options={[...THEMES]}
-			bind:value={() => prefs.value.theme, (v) => prefs.set({ theme: v })}
-		/>
-		<SegmentedControl
-			label="Размер текста"
-			options={[...SCALES]}
-			bind:value={() => prefs.value.scale, (v) => prefs.set({ scale: v })}
-		/>
-		<SegmentedControl
-			label="Плотность"
-			options={[...DENSITIES]}
-			bind:value={() => prefs.value.density, (v) => prefs.set({ density: v })}
-		/>
-	</div>
-</header>
+<!-- tabindex: focus lands here when the element that opened a dialog is gone. -->
+<main tabindex="-1" aria-labelledby="design-title">
+	<header class="bar">
+		<h1 id="design-title">Дизайн-система</h1>
+		<nav class="demos" aria-label="Демо-экраны">
+			<a href={resolve('/design/orders')}>Демо: главный экран</a>
+			<a href={resolve('/design/intake')}>Демо: приём</a>
+		</nav>
+		<div class="prefs">
+			<SegmentedControl
+				label="Тема"
+				options={[...THEMES]}
+				bind:value={() => prefs.value.theme, (v) => prefs.set({ theme: v })}
+			/>
+			<SegmentedControl
+				label="Размер текста"
+				options={[...SCALES]}
+				bind:value={() => prefs.value.scale, (v) => prefs.set({ scale: v })}
+			/>
+			<SegmentedControl
+				label="Плотность"
+				options={[...DENSITIES]}
+				bind:value={() => prefs.value.density, (v) => prefs.set({ density: v })}
+			/>
+		</div>
+	</header>
 
-<section id="tokens">
-	<h2>Токены</h2>
-	<Tokens />
-</section>
+	<section id="tokens">
+		<h2>Токены</h2>
+		<Tokens />
+	</section>
 
-<section id="basics">
-	<h2>Основа</h2>
-	<Basics />
-</section>
+	<section id="basics">
+		<h2>Основа</h2>
+		<Basics />
+	</section>
 
-<section id="fields">
-	<h2>Поля</h2>
-	<Fields />
-</section>
+	<section id="fields">
+		<h2>Поля</h2>
+		<Fields />
+	</section>
 
-<section id="layers">
-	<h2>Слои</h2>
-	<Layers />
-</section>
+	<section id="layers">
+		<h2>Слои</h2>
+		<Layers />
+	</section>
 
-<section id="navigation">
-	<h2>Навигация</h2>
-	<Navigation />
-</section>
+	<section id="navigation">
+		<h2>Навигация</h2>
+		<Navigation />
+	</section>
 
-<section id="table">
-	<h2>Таблица</h2>
-	<Table />
-</section>
+	<section id="table">
+		<h2>Таблица</h2>
+		<Table />
+	</section>
 
-<section id="media">
-	<h2>Медиа</h2>
-	<Media />
-</section>
+	<section id="media">
+		<h2>Медиа</h2>
+		<Media />
+	</section>
+</main>
 
 <style>
 	.bar {

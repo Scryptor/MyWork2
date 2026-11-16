@@ -82,7 +82,10 @@
 			change = `${nameOf(previous)} → ${nameOf(id)}`;
 		}}
 	/>
-	<p class="muted">Смена: {change || 'ещё не было'}. Стрелки меняют выбор.</p>
+	<p class="muted">
+		Смена: {change || 'ещё не было'}. Стрелки двигают фокус, пробел или Enter выбирают; статусы
+		после седьмого — в «Ещё».
+	</p>
 	<StatusPicker statuses={DEMO_STATUSES} value={8} label="Статус выданного заказа" disabled />
 </div>
 

@@ -143,12 +143,17 @@ test.describe('orders demo', () => {
 		await expect(rowOf(page, FIRST)).not.toContainText('Готов');
 	});
 
-	test('status picker: arrows change the status', async ({ page }) => {
+	test('status picker: arrows move focus, Space changes the status', async ({ page }) => {
 		await openRow(page, FIRST);
 		const statuses = panelOf(page).getByRole('radiogroup', { name: 'Статус' });
 		await statuses.getByRole('radio', { name: 'Диагностика' }).focus();
 		await page.keyboard.press('ArrowRight');
-		await expect(statuses.getByRole('radio', { name: 'Согласование с клиентом' })).toBeChecked();
+		const next = statuses.getByRole('radio', { name: 'Согласование с клиентом' });
+		await expect(next).toBeFocused();
+		await expect(next).not.toBeChecked();
+		await expect(statuses.getByRole('radio', { name: 'Диагностика' })).toBeChecked();
+		await page.keyboard.press('Space');
+		await expect(next).toBeChecked();
 		await expect(toastsOf(page)).toContainText(`№ ${FIRST} → Согласование с клиентом`);
 		await expect(titleOf(page)).toHaveText(new RegExp(`^№ ${FIRST} · `));
 		await expect(rowOf(page, FIRST)).toContainText('Согласование с клиентом');
@@ -215,7 +220,7 @@ test.describe('orders demo', () => {
 		await expect(work).not.toHaveAttribute('aria-invalid', 'true');
 		await page.keyboard.press(`${await mod(page)}+Enter`);
 		await expect(dialog).toBeHidden();
-		await expect(statuses.getByRole('radio', { name: 'Выдан' })).toBeChecked();
+		await expect(panel.getByRole('button', { name: 'Ещё: Выдан' })).toBeVisible();
 		await expect(panelWork).toHaveValue('Замена аккумулятора');
 		await expect(panelTotal).toHaveValue(/^5\s000$/);
 		await expect(rowOf(page, READY)).toContainText('Выдан');
@@ -308,12 +313,15 @@ test.describe('orders demo', () => {
 		await expect(rowOf(page, NEWEST_READY)).toContainText(/9\s900\s₽/);
 	});
 
-	test('an issued status picked in the panel opens «Выдать»: the status stays until the dialog issues; arrows onto it do not issue', async ({
+	test('an issued status picked in the panel opens «Выдать»: the status stays until the dialog issues; arrows do not choose', async ({
 		page
 	}) => {
 		await openRow(page, FIRST);
 		const statuses = panelOf(page).getByRole('radiogroup', { name: 'Статус' });
-		await statuses.getByRole('radio', { name: 'Выдан' }).click();
+		// «Выдан» is the 8th status: past the seven labels, in «Ещё».
+		const more = panelOf(page).getByRole('button', { name: 'Ещё', exact: true });
+		await more.click();
+		await page.getByRole('menuitem', { name: 'Выдан' }).click();
 		const dialog = page.getByRole('dialog', { name: `Выдача заказа № ${FIRST}` });
 		await expect(dialog).toBeVisible();
 		await expect(dialog.getByRole('textbox', { name: /^Выполненные работы/ })).toHaveAttribute(
@@ -323,11 +331,11 @@ test.describe('orders demo', () => {
 		await page.keyboard.press('Escape');
 		await expect(dialog).toBeHidden();
 		await expect(statuses.getByRole('radio', { name: 'Диагностика' })).toBeChecked();
-		await expect(statuses.getByRole('radio', { name: 'Выдан' })).not.toBeChecked();
+		await expect(more).toBeVisible();
 		await expect(rowOf(page, FIRST)).toContainText('Диагностика');
 		await expect(toastsOf(page)).not.toContainText('→ Выдан');
 
-		// → from «Готов» lands on «Выдан»: the dialog again, the order stays «Готов».
+		// → from «Готов», the last label, only moves focus (round to the first): no dialog, still «Готов».
 		await page.keyboard.press('Escape');
 		await page
 			.getByRole('group', { name: 'Быстрые фильтры' })
@@ -336,12 +344,9 @@ test.describe('orders demo', () => {
 		await openRow(page, NEWEST_READY);
 		await statuses.getByRole('radio', { name: 'Готов' }).focus();
 		await page.keyboard.press('ArrowRight');
-		const again = page.getByRole('dialog', { name: `Выдача заказа № ${NEWEST_READY}` });
-		await expect(again).toBeVisible();
-		await page.keyboard.press('Escape');
-		await expect(again).toBeHidden();
+		await expect(statuses.getByRole('radio', { name: 'Диагностика' })).toBeFocused();
+		await expect(page.getByRole('dialog', { name: /^Выдача заказа/ })).toHaveCount(0);
 		await expect(statuses.getByRole('radio', { name: 'Готов' })).toBeChecked();
-		await expect(statuses.getByRole('radio', { name: 'Выдан' })).not.toBeChecked();
 		await expect(rowOf(page, NEWEST_READY)).toContainText('Готов');
 		await expect(rowOf(page, NEWEST_READY)).not.toContainText('Выдан');
 		await expect(toastsOf(page)).not.toContainText('→ Выдан');

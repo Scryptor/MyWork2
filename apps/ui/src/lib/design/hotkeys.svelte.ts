@@ -1,4 +1,8 @@
+import { isEditableTarget } from './editable.js';
 import { layers } from './layers.svelte.js';
+import { SCAN_GAP_MS } from './scanner.js';
+
+export { isEditableTarget };
 
 export function isMac(): boolean {
 	return typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
@@ -55,51 +59,62 @@ export function matchShortcut(e: KeyboardEvent, spec: string, opts?: { mac?: boo
 	return e.key === s.key;
 }
 
-const NON_TEXT_INPUTS = new Set([
-	'button',
-	'checkbox',
-	'color',
-	'file',
-	'image',
-	'radio',
-	'range',
-	'reset',
-	'submit'
-]);
-
-export function isEditableTarget(target: EventTarget | null): boolean {
-	if (!(target instanceof Element)) return false;
-	if (target instanceof HTMLInputElement) return !NON_TEXT_INPUTS.has(target.type);
-	if (target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return true;
-	const editable = target.closest('[contenteditable]');
-	return editable !== null && editable.getAttribute('contenteditable') !== 'false';
-}
-
 interface Registration {
 	spec: string;
 	handler: (e: KeyboardEvent) => void;
 	allowInFields: boolean;
 	allowWithOverlay: boolean;
+	/** One printable key without modifiers (N, /, ?): it fires once the scan gap has passed. */
+	deferred: boolean;
 }
 
 let registrations: Registration[] = [];
 let listening = false;
+/** A one-key hotkey waiting out the scan gap. */
+let pending: ReturnType<typeof setTimeout> | undefined;
+/** `timeStamp` of the last printable key. */
+let lastCharAt = -Infinity;
+
+function isOneKey(spec: string): boolean {
+	const s = parse(spec);
+	return !s.mod && !s.ctrl && !s.alt && !s.shift && s.key.length === 1;
+}
 
 function onKeydown(e: KeyboardEvent) {
 	if (e.isComposing || e.keyCode === 229) return;
 	const inField = isEditableTarget(e.target);
-	// Newest registration wins.
+	// A scanner types too: a printable key within the scan gap of another one is a scan, not a hotkey.
+	// The key after a one-key hotkey cancels it; the key before (the end of a scan) drops it. Like the
+	// scanner, keys typed in a field do not count.
+	let burst = false;
+	if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && !inField) {
+		burst = e.timeStamp - lastCharAt <= SCAN_GAP_MS;
+		lastCharAt = e.timeStamp;
+		clearTimeout(pending);
+		pending = undefined;
+	}
+	// Newest registration wins; fields and layers count as they are at the keydown.
 	for (let i = registrations.length - 1; i >= 0; i--) {
 		const r = registrations[i];
 		if (!r || !matchShortcut(e, r.spec)) continue;
 		if (inField && !r.allowInFields) continue;
 		if (layers.blocking && !r.allowWithOverlay) continue;
 		e.preventDefault();
-		r.handler(e);
+		if (!r.deferred) r.handler(e);
+		else if (!burst) {
+			pending = setTimeout(() => {
+				pending = undefined;
+				if (registrations.includes(r)) r.handler(e);
+			}, SCAN_GAP_MS);
+		}
 		return;
 	}
 }
 
+/**
+ * A shortcut for the whole page. Outside fields and open popups/modals unless allowed. One printable key
+ * without modifiers (N, /, ?) fires SCAN_GAP_MS after the keydown, and not at all inside a scan.
+ */
 export function registerHotkey(
 	spec: string,
 	handler: (e: KeyboardEvent) => void,
@@ -113,7 +128,8 @@ export function registerHotkey(
 		spec,
 		handler,
 		allowInFields: opts?.allowInFields ?? false,
-		allowWithOverlay: opts?.allowWithOverlay ?? false
+		allowWithOverlay: opts?.allowWithOverlay ?? false,
+		deferred: isOneKey(spec)
 	};
 	registrations.push(reg);
 	return () => {
@@ -121,9 +137,23 @@ export function registerHotkey(
 	};
 }
 
+/**
+ * Ctrl/⌘+Enter of the open layer: «Принять», «Выдать», «Сохранить». Works in fields and over other layers;
+ * the layer registers it while open and removes it when it closes, the newest one wins.
+ */
+export function submitShortcut(handler: () => void): () => void {
+	return registerHotkey('Mod+Enter', () => handler(), {
+		allowInFields: true,
+		allowWithOverlay: true
+	});
+}
+
 /** Tests only: drop every registration and the global listener. */
 export function __resetHotkeysForTests(): void {
 	registrations = [];
+	clearTimeout(pending);
+	pending = undefined;
+	lastCharAt = -Infinity;
 	if (listening) window.removeEventListener('keydown', onKeydown);
 	listening = false;
 }

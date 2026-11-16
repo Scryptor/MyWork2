@@ -26,13 +26,14 @@ afterEach(() => {
 describe('StatusPicker', () => {
 	it('a radio per status as a label; the current one is checked', () => {
 		screenWidth(false);
-		render(StatusPicker, { statuses: DEMO_STATUSES, value: 1 });
+		render(StatusPicker, { statuses: DEMO_STATUSES.slice(0, 7), value: 1 });
 		const group = screen.getByRole('radiogroup', { name: 'Статус' });
 		expect(
 			within(group)
 				.getAllByRole('radio')
 				.map((r) => r.closest('label')?.textContent?.trim())
-		).toEqual(DEMO_STATUSES.map((s) => s.name));
+		).toEqual(DEMO_STATUSES.slice(0, 7).map((s) => s.name));
+		expect(screen.queryByRole('button', { name: /^Ещё/ })).toBeNull();
 		expect(within(group).getByRole('radio', { name: 'Диагностика' })).toBeChecked();
 		expect(within(group).getByRole('radio', { name: 'Готов' }).closest('label')).toHaveClass(
 			'st-green'
@@ -79,9 +80,66 @@ describe('StatusPicker', () => {
 
 	it('disabled: nothing can be picked', () => {
 		screenWidth(false);
-		render(StatusPicker, { statuses: DEMO_STATUSES, value: 8, disabled: true });
+		render(StatusPicker, { statuses: DEMO_STATUSES, value: 7, disabled: true });
 		for (const radio of screen.getAllByRole('radio')) expect(radio).toBeDisabled();
-		expect(screen.getByRole('radio', { name: 'Выдан' })).toBeChecked();
+		expect(screen.getByRole('radio', { name: 'Готов' })).toBeChecked();
+		expect(screen.getByRole('button', { name: 'Ещё' })).toBeDisabled();
+	});
+
+	it('puts statuses beyond max into «Ещё»', () => {
+		screenWidth(false);
+		expect(DEMO_STATUSES).toHaveLength(9);
+		render(StatusPicker, { statuses: DEMO_STATUSES, value: 1 });
+		const group = screen.getByRole('radiogroup', { name: 'Статус' });
+		expect(
+			within(group)
+				.getAllByRole('radio')
+				.map((r) => r.closest('label')?.textContent?.trim())
+		).toEqual(DEMO_STATUSES.slice(0, 7).map((s) => s.name));
+		const more = screen.getByRole('button', { name: 'Ещё' });
+		expect(more).toHaveAttribute('aria-haspopup', 'menu');
+		expect(screen.queryByRole('radio', { name: 'Выдан' })).toBeNull();
+	});
+
+	it('a chosen status inside «Ещё» is shown on the button; no segment is checked', () => {
+		screenWidth(false);
+		render(StatusPicker, { statuses: DEMO_STATUSES, value: 8, max: 5 });
+		expect(screen.getAllByRole('radio')).toHaveLength(5);
+		for (const radio of screen.getAllByRole('radio')) expect(radio).not.toBeChecked();
+		const more = screen.getByRole('button', { name: 'Ещё: Выдан' });
+		expect(more).toHaveTextContent('Выдан');
+		expect(more).not.toHaveTextContent('Ещё');
+	});
+
+	it('arrow keys move focus without choosing; space chooses', async () => {
+		screenWidth(false);
+		const user = userEvent.setup();
+		render(Harness, { mode: 'take' });
+		const group = screen.getByRole('radiogroup', { name: 'Статус' });
+		const radios = within(group).getAllByRole('radio');
+		radios[0]!.focus();
+		await user.keyboard('{ArrowRight}{ArrowRight}');
+		expect(radios[2]).toHaveFocus();
+		expect(screen.getByTestId('changes')).toHaveTextContent(/^$/);
+		expect(radios[0]).toBeChecked();
+		await user.keyboard(' ');
+		expect(screen.getByTestId('changes')).toHaveTextContent(/^1→3$/);
+		expect(radios[2]).toBeChecked();
+	});
+
+	it('Enter chooses the focused status; arrows wrap around', async () => {
+		screenWidth(false);
+		const user = userEvent.setup();
+		render(Harness, { mode: 'take' });
+		const radios = within(screen.getByRole('radiogroup', { name: 'Статус' })).getAllByRole('radio');
+		radios[0]!.focus();
+		await user.keyboard('{ArrowLeft}');
+		expect(radios[6]).toHaveFocus();
+		await user.keyboard('{ArrowDown}{ArrowUp}{ArrowUp}');
+		expect(radios[5]).toHaveFocus();
+		expect(screen.getByTestId('changes')).toHaveTextContent(/^$/);
+		await user.keyboard('{Enter}');
+		expect(screen.getByTestId('changes')).toHaveTextContent(/^1→6$/);
 	});
 
 	it('phone: a button with the current status instead of the labels', () => {

@@ -1,12 +1,14 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
 	__resetHotkeysForTests,
 	formatShortcut,
 	isEditableTarget,
 	matchShortcut,
-	registerHotkey
+	registerHotkey,
+	submitShortcut
 } from './hotkeys.svelte.js';
 import { layers } from './layers.svelte.js';
+import { SCAN_GAP_MS } from './scanner.js';
 
 const ev = (init: Partial<KeyboardEvent>) => init as KeyboardEvent;
 
@@ -61,22 +63,157 @@ describe('isEditableTarget', () => {
 	});
 });
 
+const CODES: Record<string, string> = { '/': 'Slash', '?': 'Slash', Enter: 'Enter' };
+const codeOf = (key: string) =>
+	/^[a-z]$/i.test(key)
+		? `Key${key.toUpperCase()}`
+		: /^\d$/.test(key)
+			? `Digit${key}`
+			: (CODES[key] ?? key);
+
+/** A keydown of `key` (letters and digits get their `code`) on `target`, the page by default. */
+function press(key: string, target: EventTarget = document.body, init: KeyboardEventInit = {}) {
+	const e = new KeyboardEvent('keydown', {
+		key,
+		code: codeOf(key),
+		bubbles: true,
+		cancelable: true,
+		...init
+	});
+	target.dispatchEvent(e);
+	return e;
+}
+
 describe('registerHotkey', () => {
-	const press = (target: EventTarget, init: KeyboardEventInit = {}) =>
-		target.dispatchEvent(
-			new KeyboardEvent('keydown', { key: 'n', code: 'KeyN', bubbles: true, ...init })
-		);
+	beforeEach(() => {
+		vi.useFakeTimers();
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it('the scan gap is the scanner’s 35 ms', () => {
+		expect(SCAN_GAP_MS).toBe(35);
+	});
+
+	it('fires a single-letter hotkey after the scan gap', () => {
+		const h = vi.fn();
+		registerHotkey('n', h);
+		press('n');
+		expect(h).not.toHaveBeenCalled();
+		vi.advanceTimersByTime(36);
+		expect(h).toHaveBeenCalledTimes(1);
+	});
+
+	it('drops a single-letter hotkey when another key follows within the gap (a scan)', () => {
+		const h = vi.fn();
+		registerHotkey('/', h);
+		press('/');
+		vi.advanceTimersByTime(10);
+		press('1');
+		vi.advanceTimersByTime(100);
+		expect(h).not.toHaveBeenCalled();
+	});
+
+	it('drops a single-letter hotkey that ends a burst (the last character of a scan)', () => {
+		const h = vi.fn();
+		registerHotkey('N', h);
+		for (const ch of '12345') {
+			press(ch);
+			vi.advanceTimersByTime(10);
+		}
+		press('n');
+		press('Enter');
+		vi.advanceTimersByTime(100);
+		expect(h).not.toHaveBeenCalled();
+
+		// A pause, then N alone: a person.
+		press('n');
+		vi.advanceTimersByTime(36);
+		expect(h).toHaveBeenCalledTimes(1);
+	});
+
+	it('keys typed in a field are not a scan: the hotkey right after them fires', () => {
+		document.body.innerHTML = '<input id="i">';
+		const input = document.getElementById('i')!;
+		const h = vi.fn();
+		registerHotkey('N', h);
+		press('n', input);
+		press('n');
+		vi.advanceTimersByTime(36);
+		expect(h).toHaveBeenCalledTimes(1);
+	});
+
+	it('a deferred key is prevented at once: «/» is not typed anywhere', () => {
+		const h = vi.fn();
+		registerHotkey('/', h);
+		const e = press('/');
+		expect(e.defaultPrevented).toBe(true);
+		expect(h).not.toHaveBeenCalled();
+		vi.advanceTimersByTime(36);
+		expect(h).toHaveBeenCalledTimes(1);
+	});
+
+	it('? and Shift are one key: Shift before ? does not cancel it', () => {
+		const h = vi.fn();
+		registerHotkey('?', h);
+		press('Shift', document.body, { code: 'ShiftLeft', shiftKey: true });
+		press('?', document.body, { shiftKey: true });
+		vi.advanceTimersByTime(36);
+		expect(h).toHaveBeenCalledTimes(1);
+	});
+
+	it('a deferred key whose handler is removed within the gap does not fire', () => {
+		const h = vi.fn();
+		const off = registerHotkey('N', h);
+		press('n');
+		off();
+		vi.advanceTimersByTime(36);
+		expect(h).not.toHaveBeenCalled();
+	});
+
+	it('keys with modifiers fire at once', () => {
+		const h = vi.fn();
+		registerHotkey('Mod+K', h, { allowInFields: true });
+		press('k', document.body, { ctrlKey: true });
+		expect(h).toHaveBeenCalledTimes(1);
+	});
+
+	it('mod+Enter fires at once, also inside fields', () => {
+		document.body.innerHTML = '<input id="i">';
+		const input = document.getElementById('i')!;
+		const h = vi.fn();
+		const off = submitShortcut(h);
+		const e = press('Enter', input, { ctrlKey: true });
+		expect(h).toHaveBeenCalledTimes(1);
+		expect(e.defaultPrevented).toBe(true);
+		press('Enter', input);
+		expect(h).toHaveBeenCalledTimes(1);
+		off();
+		press('Enter', input, { ctrlKey: true });
+		expect(h).toHaveBeenCalledTimes(1);
+	});
+
+	it('the submit shortcut of an open dialog works over it; the newest one wins', () => {
+		const outer = vi.fn();
+		const inner = vi.fn();
+		submitShortcut(outer);
+		const closeModal = layers.open('modal', () => {});
+		const off = submitShortcut(inner);
+		press('Enter', document.body, { ctrlKey: true });
+		expect(inner).toHaveBeenCalledTimes(1);
+		expect(outer).not.toHaveBeenCalled();
+		off();
+		closeModal();
+		press('Enter', document.body, { ctrlKey: true });
+		expect(outer).toHaveBeenCalledTimes(1);
+	});
 
 	it('calls the handler and prevents default', () => {
 		const h = vi.fn();
 		registerHotkey('N', h);
-		const e = new KeyboardEvent('keydown', {
-			key: 'n',
-			code: 'KeyN',
-			bubbles: true,
-			cancelable: true
-		});
-		document.body.dispatchEvent(e);
+		const e = press('n');
+		vi.advanceTimersByTime(36);
 		expect(h).toHaveBeenCalledTimes(1);
 		expect(e.defaultPrevented).toBe(true);
 	});
@@ -86,39 +223,45 @@ describe('registerHotkey', () => {
 		const input = document.getElementById('i')!;
 		const h = vi.fn();
 		const off = registerHotkey('N', h);
-		press(input);
+		const typed = press('n', input);
+		vi.advanceTimersByTime(36);
 		expect(h).not.toHaveBeenCalled();
+		expect(typed.defaultPrevented).toBe(false);
 		off();
 		const g = vi.fn();
 		registerHotkey('N', g, { allowInFields: true });
-		press(input);
+		press('n', input);
+		vi.advanceTimersByTime(36);
 		expect(g).toHaveBeenCalledTimes(1);
 	});
 
 	it('ignores IME composition', () => {
 		const h = vi.fn();
 		registerHotkey('N', h);
-		press(document.body, { isComposing: true });
+		press('n', document.body, { isComposing: true });
+		vi.advanceTimersByTime(36);
 		expect(h).not.toHaveBeenCalled();
 	});
 
-	it('stands down while a popup or modal is open', () => {
+	it('stands down while a popup or modal is open, as it was at the keydown', () => {
 		const h = vi.fn();
 		const g = vi.fn();
 		registerHotkey('N', g, { allowWithOverlay: true });
 		registerHotkey('N', h);
 		const off = layers.open('modal', () => {});
-		press(document.body);
+		press('n');
+		off();
+		vi.advanceTimersByTime(36);
 		expect(h).not.toHaveBeenCalled();
 		expect(g).toHaveBeenCalledTimes(1);
-		off();
 	});
 
 	it('unsubscribe removes the handler', () => {
 		const h = vi.fn();
 		const off = registerHotkey('N', h);
 		off();
-		press(document.body);
+		press('n');
+		vi.advanceTimersByTime(36);
 		expect(h).not.toHaveBeenCalled();
 	});
 });

@@ -94,6 +94,17 @@ test.describe('navigation', () => {
 		await expect(page.getByText('Выбрано: Принять устройство (полная)')).toBeVisible();
 	});
 
+	test('sheet opened right after navigation keeps the caret in WebKit', async ({ page }) => {
+		// N in the showcase navigates within /design and opens the sheet while the navigation goes.
+		await page.keyboard.press('n');
+		const sheet = page.getByRole('dialog', { name: 'Новый заказ' });
+		await expect(sheet).toBeVisible();
+		const phone = sheet.getByRole('textbox', { name: 'Телефон' });
+		await expect(phone).toBeFocused();
+		await page.keyboard.type('абв');
+		await expect(phone).toHaveValue('абв');
+	});
+
 	test('ShortcutsHelp: ? opens, ? in a field does not', async ({ page }) => {
 		const field = page.locator('#navigation').getByLabel('Поле для проверки');
 		await field.focus();

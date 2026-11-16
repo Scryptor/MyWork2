@@ -7,6 +7,7 @@
 	import { PHONE_QUERY } from '#lib/design/breakpoints.js';
 	import { layers } from '#lib/design/layers.svelte.js';
 	import { ru } from '#lib/i18n/ru.js';
+	import { dialogFocus } from './dialog.js';
 	import Button from './Button.svelte';
 	import './dialog.css';
 
@@ -31,8 +32,13 @@
 	const CloseIcon = $derived(phone.current ? ArrowLeft : X);
 	let busy = $state(false);
 
+	const focusReturn = dialogFocus();
 	$effect(() => {
-		if (open) return untrack(() => layers.open('modal', () => (open = false)));
+		if (!open) return;
+		return untrack(() => {
+			focusReturn.opened();
+			return layers.open('modal', () => (open = false));
+		});
 	});
 
 	/** Stays open and busy until onconfirm settles; a failed onconfirm keeps the dialog open. */
@@ -55,6 +61,7 @@
 	<AlertDialog.Portal>
 		<AlertDialog.Overlay class="mw-scrim" />
 		<AlertDialog.Content
+			onCloseAutoFocus={focusReturn.closed}
 			class="mw-dialog sm {phone.current ? 'phone' : ''}"
 			escapeKeydownBehavior={busy ? 'ignore' : 'close'}
 		>

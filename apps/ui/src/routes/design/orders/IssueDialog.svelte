@@ -12,7 +12,7 @@
 
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { registerHotkey } from '#lib/design/hotkeys.svelte.js';
+	import { submitShortcut } from '#lib/design/hotkeys.svelte.js';
 	import { readStorage, writeStorage } from '#lib/design/storage.js';
 	import { makeDictionaries } from '#lib/demo/fake.js';
 	import { toPay, type DemoOrder } from '#lib/demo/orders.js';
@@ -123,11 +123,7 @@
 	}
 
 	$effect(() => {
-		if (!open) return;
-		return registerHotkey('Mod+Enter', () => issue(), {
-			allowInFields: true,
-			allowWithOverlay: true
-		});
+		if (open) return submitShortcut(issue);
 	});
 </script>
 

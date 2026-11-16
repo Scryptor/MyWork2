@@ -49,4 +49,23 @@ describe('layers', () => {
 		expect(close).toHaveBeenCalledTimes(1);
 		off();
 	});
+
+	it('an Esc a tooltip took (bits-ui prevents it) still closes the panel under the tooltip', () => {
+		const close = vi.fn();
+		const off = layers.open('panel', close);
+		layers.escapeFromTooltip(new KeyboardEvent('keydown', { key: 'Escape' }));
+		expect(close).toHaveBeenCalledTimes(1);
+		layers.escapeFromTooltip(new KeyboardEvent('keydown', { key: 'Escape', isComposing: true }));
+		expect(close).toHaveBeenCalledTimes(1);
+		off();
+
+		// Over a popup or a modal bits-ui keeps the Esc for itself: nothing more to close here.
+		const below = vi.fn();
+		const offPanel = layers.open('panel', below);
+		const offModal = layers.open('modal', () => {});
+		layers.escapeFromTooltip(new KeyboardEvent('keydown', { key: 'Escape' }));
+		expect(below).not.toHaveBeenCalled();
+		offModal();
+		offPanel();
+	});
 });

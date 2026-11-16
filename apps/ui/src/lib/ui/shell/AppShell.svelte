@@ -34,7 +34,8 @@
 	{#if layout !== 'phone'}
 		<div class="side">{@render sidebar()}</div>
 	{/if}
-	<main class="main">{@render children()}</main>
+	<!-- tabindex: focus lands here when the element that opened a dialog is gone. -->
+	<main class="main" tabindex="-1">{@render children()}</main>
 	{#if layout === 'phone' && bottomNav}
 		<div class="bottom">{@render bottomNav()}</div>
 	{/if}

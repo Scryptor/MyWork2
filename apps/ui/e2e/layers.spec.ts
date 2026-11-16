@@ -177,6 +177,66 @@ test.describe('layers', () => {
 		await expect(section.getByText('Принято: 1')).toBeVisible();
 	});
 
+	test('one Esc closes a panel even when a tooltip is open in it', async ({ page }) => {
+		await page.locator('#layers').getByRole('button', { name: 'Открыть панель' }).click();
+		const panel = panelOf(page);
+		await expect(panel).toBeVisible();
+		await panel.getByRole('button', { name: 'Следующая запись' }).hover();
+		const tip = page.getByRole('tooltip', { name: 'Следующая запись' });
+		await expect(tip).toBeVisible();
+
+		await page.keyboard.press('Escape');
+		await expect(panel).toBeHidden();
+		await expect(tip).toBeHidden();
+	});
+
+	test('toast undo is clickable while a dialog is open', async ({ page }) => {
+		await page.locator('#layers').getByRole('button', { name: 'Открыть диалог' }).click();
+		const dialog = page.getByRole('dialog', { name: 'Комментарий к заказу' });
+		const comment = dialog.getByRole('textbox', { name: 'Комментарий' });
+		await comment.fill('Перезвонить после обеда');
+		await dialog.getByRole('button', { name: 'Очистить' }).click();
+		await expect(comment).toHaveValue('');
+
+		await page
+			.getByRole('status', { name: 'Уведомления' })
+			.getByRole('button', { name: 'Отменить' })
+			.click();
+		await expect(dialog.getByText('Отменено: 1')).toBeVisible();
+		await expect(comment).toHaveValue('Перезвонить после обеда');
+		await expect(dialog).toBeVisible();
+		await expect
+			.poll(() => dialog.evaluate((el) => el.contains(document.activeElement)))
+			.toBe(true);
+		// The dialog still has the keyboard: Esc closes it.
+		await page.keyboard.press('Escape');
+		await expect(dialog).toBeHidden();
+	});
+
+	test('dialog returns focus to main when its opener is gone', async ({ page }) => {
+		// From the keyboard: a click focuses the button in Chromium, but not in WebKit.
+		const section = page.locator('#layers');
+		const opener = section.getByRole('button', { name: 'Черновик заказа' });
+		await opener.focus();
+		await page.keyboard.press('Enter');
+		const dialog = page.getByRole('dialog', { name: 'Черновик заказа' });
+		await expect(dialog).toBeVisible();
+		await dialog.getByRole('button', { name: 'Удалить черновик' }).focus();
+		await page.keyboard.press('Enter');
+		await expect(dialog).toBeHidden();
+		await expect(opener).toHaveCount(0);
+		await expect(page.getByRole('main', { name: 'Дизайн-система' })).toBeFocused();
+
+		// An opener that stays gets the focus back as before.
+		await section.getByRole('button', { name: 'Вернуть черновик' }).click();
+		await opener.focus();
+		await page.keyboard.press('Enter');
+		await expect(dialog).toBeVisible();
+		await page.keyboard.press('Escape');
+		await expect(dialog).toBeHidden();
+		await expect(opener).toBeFocused();
+	});
+
 	test('confirm dialog: the confirm button is busy while onconfirm waits, then the dialog closes', async ({
 		page
 	}) => {

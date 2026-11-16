@@ -50,14 +50,19 @@
 	}
 </script>
 
+<!-- data-mw-toaster: a press here keeps an open dialog (dialog.ts, keepOpenOnToasts). A mouse press
+     leaves focus where it was, in the dialog among others; the keyboard still reaches the toasts. -->
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div
 	bind:this={region}
+	data-mw-toaster
 	class="toaster"
 	class:phone={phone.current}
 	role="status"
 	aria-live="polite"
 	aria-atomic="false"
 	aria-label={ru.toast.region}
+	onmousedown={(e) => e.preventDefault()}
 	onmouseenter={() => (hovered = true)}
 	onmouseleave={() => (hovered = false)}
 	onfocusin={() => (focused = true)}
@@ -82,7 +87,9 @@
 </div>
 
 <style>
+	/* An open modal turns pointer events off on <body>: toasts stay pressable over it. */
 	.toaster {
+		pointer-events: auto;
 		position: fixed;
 		z-index: var(--z-toast);
 		left: var(--space-4);

@@ -1,6 +1,6 @@
-<!-- The status of an order: every status as a label in its hue, the chosen one filled with its dot
-     colour and outlined; arrows move the choice. On a phone: a button with the current status, the list
-     rises from the bottom. -->
+<!-- The status of an order: the first `max` statuses as labels in their hue, the rest in the «Ещё» menu;
+     the chosen one filled with its dot colour and outlined. Arrows move focus, Space, Enter or a click
+     choose. On a phone: a button with the current status, the list rises from the bottom. -->
 <script lang="ts">
 	import Check from '@lucide/svelte/icons/check';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
@@ -9,6 +9,7 @@
 	import { statusHue } from '#lib/design/status-colors.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import Dialog from './Dialog.svelte';
+	import DropdownMenu, { type MenuItem } from './DropdownMenu.svelte';
 	import StatusBadge from './StatusBadge.svelte';
 
 	let {
@@ -16,12 +17,15 @@
 		value = $bindable(),
 		label = ru.status.label,
 		disabled = false,
+		max = 7,
 		onchange
 	}: {
 		statuses: { id: number; name: string; color: string }[];
 		value: number;
 		label?: string;
 		disabled?: boolean;
+		/** Statuses shown as labels; the rest go to the «Ещё» menu. */
+		max?: number;
 		onchange?: (id: number, previous: number) => void;
 	} = $props();
 
@@ -30,6 +34,17 @@
 	const current = $derived(statuses.find((s) => s.id === value));
 	let listOpen = $state(false);
 	let group = $state<HTMLElement | null>(null);
+	const shown = $derived(statuses.slice(0, max));
+	const rest = $derived(statuses.slice(max));
+	/** The chosen status when it is in the «Ещё» menu: the menu button shows it. */
+	const chosenInMenu = $derived(rest.find((s) => s.id === value));
+	const menu = $derived<MenuItem[]>(
+		rest.map((s) => ({
+			label: s.name,
+			icon: s.id === value ? Check : undefined,
+			onselect: () => pick(s.id)
+		}))
+	);
 
 	/**
 	 * With `onchange` the parent decides: it sets the new `value`, or keeps the old one to refuse the change
@@ -53,6 +68,24 @@
 	function choose(id: number) {
 		listOpen = false;
 		pick(id);
+	}
+
+	const STEP: Record<string, number> = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 };
+
+	/** Arrows move focus over the labels without choosing (a choice may open «Выдать»); Enter chooses. */
+	function onkeydown(e: KeyboardEvent, id: number) {
+		if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+		if (e.key === 'Enter') {
+			e.preventDefault();
+			pick(id);
+			return;
+		}
+		const step = STEP[e.key];
+		if (step === undefined) return;
+		e.preventDefault();
+		const radios = [...(group?.querySelectorAll<HTMLInputElement>('input[type="radio"]') ?? [])];
+		const at = radios.indexOf(e.currentTarget as HTMLInputElement);
+		radios[(at + step + radios.length) % radios.length]?.focus();
 	}
 </script>
 
@@ -86,41 +119,67 @@
 		</ul>
 	</Dialog>
 {:else}
-	<div
-		bind:this={group}
-		class="picker"
-		class:disabled
-		role="radiogroup"
-		aria-label={label}
-		aria-disabled={disabled ? 'true' : undefined}
-	>
-		{#each statuses as s (s.id)}
-			{@const on = s.id === value}
-			<label class="option st-{statusHue(s.color)}" class:on>
-				<input
-					type="radio"
-					{name}
-					value={s.id}
-					checked={on}
-					{disabled}
-					onchange={() => pick(s.id)}
-				/>
-				{#if on}
-					<Check size={14} aria-hidden="true" />
-				{:else}
-					<span class="dot" aria-hidden="true"></span>
-				{/if}
-				<span>{s.name}</span>
-			</label>
-		{/each}
+	<div class="picker" class:disabled>
+		<div
+			bind:this={group}
+			class="options"
+			role="radiogroup"
+			aria-label={label}
+			aria-disabled={disabled ? 'true' : undefined}
+		>
+			{#each shown as s (s.id)}
+				{@const on = s.id === value}
+				<label class="option st-{statusHue(s.color)}" class:on>
+					<input
+						type="radio"
+						{name}
+						value={s.id}
+						checked={on}
+						{disabled}
+						onchange={() => pick(s.id)}
+						onkeydown={(e) => onkeydown(e, s.id)}
+					/>
+					{#if on}
+						<Check size={14} aria-hidden="true" />
+					{:else}
+						<span class="dot" aria-hidden="true"></span>
+					{/if}
+					<span>{s.name}</span>
+				</label>
+			{/each}
+		</div>
+		{#if rest.length > 0}
+			<DropdownMenu items={menu} label="{label}: {ru.common.more.toLowerCase()}">
+				{#snippet trigger(props)}
+					<button
+						{...props}
+						type="button"
+						class={chosenInMenu ? `option on st-${statusHue(chosenInMenu.color)}` : 'option more'}
+						aria-label={chosenInMenu ? `${ru.common.more}: ${chosenInMenu.name}` : undefined}
+						{disabled}
+					>
+						{#if chosenInMenu}
+							<Check size={14} aria-hidden="true" />
+							<span>{chosenInMenu.name}</span>
+						{:else}
+							<span>{ru.common.more}</span>
+						{/if}
+						<ChevronDown size={14} aria-hidden="true" />
+					</button>
+				{/snippet}
+			</DropdownMenu>
+		{/if}
 	</div>
 {/if}
 
 <style>
-	.picker {
+	.picker,
+	.options {
 		display: flex;
 		flex-wrap: wrap;
 		gap: var(--space-2);
+	}
+	.picker {
 		padding: var(--space-1);
 	}
 	.option {
@@ -141,6 +200,20 @@
 	}
 	.option:hover:not(.on) {
 		box-shadow: inset 0 0 0 1px var(--st-dot);
+	}
+	button.option {
+		border: 0;
+		font-family: inherit;
+	}
+	button.option:disabled {
+		cursor: not-allowed;
+	}
+	/* «Ещё» while the chosen status is among the labels. */
+	.option.more {
+		--st-dot: var(--border-strong);
+		background: var(--surface);
+		color: var(--text-2);
+		box-shadow: inset 0 0 0 1px var(--border);
 	}
 	/* The chosen one: filled with its dot colour and outlined, with a check, not by colour alone. */
 	.option.on {

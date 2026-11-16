@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { classifyScan, installScanner, ScanDetector } from './scanner.js';
+import { classifyScan, installScanner, SCAN_GAP_MS, ScanDetector } from './scanner.js';
 
 function type(d: ScanDetector, text: string, start: number, step: number): number {
 	let t = start;
@@ -15,6 +15,15 @@ describe('ScanDetector', () => {
 		const d = new ScanDetector();
 		const t = type(d, '201234567893', 0, 10);
 		expect(d.feed('Enter', t)).toBe('201234567893');
+	});
+	it('SCAN_GAP_MS (35 ms) is the longest pause inside a burst', () => {
+		expect(SCAN_GAP_MS).toBe(35);
+		const d = new ScanDetector();
+		const t = type(d, '201234567893', 0, SCAN_GAP_MS);
+		expect(d.feed('Enter', t)).toBe('201234567893');
+		const slow = new ScanDetector();
+		const u = type(slow, '201234567893', 0, SCAN_GAP_MS + 1);
+		expect(slow.feed('Enter', u)).toBeNull();
 	});
 	it('ignores slow typing', () => {
 		const d = new ScanDetector();

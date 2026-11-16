@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Tooltip } from 'bits-ui';
 	import type { Snippet } from 'svelte';
+	import { layers } from '#lib/design/layers.svelte.js';
 
 	let {
 		text,
@@ -20,7 +21,13 @@
 		{/snippet}
 	</Tooltip.Trigger>
 	<Tooltip.Portal>
-		<Tooltip.Content {side} sideOffset={6} class="mw-tooltip" role="tooltip">{text}</Tooltip.Content
+		<!-- Esc closes the tooltip and the panel under it at once. -->
+		<Tooltip.Content
+			{side}
+			sideOffset={6}
+			class="mw-tooltip"
+			role="tooltip"
+			onEscapeKeydown={(e) => layers.escapeFromTooltip(e)}>{text}</Tooltip.Content
 		>
 	</Tooltip.Portal>
 </Tooltip.Root>

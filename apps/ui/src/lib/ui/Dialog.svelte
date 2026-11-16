@@ -7,6 +7,7 @@
 	import { PHONE_QUERY } from '#lib/design/breakpoints.js';
 	import { layers } from '#lib/design/layers.svelte.js';
 	import { ru } from '#lib/i18n/ru.js';
+	import { dialogFocus, keepOpenOnToasts } from './dialog.js';
 	import './dialog.css';
 
 	let {
@@ -35,8 +36,13 @@
 	// Phone: the layer fills the screen and closes with «Назад» (←) at the top left.
 	const CloseIcon = $derived(phone.current ? ArrowLeft : X);
 
+	const focusReturn = dialogFocus();
 	$effect(() => {
-		if (open) return untrack(() => layers.open('modal', () => (open = false)));
+		if (!open) return;
+		return untrack(() => {
+			focusReturn.opened();
+			return layers.open('modal', () => (open = false));
+		});
 	});
 
 	function close() {
@@ -54,6 +60,8 @@
 	<Dialog.Portal>
 		<Dialog.Overlay class="mw-scrim" />
 		<Dialog.Content
+			onInteractOutside={keepOpenOnToasts}
+			onCloseAutoFocus={focusReturn.closed}
 			class="mw-dialog {size} {position === 'bottom' ? 'bottom' : ''} {phone.current
 				? 'phone'
 				: ''}"

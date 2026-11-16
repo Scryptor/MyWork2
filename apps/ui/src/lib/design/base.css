@@ -23,6 +23,11 @@ body {
 	outline-offset: 2px;
 }
 
+/* <main tabindex="-1"> takes focus when the element that opened a dialog is gone: a landmark, no ring. */
+main:focus {
+	outline: none;
+}
+
 ::selection {
 	background: var(--accent-soft);
 }

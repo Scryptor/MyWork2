@@ -4,7 +4,9 @@
 	import Info from '@lucide/svelte/icons/info';
 	import Printer from '@lucide/svelte/icons/printer';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import { matchShortcut } from '#lib/design/hotkeys.svelte.js';
+	import { goto, onNavigate } from '$app/navigation';
+	import { resolve } from '$app/paths';
+	import { registerHotkey, submitShortcut } from '#lib/design/hotkeys.svelte.js';
 	import { displayName } from '#lib/format/name.js';
 	import {
 		Button,
@@ -45,6 +47,9 @@
 
 	let dialogOpen = $state(false);
 	let comment = $state('');
+	let commentUndone = $state(0);
+	let draft = $state(true);
+	let draftOpen = $state(false);
 	let confirmOpen = $state(false);
 	let removed = $state(0);
 
@@ -71,6 +76,38 @@
 		sheetOpen = false;
 		intakePhone = '';
 		problem = '';
+	}
+
+	$effect(() => {
+		if (sheetOpen) return submitShortcut(accept);
+	});
+
+	// N, as «Принять устройство» on the order list: a navigation, and the sheet opens while it goes.
+	let sheetOnNavigate = false;
+	onNavigate(() => {
+		if (!sheetOnNavigate) return;
+		sheetOnNavigate = false;
+		sheetOpen = true;
+	});
+	$effect(() =>
+		registerHotkey('N', () => {
+			sheetOnNavigate = true;
+			void goto(resolve('/design'), { replace: true });
+		})
+	);
+
+	function clearComment() {
+		const previous = comment;
+		comment = '';
+		toast.undoable('Комментарий очищен', () => {
+			comment = previous;
+			commentUndone++;
+		});
+	}
+
+	function removeDraft() {
+		draft = false;
+		draftOpen = false;
 	}
 
 	function toReady() {
@@ -106,16 +143,36 @@
 		Удалить навсегда
 	</Button>
 	<span class="muted">Удалено: {removed}</span>
+	{#if draft}
+		<Button onclick={() => (draftOpen = true)}>Черновик заказа</Button>
+	{:else}
+		<Button onclick={() => (draft = true)}>Вернуть черновик</Button>
+	{/if}
 </div>
 <Dialog
 	bind:open={dialogOpen}
 	title="Комментарий к заказу"
 	description="Виден только сотрудникам сервиса."
 >
-	<Textarea bind:value={comment} label="Комментарий" />
+	<div class="stack">
+		<Textarea bind:value={comment} label="Комментарий" />
+		<!-- «Отменить» in the toast works with the dialog open; focus comes back here. -->
+		<div class="row">
+			<Button onclick={clearComment}>Очистить</Button>
+			<span class="muted">Отменено: {commentUndone}</span>
+		</div>
+	</div>
 	{#snippet footer()}
 		<Button onclick={() => (dialogOpen = false)}>Отмена</Button>
 		<Button variant="primary" onclick={() => (dialogOpen = false)}>Сохранить</Button>
+	{/snippet}
+</Dialog>
+<!-- The opener goes with the draft: focus moves to <main>, not to nowhere. -->
+<Dialog bind:open={draftOpen} title="Черновик заказа" size="sm">
+	<p class="muted">Вымышленный черновик: телефон и неисправность ещё не заполнены.</p>
+	{#snippet footer()}
+		<Button onclick={() => (draftOpen = false)}>Закрыть</Button>
+		<Button variant="danger" icon={Trash2} onclick={removeDraft}>Удалить черновик</Button>
 	{/snippet}
 </Dialog>
 <ConfirmDialog
@@ -132,6 +189,7 @@
 	<Button onclick={() => clicks++}>Счётчик: {clicks}</Button>
 	<Button onclick={() => (sheetOpen = true)}>Открыть широкую панель</Button>
 	<span class="muted">Принято: {accepted}</span>
+	<span class="muted">Открыть с переходом по странице: <Kbd shortcut="N" /></span>
 </div>
 <SlideOver
 	bind:open={panelOpen}
@@ -154,18 +212,8 @@
 	{/snippet}
 </SlideOver>
 <Sheet bind:open={sheetOpen} title="Новый заказ">
-	<!-- Accepting is Ctrl/⌘+Enter only: plain Enter in «Телефон» must not submit the form.
-	     The shortcut belongs to the form's fields; the form itself is not a control. -->
-	<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-	<form
-		class="stack"
-		onsubmit={(e) => e.preventDefault()}
-		onkeydown={(e) => {
-			if (!matchShortcut(e, 'Mod+Enter')) return;
-			e.preventDefault();
-			accept();
-		}}
-	>
+	<!-- Accepting is Ctrl/⌘+Enter only (submitShortcut): plain Enter in «Телефон» must not submit. -->
+	<form class="stack" onsubmit={(e) => e.preventDefault()}>
 		<TextInput bind:value={intakePhone} label="Телефон" type="tel" />
 		<Textarea bind:value={problem} label="Неисправность" />
 	</form>

@@ -30,6 +30,15 @@ export const layers = {
 			stack = stack.filter((x) => x !== entry);
 		};
 	},
+	/**
+	 * An open tooltip takes Esc for itself (bits-ui prevents it): the panel under it closes as well, so one Esc
+	 * is enough. Popups and modals keep their own Esc.
+	 */
+	escapeFromTooltip(e: KeyboardEvent): void {
+		if (e.isComposing) return;
+		const top = stack[stack.length - 1];
+		if (top?.kind === 'panel') top.close();
+	},
 	get topKind(): LayerKind | null {
 		return stack[stack.length - 1]?.kind ?? null;
 	},
