@@ -5,6 +5,7 @@
 	import Fields from './sections/Fields.svelte';
 	import Layers from './sections/Layers.svelte';
 	import Navigation from './sections/Navigation.svelte';
+	import Table from './sections/Table.svelte';
 	import Tokens from './sections/Tokens.svelte';
 
 	const THEMES = [
@@ -68,6 +69,11 @@
 <section id="navigation">
 	<h2>Навигация</h2>
 	<Navigation />
+</section>
+
+<section id="table">
+	<h2>Таблица</h2>
+	<Table />
 </section>
 
 <style>

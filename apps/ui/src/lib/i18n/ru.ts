@@ -36,5 +36,16 @@ export const ru = {
 		placeholder: 'Найти заказ, клиента или команду…',
 		empty: 'Ничего не найдено'
 	},
-	shortcuts: { title: 'Клавиши' }
+	shortcuts: { title: 'Клавиши' },
+	table: {
+		columns: 'Колонки',
+		moveUp: 'Выше',
+		moveDown: 'Ниже',
+		selectAll: 'Выбрать все видимые',
+		selectRow: 'Выбрать строку',
+		selected: 'Выбрано',
+		selection: 'Выбранные строки',
+		clearSelection: 'Снять выделение',
+		empty: 'Нет записей'
+	}
 } as const;

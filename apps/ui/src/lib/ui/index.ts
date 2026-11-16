@@ -17,8 +17,10 @@ export { default as Field } from './Field.svelte';
 export { default as FilterChips } from './FilterChips.svelte';
 export { default as FlagIcons } from './FlagIcons.svelte';
 export { default as IconButton } from './IconButton.svelte';
+export { default as InfiniteList } from './InfiniteList.svelte';
 export { default as Kbd } from './Kbd.svelte';
 export { default as KeyValue } from './KeyValue.svelte';
+export { default as ListCard } from './ListCard.svelte';
 export { default as MoneyInput } from './MoneyInput.svelte';
 export { default as PhoneInput } from './PhoneInput.svelte';
 export { default as Popover } from './Popover.svelte';
@@ -46,3 +48,14 @@ export { default as BottomNav } from './shell/BottomNav.svelte';
 export type { NavItem, NavSection } from './shell/nav.js';
 export { default as SidebarNav } from './shell/SidebarNav.svelte';
 export { default as TopBar } from './shell/TopBar.svelte';
+export { default as ColumnsMenu } from './table/ColumnsMenu.svelte';
+export { default as DataTable } from './table/DataTable.svelte';
+export { default as SelectionBar } from './table/SelectionBar.svelte';
+export {
+	clampColumnWidth,
+	columnPrefsKey,
+	loadColumnPrefs,
+	saveColumnPrefs
+} from './table/column-prefs.js';
+export { rangeSelect } from './table/selection.js';
+export type { Column, ColumnPrefs, RowId, SortState } from './table/types.js';

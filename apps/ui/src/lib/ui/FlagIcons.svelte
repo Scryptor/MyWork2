@@ -8,8 +8,17 @@
 	let {
 		needCall,
 		needParts,
-		blacklisted = false
-	}: { needCall: boolean; needParts: boolean; blacklisted?: boolean } = $props();
+		blacklisted = false,
+		focusable = true
+	}: {
+		needCall: boolean;
+		needParts: boolean;
+		blacklisted?: boolean;
+		/** false inside table rows: the table keeps one Tab stop; the tooltips still show on hover. */
+		focusable?: boolean;
+	} = $props();
+
+	const tabindex = $derived(focusable ? 0 : undefined);
 </script>
 
 <span class="flags">
@@ -17,7 +26,7 @@
 		<Tooltip text={ru.flags.needCall}>
 			{#snippet children(p)}
 				<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-				<span {...p} class="flag" tabindex="0">
+				<span {...p} class="flag" {tabindex}>
 					<Phone size={14} aria-hidden="true" />
 					<VisuallyHidden>{ru.flags.needCall}</VisuallyHidden>
 				</span>
@@ -28,7 +37,7 @@
 		<Tooltip text={ru.flags.needParts}>
 			{#snippet children(p)}
 				<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-				<span {...p} class="flag" tabindex="0">
+				<span {...p} class="flag" {tabindex}>
 					<Package size={14} aria-hidden="true" />
 					<VisuallyHidden>{ru.flags.needParts}</VisuallyHidden>
 				</span>
@@ -39,7 +48,7 @@
 		<Tooltip text={ru.flags.blacklisted}>
 			{#snippet children(p)}
 				<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-				<span {...p} class="flag" tabindex="0">
+				<span {...p} class="flag" {tabindex}>
 					<span class="dot" aria-hidden="true"></span>
 					<VisuallyHidden>{ru.flags.blacklisted}</VisuallyHidden>
 				</span>
