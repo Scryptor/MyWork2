@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, apiUrl, request, setUnauthenticatedHandler } from './client.js';
+import { ApiError, apiUrl, errorMessage, request, setUnauthenticatedHandler } from './client.js';
 import { clearToken, setToken } from './session.js';
 
 function stubFetch(status: number, body: unknown) {
@@ -106,5 +106,14 @@ describe('request', () => {
 	it('falls back to a generic error for a non-JSON error body', async () => {
 		vi.stubGlobal('fetch', async () => new Response('<html>', { status: 502 }));
 		await expect(request('GET', '/x')).rejects.toMatchObject({ status: 502, body: null });
+	});
+});
+
+describe('errorMessage', () => {
+	it('is the message of an API error, a general text for anything else', () => {
+		expect(errorMessage(new ApiError(0, 'network', 'Нет связи с сервером', null))).toBe(
+			'Нет связи с сервером'
+		);
+		expect(errorMessage(new TypeError('x is undefined'))).toBe('Не удалось выполнить запрос');
 	});
 });

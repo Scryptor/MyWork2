@@ -15,7 +15,8 @@ import { request } from './client.js';
 export const listOrders = (q: OrderListQuery, signal?: AbortSignal) =>
 	request<OrderPage>('GET', '/orders', { query: q, signal });
 
-export const getOrder = (id: number) => request<Order>('GET', `/orders/${id}`);
+export const getOrder = (id: number, signal?: AbortSignal) =>
+	request<Order>('GET', `/orders/${id}`, { signal });
 
 export const updateOrder = (id: number, version: number, patch: OrderPatch) =>
 	request<Order>('PATCH', `/orders/${id}`, { query: { version }, body: patch });

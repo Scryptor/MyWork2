@@ -21,23 +21,32 @@
 	const half = $derived(Math.ceil(items.length / 2));
 </script>
 
-{#snippet link(item: NavItem)}
+{#snippet body(item: NavItem)}
 	{@const Icon = item.icon}
-	<a
-		class="item"
-		class:current={item.id === active}
-		href={item.href ?? '#'}
-		aria-current={item.id === active ? 'page' : undefined}
-		onclick={() => onnavigate?.(item.id)}
-	>
-		<span class="glyph">
-			<Icon size={20} aria-hidden="true" />
-			{#if item.count}
-				<span class="badge num" class:attention={item.attention}>{item.count}</span>
-			{/if}
-		</span>
-		<span class="label">{item.label}</span>
-	</a>
+	<span class="glyph">
+		<Icon size={20} aria-hidden="true" />
+		{#if item.count}
+			<span class="badge num" class:attention={item.attention}>{item.count}</span>
+		{/if}
+	</span>
+	<span class="label">{item.label}</span>
+{/snippet}
+
+<!-- An item without href is an action (a menu, a sheet), not a page: a button. -->
+{#snippet link(item: NavItem)}
+	{#if item.href}
+		<a
+			class="item"
+			class:current={item.id === active}
+			href={item.href}
+			aria-current={item.id === active ? 'page' : undefined}
+			onclick={() => onnavigate?.(item.id)}>{@render body(item)}</a
+		>
+	{:else}
+		<button type="button" class="item" onclick={() => onnavigate?.(item.id)}
+			>{@render body(item)}</button
+		>
+	{/if}
 {/snippet}
 
 <nav class="bottom" aria-label={ru.shell.bottomNav}>

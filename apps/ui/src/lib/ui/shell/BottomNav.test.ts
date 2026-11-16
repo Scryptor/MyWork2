@@ -44,6 +44,18 @@ describe('BottomNav', () => {
 		expect(labels()).toEqual(['Заказы', 'Клиенты', 'Принять', 'Отчёты']);
 	});
 
+	it('an item without href is a button that calls onnavigate', async () => {
+		const onnavigate = vi.fn();
+		render(BottomNav, {
+			items: [ORDERS, { id: 'more', label: 'Ещё', icon: Ellipsis }],
+			active: 'orders',
+			onnavigate
+		});
+		expect(screen.queryByRole('link', { name: 'Ещё' })).toBeNull();
+		await userEvent.click(screen.getByRole('button', { name: 'Ещё' }));
+		expect(onnavigate).toHaveBeenCalledWith('more');
+	});
+
 	it('without a main action only the items', () => {
 		render(BottomNav, { items: [ORDERS, CLIENTS], active: 'orders' });
 		expect(labels()).toEqual(['Заказы', 'Клиенты']);

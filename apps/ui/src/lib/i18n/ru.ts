@@ -35,9 +35,79 @@ export const ru = {
 	palette: {
 		title: 'Найти или выполнить',
 		placeholder: 'Найти заказ, клиента или команду…',
-		empty: 'Ничего не найдено'
+		empty: 'Ничего не найдено',
+		recent: 'Недавние',
+		orders: 'Заказы',
+		clients: 'Клиенты',
+		commands: 'Команды'
 	},
-	shortcuts: { title: 'Клавиши' },
+	app: {
+		name: 'MyWork',
+		orders: 'Заказы',
+		intake: 'Принять',
+		intakeDevice: 'Принять устройство',
+		point: 'Точка обслуживания',
+		allPoints: 'Все точки',
+		pointButton: (name: string | null) => `Точка: ${name ?? 'все'}`,
+		lightTheme: 'Светлая тема',
+		darkTheme: 'Тёмная тема',
+		theme: 'Тема',
+		themes: { system: 'Как в системе', light: 'Светлая', dark: 'Тёмная' },
+		themeCommand: { system: 'Тема: как в системе', light: 'Тема: светлая', dark: 'Тема: тёмная' },
+		userMenu: (name: string) => `Пользователь: ${name}`,
+		changePassword: 'Сменить пароль',
+		logout: 'Выйти',
+		attention: 'Требуют внимания',
+		attentionItems: {
+			call: 'Позвонить',
+			parts: 'Заказать запчасть',
+			longDiagnostics: 'Долгая диагностика',
+			longReady: 'Давно готовы'
+		},
+		allClear: 'Всё в порядке ✓',
+		views: 'Мои виды',
+		undoFailed: (message: string) => `Не удалось отменить: ${message}`
+	},
+	scan: {
+		barcodeNotFound: (code: string) => `Заказ со штрихкодом ${code} не найден`,
+		numberNotFound: (id: number) => `Заказ № ${id} не найден`,
+		chooseTitle: 'Несколько заказов с этим штрихкодом',
+		chooseDescription: (code: string) => `Штрихкод ${code}. Выберите заказ`
+	},
+	auth: {
+		title: 'Вход в MyWork',
+		login: 'Логин',
+		password: 'Пароль',
+		remember: 'Запомнить на этом устройстве',
+		submit: 'Войти',
+		loginRequired: 'Введите логин',
+		passwordRequired: 'Введите пароль',
+		invalidCredentials: 'Неверный логин или пароль',
+		tooManyAttempts: (secs: number) => `Слишком много попыток. Повторите через ${secs} с`
+	},
+	password: {
+		title: 'Смена пароля',
+		current: 'Текущий пароль',
+		next: 'Новый пароль',
+		repeat: 'Повторите новый пароль',
+		submit: 'Сменить пароль',
+		required: 'Заполните поле',
+		mismatch: 'Пароли не совпадают',
+		wrongCurrent: 'Неверный текущий пароль',
+		tooShort: 'Не короче 4 символов',
+		changed: 'Пароль изменён. Войдите с новым паролем'
+	},
+	shortcuts: {
+		title: 'Клавиши',
+		general: 'Общие',
+		find: 'Найти или выполнить',
+		intake: 'Принять устройство',
+		undo: 'Отменить последнее действие',
+		help: 'Справка по клавишам',
+		close: 'Закрыть',
+		panel: 'Панель заказа',
+		neighbour: 'Соседний заказ'
+	},
 	media: {
 		photos: 'Фото устройства',
 		addPhoto: 'Добавить фото',

@@ -19,6 +19,7 @@
 		readonly = false,
 		autofocus = false,
 		inputmode,
+		autocomplete,
 		maxlength,
 		name,
 		oninput,
@@ -43,6 +44,8 @@
 		readonly?: boolean;
 		autofocus?: boolean;
 		inputmode?: HTMLInputAttributes['inputmode'];
+		/** For a password manager: `username`, `current-password`, `new-password`. */
+		autocomplete?: HTMLInputAttributes['autocomplete'];
 		maxlength?: number;
 		name?: string;
 		oninput?: (v: string) => void;
@@ -78,6 +81,7 @@
 				{disabled}
 				{autofocus}
 				{inputmode}
+				{autocomplete}
 				{maxlength}
 				{name}
 				aria-describedby={f.describedBy}

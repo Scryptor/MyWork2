@@ -27,6 +27,11 @@ export class ApiError extends Error {
 	}
 }
 
+/** Text for a toast or a form: the server's message, or a general one for anything else. */
+export function errorMessage(e: unknown): string {
+	return e instanceof ApiError && e.message ? e.message : ru.api.failed;
+}
+
 let onUnauthenticated: () => void = () => {};
 
 export function setUnauthenticatedHandler(fn: () => void): void {
