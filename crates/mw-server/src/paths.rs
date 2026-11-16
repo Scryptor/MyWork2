@@ -61,7 +61,9 @@ pub fn os_data_dir_for(os: DataDirOs, env: &dyn Fn(&str) -> Option<OsString>) ->
         }),
         DataDirOs::Other => non_empty("XDG_DATA_HOME")
             .map(PathBuf::from)
-            .filter(|path| path.is_absolute())
+            // XDG requires an absolute POSIX path (starts with `/`). `has_root` gives the
+            // same answer on Linux and keeps this OS-parameterised function host-independent.
+            .filter(|path| path.has_root())
             .or_else(|| {
                 non_empty("HOME").map(|home| PathBuf::from(home).join(".local").join("share"))
             }),

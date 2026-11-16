@@ -158,7 +158,7 @@ mod tests {
                 timezone: None
             }
             .database_url(),
-            mw_db::sqlite_url(Path::new("/d/mywork.db"))
+            mw_db::sqlite_url(&Path::new("/d").join("mywork.db"))
         );
         assert_eq!(
             redact_database_url("postgres://mw:s3cr3t@db:5432/mw"),
