@@ -47,6 +47,7 @@
 		viewToSearch,
 		withChips,
 		withoutFilter,
+		type OrderFilters,
 		type OrdersView
 	} from '#lib/orders/view.js';
 	import EmptyState from '#lib/ui/EmptyState.svelte';
@@ -181,8 +182,9 @@
 	);
 	const filtered = $derived(hasFilters(view));
 
-	async function saveView(name: string) {
-		savedViews.add(name, viewToSearch({ ...view, query: text }));
+	/** The filters come from the menu: the address may not have caught up with them yet. */
+	async function saveView(name: string, filters: OrderFilters) {
+		savedViews.add(name, viewToSearch({ ...view, query: text, filters }));
 		// Toasts wait for the dialog to go.
 		await tick();
 		toast.show({ message: t.viewSaved(name.trim()), tone: 'success' });
@@ -324,7 +326,7 @@
 		compact={phone.current}
 		filters={view.filters}
 		onapply={(filters) => change((v) => ({ ...v, filters }))}
-		onsaveview={(name) => void saveView(name)}
+		onsaveview={(name, filters) => void saveView(name, filters)}
 	/>
 {/snippet}
 

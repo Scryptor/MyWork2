@@ -261,6 +261,41 @@ test('a saved view appears in «Мои виды», opens and can be removed', as
 	expect(await page.evaluate(() => localStorage.getItem('mw.views'))).toBe('[]');
 });
 
+test('saving a view applies the filters being edited', async ({ page, request }) => {
+	const m = uniq('M');
+	const brand = uniq('B');
+	const diag = await statusId(request, 'Диагностика');
+	await createOrder(request, { model: m, brand, status_id: diag });
+	await createOrder(request, { model: m, brand: 'Apple', status_id: diag });
+	await openOrders(page);
+	await narrow(page, m);
+	await expect(rowsOf(page, m)).toHaveCount(2);
+
+	// A brand is chosen, «Применить» is not pressed: saving the view applies it.
+	await page.getByRole('button', { name: /^Фильтры/ }).click();
+	const menu = page.getByRole('dialog', { name: 'Фильтры' });
+	await menu.getByRole('combobox', { name: 'Бренд' }).fill(brand);
+	await menu.getByRole('button', { name: 'Сохранить вид…' }).click();
+	const dialog = page.getByRole('dialog', { name: 'Сохранить вид' });
+	await dialog.getByRole('textbox', { name: 'Название' }).fill('Один бренд');
+	await dialog.getByRole('button', { name: 'Сохранить' }).click();
+	await expect(dialog).toBeHidden();
+	await expect(page.getByText(`Бренд: ${brand}`, { exact: true })).toBeVisible();
+	await expect(rowsOf(page, m)).toHaveCount(1);
+
+	// The saved view brings the brand back from another view.
+	await navOf(page)
+		.getByRole('link', { name: /^Заказы/ })
+		.click();
+	await expect(page).toHaveURL(/\/orders$/);
+	await expect(page.getByText(`Бренд: ${brand}`, { exact: true })).toHaveCount(0);
+	await navOf(page).getByRole('link', { name: 'Один бренд' }).click();
+	await expect(page).toHaveURL(new RegExp(`brand=${brand}`));
+	await expect(page.getByText(`Бренд: ${brand}`, { exact: true })).toBeVisible();
+	await expect(rowsOf(page, m)).toHaveCount(1);
+	await expect(rowsOf(page, m)).toContainText(brand);
+});
+
 test.describe('on a phone', () => {
 	test.use({ viewport: { width: 390, height: 844 } });
 

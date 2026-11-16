@@ -28,7 +28,8 @@
 	}: {
 		filters: OrderFilters;
 		onapply: (f: OrderFilters) => void;
-		onsaveview: (name: string) => void;
+		/** The name and the filters of the view, as applied when «Сохранить вид…» was pressed. */
+		onsaveview: (name: string, filters: OrderFilters) => void;
 		/** An icon button (a phone, next to the list filter). */
 		compact?: boolean;
 	} = $props();
@@ -146,12 +147,17 @@
 		open = false;
 	}
 
-	// «Сохранить вид…»: a name, then the view goes to «Мои виды».
+	// «Сохранить вид…» applies what is being edited, like «Применить» (the list shows what is saved),
+	// then asks for a name; the view goes to «Мои виды» with those filters.
 	const formId = $props.id();
 	let saveOpen = $state(false);
 	let name = $state('');
 	let nameError = $state<string | undefined>();
+	let saving: OrderFilters = {};
 	async function startSave() {
+		if (hasInvalid) return;
+		saving = fromDraft(draft);
+		onapply(saving);
 		open = false;
 		await tick();
 		name = '';
@@ -167,7 +173,7 @@
 			return;
 		}
 		saveOpen = false;
-		onsaveview(name);
+		onsaveview(name, saving);
 	}
 </script>
 
