@@ -2,11 +2,13 @@
 
 Рабочее название проекта. Программа учёта заказов для ремонтной мастерской: переписывание старой Windows-программы на Rust, кроссплатформенно.
 
-**Статус:** импорт MyWork 2 готов (план 3); следующий шаг — дизайн-система (план 4).
+**Статус:** дизайн-система интерфейса готова (план 4); следующий шаг — десктоп и основные экраны (план 5).
 
 - [Спецификация](docs/superpowers/specs/2026-11-11-mywork3-crossplatform-design.md)
 - [Дорожная карта и планы](docs/superpowers/plans/README.md)
 - [Разбор старой программы](docs/legacy/mywork2-analysis.md)
+- [Репозиторий на GitHub](https://github.com/Scryptor/MyWork2) — issues и pull request'ы
+- [Спецификация интерфейса](docs/superpowers/specs/2026-11-15-ui-design-system-design.md)
 - [`legacy/`](legacy/) — исходники старой версии на C#, только для чтения
 
 ## Запуск сервера
@@ -44,6 +46,20 @@ cargo run -p mw-server -- import-legacy <папка MyWork 2> --replace
 - файлы клиентов — `<папка данных>/attachments/`.
 
 Если в MyWork 2 не было пользователей, программа остаётся в режиме без пароля на этом компьютере.
+
+## Интерфейс
+
+Нужен Node ≥ 22.17.
+
+```bash
+cd apps/ui
+npm ci
+npx playwright install chromium webkit   # один раз, для сквозных тестов
+npm run dev                              # http://localhost:5173/design
+```
+
+- `npm run verify` — svelte-check, Prettier, ESLint, Vitest, сборка и проверка лицензий;
+- `npm run test:e2e` — сквозные тесты Playwright (Chromium и WebKit).
 
 ## Лицензия
 
