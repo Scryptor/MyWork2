@@ -92,6 +92,10 @@
 	--control-md: 2.125rem;
 	--control-lg: 2.5rem;
 	--row-height: 2.5rem;
+	--topbar-height: 3rem;
+	--sidebar-width: 14.5rem;
+	--rail-width: 3.5rem;
+	--bottom-nav-height: 3.5rem;
 	--card-min-height: 3rem;
 	--radius-xs: 4px;
 	--radius-sm: 6px;

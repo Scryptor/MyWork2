@@ -25,5 +25,16 @@ export const ru = {
 	},
 	save: { saving: 'Сохраняю…', saved: 'Сохранено', failed: 'Не сохранено' },
 	panel: { prev: 'Предыдущая запись', next: 'Следующая запись' },
-	toast: { region: 'Уведомления' }
+	toast: { region: 'Уведомления' },
+	shell: {
+		nav: 'Разделы',
+		bottomNav: 'Основная навигация',
+		attention: 'Требует внимания'
+	},
+	palette: {
+		title: 'Найти или выполнить',
+		placeholder: 'Найти заказ, клиента или команду…',
+		empty: 'Ничего не найдено'
+	},
+	shortcuts: { title: 'Клавиши' }
 } as const;

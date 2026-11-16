@@ -4,6 +4,7 @@
 	import Basics from './sections/Basics.svelte';
 	import Fields from './sections/Fields.svelte';
 	import Layers from './sections/Layers.svelte';
+	import Navigation from './sections/Navigation.svelte';
 	import Tokens from './sections/Tokens.svelte';
 
 	const THEMES = [
@@ -62,6 +63,11 @@
 <section id="layers">
 	<h2>Слои</h2>
 	<Layers />
+</section>
+
+<section id="navigation">
+	<h2>Навигация</h2>
+	<Navigation />
 </section>
 
 <style>

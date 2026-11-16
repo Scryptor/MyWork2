@@ -92,10 +92,10 @@
 		gap: var(--space-2);
 		max-width: calc(100vw - 2 * var(--space-4));
 	}
-	/* Phone: centred above the bottom navigation (3.5rem high). */
+	/* Phone: centred above the bottom navigation (--bottom-nav-height). */
 	.toaster.phone {
 		left: 50%;
-		bottom: calc(3.5rem + var(--space-3) + env(safe-area-inset-bottom, 0px));
+		bottom: calc(var(--bottom-nav-height) + var(--space-3) + env(safe-area-inset-bottom, 0px));
 		transform: translateX(-50%);
 		align-items: center;
 		width: calc(100vw - 2 * var(--space-4));
