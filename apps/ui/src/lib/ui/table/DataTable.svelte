@@ -43,7 +43,7 @@
 		onsortchange?: (s: SortState) => void;
 		selectable?: boolean;
 		selected?: Set<RowId>;
-		/** The row under the keyboard cursor, the one open in a panel. */
+		/** The row under the keyboard cursor, the one open in a panel (`aria-current`, not a selection). */
 		activeId?: RowId | null;
 		onopen?: (r: Row) => void;
 		loading?: boolean;
@@ -360,6 +360,7 @@
 		role="grid"
 		tabindex="0"
 		aria-label={ariaLabel}
+		aria-multiselectable={selectable ? 'true' : undefined}
 		aria-rowcount={rows.length + 1}
 		aria-busy={loading ? 'true' : undefined}
 		aria-activedescendant={activeRendered ? rowDomId(activeIndex) : undefined}
@@ -428,12 +429,14 @@
 						{@const id = rowId(row)}
 						{@const active = id === activeId}
 						{@const flash = flashing.get(id)}
+						<!-- aria-current: the cursor row; aria-selected: the checked rows (selectable tables only). -->
 						<div
 							id={rowDomId(item.index)}
 							class={['row', rowClass?.(row), { active, checked: selected.has(id) }]}
 							role="row"
 							aria-rowindex={item.index + 2}
-							aria-selected={active}
+							aria-current={active ? 'true' : undefined}
+							aria-selected={selectable ? selected.has(id) : undefined}
 							data-index={item.index}
 							data-flash={flash === undefined ? undefined : flash % 2 ? 'a' : 'b'}
 							style:height="{item.size}px"

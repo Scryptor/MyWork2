@@ -51,15 +51,18 @@ test.describe('table', () => {
 		expect(await grid.getByRole('row').count()).toBeLessThan(100);
 	});
 
-	test('a click on a cell makes the row active and opens it', async ({ page }) => {
+	test('a click on a cell makes the row current (not selected) and opens it', async ({ page }) => {
+		const grid = gridOf(page);
 		const row = rowOf(page, NEWEST - 1);
 		await row.getByRole('gridcell').nth(3).click();
-		await expect(row).toHaveAttribute('aria-selected', 'true');
-		await expect(rowOf(page, NEWEST)).toHaveAttribute('aria-selected', 'false');
+		await expect(row).toHaveAttribute('aria-current', 'true');
+		await expect(row).toHaveAttribute('aria-selected', 'false');
+		await expect(rowOf(page, NEWEST)).not.toHaveAttribute('aria-current');
+		await expect(grid.locator('[role="row"][aria-current="true"]')).toHaveCount(1);
 		await expect(sectionOf(page).getByText(`Открыт № ${NEWEST - 1}`)).toBeVisible();
-		await expect(gridOf(page)).toBeFocused();
+		await expect(grid).toBeFocused();
 		const id = await row.getAttribute('id');
-		await expect(gridOf(page)).toHaveAttribute('aria-activedescendant', id ?? '');
+		await expect(grid).toHaveAttribute('aria-activedescendant', id ?? '');
 	});
 
 	test('↓ ↓ Enter opens the order two rows below and keeps the active row in view', async ({
@@ -75,21 +78,22 @@ test.describe('table', () => {
 		await page.keyboard.press('Enter');
 		await expect(sectionOf(page).getByText(`Открыт № ${NEWEST - 2}`)).toBeVisible();
 		const active = rowOf(page, NEWEST - 2);
-		await expect(active).toHaveAttribute('aria-selected', 'true');
+		await expect(active).toHaveAttribute('aria-current', 'true');
 		await expect(active).toBeInViewport();
 
 		for (let i = 0; i < 3; i++) await page.keyboard.press('PageDown');
-		const deep = grid.locator('[role="row"][aria-selected="true"]');
+		const deep = grid.locator('[role="row"][aria-current="true"]');
 		await expect(deep).toBeInViewport();
 		const deepNumber = Number(await deep.getByRole('gridcell').nth(1).innerText());
 		expect(deepNumber).toBeLessThan(NEWEST - 20);
 
 		await page.keyboard.press('Home');
-		await expect(rowOf(page, NEWEST)).toHaveAttribute('aria-selected', 'true');
+		await expect(rowOf(page, NEWEST)).toHaveAttribute('aria-current', 'true');
 		await expect(rowOf(page, NEWEST)).toBeInViewport();
 
 		await page.keyboard.press('ArrowUp');
-		await expect(rowOf(page, NEWEST)).toHaveAttribute('aria-selected', 'true');
+		await expect(rowOf(page, NEWEST)).toHaveAttribute('aria-current', 'true');
+		await expect(grid.locator('[role="row"][aria-selected="true"]')).toHaveCount(0);
 	});
 
 	test('Shift+click selects a range, the selection bar counts it and clears it', async ({
@@ -98,36 +102,47 @@ test.describe('table', () => {
 		const section = sectionOf(page);
 		const grid = gridOf(page);
 		const checked = grid.getByRole('checkbox', { name: 'Выбрать строку', checked: true });
+		const selectedRows = grid.locator('[role="row"][aria-selected="true"]');
+		await expect(grid).toHaveAttribute('aria-multiselectable', 'true');
 
 		await rowOf(page, NEWEST).getByRole('checkbox').click();
 		await expect(section.getByText('Выбрано 1')).toBeVisible();
+		await expect(rowOf(page, NEWEST)).toHaveAttribute('aria-selected', 'true');
 		await rowOf(page, NEWEST - 3)
 			.getByRole('checkbox')
 			.click({ modifiers: ['Shift'] });
 		await expect(section.getByText('Выбрано 4')).toBeVisible();
 		await expect(checked).toHaveCount(4);
+		await expect(selectedRows).toHaveCount(4);
 
 		await section.getByRole('button', { name: 'Снять выделение' }).click();
 		await expect(section.getByText(/^Выбрано/)).toHaveCount(0);
 		await expect(checked).toHaveCount(0);
+		await expect(selectedRows).toHaveCount(0);
 
 		// Shift+click on a row ranges from the row opened last.
 		await cellOf(page, NEWEST - 1).click();
 		await cellOf(page, NEWEST - 5).click({ modifiers: ['Shift'] });
 		await expect(section.getByText('Выбрано 5')).toBeVisible();
+		await expect(selectedRows).toHaveCount(5);
 		await expect(section.getByText(`Открыт № ${NEWEST - 1}`)).toBeVisible();
+		await expect(rowOf(page, NEWEST - 1)).toHaveAttribute('aria-current', 'true');
 	});
 
 	test('Space selects the active row, the header checkbox selects all loaded rows', async ({
 		page
 	}) => {
 		const section = sectionOf(page);
+		const row = rowOf(page, NEWEST - 2);
 		await cellOf(page, NEWEST - 2).click();
 		await page.keyboard.press('Space');
 		await expect(section.getByText('Выбрано 1')).toBeVisible();
-		await expect(rowOf(page, NEWEST - 2).getByRole('checkbox')).toBeChecked();
+		await expect(row.getByRole('checkbox')).toBeChecked();
+		await expect(row).toHaveAttribute('aria-selected', 'true');
+		await expect(row).toHaveAttribute('aria-current', 'true');
 		await page.keyboard.press('Space');
 		await expect(section.getByText(/^Выбрано/)).toHaveCount(0);
+		await expect(row).toHaveAttribute('aria-selected', 'false');
 
 		const all = gridOf(page).getByRole('checkbox', { name: 'Выбрать все видимые' });
 		await all.click();
@@ -136,19 +151,24 @@ test.describe('table', () => {
 		await expect(section.getByText(/^Выбрано/)).toHaveCount(0);
 	});
 
-	test('a header click sorts descending, a second click ascending', async ({ page }) => {
+	test('sorted by «Принят», newest first; a header click toggles the order', async ({ page }) => {
 		const number = headerOf(page, '№');
 		const received = headerOf(page, 'Принят');
-		await expect(number).toHaveAttribute('aria-sort', 'descending');
-		await expect(received).not.toHaveAttribute('aria-sort');
-
-		await received.getByRole('button').click();
 		await expect(received).toHaveAttribute('aria-sort', 'descending');
 		await expect(number).not.toHaveAttribute('aria-sort');
 
 		await received.getByRole('button').click();
 		await expect(received).toHaveAttribute('aria-sort', 'ascending');
 		await expect(cellOf(page, OLDEST)).toBeVisible();
+
+		await received.getByRole('button').click();
+		await expect(received).toHaveAttribute('aria-sort', 'descending');
+		await expect(cellOf(page, NEWEST)).toBeVisible();
+
+		// Another column starts newest first too.
+		await number.getByRole('button').click();
+		await expect(number).toHaveAttribute('aria-sort', 'descending');
+		await expect(received).not.toHaveAttribute('aria-sort');
 	});
 
 	test('a list sorted anew asks for its next page again', async ({ page }) => {

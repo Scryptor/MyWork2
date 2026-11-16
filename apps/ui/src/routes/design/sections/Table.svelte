@@ -84,7 +84,8 @@
 		return keyed.map((x) => x.o);
 	}
 
-	let sort = $state<SortState>({ columnId: 'id', descending: true });
+	// Spec 6.1: sorted by «Принят», newest first.
+	let sort = $state<SortState>({ columnId: 'received', descending: true });
 	let loaded = $state(0);
 	let loading = $state(false);
 	let selected = $state(new Set<RowId>());
