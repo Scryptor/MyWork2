@@ -12,7 +12,7 @@ use serde_json::json;
 
 use super::types::warranty_columns;
 use crate::clients::{find_live, insert_client};
-use crate::search_index::order_search_text;
+use crate::search_index::{order_search_text, set_order_keys};
 use crate::{Actor, ClientRef, Core, CoreError, NewAuditEntry, NewOrder, Order, write_audit};
 
 const ENTITY: &str = "заказ";
@@ -163,6 +163,11 @@ impl Core {
             deleted_at: Set(None),
             version: Set(1),
             search_text: Set(String::new()),
+            status_changed_at: Set(None),
+            device_type_key: Set(String::new()),
+            brand_key: Set(String::new()),
+            model_key: Set(String::new()),
+            master_key: Set(String::new()),
         }
         .insert(&tx)
         .await?;
@@ -173,10 +178,15 @@ impl Core {
         let mut model = inserted;
         model.barcode = barcode;
         model.search_text = order_search_text(&model);
+        set_order_keys(&mut model);
         order::ActiveModel {
             id: Set(model.id),
             barcode: Set(model.barcode.clone()),
             search_text: Set(model.search_text.clone()),
+            device_type_key: Set(model.device_type_key.clone()),
+            brand_key: Set(model.brand_key.clone()),
+            model_key: Set(model.model_key.clone()),
+            master_key: Set(model.master_key.clone()),
             ..Default::default()
         }
         .update(&tx)

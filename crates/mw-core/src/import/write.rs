@@ -26,7 +26,9 @@ use super::{
 use crate::auth::PasswordScheme;
 use crate::clients::validate_client;
 use crate::orders::warranty_columns;
-use crate::search_index::{SEARCH_INDEX_VERSION, client_search_text, order_search_text};
+use crate::search_index::{
+    SEARCH_INDEX_VERSION, client_search_text, order_search_text, set_order_keys,
+};
 use crate::settings::{self, AppSettings, put};
 use crate::{Actor, Core, CoreError};
 
@@ -443,8 +445,14 @@ async fn write_orders(
             deleted_at: o.deleted_at,
             version: 1,
             search_text: String::new(),
+            status_changed_at: None,
+            device_type_key: String::new(),
+            brand_key: String::new(),
+            model_key: String::new(),
+            master_key: String::new(),
         };
         m.search_text = order_search_text(&m);
+        set_order_keys(&mut m);
         orders.push(order::ActiveModel::from(m).reset_all());
         for (i, (number, description)) in o.tracking.iter().enumerate() {
             tracking.push(order_tracking::ActiveModel {
@@ -685,6 +693,7 @@ impl Core {
             details: Set(Some(json!({ "import_id": import_id }).to_string())),
         });
         insert_chunked::<audit_log::Entity>(tx, entries).await?;
+        mw_db::backfill::status_changed_at(tx).await?;
 
         let rows = b
             .legacy_rows

@@ -6,7 +6,7 @@ use mw_db::ids::{IdTable, max_id, set_next_id};
 use mw_domain::barcode::{normalize_scanned, order_barcode};
 use mw_domain::money::Money;
 use mw_domain::permission::Permission;
-use mw_domain::search::{like_contains, search_tokens};
+use mw_domain::search::{like_contains, normalize_search, search_tokens};
 use mw_domain::status::StatusKind;
 use mw_domain::validation::FieldError;
 use sea_orm::sea_query::{
@@ -52,6 +52,22 @@ pub struct OrderFilter {
     pub overdue_diagnostics: bool,
     /// Показывать и удалённые (нужно право `orders_delete`).
     pub include_deleted: bool,
+    /// Тип устройства; сравнение по ключу (без учёта регистра).
+    pub device_type: Option<String>,
+    /// Бренд; сравнение по ключу.
+    pub brand: Option<String>,
+    /// Мастер; сравнение по ключу.
+    pub master: Option<String>,
+    /// Принят не раньше (включительно).
+    pub received_from: Option<NaiveDateTime>,
+    /// Принят не позже (включительно).
+    pub received_to: Option<NaiveDateTime>,
+    /// Выдан не раньше (включительно).
+    pub issued_from: Option<NaiveDateTime>,
+    /// Выдан не позже (включительно).
+    pub issued_to: Option<NaiveDateTime>,
+    /// «Давно готовы»: вид статуса `ready` дольше `ready_stale_days` суток.
+    pub stale_ready: bool,
 }
 
 /// Поле, по которому сортируется список заказов.
@@ -85,7 +101,8 @@ pub enum OrderSortField {
 
 /// Порядок списка. Второй ключ всегда `id` по убыванию.
 ///
-/// Текст сортируется двоично (по кодовым точкам) на обеих СУБД; пустые `issued_at` и
+/// Тип, бренд, модель и мастер сортируются по нормализованному ключу, остальной текст — двоично
+/// (по кодовым точкам) на обеих СУБД; пустые `issued_at` и
 /// `final_price` всегда в конце, при любом направлении.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OrderSort {
@@ -220,7 +237,7 @@ impl From<Row> for OrderListItem {
     }
 }
 
-fn o(c: order::Column) -> Expr {
+pub(super) fn o(c: order::Column) -> Expr {
     Expr::col((order::Entity, c))
 }
 
@@ -228,11 +245,11 @@ fn cl(c: client::Column) -> Expr {
     Expr::col((client::Entity, c))
 }
 
-fn st(c: status::Column) -> Expr {
+pub(super) fn st(c: status::Column) -> Expr {
     Expr::col((status::Entity, c))
 }
 
-fn contains(col: Expr, pattern: &str) -> SimpleExpr {
+pub(super) fn contains(col: Expr, pattern: &str) -> SimpleExpr {
     col.like(LikeExpr::new(pattern).escape('\\'))
 }
 
@@ -263,16 +280,38 @@ fn sort_key(
         ReceivedAt => (o(order::Column::ReceivedAt), NullOrdering::Last),
         IssuedAt => (o(order::Column::IssuedAt), NullOrdering::Last),
         ClientName => text(cl(client::Column::SearchText)),
-        DeviceType => text(o(order::Column::DeviceType)),
-        Brand => text(o(order::Column::Brand)),
-        Model => text(o(order::Column::Model)),
+        DeviceType => text(o(order::Column::DeviceTypeKey)),
+        Brand => text(o(order::Column::BrandKey)),
+        Model => text(o(order::Column::ModelKey)),
         Status => (st(status::Column::SortOrder), NullOrdering::Last),
-        Master => text(o(order::Column::Master)),
+        Master => text(o(order::Column::MasterKey)),
         FinalPrice => (o(order::Column::FinalPrice), NullOrdering::Last),
     }
 }
 
 impl Core {
+    /// Диагностика дольше `diagnostics_overdue_days` суток (для списка и сводки).
+    pub(super) fn overdue_diagnostics_cond(&self) -> SimpleExpr {
+        let days = i64::from(self.settings().diagnostics_overdue_days);
+        let cutoff = self.now() - Duration::days(days);
+        st(status::Column::Kind)
+            .eq(StatusKind::Diagnostics.as_str())
+            .and(o(order::Column::ReceivedAt).lt(cutoff))
+    }
+
+    /// «Давно готов»: вид `ready`, последняя смена статуса (или приём) старше `ready_stale_days`.
+    pub(super) fn stale_ready_cond(&self) -> SimpleExpr {
+        let days = i64::from(self.settings().ready_stale_days);
+        let cutoff = self.now() - Duration::days(days);
+        st(status::Column::Kind).eq(StatusKind::Ready.as_str()).and(
+            Func::coalesce([
+                SimpleExpr::from(o(order::Column::StatusChangedAt)),
+                SimpleExpr::from(o(order::Column::ReceivedAt)),
+            ])
+            .lt(cutoff),
+        )
+    }
+
     async fn select_items(&self, mut q: SelectStatement) -> Result<Vec<OrderListItem>, CoreError> {
         let backend = self.db.get_database_backend();
         q.expr_as(o(order::Column::Id), "id")
@@ -357,11 +396,31 @@ impl Core {
             IssuedFilter::Issued => cond = cond.add(st(status::Column::Kind).eq(issued)),
         }
         if filter.overdue_diagnostics {
-            let days = i64::from(self.settings().diagnostics_overdue_days);
-            let cutoff = self.now() - Duration::days(days);
-            cond = cond
-                .add(st(status::Column::Kind).eq(StatusKind::Diagnostics.as_str()))
-                .add(o(order::Column::ReceivedAt).lt(cutoff));
+            cond = cond.add(self.overdue_diagnostics_cond());
+        }
+        if filter.stale_ready {
+            cond = cond.add(self.stale_ready_cond());
+        }
+        for (value, column) in [
+            (&filter.device_type, order::Column::DeviceTypeKey),
+            (&filter.brand, order::Column::BrandKey),
+            (&filter.master, order::Column::MasterKey),
+        ] {
+            if let Some(v) = value {
+                cond = cond.add(o(column).eq(normalize_search(v)));
+            }
+        }
+        if let Some(t) = filter.received_from {
+            cond = cond.add(o(order::Column::ReceivedAt).gte(t));
+        }
+        if let Some(t) = filter.received_to {
+            cond = cond.add(o(order::Column::ReceivedAt).lte(t));
+        }
+        if let Some(t) = filter.issued_from {
+            cond = cond.add(o(order::Column::IssuedAt).gte(t));
+        }
+        if let Some(t) = filter.issued_to {
+            cond = cond.add(o(order::Column::IssuedAt).lte(t));
         }
 
         let mut count = base(cond.clone());

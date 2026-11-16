@@ -12,7 +12,7 @@ use serde_json::{Map, Value, json};
 
 use super::types::{OrderPatch, warranty_columns};
 use crate::clients::find_live;
-use crate::search_index::order_search_text;
+use crate::search_index::{order_search_text, set_order_keys};
 use crate::{Actor, Core, CoreError, NewAuditEntry, Order, write_audit};
 
 const ENTITY: &str = "заказ";
@@ -261,6 +261,7 @@ impl Core {
             }
         }
         m.search_text = order_search_text(&m);
+        set_order_keys(&mut m);
 
         let res = order::Entity::update_many()
             .col_expr(order::Column::ClientId, Expr::value(m.client_id))
@@ -322,6 +323,13 @@ impl Core {
                 order::Column::SearchText,
                 Expr::value(m.search_text.clone()),
             )
+            .col_expr(
+                order::Column::DeviceTypeKey,
+                Expr::value(m.device_type_key.clone()),
+            )
+            .col_expr(order::Column::BrandKey, Expr::value(m.brand_key.clone()))
+            .col_expr(order::Column::ModelKey, Expr::value(m.model_key.clone()))
+            .col_expr(order::Column::MasterKey, Expr::value(m.master_key.clone()))
             .col_expr(order::Column::UpdatedAt, Expr::value(now))
             .col_expr(
                 order::Column::Version,
@@ -500,6 +508,7 @@ impl Core {
         let res = order::Entity::update_many()
             .col_expr(order::Column::StatusId, Expr::value(new_status.id))
             .col_expr(order::Column::IssuedAt, Expr::value(issued_at))
+            .col_expr(order::Column::StatusChangedAt, Expr::value(Some(now)))
             .col_expr(order::Column::UpdatedAt, Expr::value(now))
             .col_expr(
                 order::Column::Version,

@@ -40,6 +40,11 @@ pub struct Model {
     pub deleted_at: Option<DateTime>,
     pub version: i64,
     pub search_text: String,
+    pub status_changed_at: Option<DateTime>,
+    pub device_type_key: String,
+    pub brand_key: String,
+    pub model_key: String,
+    pub master_key: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

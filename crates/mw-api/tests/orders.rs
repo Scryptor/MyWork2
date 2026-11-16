@@ -271,3 +271,78 @@ async fn next_order_number() {
         );
     }
 }
+
+#[tokio::test]
+async fn summary_values_and_new_filters() {
+    for t in apis(Listen::Network).await {
+        let token = t.admin_token().await;
+        let a = create_order(
+            &t,
+            &token,
+            new_order("Пётр Иванов", "+7 921 123-45-67", "Samsung", "A52"),
+        )
+        .await["id"]
+            .as_i64()
+            .unwrap();
+        create_order(
+            &t,
+            &token,
+            new_order("Анна Ким", "8 911 000-00-00", "samsung", "A53"),
+        )
+        .await;
+        let s = t.get("/api/v1/orders/summary", Some(&token)).await;
+        assert_eq!(s.status, 200, "{}", t.label);
+        assert_eq!(s.body["by_status"][0]["count"], json!(2));
+        assert_eq!(
+            (
+                &s.body["need_call"],
+                &s.body["need_parts"],
+                &s.body["stale_ready"]
+            ),
+            (&json!(0), &json!(0), &json!(0))
+        );
+        let s = t
+            .get("/api/v1/orders/summary?service_point_id=999", Some(&token))
+            .await;
+        assert_eq!(s.body["by_status"], json!([]));
+
+        let v = t
+            .get("/api/v1/orders/values?field=brand&query=sam", Some(&token))
+            .await;
+        assert_eq!(
+            (v.status, &v.body),
+            (200, &json!(["Samsung"])),
+            "{}",
+            t.label
+        );
+        let v = t
+            .get(
+                "/api/v1/orders/values?field=model&brand=SAMSUNG",
+                Some(&token),
+            )
+            .await;
+        assert_eq!(v.body.as_array().unwrap().len(), 2);
+        let bad = t
+            .get("/api/v1/orders/values?field=color", Some(&token))
+            .await;
+        assert_eq!(
+            (bad.status, &bad.body["code"]),
+            (400, &json!("bad_request"))
+        );
+
+        let list = t
+            .get(
+                "/api/v1/orders?brand=SAMSUNG&stale_ready=false",
+                Some(&token),
+            )
+            .await;
+        assert_eq!(ids(&list.body).len(), 2);
+        let list = t
+            .get(
+                "/api/v1/orders?received_from=2026-11-11T09:00:00&received_to=2026-11-11T09:00:00",
+                Some(&token),
+            )
+            .await;
+        assert!(ids(&list.body).contains(&a), "{}", t.label);
+    }
+}

@@ -1,5 +1,6 @@
 //! Доступ к БД MyWork2: схема, подключение, нумерация. Единственное место, где код говорит с СУБД.
 
+pub mod backfill;
 pub mod backup;
 pub mod connect;
 pub mod entity;

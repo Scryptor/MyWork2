@@ -2,12 +2,13 @@
 
 use axum::extract::State;
 use axum::http::StatusCode;
-use mw_core::{NewOrder, Order, OrderListItem, OrderPatch};
+use mw_core::{NewOrder, Order, OrderListItem, OrderPatch, OrderSummary};
 
 use crate::DEFAULT_PAGE_LIMIT;
 use crate::auth::CurrentActor;
 use crate::dto::{
-    BarcodeQuery, NextOrderNumber, OrderListQuery, OrderPage, StatusChange, VersionParam,
+    BarcodeQuery, NextOrderNumber, OrderListQuery, OrderPage, OrderSummaryQuery, OrderValuesQuery,
+    StatusChange, VersionParam,
 };
 use crate::error::ApiError;
 use crate::extract::{Json, Path, Query};
@@ -36,6 +37,52 @@ pub(super) async fn list_orders(
         .list_orders(&actor, &filter, sort, limit, offset)
         .await?;
     Ok(Json(page.into()))
+}
+
+/// Сводка: заказы по статусам и сколько требуют внимания (достаточно войти).
+#[utoipa::path(
+    get,
+    path = "/api/v1/orders/summary",
+    tag = "Заказы",
+    security(("bearer" = [])),
+    params(OrderSummaryQuery),
+    responses((status = 200, description = "Сводка по заказам", body = OrderSummary))
+)]
+pub(super) async fn order_summary(
+    State(state): State<AppState>,
+    CurrentActor(actor): CurrentActor,
+    Query(q): Query<OrderSummaryQuery>,
+) -> Result<Json<OrderSummary>, ApiError> {
+    Ok(Json(
+        state.core.order_summary(&actor, q.service_point_id).await?,
+    ))
+}
+
+/// Подсказки значений поля заказа: самые частые, не больше 20 (достаточно войти).
+#[utoipa::path(
+    get,
+    path = "/api/v1/orders/values",
+    tag = "Заказы",
+    security(("bearer" = [])),
+    params(OrderValuesQuery),
+    responses((status = 200, description = "Значения", body = Vec<String>))
+)]
+pub(super) async fn order_values(
+    State(state): State<AppState>,
+    CurrentActor(actor): CurrentActor,
+    Query(q): Query<OrderValuesQuery>,
+) -> Result<Json<Vec<String>>, ApiError> {
+    Ok(Json(
+        state
+            .core
+            .order_values(
+                &actor,
+                q.field,
+                q.query.as_deref().unwrap_or_default(),
+                q.brand.as_deref(),
+            )
+            .await?,
+    ))
 }
 
 /// Заказы по штрихкоду со сканера (достаточно войти).

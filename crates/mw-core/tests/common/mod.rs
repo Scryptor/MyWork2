@@ -701,3 +701,56 @@ pub async fn service_point_id_by_name(core: &Core, name: &str) -> i64 {
         .unwrap_or_else(|| panic!("нет точки {name}"))
         .id
 }
+
+/// Заказ нового клиента с правкой полей перед созданием.
+pub async fn create_order_with(t: &TestCore, tweak: impl FnOnce(&mut NewOrder)) -> mw_core::Order {
+    let mut n = sample_new_order();
+    tweak(&mut n);
+    t.core.create_order(&admin(), n).await.unwrap()
+}
+
+/// Номера заказов (без удалённых) в порядке сортировки.
+pub async fn list_sorted(
+    t: &TestCore,
+    field: mw_core::OrderSortField,
+    descending: bool,
+) -> Vec<i64> {
+    ids(t
+        .core
+        .list_orders(
+            &admin(),
+            &OrderFilter::default(),
+            OrderSort { field, descending },
+            50,
+            0,
+        )
+        .await
+        .unwrap()
+        .items)
+}
+
+pub fn sorted(mut v: Vec<i64>) -> Vec<i64> {
+    v.sort_unstable();
+    v
+}
+
+/// Записывает колонки ключей и `status_changed_at` в обход `Core`.
+pub async fn set_order_keys_directly(
+    t: &TestCore,
+    id: i64,
+    status_changed_at: Option<chrono::NaiveDateTime>,
+    keys: &str,
+) {
+    order::ActiveModel {
+        id: Set(id),
+        status_changed_at: Set(status_changed_at),
+        device_type_key: Set(keys.to_owned()),
+        brand_key: Set(keys.to_owned()),
+        model_key: Set(keys.to_owned()),
+        master_key: Set(keys.to_owned()),
+        ..Default::default()
+    }
+    .update(t.core.db())
+    .await
+    .unwrap();
+}

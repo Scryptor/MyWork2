@@ -2,6 +2,7 @@
 
 use std::fmt;
 
+use chrono::NaiveDateTime;
 use mw_core::User;
 use mw_domain::permission::PermissionSet;
 use serde::{Deserialize, Serialize};
@@ -207,6 +208,22 @@ pub struct OrderListQuery {
     pub overdue_diagnostics: Option<bool>,
     /// Показывать и удалённые (право `orders_delete`); по умолчанию `false`.
     pub include_deleted: Option<bool>,
+    /// Только этот тип устройства (без учёта регистра).
+    pub device_type: Option<String>,
+    /// Только этот бренд (без учёта регистра).
+    pub brand: Option<String>,
+    /// Только этот мастер (без учёта регистра).
+    pub master: Option<String>,
+    /// Принят не раньше (включительно), местное время без смещения.
+    pub received_from: Option<NaiveDateTime>,
+    /// Принят не позже (включительно), местное время без смещения.
+    pub received_to: Option<NaiveDateTime>,
+    /// Выдан не раньше (включительно), местное время без смещения.
+    pub issued_from: Option<NaiveDateTime>,
+    /// Выдан не позже (включительно), местное время без смещения.
+    pub issued_to: Option<NaiveDateTime>,
+    /// Только «давно готовые»; по умолчанию `false`.
+    pub stale_ready: Option<bool>,
     /// Поле сортировки; по умолчанию дата приёма, новые сверху.
     pub sort: Option<mw_core::OrderSortField>,
     /// Обратный порядок; действует только вместе с `sort`, по умолчанию `false`.
@@ -237,9 +254,41 @@ impl OrderListQuery {
             issued: self.issued.unwrap_or_default(),
             overdue_diagnostics: self.overdue_diagnostics.unwrap_or(false),
             include_deleted: self.include_deleted.unwrap_or(false),
+            device_type: self.device_type,
+            brand: self.brand,
+            master: self.master,
+            received_from: self.received_from,
+            received_to: self.received_to,
+            issued_from: self.issued_from,
+            issued_to: self.issued_to,
+            stale_ready: self.stale_ready.unwrap_or(false),
         };
         (filter, sort)
     }
+}
+
+/// Сводка заказов.
+#[derive(Debug, Clone, Deserialize, TS, IntoParams)]
+#[serde(deny_unknown_fields)]
+#[ts(optional_fields)]
+#[into_params(parameter_in = Query)]
+pub struct OrderSummaryQuery {
+    /// Только эта точка обслуживания.
+    pub service_point_id: Option<i64>,
+}
+
+/// Подсказки значений поля заказа.
+#[derive(Debug, Clone, Deserialize, TS, IntoParams)]
+#[serde(deny_unknown_fields)]
+#[ts(optional_fields)]
+#[into_params(parameter_in = Query)]
+pub struct OrderValuesQuery {
+    /// Поле, значения которого нужны.
+    pub field: mw_core::OrderValueField,
+    /// Подстрока значения (без учёта регистра); пусто — все значения.
+    pub query: Option<String>,
+    /// Для моделей: только этого бренда.
+    pub brand: Option<String>,
 }
 
 /// Штрихкод для поиска заказа.

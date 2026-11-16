@@ -37,7 +37,7 @@ pub use import::{
 };
 pub use orders::{
     ClientRef, IssuedFilter, NewOrder, Order, OrderFilter, OrderListItem, OrderPatch, OrderSort,
-    OrderSortField,
+    OrderSortField, OrderSummary, OrderValueField, StatusCount,
 };
 pub use page::Page;
 pub use search_index::{ReindexStats, SEARCH_INDEX_VERSION};

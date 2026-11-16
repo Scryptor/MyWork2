@@ -376,3 +376,30 @@ async fn import_splits_large_order_lists_into_batches() {
         assert_eq!(t.core.import_target_state().await.unwrap().orders, 1002);
     }
 }
+
+#[tokio::test]
+async fn import_fills_status_changed_at_from_the_last_legacy_status() {
+    for t in cores().await {
+        t.core
+            .import_bundle(&admin(), sample_bundle(), ImportMode::IntoEmpty)
+            .await
+            .unwrap();
+        let changed = |id: i64| {
+            let t = &t;
+            async move {
+                mw_db::entity::order::Entity::find_by_id(id)
+                    .one(t.core.db())
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .status_changed_at
+            }
+        };
+        let expected = chrono::NaiveDate::from_ymd_opt(2015, 3, 5)
+            .unwrap()
+            .and_hms_opt(14, 20, 0)
+            .unwrap();
+        assert_eq!(changed(5).await, Some(expected), "{}", t.label);
+        assert_eq!(changed(10).await, None, "{}", t.label);
+    }
+}

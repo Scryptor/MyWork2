@@ -44,6 +44,8 @@ pub(crate) fn api_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(clients::clients_by_phone))
         .routes(routes!(clients::get_client, clients::update_client))
         .routes(routes!(orders::list_orders, orders::create_order))
+        .routes(routes!(orders::order_summary))
+        .routes(routes!(orders::order_values))
         .routes(routes!(orders::orders_by_barcode))
         .routes(routes!(orders::set_next_order_number))
         .routes(routes!(

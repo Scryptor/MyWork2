@@ -489,6 +489,11 @@ mod tests {
             deleted_at: None,
             version: 1,
             search_text: String::new(),
+            status_changed_at: None,
+            device_type_key: String::new(),
+            brand_key: String::new(),
+            model_key: String::new(),
+            master_key: String::new(),
         });
         for (text, brand) in [
             (format!("{new:?}"), "Samsung"),

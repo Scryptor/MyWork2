@@ -970,6 +970,82 @@
             }
           },
           {
+            "name": "device_type",
+            "in": "query",
+            "description": "Только этот тип устройства (без учёта регистра).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "brand",
+            "in": "query",
+            "description": "Только этот бренд (без учёта регистра).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "master",
+            "in": "query",
+            "description": "Только этот мастер (без учёта регистра).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "received_from",
+            "in": "query",
+            "description": "Принят не раньше (включительно), местное время без смещения.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "received_to",
+            "in": "query",
+            "description": "Принят не позже (включительно), местное время без смещения.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "issued_from",
+            "in": "query",
+            "description": "Выдан не раньше (включительно), местное время без смещения.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "issued_to",
+            "in": "query",
+            "description": "Выдан не позже (включительно), местное время без смещения.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "stale_ready",
+            "in": "query",
+            "description": "Только «давно готовые»; по умолчанию `false`.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "sort",
             "in": "query",
             "description": "Поле сортировки; по умолчанию дата приёма, новые сверху.",
@@ -1153,6 +1229,122 @@
         "responses": {
           "204": {
             "description": "Номер задан"
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/orders/summary": {
+      "get": {
+        "tags": [
+          "Заказы"
+        ],
+        "summary": "Сводка: заказы по статусам и сколько требуют внимания (достаточно войти).",
+        "operationId": "order_summary",
+        "parameters": [
+          {
+            "name": "service_point_id",
+            "in": "query",
+            "description": "Только эта точка обслуживания.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Сводка по заказам",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderSummary"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/orders/values": {
+      "get": {
+        "tags": [
+          "Заказы"
+        ],
+        "summary": "Подсказки значений поля заказа: самые частые, не больше 20 (достаточно войти).",
+        "operationId": "order_values",
+        "parameters": [
+          {
+            "name": "field",
+            "in": "query",
+            "description": "Поле, значения которого нужны.",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/OrderValueField"
+            }
+          },
+          {
+            "name": "query",
+            "in": "query",
+            "description": "Подстрока значения (без учёта регистра); пусто — все значения.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "brand",
+            "in": "query",
+            "description": "Для моделей: только этого бренда.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Значения",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
           },
           "default": {
             "description": "Ошибка",
@@ -2317,6 +2509,7 @@
           "currency_symbol",
           "master_percent",
           "diagnostics_overdue_days",
+          "ready_stale_days",
           "default_warranty",
           "intake_required_fields",
           "default_service_point_id",
@@ -2388,6 +2581,12 @@
             "type": "integer",
             "format": "int32",
             "description": "Процент мастера, 0–100.",
+            "minimum": 0
+          },
+          "ready_stale_days": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Через сколько суток готовый, но не выданный заказ считается «давно готовым».",
             "minimum": 0
           },
           "timezone": {
@@ -3771,6 +3970,60 @@
           "final_price"
         ]
       },
+      "OrderSummary": {
+        "type": "object",
+        "description": "Сводка по заказам для экрана списка.",
+        "required": [
+          "by_status",
+          "need_call",
+          "need_parts",
+          "overdue_diagnostics",
+          "stale_ready"
+        ],
+        "properties": {
+          "by_status": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StatusCount"
+            },
+            "description": "Неудалённые заказы по статусам; статусы без заказов не включаются."
+          },
+          "need_call": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Дальше — только заказы в сервисе (вид статуса не «выдан»): нужно позвонить.",
+            "minimum": 0
+          },
+          "need_parts": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Нужны запчасти.",
+            "minimum": 0
+          },
+          "overdue_diagnostics": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Диагностика просрочена.",
+            "minimum": 0
+          },
+          "stale_ready": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Давно готовы.",
+            "minimum": 0
+          }
+        }
+      },
+      "OrderValueField": {
+        "type": "string",
+        "description": "Поле, значения которого предлагаются в подсказках.",
+        "enum": [
+          "device_type",
+          "brand",
+          "model",
+          "master"
+        ]
+      },
       "Permission": {
         "type": "string",
         "enum": [
@@ -4022,6 +4275,12 @@
             "description": "Процент мастера, 0–100.",
             "minimum": 0
           },
+          "ready_stale_days": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Через сколько суток готовый, но не выданный заказ считается «давно готовым».",
+            "minimum": 0
+          },
           "timezone": {
             "type": "string",
             "description": "Часовой пояс предприятия (имя IANA)."
@@ -4083,6 +4342,27 @@
           }
         },
         "additionalProperties": false
+      },
+      "StatusCount": {
+        "type": "object",
+        "description": "Сколько заказов в статусе.",
+        "required": [
+          "status_id",
+          "count"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Сколько неудалённых заказов в этом статусе.",
+            "minimum": 0
+          },
+          "status_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Номер статуса."
+          }
+        }
       },
       "StatusKind": {
         "type": "string",

@@ -117,7 +117,7 @@ fn every_openapi_schema_has_a_typescript_type() {
 #[test]
 fn every_schema_reference_resolves() {
     // utoipa-axum собирает схемы из тел и ответов, но не из параметров пути и запроса:
-    // такие схемы (DictionaryKind, IssuedFilter, OrderSortField) регистрируются в #[openapi(components(schemas(…)))].
+    // такие схемы (DictionaryKind, IssuedFilter, OrderSortField, OrderValueField) регистрируются в #[openapi(components(schemas(…)))].
     let text = mw_api::openapi().to_json().unwrap();
     let api: serde_json::Value = serde_json::from_str(&text).unwrap();
     let schemas = api["components"]["schemas"].as_object().unwrap();
@@ -132,7 +132,7 @@ fn every_schema_reference_resolves() {
 
 #[test]
 fn parameters_match_their_paths() {
-    const REQUIRED_QUERY: [&str; 3] = ["version", "phone", "code"];
+    const REQUIRED_QUERY: [&str; 4] = ["version", "phone", "code", "field"];
     let api: serde_json::Value =
         serde_json::from_str(&mw_api::openapi().to_json().unwrap()).unwrap();
     for (path, item) in api["paths"].as_object().unwrap() {
@@ -174,7 +174,7 @@ fn parameters_match_their_paths() {
     }
 }
 
-/// Каждая строка «Карты API» (43, включая `openapi.json`) описана в документе OpenAPI.
+/// Каждая строка «Карты API» (45, включая `openapi.json`) описана в документе OpenAPI.
 #[test]
 fn documented_operations_match_the_api_map() {
     let api = serde_json::to_value(mw_api::openapi()).unwrap();
@@ -186,7 +186,7 @@ fn documented_operations_match_the_api_map() {
             }
         }
     }
-    assert_eq!(ops.len(), 43, "{ops:#?}");
+    assert_eq!(ops.len(), 45, "{ops:#?}");
     for expected in [
         "GET /api/v1/server-info",
         "GET /api/v1/openapi.json",
@@ -196,6 +196,8 @@ fn documented_operations_match_the_api_map() {
         "GET /api/v1/clients/by-phone",
         "POST /api/v1/orders/{id}/issue",
         "PUT /api/v1/orders/next-number",
+        "GET /api/v1/orders/summary",
+        "GET /api/v1/orders/values",
         "PUT /api/v1/users/{id}/password",
         "PATCH /api/v1/roles/{id}",
         "GET /api/v1/audit",

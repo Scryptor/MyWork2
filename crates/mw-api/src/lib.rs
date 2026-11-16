@@ -28,8 +28,8 @@ pub use contract::export_typescript;
 pub use dto::{
     AuditListQuery, AuditPage, BarcodeQuery, ChangePasswordRequest, ClientListQuery, ClientPage,
     CurrentUser, DictionaryValue, IncludeArchived, LoginRequest, LoginResponse, NewServicePoint,
-    NextOrderNumber, OrderListQuery, OrderPage, PhoneQuery, ReorderRequest, ServerInfo,
-    SetPasswordRequest, StatusChange, VersionParam,
+    NextOrderNumber, OrderListQuery, OrderPage, OrderSummaryQuery, OrderValuesQuery, PhoneQuery,
+    ReorderRequest, ServerInfo, SetPasswordRequest, StatusChange, VersionParam,
 };
 pub use error::{ErrorBody, ErrorCode, ErrorField};
 pub use state::ApiConfig;
@@ -142,7 +142,8 @@ impl Modify for CommonDoc {
 #[openapi(components(schemas(
     mw_domain::dictionary::DictionaryKind,
     mw_core::IssuedFilter,
-    mw_core::OrderSortField
+    mw_core::OrderSortField,
+    mw_core::OrderValueField
 )))]
 struct ApiDoc;
 

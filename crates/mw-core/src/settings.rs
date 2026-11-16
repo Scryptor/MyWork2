@@ -20,6 +20,8 @@ pub struct AppSettings {
     pub master_percent: u8,
     /// Через сколько суток диагностика считается просроченной.
     pub diagnostics_overdue_days: u16,
+    /// Через сколько суток готовый, но не выданный заказ считается «давно готовым».
+    pub ready_stale_days: u16,
     /// Гарантия по умолчанию — печатный текст («30 дней»).
     pub default_warranty: String,
     /// Требовать заполнения обязательных полей при приёме.
@@ -51,6 +53,7 @@ impl Default for AppSettings {
             currency_symbol: "₽".to_owned(),
             master_percent: 50,
             diagnostics_overdue_days: 4,
+            ready_stale_days: 30,
             default_warranty: "30 дней".to_owned(),
             intake_required_fields: true,
             default_service_point_id: None,
@@ -83,6 +86,10 @@ pub struct SettingsPatch {
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub diagnostics_overdue_days: Option<u16>,
+    /// Через сколько суток готовый, но не выданный заказ считается «давно готовым».
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
+    pub ready_stale_days: Option<u16>,
     /// Гарантия по умолчанию — печатный текст.
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
@@ -138,6 +145,7 @@ fn keep_differences(p: &mut SettingsPatch, c: &AppSettings) {
     keep(&mut p.currency_symbol, &c.currency_symbol);
     keep(&mut p.master_percent, &c.master_percent);
     keep(&mut p.diagnostics_overdue_days, &c.diagnostics_overdue_days);
+    keep(&mut p.ready_stale_days, &c.ready_stale_days);
     keep(&mut p.default_warranty, &c.default_warranty);
     keep(&mut p.intake_required_fields, &c.intake_required_fields);
     keep(&mut p.default_service_point_id, &c.default_service_point_id);
@@ -169,6 +177,7 @@ pub(crate) async fn load(conn: &impl ConnectionTrait) -> Result<AppSettings, Cor
         master_percent: get(&rows, "master_percent").unwrap_or(d.master_percent),
         diagnostics_overdue_days: get(&rows, "diagnostics_overdue_days")
             .unwrap_or(d.diagnostics_overdue_days),
+        ready_stale_days: get(&rows, "ready_stale_days").unwrap_or(d.ready_stale_days),
         default_warranty: get(&rows, "default_warranty").unwrap_or(d.default_warranty),
         intake_required_fields: get(&rows, "intake_required_fields")
             .unwrap_or(d.intake_required_fields),
@@ -246,6 +255,9 @@ pub(crate) fn validate(p: &SettingsPatch, point_exists: bool) -> Result<(), Core
         .is_some_and(|v| !(1..=365).contains(&v))
     {
         errors.push(FieldError::new("diagnostics_overdue_days", "out_of_range"));
+    }
+    if p.ready_stale_days.is_some_and(|v| !(1..=365).contains(&v)) {
+        errors.push(FieldError::new("ready_stale_days", "out_of_range"));
     }
     if matches!(p.default_service_point_id, Some(Some(_))) && !point_exists {
         errors.push(FieldError::new("default_service_point_id", "invalid"));
@@ -329,6 +341,14 @@ impl Core {
                 "diagnostics_overdue_days",
                 "срок диагностики",
                 v != current.diagnostics_overdue_days,
+                json!(v),
+            );
+        }
+        if let Some(v) = patch.ready_stale_days {
+            apply(
+                "ready_stale_days",
+                "срок «давно готов»",
+                v != current.ready_stale_days,
                 json!(v),
             );
         }

@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use mw_db::entity::{client, client_phone, order, setting};
 use mw_domain::permission::Permission;
-use mw_domain::search::index_text;
+use mw_domain::search::{index_text, normalize_search};
 use sea_orm::sea_query::Expr;
 use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder};
 use serde_json::{Value, json};
@@ -17,8 +17,8 @@ use crate::settings::put;
 use crate::{Actor, Core, CoreError, NewAuditEntry, write_audit};
 
 /// Версия правил построения индекса: 1 — планы 1–2 (без NFC, один телефон клиента),
-/// 2 — NFC и все телефоны клиента.
-pub const SEARCH_INDEX_VERSION: i64 = 2;
+/// 2 — NFC и все телефоны клиента, 3 — ключи сортировки и фильтров заказа.
+pub const SEARCH_INDEX_VERSION: i64 = 3;
 
 /// Ключ настройки с версией сохранённого индекса (не входит в `AppSettings`).
 const VERSION_KEY: &str = "search_index_version";
@@ -51,6 +51,14 @@ pub(crate) fn order_search_text(m: &order::Model) -> String {
     ])
 }
 
+/// Заполняет ключи сортировки и фильтров заказа (нормализованные тип, бренд, модель, мастер).
+pub(crate) fn set_order_keys(m: &mut order::Model) {
+    m.device_type_key = normalize_search(&m.device_type);
+    m.brand_key = normalize_search(&m.brand);
+    m.model_key = normalize_search(&m.model);
+    m.master_key = normalize_search(&m.master);
+}
+
 /// Пересчитывает `search_text` всех клиентов и заказов, пишет только отличающиеся строки.
 pub(crate) async fn reindex_all(conn: &impl ConnectionTrait) -> Result<ReindexStats, CoreError> {
     let mut phones: HashMap<i64, Vec<String>> = HashMap::new();
@@ -80,10 +88,19 @@ pub(crate) async fn reindex_all(conn: &impl ConnectionTrait) -> Result<ReindexSt
         }
     }
     for o in order::Entity::find().all(conn).await? {
-        let text = order_search_text(&o);
-        if text != o.search_text {
+        let mut fresh = o.clone();
+        fresh.search_text = order_search_text(&o);
+        set_order_keys(&mut fresh);
+        if fresh != o {
             order::Entity::update_many()
-                .col_expr(order::Column::SearchText, Expr::value(text))
+                .col_expr(order::Column::SearchText, Expr::value(fresh.search_text))
+                .col_expr(
+                    order::Column::DeviceTypeKey,
+                    Expr::value(fresh.device_type_key),
+                )
+                .col_expr(order::Column::BrandKey, Expr::value(fresh.brand_key))
+                .col_expr(order::Column::ModelKey, Expr::value(fresh.model_key))
+                .col_expr(order::Column::MasterKey, Expr::value(fresh.master_key))
                 .filter(order::Column::Id.eq(o.id))
                 .exec(conn)
                 .await?;

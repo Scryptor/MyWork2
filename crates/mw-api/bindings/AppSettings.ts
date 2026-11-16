@@ -18,6 +18,10 @@ master_percent: number,
  */
 diagnostics_overdue_days: number, 
 /**
+ * Через сколько суток готовый, но не выданный заказ считается «давно готовым».
+ */
+ready_stale_days: number, 
+/**
  * Гарантия по умолчанию — печатный текст («30 дней»).
  */
 default_warranty: string, 
