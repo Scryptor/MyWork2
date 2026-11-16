@@ -48,7 +48,7 @@ impl FromRequestParts<AppState> for CurrentActor {
         match bearer_token(&parts.headers)? {
             Some(token) => Ok(CurrentActor(state.core.authenticate(token).await?)),
             None => {
-                if state.config.loopback && state.core.is_open_mode().await? {
+                if state.config.loopback() && state.core.is_open_mode().await? {
                     Ok(CurrentActor(Actor::unrestricted(OPEN_MODE_ACTOR)))
                 } else {
                     Err(CoreError::Unauthenticated.into())

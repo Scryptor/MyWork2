@@ -42,6 +42,7 @@ axum = { version = "0.8", features = ["macros"] }
 axum-extra = { version = "0.12", default-features = false, features = ["query"] }
 utoipa-axum = "0.3"
 tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6", default-features = false, features = ["fs"] }
 http-body-util = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 clap = { version = "4", features = ["derive", "env"] }

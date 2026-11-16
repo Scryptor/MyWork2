@@ -357,3 +357,38 @@ async fn warranty_text_is_kept_and_term_is_derived() -> Result<(), CoreError> {
     }
     Ok(())
 }
+
+#[tokio::test]
+async fn status_change_can_skip_the_issue_date() -> Result<(), CoreError> {
+    for t in cores().await {
+        let o = t.core.create_order(&admin(), sample_new_order()).await?;
+        let o = t
+            .core
+            .update_order(
+                &admin(),
+                o.id,
+                1,
+                OrderPatch {
+                    master: Some("Антон".into()),
+                    work_done: Some("Замена дисплея".into()),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        t.clock.advance(Duration::hours(2));
+        let issued = status_id_by_kind(&t.core, mw_domain::status::StatusKind::Issued).await;
+        let done = t
+            .core
+            .change_status_with(&admin(), o.id, o.version, issued, false)
+            .await?;
+        assert_eq!(done.status_id, issued, "{}", t.label);
+        assert_eq!(done.issued_at, None, "{}", t.label);
+        assert_eq!(
+            status_changed_at(&t.core, done.id).await,
+            Some("2026-11-11 11:00:00".to_owned()),
+            "{}",
+            t.label
+        );
+    }
+    Ok(())
+}

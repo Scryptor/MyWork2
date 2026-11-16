@@ -68,7 +68,7 @@ async fn statuses_seeded_and_last_issued_status_is_protected() -> Result<(), Cor
                     NewStatus {
                         name: " готов ".into(),
                         kind: StatusKind::Open,
-                        color: "x".into(),
+                        color: "gray".into(),
                     },
                 )
                 .await,
@@ -81,7 +81,7 @@ async fn statuses_seeded_and_last_issued_status_is_protected() -> Result<(), Cor
                     NewStatus {
                         name: "  ".into(),
                         kind: StatusKind::Open,
-                        color: "x".into(),
+                        color: "gray".into(),
                     },
                 )
                 .await,
@@ -177,7 +177,7 @@ fn new_status(name: &str) -> NewStatus {
     NewStatus {
         name: name.into(),
         kind: StatusKind::Open,
-        color: "x".into(),
+        color: "gray".into(),
     }
 }
 
@@ -575,6 +575,59 @@ async fn unchanged_names_skip_the_collision_check_for_legacy_data() -> Result<()
             )
             .await?;
         assert!(point.archived, "{}", t.label);
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn status_color_must_be_a_palette_name() -> Result<(), CoreError> {
+    use mw_db::entity::status;
+    use sea_orm::{ActiveModelTrait, Set};
+    for t in cores().await {
+        let new = |color: &str| NewStatus {
+            name: "Цветной".into(),
+            kind: StatusKind::Open,
+            color: color.into(),
+        };
+        assert_validation(
+            t.core.create_status(&admin(), new("#ff0000")).await,
+            &[("color", "invalid")],
+        );
+        let ok = t.core.create_status(&admin(), new("pink")).await?;
+        assert_eq!(ok.color, "pink", "{}", t.label);
+        assert_validation(
+            t.core
+                .update_status(
+                    &admin(),
+                    ok.id,
+                    StatusPatch {
+                        color: Some("magenta".into()),
+                        ..Default::default()
+                    },
+                )
+                .await,
+            &[("color", "invalid")],
+        );
+        status::ActiveModel {
+            id: Set(ok.id),
+            color: Set("#123456".into()),
+            ..Default::default()
+        }
+        .update(t.core.db())
+        .await
+        .unwrap();
+        let renamed = t
+            .core
+            .update_status(
+                &admin(),
+                ok.id,
+                StatusPatch {
+                    name: Some("Другой".into()),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        assert_eq!(renamed.color, "#123456", "{}", t.label);
     }
     Ok(())
 }

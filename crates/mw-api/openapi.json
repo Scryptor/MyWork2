@@ -1527,6 +1527,76 @@
         ]
       }
     },
+    "/api/v1/orders/{id}/history": {
+      "get": {
+        "tags": [
+          "Заказы"
+        ],
+        "summary": "История заказа: записи журнала, новые сверху. Права на журнал не нужно, достаточно войти.",
+        "operationId": "order_history",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер заказа",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Размер страницы, 1..=500; по умолчанию 50.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Сколько записей пропустить; по умолчанию 0.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Страница истории заказа",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditPage"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/orders/{id}/issue": {
       "post": {
         "tags": [
@@ -1627,6 +1697,74 @@
         "responses": {
           "200": {
             "description": "Заказ после смены статуса",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Order"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/orders/{id}/warranty-case": {
+      "post": {
+        "tags": [
+          "Заказы"
+        ],
+        "summary": "Приём выданного заказа по гарантии: статус «Принят по гарантии» и запись в истории.",
+        "operationId": "accept_warranty_case",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер заказа",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "description": "Версия записи, которую правит клиент.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewWarrantyCase"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Заказ после приёма по гарантии",
             "content": {
               "application/json": {
                 "schema": {
@@ -3383,6 +3521,28 @@
         },
         "additionalProperties": false
       },
+      "NewWarrantyCase": {
+        "type": "object",
+        "description": "Приём выданного заказа по гарантии.",
+        "required": [
+          "complaint"
+        ],
+        "properties": {
+          "at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Когда клиент обратился; пусто — сейчас."
+          },
+          "complaint": {
+            "type": "string",
+            "description": "Жалоба клиента; не пустая."
+          }
+        },
+        "additionalProperties": false
+      },
       "NextOrderNumber": {
         "type": "object",
         "description": "Следующий номер заказа.",
@@ -4125,7 +4285,8 @@
           "version",
           "api_version",
           "auth_required",
-          "has_users"
+          "has_users",
+          "server_time"
         ],
         "properties": {
           "api_version": {
@@ -4145,6 +4306,10 @@
           "has_users": {
             "type": "boolean",
             "description": "Есть ли в базе активные пользователи."
+          },
+          "server_time": {
+            "type": "string",
+            "description": "Текущее время предприятия (местное, без смещения), как все даты API."
           },
           "version": {
             "type": "string",
@@ -4335,6 +4500,11 @@
           "status_id"
         ],
         "properties": {
+          "stamp_issued_at": {
+            "type": "boolean",
+            "description": "Ставить ли дату выдачи при переходе в вид «выдан»; по умолчанию да.",
+            "default": true
+          },
           "status_id": {
             "type": "integer",
             "format": "int64",

@@ -23,4 +23,8 @@ auth_required: boolean,
 /**
  * Есть ли в базе активные пользователи.
  */
-has_users: boolean, };
+has_users: boolean, 
+/**
+ * Текущее время предприятия (местное, без смещения), как все даты API.
+ */
+server_time: string, };

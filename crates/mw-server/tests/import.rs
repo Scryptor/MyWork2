@@ -11,6 +11,7 @@ fn test_config(data_dir: &Path) -> Config {
         data_dir: data_dir.to_path_buf(),
         database_url: None,
         timezone: Some("UTC".into()),
+        ui_dir: None,
     }
 }
 

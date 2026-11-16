@@ -22,6 +22,8 @@ pub struct ServerInfo {
     pub auth_required: bool,
     /// Есть ли в базе активные пользователи.
     pub has_users: bool,
+    /// Текущее время предприятия (местное, без смещения), как все даты API.
+    pub server_time: String,
 }
 
 /// Вход в программу.
@@ -306,6 +308,27 @@ pub struct BarcodeQuery {
 pub struct StatusChange {
     /// Номер нового статуса.
     pub status_id: i64,
+    /// Ставить ли дату выдачи при переходе в вид «выдан»; по умолчанию да.
+    #[serde(default = "default_true")]
+    #[schema(default = true)]
+    #[ts(as = "Option<bool>", optional)]
+    pub stamp_issued_at: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+/// Страница списка: размер и смещение.
+#[derive(Debug, Clone, Default, Deserialize, TS, IntoParams)]
+#[serde(deny_unknown_fields)]
+#[ts(optional_fields)]
+#[into_params(parameter_in = Query)]
+pub struct PageQuery {
+    /// Размер страницы, 1..=500; по умолчанию 50.
+    pub limit: Option<u64>,
+    /// Сколько записей пропустить; по умолчанию 0.
+    pub offset: Option<u64>,
 }
 
 /// Следующий номер заказа.

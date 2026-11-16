@@ -8,6 +8,11 @@ pub struct FieldError {
     pub field: String,
     /// Машинный код ошибки.
     pub code: String,
+    /// Особое сообщение для человека вместо общего по коду; в API не передаётся отдельным полем.
+    #[serde(skip)]
+    #[ts(skip)]
+    #[schema(ignore)]
+    pub message: Option<&'static str>,
 }
 
 impl FieldError {
@@ -15,6 +20,19 @@ impl FieldError {
         Self {
             field: field.into(),
             code: code.into(),
+            message: None,
+        }
+    }
+
+    /// Ошибка с собственным сообщением (для кода, который в разных местах значит разное).
+    pub fn with_message(
+        field: impl Into<String>,
+        code: impl Into<String>,
+        message: &'static str,
+    ) -> Self {
+        Self {
+            message: Some(message),
+            ..Self::new(field, code)
         }
     }
 
@@ -24,6 +42,9 @@ impl FieldError {
 
     /// Сообщение для человека по коду ошибки; неизвестный код — общее сообщение.
     pub fn message_ru(&self) -> &'static str {
+        if let Some(m) = self.message {
+            return m;
+        }
         match self.code.as_str() {
             "required" => "Заполните поле",
             "too_short" => "Слишком короткое значение",

@@ -50,6 +50,7 @@ fn config(dir: PathBuf) -> Config {
         data_dir: dir,
         database_url: None,
         timezone: Some("UTC".into()),
+        ui_dir: None,
     }
 }
 
@@ -216,4 +217,42 @@ async fn unknown_timezone_is_rejected_by_the_library() {
             "{label}: {err}"
         );
     }
+}
+
+#[tokio::test]
+async fn missing_ui_dir_stops_the_start_with_its_path() {
+    let missing = temp_dir("ui-missing").join("нет такой");
+    let mut cfg = config(temp_dir("ui-missing-data"));
+    cfg.ui_dir = Some(missing.clone());
+    let err = Server::start(&cfg).await.err().expect("папки нет");
+    assert_eq!(
+        err.to_string(),
+        format!("папка интерфейса не найдена: {}", missing.display())
+    );
+    let empty = temp_dir("ui-empty");
+    cfg.ui_dir = Some(empty.clone());
+    let err = Server::start(&cfg).await.err().expect("нет index.html");
+    assert!(
+        err.to_string().contains(&empty.display().to_string()),
+        "{err}"
+    );
+}
+
+#[tokio::test]
+async fn serves_the_ui_from_the_same_origin() {
+    let ui = temp_dir("ui");
+    std::fs::write(ui.join("index.html"), "<title>mw</title>").unwrap();
+    let mut cfg = config(temp_dir("ui-data"));
+    cfg.ui_dir = Some(ui);
+    let server = Server::start(&cfg).await.unwrap();
+    let addr = server.local_addr();
+    let (tx, stopped) = tokio::sync::oneshot::channel::<()>();
+    let running = tokio::spawn(server.serve(async {
+        stopped.await.ok();
+    }));
+    let (status, body) = http(addr, "GET", "/orders/1", None).await;
+    assert_eq!((status, body.as_str()), (200, "<title>mw</title>"));
+    let (status, _) = http(addr, "GET", "/api/v1/server-info", None).await;
+    assert_eq!(status, 200);
+    stop(tx, running, addr, "ui").await;
 }

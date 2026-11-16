@@ -7,4 +7,8 @@ export type StatusChange = {
 /**
  * Номер нового статуса.
  */
-status_id: number, };
+status_id: number, 
+/**
+ * Ставить ли дату выдачи при переходе в вид «выдан»; по умолчанию да.
+ */
+stamp_issued_at?: boolean, };

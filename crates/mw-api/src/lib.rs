@@ -9,6 +9,7 @@ mod limiter;
 mod middleware;
 mod routes;
 mod state;
+mod static_ui;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -28,8 +29,8 @@ pub use contract::export_typescript;
 pub use dto::{
     AuditListQuery, AuditPage, BarcodeQuery, ChangePasswordRequest, ClientListQuery, ClientPage,
     CurrentUser, DictionaryValue, IncludeArchived, LoginRequest, LoginResponse, NewServicePoint,
-    NextOrderNumber, OrderListQuery, OrderPage, OrderSummaryQuery, OrderValuesQuery, PhoneQuery,
-    ReorderRequest, ServerInfo, SetPasswordRequest, StatusChange, VersionParam,
+    NextOrderNumber, OrderListQuery, OrderPage, OrderSummaryQuery, OrderValuesQuery, PageQuery,
+    PhoneQuery, ReorderRequest, ServerInfo, SetPasswordRequest, StatusChange, VersionParam,
 };
 pub use error::{ErrorBody, ErrorCode, ErrorField};
 pub use state::ApiConfig;
@@ -169,13 +170,16 @@ pub fn router(core: mw_core::Core, config: ApiConfig) -> Router {
         b"{}".to_vec()
     }));
     // Слои перечислены изнутри наружу: журнал запроса — самый внешний.
+    let routes = match config.ui_dir() {
+        Some(dir) => routes.fallback(static_ui::handler(dir)),
+        None => routes.fallback(not_found_fallback),
+    };
     let mut app = routes
-        .fallback(not_found_fallback)
         .method_not_allowed_fallback(method_not_allowed_fallback)
         .layer(DefaultBodyLimit::max(BODY_LIMIT))
         .layer(from_fn(security_headers))
         .layer(from_fn(require_json_content_type));
-    if config.loopback {
+    if config.loopback() {
         app = app.layer(from_fn(require_local_host));
     }
     with_timeout(app, REQUEST_TIMEOUT)

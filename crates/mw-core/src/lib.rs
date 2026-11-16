@@ -36,10 +36,10 @@ pub use import::{
     LegacyTarget,
 };
 pub use orders::{
-    ClientRef, IssuedFilter, NewOrder, Order, OrderFilter, OrderListItem, OrderPatch, OrderSort,
-    OrderSortField, OrderSummary, OrderValueField, StatusCount,
+    ClientRef, IssuedFilter, NewOrder, NewWarrantyCase, Order, OrderFilter, OrderListItem,
+    OrderPatch, OrderSort, OrderSortField, OrderSummary, OrderValueField, StatusCount,
 };
-pub use page::Page;
+pub use page::{Page, PageRequest};
 pub use search_index::{ReindexStats, SEARCH_INDEX_VERSION};
 pub use service_points::{ServicePoint, ServicePointPatch};
 pub use settings::{AppSettings, SettingsPatch};

@@ -43,14 +43,17 @@ pub struct TestResponse {
 
 /// По одному API на бэкенд, пояс UTC, часы 2026-11-11T09:00:00Z.
 pub async fn apis(listen: Listen) -> Vec<TestApi> {
-    let loopback = matches!(listen, Listen::Loopback);
+    let addr: SocketAddr = match listen {
+        Listen::Loopback => ([127, 0, 0, 1], 8080).into(),
+        Listen::Network => ([0, 0, 0, 0], 8080).into(),
+    };
     let mut out = Vec::new();
     for (label, db) in mw_db::testing::all_backends().await {
         let clock = Arc::new(FixedClock::new(
             Utc.with_ymd_and_hms(2026, 11, 11, 9, 0, 0).unwrap(),
         ));
         let core = Core::open(db, clock.clone(), "UTC").await.unwrap();
-        let router = router(core.clone(), ApiConfig { loopback });
+        let router = router(core.clone(), ApiConfig::for_listen_addr(addr));
         out.push(TestApi {
             label,
             core,

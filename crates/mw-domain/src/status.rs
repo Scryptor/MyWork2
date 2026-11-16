@@ -8,6 +8,17 @@ code_enum! {
     }
 }
 
+/// Имена цветов статуса: палитра интерфейса.
+pub const STATUS_COLORS: [&str; 12] = [
+    "gray", "red", "orange", "amber", "lime", "green", "teal", "cyan", "blue", "indigo", "violet",
+    "pink",
+];
+
+/// Входит ли имя в палитру цветов статуса.
+pub fn is_status_color(name: &str) -> bool {
+    STATUS_COLORS.contains(&name)
+}
+
 /// Стандартный статус, создаваемый при первоначальном заполнении БД.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DefaultStatus {
@@ -34,6 +45,14 @@ pub const DEFAULT_STATUSES: [DefaultStatus; 8] = [
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn palette_names_are_recognized_and_defaults_belong_to_it() {
+        assert!(is_status_color("pink"));
+        assert!(!is_status_color("#ff0000"));
+        assert!(!is_status_color("Pink"));
+        assert!(DEFAULT_STATUSES.iter().all(|s| is_status_color(s.color)));
+    }
 
     #[test]
     fn default_statuses_match_mywork2_names_and_kinds() {

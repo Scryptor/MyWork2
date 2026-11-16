@@ -1,7 +1,7 @@
 use mw_db::entity::status;
 use mw_domain::permission::Permission;
 use mw_domain::search::normalize_search;
-use mw_domain::status::StatusKind;
+use mw_domain::status::{StatusKind, is_status_color};
 use mw_domain::validation::FieldError;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, NotSet, QueryFilter, QueryOrder,
@@ -106,6 +106,20 @@ fn check_name(
     Ok(name.to_owned())
 }
 
+/// Цвет без пробелов по краям; не из палитры — `invalid`.
+fn check_color(color: &str) -> Result<String, CoreError> {
+    let color = color.trim();
+    if is_status_color(color) {
+        Ok(color.to_owned())
+    } else {
+        Err(CoreError::Validation(vec![FieldError::with_message(
+            "color",
+            "invalid",
+            "Цвет статуса — одно из 12 имён палитры",
+        )]))
+    }
+}
+
 async fn all_rows(conn: &impl ConnectionTrait) -> Result<Vec<status::Model>, CoreError> {
     Ok(status::Entity::find()
         .order_by_asc(status::Column::SortOrder)
@@ -135,12 +149,13 @@ impl Core {
         let tx = self.begin_write().await?;
         let rows = all_rows(&tx).await?;
         let name = check_name(&new.name, &rows, None)?;
+        let color = check_color(&new.color)?;
         let sort_order = rows.iter().map(|r| r.sort_order).max().map_or(0, |m| m + 1);
         let model = status::ActiveModel {
             id: NotSet,
             name: Set(name.clone()),
             kind: Set(new.kind.as_str().to_owned()),
-            color: Set(new.color.trim().to_owned()),
+            color: Set(color),
             sort_order: Set(sort_order),
             archived: Set(false),
         }
@@ -185,10 +200,10 @@ impl Core {
             .kind
             .map_or(current.kind.clone(), |k| k.as_str().to_owned());
         let archived = patch.archived.unwrap_or(current.archived);
-        let color = patch
-            .color
-            .as_deref()
-            .map_or(current.color.clone(), |c| c.trim().to_owned());
+        let color = match patch.color.as_deref().map(str::trim) {
+            Some(c) if c != current.color => check_color(c)?,
+            _ => current.color.clone(),
+        };
 
         let mut changed = serde_json::Map::new();
         if let Some(n) = new_name

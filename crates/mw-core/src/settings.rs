@@ -172,7 +172,7 @@ fn get<T: serde::de::DeserializeOwned>(rows: &[setting::Model], key: &str) -> Op
 pub(crate) async fn load(conn: &impl ConnectionTrait) -> Result<AppSettings, CoreError> {
     let rows = setting::Entity::find().all(conn).await?;
     let d = AppSettings::default();
-    Ok(AppSettings {
+    let mut loaded = AppSettings {
         currency_symbol: get(&rows, "currency_symbol").unwrap_or(d.currency_symbol),
         master_percent: get(&rows, "master_percent").unwrap_or(d.master_percent),
         diagnostics_overdue_days: get(&rows, "diagnostics_overdue_days")
@@ -191,7 +191,19 @@ pub(crate) async fn load(conn: &impl ConnectionTrait) -> Result<AppSettings, Cor
         intake_terms: get(&rows, "intake_terms").unwrap_or(d.intake_terms),
         issue_terms: get(&rows, "issue_terms").unwrap_or(d.issue_terms),
         timezone: get(&rows, "timezone").unwrap_or(d.timezone),
-    })
+    };
+    // Точка по умолчанию, которая в архиве или которой нет, считается не выбранной.
+    if let Some(id) = loaded.default_service_point_id {
+        let live = service_point::Entity::find_by_id(id)
+            .filter(service_point::Column::Archived.eq(false))
+            .one(conn)
+            .await?
+            .is_some();
+        if !live {
+            loaded.default_service_point_id = None;
+        }
+    }
+    Ok(loaded)
 }
 
 pub(crate) async fn put(

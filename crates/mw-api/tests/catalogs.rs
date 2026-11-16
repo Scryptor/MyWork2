@@ -322,3 +322,28 @@ async fn service_point_endpoints() {
         );
     }
 }
+
+#[tokio::test]
+async fn status_color_outside_the_palette_is_a_validation_error() {
+    for t in apis(Listen::Network).await {
+        let admin = t.admin_token().await;
+        let r = t
+            .send(
+                Method::POST,
+                "/api/v1/statuses",
+                Some(&admin),
+                Some(json!({ "name": "Цветной", "kind": "open", "color": "#ff0000" })),
+            )
+            .await;
+        assert_eq!(
+            (r.status, &r.body["fields"][0]),
+            (
+                422,
+                &json!({ "field": "color", "code": "invalid",
+                         "message": "Цвет статуса — одно из 12 имён палитры" })
+            ),
+            "{}",
+            t.label
+        );
+    }
+}

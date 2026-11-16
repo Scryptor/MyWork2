@@ -2,13 +2,15 @@
 
 use axum::extract::State;
 use axum::http::StatusCode;
-use mw_core::{NewOrder, Order, OrderListItem, OrderPatch, OrderSummary};
+use mw_core::{
+    NewOrder, NewWarrantyCase, Order, OrderListItem, OrderPatch, OrderSummary, PageRequest,
+};
 
 use crate::DEFAULT_PAGE_LIMIT;
 use crate::auth::CurrentActor;
 use crate::dto::{
-    BarcodeQuery, NextOrderNumber, OrderListQuery, OrderPage, OrderSummaryQuery, OrderValuesQuery,
-    StatusChange, VersionParam,
+    AuditPage, BarcodeQuery, NextOrderNumber, OrderListQuery, OrderPage, OrderSummaryQuery,
+    OrderValuesQuery, PageQuery, StatusChange, VersionParam,
 };
 use crate::error::ApiError;
 use crate::extract::{Json, Path, Query};
@@ -204,7 +206,7 @@ pub(super) async fn change_order_status(
     Ok(Json(
         state
             .core
-            .change_status(&actor, id, v.version, body.status_id)
+            .change_status_with(&actor, id, v.version, body.status_id, body.stamp_issued_at)
             .await?,
     ))
 }
@@ -225,6 +227,55 @@ pub(super) async fn issue_order(
     Query(v): Query<VersionParam>,
 ) -> Result<Json<Order>, ApiError> {
     Ok(Json(state.core.issue_order(&actor, id, v.version).await?))
+}
+
+/// История заказа: записи журнала, новые сверху. Права на журнал не нужно, достаточно войти.
+#[utoipa::path(
+    get,
+    path = "/api/v1/orders/{id}/history",
+    tag = "Заказы",
+    security(("bearer" = [])),
+    params(("id" = i64, Path, description = "Номер заказа"), PageQuery),
+    responses((status = 200, description = "Страница истории заказа", body = AuditPage))
+)]
+pub(super) async fn order_history(
+    State(state): State<AppState>,
+    CurrentActor(actor): CurrentActor,
+    Path(id): Path<i64>,
+    Query(q): Query<PageQuery>,
+) -> Result<Json<AuditPage>, ApiError> {
+    let page = PageRequest {
+        limit: q.limit.unwrap_or(DEFAULT_PAGE_LIMIT),
+        offset: q.offset.unwrap_or(0),
+    };
+    Ok(Json(
+        state.core.order_history(&actor, id, page).await?.into(),
+    ))
+}
+
+/// Приём выданного заказа по гарантии: статус «Принят по гарантии» и запись в истории.
+#[utoipa::path(
+    post,
+    path = "/api/v1/orders/{id}/warranty-case",
+    tag = "Заказы",
+    security(("bearer" = [])),
+    params(("id" = i64, Path, description = "Номер заказа"), VersionParam),
+    request_body = NewWarrantyCase,
+    responses((status = 200, description = "Заказ после приёма по гарантии", body = Order))
+)]
+pub(super) async fn accept_warranty_case(
+    State(state): State<AppState>,
+    CurrentActor(actor): CurrentActor,
+    Path(id): Path<i64>,
+    Query(v): Query<VersionParam>,
+    Json(body): Json<NewWarrantyCase>,
+) -> Result<Json<Order>, ApiError> {
+    Ok(Json(
+        state
+            .core
+            .accept_warranty_case(&actor, id, v.version, body)
+            .await?,
+    ))
 }
 
 /// Удаление заказа по версии записи (право `orders_delete`).

@@ -1,4 +1,6 @@
-use crate::config::{Config, ServerError, redact_database_url, scrub_url, validate_timezone};
+use crate::config::{
+    Config, ServerError, redact_database_url, scrub_url, validate_timezone, validate_ui_dir,
+};
 use axum::Router;
 use mw_api::ApiConfig;
 use mw_core::{Core, SystemClock};
@@ -73,6 +75,9 @@ pub(crate) fn system_timezone(config: &Config) -> String {
 impl Server {
     /// Создаёт папку данных, подключает базу, применяет миграции и занимает порт.
     pub async fn start(config: &Config) -> Result<Server, ServerError> {
+        if let Some(dir) = &config.ui_dir {
+            validate_ui_dir(dir)?;
+        }
         let db = connect_and_migrate(config).await?;
         Server::start_with_db(config, db).await
     }
@@ -84,6 +89,9 @@ impl Server {
     ) -> Result<Server, ServerError> {
         if let Some(name) = &config.timezone {
             validate_timezone(name)?;
+        }
+        if let Some(dir) = &config.ui_dir {
+            validate_ui_dir(dir)?;
         }
         migrate(&db, None).await?;
         let core = Core::open(db.clone(), Arc::new(SystemClock), &system_timezone(config)).await?;
@@ -99,7 +107,10 @@ impl Server {
             context: "не удалось узнать адрес сервера".into(),
             source,
         })?;
-        let router = mw_api::router(core.clone(), ApiConfig::for_listen_addr(local_addr));
+        let router = mw_api::router(
+            core.clone(),
+            ApiConfig::for_listen_addr(local_addr).with_ui_dir(config.ui_dir.clone()),
+        );
         tracing::info!("сервер слушает {local_addr}");
         Ok(Server {
             core,

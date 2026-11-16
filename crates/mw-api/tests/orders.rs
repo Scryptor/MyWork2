@@ -346,3 +346,130 @@ async fn summary_values_and_new_filters() {
         assert!(ids(&list.body).contains(&a), "{}", t.label);
     }
 }
+
+/// Заказ, готовый к выдаче: мастер и работа заполнены. Возвращает (номер, версия).
+async fn order_ready_to_issue(t: &common::TestApi, token: &str) -> (i64, i64) {
+    let id = create_order(t, token, new_order("Анна", "", "Samsung", "A52")).await["id"]
+        .as_i64()
+        .unwrap();
+    let r = t
+        .send(
+            Method::PATCH,
+            &format!("/api/v1/orders/{id}?version=1"),
+            Some(token),
+            Some(json!({ "master": "Антон", "work_done": "Замена дисплея" })),
+        )
+        .await;
+    assert_eq!(r.status, 200, "{}: {}", t.label, r.body);
+    (id, r.body["version"].as_i64().unwrap())
+}
+
+#[tokio::test]
+async fn history_needs_only_login_and_pages_newest_first() {
+    for t in apis(Listen::Network).await {
+        let token = t.admin_token().await;
+        let (id, _) = order_ready_to_issue(&t, &token).await;
+        let clerk = t.token_with("clerk", &[Permission::OrdersEdit]).await;
+        let r = t
+            .get(
+                &format!("/api/v1/orders/{id}/history?limit=1"),
+                Some(&clerk),
+            )
+            .await;
+        assert_eq!(r.status, 200, "{}: {}", t.label, r.body);
+        assert_eq!(r.body["total"], json!(2));
+        assert_eq!(r.body["items"].as_array().unwrap().len(), 1);
+        assert_eq!(r.body["items"][0]["action"], json!("order.updated"));
+        assert_eq!(
+            t.get("/api/v1/orders/999999/history", Some(&clerk))
+                .await
+                .status,
+            404
+        );
+        assert_eq!(
+            t.get(
+                &format!("/api/v1/orders/{id}/history?limit=0"),
+                Some(&clerk)
+            )
+            .await
+            .status,
+            422
+        );
+        assert_eq!(
+            t.get(&format!("/api/v1/orders/{id}/history"), None)
+                .await
+                .status,
+            401
+        );
+    }
+}
+
+#[tokio::test]
+async fn warranty_case_and_unstamped_issue() {
+    for t in apis(Listen::Network).await {
+        let token = t.admin_token().await;
+        let (id, version) = order_ready_to_issue(&t, &token).await;
+        let issued_status = status_id_by_name(&t.core, "Выдан").await;
+        let r = t
+            .send(
+                Method::POST,
+                &format!("/api/v1/orders/{id}/status?version={version}"),
+                Some(&token),
+                Some(json!({ "status_id": issued_status, "stamp_issued_at": false })),
+            )
+            .await;
+        assert_eq!(
+            (r.status, &r.body["issued_at"]),
+            (200, &json!(null)),
+            "{}: {}",
+            t.label,
+            r.body
+        );
+        let version = r.body["version"].as_i64().unwrap();
+        let w = t
+            .send(
+                Method::POST,
+                &format!("/api/v1/orders/{id}/warranty-case?version={version}"),
+                Some(&token),
+                Some(json!({ "complaint": "Снова не заряжается" })),
+            )
+            .await;
+        assert_eq!(w.status, 200, "{}: {}", t.label, w.body);
+        assert_eq!(
+            w.body["status_id"],
+            json!(status_id_by_name(&t.core, "Принят по гарантии").await)
+        );
+        let h = t
+            .get(
+                &format!("/api/v1/orders/{id}/history?limit=1"),
+                Some(&token),
+            )
+            .await;
+        assert_eq!(h.body["items"][0]["action"], json!("order.warranty_case"));
+        let version = w.body["version"].as_i64().unwrap();
+        let bad = t
+            .send(
+                Method::POST,
+                &format!("/api/v1/orders/{id}/warranty-case?version={version}"),
+                Some(&token),
+                Some(json!({ "complaint": "x", "extra": 1 })),
+            )
+            .await;
+        assert_eq!(bad.status, 400, "{}", t.label);
+        let not_issued = t
+            .send(
+                Method::POST,
+                &format!("/api/v1/orders/{id}/warranty-case?version={version}"),
+                Some(&token),
+                Some(json!({ "complaint": "x" })),
+            )
+            .await;
+        assert_eq!(
+            (not_issued.status, &not_issued.body["fields"][0]["message"]),
+            (
+                422,
+                &json!("Принять по гарантии можно только выданный заказ")
+            )
+        );
+    }
+}

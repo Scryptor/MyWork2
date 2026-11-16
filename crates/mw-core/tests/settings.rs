@@ -168,7 +168,7 @@ async fn new_settings_have_defaults_and_validate_service_point() -> Result<(), C
 }
 
 #[tokio::test]
-async fn archived_default_point_is_invalid_but_repeating_it_is_a_no_op() -> Result<(), CoreError> {
+async fn archived_default_point_is_invalid_to_set_again() -> Result<(), CoreError> {
     use mw_core::ServicePointPatch;
     for t in cores().await {
         let p = t.core.create_service_point(&admin(), "Мира, 5").await?;
@@ -187,9 +187,12 @@ async fn archived_default_point_is_invalid_but_repeating_it_is_a_no_op() -> Resu
                 },
             )
             .await?;
+        assert_eq!(t.core.settings().default_service_point_id, None);
         let before = count_audit(&t.core, "settings.updated").await;
-        let s = t.core.update_settings(&admin(), set(p.id)).await?;
-        assert_eq!(s.default_service_point_id, Some(p.id), "{}", t.label);
+        assert_validation(
+            t.core.update_settings(&admin(), set(p.id)).await,
+            &[("default_service_point_id", "invalid")],
+        );
         assert_eq!(count_audit(&t.core, "settings.updated").await, before);
         let other = t.core.create_service_point(&admin(), "Ленина, 1").await?;
         t.core
@@ -224,6 +227,48 @@ async fn archived_default_point_is_invalid_but_repeating_it_is_a_no_op() -> Resu
                 ("timezone", "invalid"),
             ],
         );
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn archived_default_point_reads_as_none() -> Result<(), CoreError> {
+    use mw_core::ServicePointPatch;
+    for t in cores().await {
+        let point = t.core.create_service_point(&admin(), "Мира, 5").await?.id;
+        let s = t
+            .core
+            .update_settings(
+                &admin(),
+                SettingsPatch {
+                    default_service_point_id: Some(Some(point)),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        assert_eq!(s.default_service_point_id, Some(point), "{}", t.label);
+        let archive = |archived: bool| ServicePointPatch {
+            archived: Some(archived),
+            ..Default::default()
+        };
+        t.core
+            .update_service_point(&admin(), point, archive(true))
+            .await?;
+        assert_eq!(t.core.settings().default_service_point_id, None);
+        let reopened = Core::open(t.core.db().clone(), t.clock.clone(), "UTC").await?;
+        assert_eq!(reopened.settings().default_service_point_id, None);
+        t.core
+            .update_service_point(&admin(), point, archive(false))
+            .await?;
+        assert_eq!(t.core.settings().default_service_point_id, Some(point));
+        set_setting_directly(
+            &t.core,
+            "default_service_point_id",
+            serde_json::json!(987_654),
+        )
+        .await;
+        let reopened = Core::open(t.core.db().clone(), t.clock.clone(), "UTC").await?;
+        assert_eq!(reopened.settings().default_service_point_id, None);
     }
     Ok(())
 }

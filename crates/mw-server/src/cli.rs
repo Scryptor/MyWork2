@@ -26,6 +26,9 @@ pub struct Cli {
     /// Часовой пояс предприятия при первом запуске (по умолчанию — пояс системы).
     #[arg(long, env = "MW_TIMEZONE")]
     pub timezone: Option<String>,
+    /// Папка собранного интерфейса: сервер отдаёт его с того же адреса, что и API.
+    #[arg(long, env = "MW_UI_DIR")]
+    pub ui_dir: Option<PathBuf>,
     #[command(subcommand)]
     pub command: Option<Command>,
 }
@@ -41,6 +44,7 @@ impl std::fmt::Debug for Cli {
                 &self.database_url.as_deref().map(redact_database_url),
             )
             .field("timezone", &self.timezone)
+            .field("ui_dir", &self.ui_dir)
             .field("command", &self.command)
             .finish()
     }
@@ -87,6 +91,7 @@ impl Cli {
             data_dir: resolve_data_dir(self.data_dir.clone(), exe_dir, os_data_dir())?,
             database_url: self.database_url.clone(),
             timezone: self.timezone.clone(),
+            ui_dir: self.ui_dir.clone(),
         })
     }
 }
@@ -209,6 +214,12 @@ mod tests {
         assert!(
             matches!(cli.command, Some(Command::CreateAdmin { ref login, .. }) if login == "boss")
         );
+    }
+
+    #[test]
+    fn parses_ui_dir() {
+        let cli = Cli::try_parse_from(["mw-server", "--ui-dir", "/ui"]).unwrap();
+        assert_eq!(cli.config().unwrap().ui_dir, Some(PathBuf::from("/ui")));
     }
 
     #[test]

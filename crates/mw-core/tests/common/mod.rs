@@ -754,3 +754,14 @@ pub async fn set_order_keys_directly(
     .await
     .unwrap();
 }
+
+/// `status_changed_at` заказа прямо из БД, в виде «ГГГГ-ММ-ДД ЧЧ:ММ:СС».
+pub async fn status_changed_at(core: &Core, order_id: i64) -> Option<String> {
+    order::Entity::find_by_id(order_id)
+        .one(core.db())
+        .await
+        .unwrap()
+        .unwrap()
+        .status_changed_at
+        .map(|d| d.to_string())
+}

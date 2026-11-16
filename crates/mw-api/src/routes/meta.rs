@@ -25,8 +25,9 @@ pub(super) async fn server_info(
         app: "mw".into(),
         version: env!("CARGO_PKG_VERSION").into(),
         api_version: crate::API_VERSION,
-        auth_required: !(state.config.loopback && open_mode),
+        auth_required: !(state.config.loopback() && open_mode),
         has_users: !open_mode,
+        server_time: state.core.now().format("%Y-%m-%dT%H:%M:%S").to_string(),
     }))
 }
 

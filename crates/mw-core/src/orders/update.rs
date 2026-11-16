@@ -10,10 +10,11 @@ use sea_orm::{
 };
 use serde_json::{Map, Value, json};
 
-use super::types::{OrderPatch, warranty_columns};
+use super::types::{NewWarrantyCase, OrderPatch, warranty_columns};
 use crate::clients::find_live;
 use crate::search_index::{order_search_text, set_order_keys};
 use crate::{Actor, Core, CoreError, NewAuditEntry, Order, write_audit};
+use mw_domain::search::normalize_search;
 
 const ENTITY: &str = "заказ";
 const MASK: &str = "***";
@@ -368,11 +369,100 @@ impl Core {
         expected_version: i64,
         status_id: i64,
     ) -> Result<Order, CoreError> {
+        self.change_status_with(actor, id, expected_version, status_id, true)
+            .await
+    }
+
+    /// Смена статуса; `stamp_issued_at = false` не ставит дату выдачи при переходе в вид «выдан»
+    /// (массовое действие «не ставить дату»). Уже стоящая дата не меняется.
+    pub async fn change_status_with(
+        &self,
+        actor: &Actor,
+        id: i64,
+        expected_version: i64,
+        status_id: i64,
+        stamp_issued_at: bool,
+    ) -> Result<Order, CoreError> {
         actor.require(Permission::OrdersEdit)?;
         let tx = self.begin_write().await?;
         let updated = self
-            .change_status_in(&tx, actor, id, expected_version, Some(status_id))
+            .change_status_in(
+                &tx,
+                actor,
+                id,
+                expected_version,
+                Some(status_id),
+                stamp_issued_at,
+            )
             .await?;
+        tx.commit().await?;
+        Ok(updated)
+    }
+
+    /// Приём выданного заказа по гарантии: статус «Принят по гарантии» (дата выдачи остаётся)
+    /// и запись журнала `order.warranty_case` — в одной транзакции.
+    pub async fn accept_warranty_case(
+        &self,
+        actor: &Actor,
+        id: i64,
+        expected_version: i64,
+        case: NewWarrantyCase,
+    ) -> Result<Order, CoreError> {
+        actor.require(Permission::OrdersEdit)?;
+        let complaint = case.complaint.trim().to_owned();
+        if complaint.is_empty() {
+            return Err(CoreError::Validation(vec![FieldError::required(
+                "complaint",
+            )]));
+        }
+        let tx = self.begin_write().await?;
+        let current = load(&tx, id).await?;
+        if current.deleted_at.is_some() {
+            return Err(deleted_error());
+        }
+        let current_kind = status::Entity::find_by_id(current.status_id)
+            .one(&tx)
+            .await?;
+        if current_kind.is_none_or(|s| s.kind != StatusKind::Issued.as_str()) {
+            return Err(CoreError::Validation(vec![FieldError::with_message(
+                "status",
+                "invalid",
+                "Принять по гарантии можно только выданный заказ",
+            )]));
+        }
+        let key = normalize_search("Принят по гарантии");
+        let warranty = status::Entity::find()
+            .filter(status::Column::Archived.eq(false))
+            .order_by_asc(status::Column::SortOrder)
+            .order_by_asc(status::Column::Id)
+            .all(&tx)
+            .await?
+            .into_iter()
+            .find(|s| normalize_search(&s.name) == key)
+            .ok_or_else(|| {
+                CoreError::Validation(vec![FieldError::with_message(
+                    "status",
+                    "invalid",
+                    "Нет статуса «Принят по гарантии». Добавьте его в настройках",
+                )])
+            })?;
+        let updated = self
+            .change_status_in(&tx, actor, id, expected_version, Some(warranty.id), true)
+            .await?;
+        let at = case.at.unwrap_or_else(|| self.now()).trunc_subsecs(0);
+        write_audit(
+            &tx,
+            self.now(),
+            actor,
+            NewAuditEntry {
+                action: "order.warranty_case",
+                order_id: Some(id),
+                client_id: Some(current.client_id),
+                summary: format!("Принят по гарантии: {complaint}"),
+                details: Some(json!({ "complaint": complaint, "at": at })),
+            },
+        )
+        .await?;
         tx.commit().await?;
         Ok(updated)
     }
@@ -387,7 +477,7 @@ impl Core {
         actor.require(Permission::OrdersEdit)?;
         let tx = self.begin_write().await?;
         let updated = self
-            .change_status_in(&tx, actor, id, expected_version, None)
+            .change_status_in(&tx, actor, id, expected_version, None, true)
             .await?;
         tx.commit().await?;
         Ok(updated)
@@ -452,6 +542,7 @@ impl Core {
         id: i64,
         expected_version: i64,
         target: Option<i64>,
+        stamp_issued_at: bool,
     ) -> Result<Order, CoreError> {
         let current = load(tx, id).await?;
         if current.deleted_at.is_some() {
@@ -500,7 +591,7 @@ impl Core {
             .map_or_else(|| current.status_id.to_string(), |s| s.name);
 
         let now = self.now();
-        let issued_at: Option<NaiveDateTime> = if to_issued {
+        let issued_at: Option<NaiveDateTime> = if to_issued && stamp_issued_at {
             current.issued_at.or(Some(now))
         } else {
             current.issued_at

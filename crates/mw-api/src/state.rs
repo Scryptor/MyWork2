@@ -1,6 +1,7 @@
 //! Состояние приложения и настройки HTTP-слоя.
 
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::body::Bytes;
@@ -11,17 +12,37 @@ use crate::auth::{ACCOUNT_FAILURE_LIMIT, FAILURE_WINDOW_SECS, IP_FAILURE_LIMIT};
 use crate::limiter::LoginLimiter;
 
 /// Настройки HTTP-слоя.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct ApiConfig {
     /// Сервер слушает только loopback-адрес: включает проверку `Host` и режим без входа.
-    pub loopback: bool,
+    loopback: bool,
+    /// Папка собранного интерфейса; пусто — интерфейс не раздаётся.
+    ui_dir: Option<PathBuf>,
 }
 
 impl ApiConfig {
+    /// Настройки по фактическому адресу, на котором сервер слушает.
     pub fn for_listen_addr(addr: SocketAddr) -> ApiConfig {
         ApiConfig {
             loopback: addr.ip().is_loopback(),
+            ui_dir: None,
         }
+    }
+
+    /// Раздавать интерфейс из этой папки (в ней должен быть `index.html`).
+    pub fn with_ui_dir(mut self, dir: Option<PathBuf>) -> ApiConfig {
+        self.ui_dir = dir;
+        self
+    }
+
+    /// Слушает ли сервер только loopback-адрес.
+    pub fn loopback(&self) -> bool {
+        self.loopback
+    }
+
+    /// Папка интерфейса, если он раздаётся.
+    pub fn ui_dir(&self) -> Option<&std::path::Path> {
+        self.ui_dir.as_deref()
     }
 }
 

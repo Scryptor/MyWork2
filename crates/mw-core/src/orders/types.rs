@@ -22,6 +22,17 @@ impl Default for ClientRef {
     }
 }
 
+/// Приём выданного заказа по гарантии.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+#[ts(optional_fields)]
+pub struct NewWarrantyCase {
+    /// Жалоба клиента; не пустая.
+    pub complaint: String,
+    /// Когда клиент обратился; пусто — сейчас.
+    pub at: Option<NaiveDateTime>,
+}
+
 /// Данные приёма устройства.
 #[derive(Clone, Default, PartialEq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]

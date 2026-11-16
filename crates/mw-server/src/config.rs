@@ -13,6 +13,8 @@ pub struct Config {
     pub data_dir: PathBuf,
     pub database_url: Option<String>,
     pub timezone: Option<String>,
+    /// Папка собранного интерфейса; пусто — сервер отдаёт только API.
+    pub ui_dir: Option<PathBuf>,
 }
 
 impl std::fmt::Debug for Config {
@@ -26,6 +28,7 @@ impl std::fmt::Debug for Config {
                 &self.database_url.as_deref().map(redact_database_url),
             )
             .field("timezone", &self.timezone)
+            .field("ui_dir", &self.ui_dir)
             .finish()
     }
 }
@@ -105,6 +108,18 @@ pub fn validate_timezone(name: &str) -> Result<(), ServerError> {
     Ok(())
 }
 
+/// Папка интерфейса, если она задана, должна существовать и содержать `index.html`.
+pub fn validate_ui_dir(dir: &std::path::Path) -> Result<(), ServerError> {
+    if dir.join("index.html").is_file() {
+        Ok(())
+    } else {
+        Err(ServerError::Config(format!(
+            "папка интерфейса не найдена: {}",
+            dir.display()
+        )))
+    }
+}
+
 /// Ошибки запуска и служебных команд сервера.
 #[derive(Debug, thiserror::Error)]
 pub enum ServerError {
@@ -155,7 +170,8 @@ mod tests {
                 listen: DEFAULT_LISTEN.parse().unwrap(),
                 data_dir: "/d".into(),
                 database_url: None,
-                timezone: None
+                timezone: None,
+                ui_dir: None
             }
             .database_url(),
             mw_db::sqlite_url(&Path::new("/d").join("mywork.db"))
@@ -210,6 +226,7 @@ mod tests {
             data_dir: "/d".into(),
             database_url: Some("postgres://mw:s3cr3t@db/mw".into()),
             timezone: None,
+            ui_dir: None,
         };
         assert!(!format!("{config:?}").contains("s3cr3t"));
     }

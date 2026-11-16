@@ -190,7 +190,16 @@ impl Core {
             },
         )
         .await?;
+        let reloaded = if changed.contains_key("archived") {
+            Some(crate::settings::load(&tx).await?)
+        } else {
+            None
+        };
         tx.commit().await?;
+        if let Some(settings) = reloaded {
+            // Кэш настроек следит за тем, живёт ли точка по умолчанию.
+            *self.settings.write().unwrap_or_else(|e| e.into_inner()) = settings;
+        }
         Ok(model.into())
     }
 

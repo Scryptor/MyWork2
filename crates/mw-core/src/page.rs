@@ -9,6 +9,22 @@ pub struct Page<T> {
     pub total: u64,
 }
 
+/// Какую страницу списка вернуть: размер и сколько записей пропустить.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PageRequest {
+    pub limit: u64,
+    pub offset: u64,
+}
+
+impl Default for PageRequest {
+    fn default() -> Self {
+        Self {
+            limit: 50,
+            offset: 0,
+        }
+    }
+}
+
 /// Допустимая страница: размер 1..=500, смещение не больше `i64::MAX` (иначе БД отвергнет запрос).
 pub(crate) fn validate_page(limit: u64, offset: u64) -> Result<(), CoreError> {
     let mut errors = Vec::new();

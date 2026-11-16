@@ -8,8 +8,8 @@ use crate::{
     AuditListQuery, AuditPage, BarcodeQuery, ChangePasswordRequest, ClientListQuery, ClientPage,
     CurrentUser, DictionaryValue, ErrorBody, IncludeArchived, LoginRequest, LoginResponse,
     NewServicePoint, NextOrderNumber, OrderListQuery, OrderPage, OrderSummaryQuery,
-    OrderValuesQuery, PhoneQuery, ReorderRequest, ServerInfo, SetPasswordRequest, StatusChange,
-    VersionParam,
+    OrderValuesQuery, PageQuery, PhoneQuery, ReorderRequest, ServerInfo, SetPasswordRequest,
+    StatusChange, VersionParam,
 };
 
 /// Выгружает в `dir` TS-типы всех корневых типов API вместе с зависимостями
@@ -39,6 +39,8 @@ pub fn export_typescript(dir: &Path) -> Result<(), ts_rs::ExportError> {
     OrderListQuery::export_all(&cfg)?;
     BarcodeQuery::export_all(&cfg)?;
     StatusChange::export_all(&cfg)?;
+    PageQuery::export_all(&cfg)?;
+    mw_core::NewWarrantyCase::export_all(&cfg)?;
     NextOrderNumber::export_all(&cfg)?;
     OrderPage::export_all(&cfg)?;
     OrderSummaryQuery::export_all(&cfg)?;
