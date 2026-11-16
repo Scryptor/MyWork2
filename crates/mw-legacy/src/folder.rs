@@ -338,8 +338,10 @@ mod tests {
         std::fs::write(p.join("Settings/AKTS/firmname.TXT"), b"x").unwrap();
         std::fs::create_dir_all(p.join("CLIENTFILES/1/1")).unwrap();
         std::fs::write(p.join("CLIENTFILES/1/1/a.jpg"), b"x").unwrap();
-        std::fs::create_dir_all(p.join("settings/backup")).unwrap();
-        std::fs::write(p.join("settings/backup/old.sqlite"), b"x").unwrap();
+        // Same `Settings` folder as above: on a case-sensitive file system (Linux)
+        // `settings` would be a second folder, which a folder copied from Windows never has.
+        std::fs::create_dir_all(p.join("Settings/backup")).unwrap();
+        std::fs::write(p.join("Settings/backup/old.sqlite"), b"x").unwrap();
         let f = scan_folder(p).unwrap();
         assert!(f.text_files.contains_key("settings/Akts/FirmName.txt"));
         assert_eq!(f.client_files, ["1/1/a.jpg"]);
@@ -404,6 +406,7 @@ mod tests {
         assert!(
             hit.to_string_lossy()
                 .to_lowercase()
+                .replace('\\', "/")
                 .ends_with("settings/stock/photos/abc.jpg")
         );
         assert_eq!(f.find_file("settings/stock/photos/missing.jpg"), None);
