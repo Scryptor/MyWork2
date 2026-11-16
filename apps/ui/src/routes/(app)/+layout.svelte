@@ -51,6 +51,7 @@
 	import type { CommandItem } from '#lib/ui/commands.js';
 	import Dialog from '#lib/ui/Dialog.svelte';
 	import SegmentedControl from '#lib/ui/SegmentedControl.svelte';
+	import Select from '#lib/ui/Select.svelte';
 	import ShortcutsHelp from '#lib/ui/ShortcutsHelp.svelte';
 	import SlideOver from '#lib/ui/SlideOver.svelte';
 	import { toast } from '#lib/ui/toast/toast.svelte.js';
@@ -235,6 +236,12 @@
 		value,
 		label: ru.app.themes[value]
 	}));
+	/** The point of the top bar, on a phone in «Ещё»; 0 stands for «Все точки» (ids start at 1). */
+	const ALL_POINTS = 0;
+	const pointItems = $derived([
+		{ value: ALL_POINTS, label: ru.app.allPoints },
+		...app.activePoints.map((p) => ({ value: p.id, label: p.name }))
+	]);
 	function bottomNavigate(id: string) {
 		if (id === 'more') moreOpen = true;
 	}
@@ -298,6 +305,16 @@
 {/if}
 <Dialog bind:open={moreOpen} title={ru.common.more} position="bottom">
 	<div class="more">
+		{#if app.activePoints.length > 0}
+			<Select
+				label={ru.app.point}
+				items={pointItems}
+				bind:value={
+					() => app.point ?? ALL_POINTS,
+					(v) => (app.point = v === null || v === ALL_POINTS ? null : v)
+				}
+			/>
+		{/if}
 		<SegmentedControl
 			label={ru.app.theme}
 			options={THEMES}

@@ -1,0 +1,33 @@
+/* A screen outside the shell with one card in the middle: sign-in, the error page. */
+.mw-page-center {
+	box-sizing: border-box;
+	display: grid;
+	place-items: center;
+	min-height: 100vh;
+	min-height: 100dvh;
+	padding: var(--space-4);
+	background: var(--bg);
+	color: var(--text);
+	outline: none;
+}
+.mw-page-card {
+	box-sizing: border-box;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	width: min(24rem, 100%);
+	padding: var(--space-6);
+	border: 1px solid var(--border);
+	border-radius: var(--radius-lg);
+	background: var(--surface);
+	box-shadow: var(--shadow-sm);
+}
+.mw-page-card h1 {
+	margin: 0;
+	font-size: var(--text-xl);
+	font-weight: 600;
+}
+.mw-page-card p {
+	margin: 0;
+	color: var(--text-2);
+}

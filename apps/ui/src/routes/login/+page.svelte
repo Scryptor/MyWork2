@@ -6,6 +6,7 @@
 	import { ApiError } from '#lib/api/client.js';
 	import { setToken } from '#lib/api/session.js';
 	import { safeNext } from '#lib/app/login.js';
+	import '#lib/app/page-card.css';
 	import { ru } from '#lib/i18n/ru.js';
 	import Button from '#lib/ui/Button.svelte';
 	import Checkbox from '#lib/ui/Checkbox.svelte';
@@ -52,8 +53,8 @@
 
 <svelte:head><title>{ru.auth.title}</title></svelte:head>
 
-<main class="page" tabindex="-1">
-	<form class="card" novalidate onsubmit={submit}>
+<main class="mw-page-center" tabindex="-1">
+	<form class="mw-page-card" novalidate onsubmit={submit}>
 		<h1>{ru.auth.title}</h1>
 		<TextInput
 			label={ru.auth.login}
@@ -73,34 +74,3 @@
 		<Button type="submit" variant="primary" {busy}>{ru.auth.submit}</Button>
 	</form>
 </main>
-
-<style>
-	.page {
-		box-sizing: border-box;
-		display: grid;
-		place-items: center;
-		min-height: 100vh;
-		min-height: 100dvh;
-		padding: var(--space-4);
-		background: var(--bg);
-		color: var(--text);
-		outline: none;
-	}
-	.card {
-		box-sizing: border-box;
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-4);
-		width: min(24rem, 100%);
-		padding: var(--space-6);
-		border: 1px solid var(--border);
-		border-radius: var(--radius-lg);
-		background: var(--surface);
-		box-shadow: var(--shadow-sm);
-	}
-	h1 {
-		margin: 0;
-		font-size: var(--text-xl);
-		font-weight: 600;
-	}
-</style>

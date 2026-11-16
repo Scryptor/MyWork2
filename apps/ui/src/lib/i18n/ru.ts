@@ -66,7 +66,11 @@ export const ru = {
 		},
 		allClear: 'Всё в порядке ✓',
 		views: 'Мои виды',
-		undoFailed: (message: string) => `Не удалось отменить: ${message}`
+		undoFailed: (message: string) => `Не удалось отменить: ${message}`,
+		offlineHint: 'Проверьте, что программа-сервер запущена, и повторите.',
+		unexpected: 'Что-то пошло не так',
+		notFound: 'Такой страницы нет',
+		toOrders: 'К заказам'
 	},
 	scan: {
 		barcodeNotFound: (code: string) => `Заказ со штрихкодом ${code} не найден`,

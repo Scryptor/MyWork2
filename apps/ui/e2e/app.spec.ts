@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import type { OrderPage } from '$api/OrderPage';
+import type { ServicePoint } from '$api/ServicePoint';
 import { createOrder, uniq } from './support/api';
 
 // The server on 4173 runs without sign-in: the shell opens straight away.
@@ -36,6 +37,21 @@ test('root opens the orders screen with the shell', async ({ page }) => {
 	// Without sign-in there is no user menu, and /login is not needed.
 	await expect(page.getByRole('button', { name: /Пользователь/ })).toHaveCount(0);
 	await page.goto('/login');
+	await expect(page).toHaveURL(/\/orders$/);
+});
+
+test('no connection at the start: the page says so, «Повторить» opens the program', async ({
+	page
+}) => {
+	await page.route('**/api/v1/server-info', (route) => route.abort());
+	await page.goto('/orders');
+	await expect(page.getByRole('heading', { name: 'Нет связи с сервером' })).toBeVisible();
+	await expect(
+		page.getByText('Проверьте, что программа-сервер запущена, и повторите.')
+	).toBeVisible();
+	await page.unroute('**/api/v1/server-info');
+	await page.getByRole('button', { name: 'Повторить' }).click();
+	await expect(navOf(page)).toContainText('Заказы');
 	await expect(page).toHaveURL(/\/orders$/);
 });
 
@@ -128,4 +144,29 @@ test('scan into a focused field stays in the field', async ({ page }) => {
 	await expect(toastsOf(page)).toContainText('Заказ со штрихкодом 199999999992 не найден');
 	await expect(toastsOf(page)).not.toContainText('199999999991');
 	await expect(page.getByRole('dialog', { name: /^№/ })).toHaveCount(0);
+});
+
+test.describe('on a phone', () => {
+	test.use({ viewport: { width: 390, height: 844 } });
+
+	test('«Ещё» chooses the point, and the device keeps it', async ({ page, request }) => {
+		const name = uniq('Точка');
+		const created = await request.post('/api/v1/service-points', { data: { name } });
+		expect(created.ok()).toBe(true);
+		const point = (await created.json()) as ServicePoint;
+
+		await openOrders(page);
+		await page.getByRole('button', { name: 'Ещё', exact: true }).click();
+		const more = page.getByRole('dialog', { name: 'Ещё' });
+		const select = more.getByRole('combobox', { name: 'Точка обслуживания' });
+		await expect(select).toHaveText('Все точки');
+		await select.click();
+		await page.getByRole('option', { name, exact: true }).click();
+		await expect(select).toHaveText(name);
+		expect(await page.evaluate(() => localStorage.getItem('mw.point'))).toBe(String(point.id));
+
+		await page.reload();
+		await page.getByRole('button', { name: 'Ещё', exact: true }).click();
+		await expect(more.getByRole('combobox', { name: 'Точка обслуживания' })).toHaveText(name);
+	});
 });

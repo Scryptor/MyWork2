@@ -3,12 +3,12 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { changePassword } from '#lib/api/auth.js';
-	import { ApiError } from '#lib/api/client.js';
 	import { submitShortcut } from '#lib/design/hotkeys.svelte.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import Button from '#lib/ui/Button.svelte';
 	import Dialog from '#lib/ui/Dialog.svelte';
 	import TextInput from '#lib/ui/TextInput.svelte';
+	import { checkPasswordForm, passwordErrorsFromServer, type PasswordErrors } from './password.js';
 
 	let { open = $bindable(false), onchanged }: { open: boolean; onchanged: () => void } = $props();
 
@@ -16,7 +16,7 @@
 	let current = $state('');
 	let next = $state('');
 	let repeat = $state('');
-	let errors = $state<{ current?: string; next?: string; repeat?: string; form?: string }>({});
+	let errors = $state<PasswordErrors>({});
 	let busy = $state(false);
 
 	// Every opening starts empty.
@@ -33,42 +33,17 @@
 		if (open) return submitShortcut(() => void submit());
 	});
 
-	function check(): boolean {
-		const found: typeof errors = {};
-		if (!current) found.current = ru.password.required;
-		if (!next) found.next = ru.password.required;
-		if (!repeat) found.repeat = ru.password.required;
-		else if (next && repeat !== next) found.repeat = ru.password.mismatch;
-		errors = found;
-		return Object.keys(found).length === 0;
-	}
-
-	function fromServer(e: unknown): typeof errors {
-		if (!(e instanceof ApiError)) return { form: ru.api.failed };
-		if (e.code === 'too_many_attempts') {
-			return { current: ru.auth.tooManyAttempts(e.body?.retry_after_secs ?? 60) };
-		}
-		if (e.code !== 'validation') return { form: e.message };
-		const found: typeof errors = {};
-		for (const f of e.body?.fields ?? []) {
-			if (f.field === 'current_password') {
-				found.current = f.code === 'invalid' ? ru.password.wrongCurrent : f.message;
-			} else if (f.field === 'new_password') {
-				found.next = f.code === 'too_short' ? ru.password.tooShort : f.message;
-			}
-		}
-		return Object.keys(found).length > 0 ? found : { form: e.message };
-	}
-
 	async function submit() {
-		if (busy || !check()) return;
+		if (busy) return;
+		errors = checkPasswordForm({ current, next, repeat });
+		if (Object.keys(errors).length > 0) return;
 		busy = true;
 		try {
 			await changePassword({ current_password: current, new_password: next });
 			open = false;
 			onchanged();
 		} catch (e) {
-			errors = fromServer(e);
+			errors = passwordErrorsFromServer(e);
 		} finally {
 			busy = false;
 		}

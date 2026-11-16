@@ -1,17 +1,24 @@
 import { redirect } from '@sveltejs/kit';
+import type { ServerInfo } from '$api/ServerInfo';
 import { serverInfo, me } from '#lib/api/auth.js';
 import { getSettings, listServicePoints, listStatuses } from '#lib/api/catalogs.js';
 import { ApiError } from '#lib/api/client.js';
 import { serverClock } from '#lib/api/server-clock.svelte.js';
 import { clearToken, getToken } from '#lib/api/session.js';
 import { app, type AppData } from '#lib/app/context.svelte.js';
+import { failLoad } from '#lib/app/load-error.js';
 import { loginPath } from '#lib/app/login.js';
 import type { LayoutLoad } from './$types';
 
 // `url` is read only on the way to the login page: the data stays while the user moves between
 // screens, the load does not run again on every navigation.
 export const load: LayoutLoad = async ({ url }): Promise<AppData> => {
-	const server = await serverInfo();
+	let server: ServerInfo;
+	try {
+		server = await serverInfo();
+	} catch (e) {
+		failLoad(e);
+	}
 	serverClock.sync(server.server_time);
 	if (server.auth_required && !getToken()) redirect(307, loginPath(url.pathname + url.search));
 	try {
@@ -29,6 +36,6 @@ export const load: LayoutLoad = async ({ url }): Promise<AppData> => {
 			clearToken();
 			redirect(307, loginPath(url.pathname + url.search));
 		}
-		throw e;
+		failLoad(e);
 	}
 };
