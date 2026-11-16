@@ -1,9 +1,11 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import { prefs } from '#lib/design/prefs.svelte.js';
 	import { SegmentedControl } from '#lib/ui/index.js';
 	import Basics from './sections/Basics.svelte';
 	import Fields from './sections/Fields.svelte';
 	import Layers from './sections/Layers.svelte';
+	import Media from './sections/Media.svelte';
 	import Navigation from './sections/Navigation.svelte';
 	import Table from './sections/Table.svelte';
 	import Tokens from './sections/Tokens.svelte';
@@ -27,6 +29,10 @@
 
 <header class="bar">
 	<h1>Дизайн-система</h1>
+	<nav class="demos" aria-label="Демо-экраны">
+		<a href={resolve('/design/orders')}>Демо: главный экран</a>
+		<a href={resolve('/design/intake')}>Демо: приём</a>
+	</nav>
 	<div class="prefs">
 		<SegmentedControl
 			label="Тема"
@@ -76,6 +82,11 @@
 	<Table />
 </section>
 
+<section id="media">
+	<h2>Медиа</h2>
+	<Media />
+</section>
+
 <style>
 	.bar {
 		display: flex;
@@ -88,5 +99,14 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: var(--space-2);
+	}
+	.demos {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-4);
+	}
+	.demos a {
+		color: var(--accent);
+		font-weight: 500;
 	}
 </style>

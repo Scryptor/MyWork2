@@ -3,6 +3,7 @@
 import type { OrderListItem } from '$api/OrderListItem';
 import type { Status } from '$api/Status';
 import type { StatusKind } from '$api/StatusKind';
+import type { LocalDateTime } from '#lib/format/date.js';
 
 function status(id: number, name: string, kind: StatusKind, color: string): Status {
 	return { id, name, kind, color, sort_order: id - 1, archived: false };
@@ -230,7 +231,14 @@ const DEVICES: readonly DeviceKind[] = [
 
 /** Dictionaries of a demo service: the defaults of a new database plus the demo masters. */
 export function makeDictionaries(): Record<
-	'device_type' | 'brand' | 'malfunction' | 'completeness' | 'condition' | 'master',
+	| 'device_type'
+	| 'brand'
+	| 'malfunction'
+	| 'completeness'
+	| 'condition'
+	| 'master'
+	| 'warranty'
+	| 'source',
 	string[]
 > {
 	return {
@@ -258,7 +266,9 @@ export function makeDictionaries(): Record<
 			'Коробка'
 		],
 		condition: ['Без видимых повреждений', 'Царапины', 'Сколы', 'Трещина экрана', 'Следы влаги'],
-		master: [...MASTERS]
+		master: [...MASTERS],
+		warranty: ['Без гарантии', '14 дней', '30 дней', '90 дней', '6 месяцев', '1 год'],
+		source: ['Интернет', 'Рекомендация', 'Вывеска', 'Повторно', 'Объявление']
 	};
 }
 
@@ -330,11 +340,23 @@ const FIXED_CLIENT: FakeClient = {
 	blacklisted: false
 };
 
+/**
+ * «Now» of the demo data: 15 November 2026, 18:00, local time of the service. Orders are made around it,
+ * so relative dates («сегодня», «вчера») and ages are counted from it, not from the real clock.
+ */
+export const DEMO_NOW: LocalDateTime = {
+	year: 2026,
+	month: 11,
+	day: 15,
+	hour: 18,
+	minute: 0,
+	second: 0
+};
+
 const MINUTE = 60_000;
 const DAY = 24 * 60 * MINUTE;
-/** «Today» of the demo data: 15 November 2026, local time of the service, until 18:00. */
-const TODAY = Date.UTC(2026, 10, 15);
-const LAST = TODAY + 18 * 60 * MINUTE;
+const TODAY = Date.UTC(DEMO_NOW.year, DEMO_NOW.month - 1, DEMO_NOW.day);
+const LAST = TODAY + (DEMO_NOW.hour * 60 + DEMO_NOW.minute) * MINUTE;
 /** The newest orders are still in work. */
 const OPEN_WINDOW = 60;
 

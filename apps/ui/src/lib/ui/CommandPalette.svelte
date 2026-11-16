@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Command } from 'bits-ui';
+	import { untrack } from 'svelte';
 	import { registerHotkey } from '#lib/design/hotkeys.svelte.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import type { CommandGroup, CommandItem } from './commands.js';
@@ -32,6 +33,16 @@
 	const total = $derived(groups.reduce((n, g) => n + g.items.length, 0));
 
 	$effect(() => registerHotkey('Mod+K', () => (open = true), { allowInFields: true }));
+
+	// A closed palette forgets the query and the highlighted item: it opens empty, on «Недавние»
+	// (spec 6.10). A query set while it is closed is kept for the next opening.
+	$effect(() => {
+		if (open) return;
+		untrack(() => {
+			query = '';
+			highlighted = '';
+		});
+	});
 
 	function choose(item: CommandItem, alt: boolean) {
 		open = false;

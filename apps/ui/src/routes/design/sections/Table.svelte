@@ -4,7 +4,8 @@
 	import { MediaQuery } from 'svelte/reactivity';
 	import type { OrderListItem } from '$api/OrderListItem';
 	import { PHONE_QUERY } from '#lib/design/breakpoints.js';
-	import { DEMO_POINTS, DEMO_STATUSES, makeOrders } from '#lib/demo/fake.js';
+	import { DEMO_NOW, DEMO_POINTS, DEMO_STATUSES, makeOrders } from '#lib/demo/fake.js';
+	import { deviceOf, estimateText, sortOrders } from '#lib/demo/orders.js';
 	import {
 		countLabel,
 		displayName,
@@ -12,7 +13,6 @@
 		formatMoney,
 		formatPhone,
 		formatRelative,
-		nowLocal,
 		shortName
 	} from '#lib/format/index.js';
 	import {
@@ -37,52 +37,17 @@
 
 	const statusById = new Map(DEMO_STATUSES.map((s) => [s.id, s]));
 	const pointById = new Map(DEMO_POINTS.map((p) => [p.id, p.name]));
-	const now = nowLocal();
-	const collator = new Intl.Collator('ru');
+	// The demo data is made around DEMO_NOW: «сегодня» and «вчера» stay the same days.
+	const now = DEMO_NOW;
 	const phone = new MediaQuery(PHONE_QUERY);
 
 	const orderId = (o: OrderListItem) => o.id;
-	const deviceOf = (o: OrderListItem) =>
-		[o.brand, o.model].filter(Boolean).join(' ') || o.device_type;
 	const pointOf = (o: OrderListItem) =>
 		o.service_point_id === null ? '' : (pointById.get(o.service_point_id) ?? '');
-
-	function estimateOf(o: OrderListItem): string {
-		const parts = [o.estimate_from, o.estimate_to].filter((v): v is number => v !== null);
-		const [from, to] = parts;
-		if (from === undefined) return '';
-		const money = (v: number) => formatMoney(v, { currency: null });
-		return to === undefined || to === from ? money(from) : `${money(from)}–${money(to)}`;
-	}
-
-	const SORT_KEYS: Record<string, (o: OrderListItem) => number | string> = {
-		id: (o) => o.id,
-		received: (o) => o.received_at,
-		client: (o) => o.client_name,
-		device: deviceOf,
-		status: (o) => statusById.get(o.status_id)?.sort_order ?? 0,
-		master: (o) => o.master,
-		sum: (o) => o.final_price ?? o.estimate_from ?? -1,
-		type: (o) => o.device_type,
-		point: pointOf,
-		issued: (o) => o.issued_at ?? '',
-		prepayment: (o) => o.prepayment
+	const sortContext = {
+		statusOrder: (id: number) => statusById.get(id)?.sort_order ?? 0,
+		pointName: (id: number | null) => (id === null ? '' : (pointById.get(id) ?? ''))
 	};
-
-	/** What the server would do: the whole list sorted, ties newest first. */
-	function sortOrders(list: OrderListItem[], s: SortState): OrderListItem[] {
-		const key = SORT_KEYS[s.columnId] ?? orderId;
-		const dir = s.descending ? -1 : 1;
-		const keyed = list.map((o) => ({ o, k: key(o) }));
-		keyed.sort((a, b) => {
-			const c =
-				typeof a.k === 'number' && typeof b.k === 'number'
-					? a.k - b.k
-					: collator.compare(String(a.k), String(b.k));
-			return c !== 0 ? c * dir : b.o.id - a.o.id;
-		});
-		return keyed.map((x) => x.o);
-	}
 
 	// Spec 6.1: sorted by «Принят», newest first.
 	let sort = $state<SortState>({ columnId: 'received', descending: true });
@@ -93,7 +58,7 @@
 	let opened = $state<number | null>(null);
 	let flashIds = $state<RowId[]>([]);
 
-	const sorted = $derived(sortOrders(ORDERS, sort));
+	const sorted = $derived(sortOrders(ORDERS, sort, sortContext));
 	const rows = $derived(sorted.slice(0, loaded));
 
 	let timer: ReturnType<typeof setTimeout> | undefined;
@@ -108,6 +73,8 @@
 	function onsortchange(s: SortState) {
 		clearTimeout(timer);
 		sort = s;
+		// A list sorted anew is another data set: the selection does not carry over.
+		selected = new Set();
 		loaded = 0;
 		loading = false;
 		loadMore();
@@ -201,8 +168,8 @@
 {#snippet sumCell(o: OrderListItem)}
 	{#if o.final_price !== null}
 		{formatMoney(o.final_price)}
-	{:else if estimateOf(o)}
-		<span class="muted">≈ {estimateOf(o)}</span>
+	{:else if estimateText(o)}
+		<span class="muted">≈ {estimateText(o)}</span>
 	{:else}
 		<span class="muted">—</span>
 	{/if}

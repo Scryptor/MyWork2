@@ -67,6 +67,9 @@
 	--st-pink-bg: #fce7f1;
 	--st-pink-fg: #a1215f;
 	--st-pink-dot: #e0559a;
+	/* Text on a status filled with its dot (the chosen one in StatusPicker): the dots are mid-tones,
+	   only black reaches 4.5:1 on all twelve (indigo 4.7). */
+	--st-on-dot: #000000;
 	--font-sans: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 	--font-mono: ui-monospace, 'SF Mono', Consolas, monospace;
 	--text-xs: 0.75rem;
@@ -189,6 +192,7 @@
 	--st-pink-bg: #3a1a2b;
 	--st-pink-fg: #ff9ccb;
 	--st-pink-dot: #e0559a;
+	--st-on-dot: #000000;
 	--shadow-xs: 0 1px 2px rgb(0 0 0 / 0.4);
 	--shadow-sm: 0 1px 3px rgb(0 0 0 / 0.5), 0 1px 2px rgb(0 0 0 / 0.4);
 	--shadow-md: 0 4px 12px rgb(0 0 0 / 0.55), 0 2px 4px rgb(0 0 0 / 0.4);

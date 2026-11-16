@@ -17,26 +17,32 @@
 	} = $props();
 
 	const PrimaryIcon = $derived(primary?.icon);
+	// Spec 5.6: the main action «＋» sits in the middle; with an odd count the bigger half goes first.
+	const half = $derived(Math.ceil(items.length / 2));
 </script>
 
+{#snippet link(item: NavItem)}
+	{@const Icon = item.icon}
+	<a
+		class="item"
+		class:current={item.id === active}
+		href={item.href ?? '#'}
+		aria-current={item.id === active ? 'page' : undefined}
+		onclick={() => onnavigate?.(item.id)}
+	>
+		<span class="glyph">
+			<Icon size={20} aria-hidden="true" />
+			{#if item.count}
+				<span class="badge num" class:attention={item.attention}>{item.count}</span>
+			{/if}
+		</span>
+		<span class="label">{item.label}</span>
+	</a>
+{/snippet}
+
 <nav class="bottom" aria-label={ru.shell.bottomNav}>
-	{#each items as item (item.id)}
-		{@const Icon = item.icon}
-		<a
-			class="item"
-			class:current={item.id === active}
-			href={item.href ?? '#'}
-			aria-current={item.id === active ? 'page' : undefined}
-			onclick={() => onnavigate?.(item.id)}
-		>
-			<span class="glyph">
-				<Icon size={20} aria-hidden="true" />
-				{#if item.count}
-					<span class="badge num" class:attention={item.attention}>{item.count}</span>
-				{/if}
-			</span>
-			<span class="label">{item.label}</span>
-		</a>
+	{#each items.slice(0, half) as item (item.id)}
+		{@render link(item)}
 	{/each}
 	{#if primary && PrimaryIcon}
 		<button type="button" class="item primary" onclick={primary.onclick}>
@@ -44,6 +50,9 @@
 			<span class="label">{primary.label}</span>
 		</button>
 	{/if}
+	{#each items.slice(half) as item (item.id)}
+		{@render link(item)}
+	{/each}
 </nav>
 
 <style>

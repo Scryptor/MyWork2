@@ -37,6 +37,16 @@ export const ru = {
 		empty: 'Ничего не найдено'
 	},
 	shortcuts: { title: 'Клавиши' },
+	media: {
+		photos: 'Фото устройства',
+		addPhoto: 'Добавить фото',
+		removePhoto: 'Удалить фото',
+		of: 'из',
+		files: 'Файлы',
+		chooseFiles: 'Выбрать файлы',
+		dropHint: 'Перетащите файлы сюда или вставьте из буфера'
+	},
+	status: { label: 'Статус' },
 	table: {
 		columns: 'Колонки',
 		moveUp: 'Выше',

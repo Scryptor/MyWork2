@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { DEMO_POINTS, DEMO_STATUSES, makeDictionaries, makeOrders } from './fake.js';
+import { formatRelative } from '#lib/format/date.js';
+import { DEMO_NOW, DEMO_POINTS, DEMO_STATUSES, makeDictionaries, makeOrders } from './fake.js';
 
 const orders = makeOrders(2000);
 
@@ -60,6 +61,21 @@ describe('makeOrders', () => {
 	});
 });
 
+describe('DEMO_NOW', () => {
+	it('is the moment the data is made around: 15 November 2026, 18:00', () => {
+		expect(DEMO_NOW).toEqual({ year: 2026, month: 11, day: 15, hour: 18, minute: 0, second: 0 });
+	});
+
+	it('no order is received after it, the newest ones are «сегодня»', () => {
+		const now = '2026-11-15T18:00:00';
+		for (const o of orders) {
+			expect(o.received_at <= now, `№ ${o.id}`).toBe(true);
+			if (o.issued_at !== null) expect(o.issued_at <= now, `№ ${o.id}`).toBe(true);
+		}
+		expect(formatRelative(orders[orders.length - 1]!.received_at, DEMO_NOW)).toMatch(/^сегодня /);
+	});
+});
+
 describe('DEMO_STATUSES', () => {
 	it('starts with the eight default statuses, then «Куплен»', () => {
 		expect(DEMO_STATUSES.map((s) => [s.id, s.name, s.kind, s.color])).toEqual([
@@ -89,11 +105,14 @@ describe('DEMO_POINTS and makeDictionaries', () => {
 			'malfunction',
 			'completeness',
 			'condition',
-			'master'
+			'master',
+			'warranty',
+			'source'
 		] as const) {
 			expect(d[kind].length, kind).toBeGreaterThan(0);
 		}
 		expect(d.master).toEqual(['АНТОН', 'СЕРГЕЙ', 'ИРИНА']);
 		expect(d.completeness).toContain('Чехол');
+		expect(d.warranty).toContain('30 дней');
 	});
 });

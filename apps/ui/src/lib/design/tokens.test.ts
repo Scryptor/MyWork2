@@ -75,6 +75,12 @@ describe('tokens: contrast pairs of spec 3.1', () => {
 				expect(contrastRatio(fg, bg), h).toBeGreaterThanOrEqual(4.5);
 			}
 		});
+		it(`text on a status filled with its dot >= 4.5 (${name})`, () => {
+			const fg = get(map, '--st-on-dot');
+			for (const h of STATUS_HUES) {
+				expect(contrastRatio(fg, get(map, `--st-${h}-dot`)), h).toBeGreaterThanOrEqual(4.5);
+			}
+		});
 	}
 });
 

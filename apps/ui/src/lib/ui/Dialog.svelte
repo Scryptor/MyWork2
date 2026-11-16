@@ -14,6 +14,7 @@
 		title,
 		description,
 		size = 'md',
+		position = 'center',
 		children,
 		footer,
 		onclose
@@ -22,6 +23,9 @@
 		title: string;
 		description?: string;
 		size?: 'sm' | 'md' | 'lg';
+		/** `bottom`: on a phone the dialog rises from the bottom edge (a short list of choices)
+		 *  instead of filling the screen. */
+		position?: 'center' | 'bottom';
 		children: Snippet;
 		footer?: Snippet;
 		onclose?: () => void;
@@ -49,7 +53,11 @@
 >
 	<Dialog.Portal>
 		<Dialog.Overlay class="mw-scrim" />
-		<Dialog.Content class="mw-dialog {size} {phone.current ? 'phone' : ''}">
+		<Dialog.Content
+			class="mw-dialog {size} {position === 'bottom' ? 'bottom' : ''} {phone.current
+				? 'phone'
+				: ''}"
+		>
 			<div class="mw-dialog-head">
 				<Dialog.Title class="mw-dialog-title" level={2}>{title}</Dialog.Title>
 				{#if description}
