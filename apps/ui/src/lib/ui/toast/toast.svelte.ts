@@ -1,3 +1,4 @@
+import { untrack } from 'svelte';
 import { ru } from '#lib/i18n/ru.js';
 
 export interface ToastOptions {
@@ -40,35 +41,43 @@ function forget(id: string): void {
 	meta.delete(id);
 }
 
-/** Notifications at the bottom of the screen: at most three, each for 6 s unless paused. */
+/**
+ * Notifications at the bottom of the screen: at most three, each for 6 s unless paused.
+ * The methods run untracked: an effect that calls them must not start depending on the list
+ * (or on the options and undo action) they touch, or every write would re-run it.
+ */
 export const toast = {
 	get items(): readonly ToastItem[] {
 		return items;
 	},
 
 	show(o: ToastOptions): string {
-		const id = `toast-${++seq}`;
-		const next = [...items, { ...o, id }];
-		while (next.length > MAX_VISIBLE) {
-			const oldest = next.shift();
-			if (oldest) forget(oldest.id);
-		}
-		items = next;
-		const ms = o.duration ?? DEFAULT_DURATION;
-		const m: Meta = {
-			undo: false,
-			left: Number.isFinite(ms) && ms > 0 ? ms : null,
-			startedAt: 0,
-			handle: undefined
-		};
-		meta.set(id, m);
-		if (!paused) arm(id, m);
-		return id;
+		return untrack(() => {
+			const id = `toast-${++seq}`;
+			const next = [...items, { ...o, id }];
+			while (next.length > MAX_VISIBLE) {
+				const oldest = next.shift();
+				if (oldest) forget(oldest.id);
+			}
+			items = next;
+			const ms = o.duration ?? DEFAULT_DURATION;
+			const m: Meta = {
+				undo: false,
+				left: Number.isFinite(ms) && ms > 0 ? ms : null,
+				startedAt: 0,
+				handle: undefined
+			};
+			meta.set(id, m);
+			if (!paused) arm(id, m);
+			return id;
+		});
 	},
 
 	dismiss(id: string): void {
-		forget(id);
-		items = items.filter((t) => t.id !== id);
+		untrack(() => {
+			forget(id);
+			items = items.filter((t) => t.id !== id);
+		});
 	},
 
 	undoable(message: string, undo: () => void | Promise<void>): string {
@@ -80,11 +89,13 @@ export const toast = {
 
 	/** Runs the undo of the newest undoable toast and removes it; false when there is none. */
 	undoLast(): boolean {
-		const last = items.findLast((t) => meta.get(t.id)?.undo);
-		if (!last?.action) return false;
-		toast.dismiss(last.id);
-		void last.action.run();
-		return true;
+		return untrack(() => {
+			const last = items.findLast((t) => meta.get(t.id)?.undo);
+			if (!last?.action) return false;
+			toast.dismiss(last.id);
+			void last.action.run();
+			return true;
+		});
 	},
 
 	/** Holds every timer while the pointer or focus is on the toasts. */
