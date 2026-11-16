@@ -35,4 +35,18 @@ describe('layers', () => {
 		expect(layers.blocking).toBe(true);
 		off();
 	});
+
+	it('Escape already handled by a layer above (bits-ui) or typed during IME input leaves the panel open', () => {
+		const close = vi.fn();
+		const off = layers.open('panel', close);
+		const handled = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true });
+		handled.preventDefault();
+		window.dispatchEvent(handled);
+		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', isComposing: true }));
+		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 229 }));
+		expect(close).not.toHaveBeenCalled();
+		escape();
+		expect(close).toHaveBeenCalledTimes(1);
+		off();
+	});
 });

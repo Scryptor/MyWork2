@@ -1,0 +1,149 @@
+/* Shared look of modal layers built on the bits-ui dialog: Dialog, ConfirmDialog, Sheet. */
+.mw-scrim {
+	position: fixed;
+	inset: 0;
+	z-index: var(--z-scrim);
+	background: var(--scrim);
+	animation: mw-fade-in var(--duration-normal) var(--ease-out);
+}
+
+.mw-dialog {
+	position: fixed;
+	top: 50%;
+	left: 50%;
+	translate: -50% -50%;
+	z-index: var(--z-dialog);
+	box-sizing: border-box;
+	display: flex;
+	flex-direction: column;
+	width: min(30rem, 100% - 2 * var(--space-4));
+	max-height: calc(100% - 2 * var(--space-8));
+	border: 1px solid var(--border);
+	border-radius: var(--radius-lg);
+	background: var(--surface);
+	color: var(--text);
+	box-shadow: var(--shadow-lg);
+	outline: none;
+	animation: mw-pop-in var(--duration-normal) var(--ease-out);
+}
+.mw-dialog.sm {
+	width: min(24rem, 100% - 2 * var(--space-4));
+}
+.mw-dialog.lg {
+	width: min(40rem, 100% - 2 * var(--space-4));
+}
+
+/* Sheet: a wide modal panel pinned to the right edge for the whole height. */
+.mw-dialog.mw-sheet {
+	inset: 0 0 0 auto;
+	translate: none;
+	z-index: var(--z-sheet);
+	width: var(--sheet-width);
+	max-height: none;
+	border-width: 0 0 0 1px;
+	border-radius: var(--radius-lg) 0 0 var(--radius-lg);
+	animation: mw-slide-in var(--duration-slow) var(--ease-out);
+}
+
+/* Phone: every modal layer takes the whole screen. */
+.mw-dialog.phone {
+	inset: 0;
+	translate: none;
+	width: auto;
+	max-height: none;
+	border: 0;
+	border-radius: 0;
+}
+
+.mw-dialog-head {
+	flex: none;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	padding: var(--space-4) var(--space-5) var(--space-3);
+	padding-right: calc(var(--space-3) + var(--control-md) + var(--space-2));
+}
+.mw-dialog.phone .mw-dialog-head {
+	padding-right: var(--space-5);
+	padding-left: calc(var(--space-3) + var(--control-md) + var(--space-2));
+}
+.mw-dialog-title {
+	margin: 0;
+	font-size: var(--text-lg);
+	font-weight: 600;
+	line-height: var(--leading-tight);
+}
+.mw-dialog-desc {
+	margin: 0;
+	color: var(--text-2);
+}
+.mw-dialog-body {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+	padding: var(--space-2) var(--space-5) var(--space-4);
+}
+.mw-dialog-foot {
+	flex: none;
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: flex-end;
+	gap: var(--space-2);
+	padding: var(--space-3) var(--space-5);
+	border-top: 1px solid var(--border);
+}
+/* Last in the DOM, so the first field (not the close button) takes focus on open.
+   Looks like a ghost IconButton. */
+.mw-dialog-close {
+	position: absolute;
+	top: var(--space-3);
+	right: var(--space-3);
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box;
+	width: var(--control-md);
+	height: var(--control-md);
+	padding: 0;
+	border: 1px solid transparent;
+	border-radius: var(--radius-md);
+	background: transparent;
+	color: var(--text-2);
+	cursor: pointer;
+}
+.mw-dialog-close:hover:not(:disabled) {
+	background: var(--surface-3);
+	color: var(--text);
+}
+.mw-dialog-close:disabled {
+	color: var(--text-disabled);
+	cursor: not-allowed;
+}
+.mw-dialog.phone .mw-dialog-close {
+	right: auto;
+	left: var(--space-3);
+}
+@media (pointer: coarse) {
+	.mw-dialog-close {
+		min-width: 2.75rem;
+		min-height: 2.75rem;
+	}
+}
+
+@keyframes mw-fade-in {
+	from {
+		opacity: 0;
+	}
+}
+@keyframes mw-pop-in {
+	from {
+		opacity: 0;
+		transform: scale(0.97);
+	}
+}
+@keyframes mw-slide-in {
+	from {
+		transform: translateX(100%);
+	}
+}

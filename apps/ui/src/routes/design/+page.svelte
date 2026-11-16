@@ -3,6 +3,7 @@
 	import { SegmentedControl } from '#lib/ui/index.js';
 	import Basics from './sections/Basics.svelte';
 	import Fields from './sections/Fields.svelte';
+	import Layers from './sections/Layers.svelte';
 	import Tokens from './sections/Tokens.svelte';
 
 	const THEMES = [
@@ -56,6 +57,11 @@
 <section id="fields">
 	<h2>Поля</h2>
 	<Fields />
+</section>
+
+<section id="layers">
+	<h2>Слои</h2>
+	<Layers />
 </section>
 
 <style>

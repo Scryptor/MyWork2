@@ -23,5 +23,7 @@ export const ru = {
 		showPassword: 'Показать пароль',
 		hidePassword: 'Скрыть пароль'
 	},
-	save: { saving: 'Сохраняю…', saved: 'Сохранено', failed: 'Не сохранено' }
+	save: { saving: 'Сохраняю…', saved: 'Сохранено', failed: 'Не сохранено' },
+	panel: { prev: 'Предыдущая запись', next: 'Следующая запись' },
+	toast: { region: 'Уведомления' }
 } as const;
