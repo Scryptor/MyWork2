@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { formatPhone, phoneDigits } from '#lib/format/phone.js';
 	import Field from './Field.svelte';
 
@@ -26,6 +27,19 @@
 	const fid = $derived(id ?? uid);
 	let focused = $state(false);
 	let text = $state('');
+	/** The digits the text stands for; any other value came from outside (another record). */
+	let synced: string | undefined;
+
+	// A number from outside replaces the text, also while focused.
+	$effect.pre(() => {
+		const v = value;
+		untrack(() => {
+			if (v === synced) return;
+			synced = v;
+			text = formatPhone(v);
+		});
+	});
+
 	const shown = $derived(focused ? text : formatPhone(value));
 </script>
 
@@ -50,7 +64,9 @@
 				}}
 				oninput={(e) => {
 					text = e.currentTarget.value;
-					value = phoneDigits(text);
+					const digits = phoneDigits(text);
+					synced = digits;
+					if (digits !== value) value = digits;
 				}}
 				onblur={() => (focused = false)}
 			/>

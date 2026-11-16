@@ -7,8 +7,10 @@ const SECOND = 11998;
 const THIRD = 11997;
 // «Готов», final price 4 050 ₽, prepayment 2 300 ₽.
 const READY = 11944;
-// The newest order, «Готов»: first under the quick filter «Готов».
+// The newest order, «Готов»: first under the quick filter «Готов», total 9 900 ₽; first under «Все» too.
 const NEWEST_READY = 12000;
+// Next under «Готов»: total 10 250 ₽.
+const NEXT_READY = 11992;
 
 /** The modifier the app reads as Mod: ⌘ where navigator.platform says Mac, Ctrl elsewhere. */
 async function mod(page: Page): Promise<'Meta' | 'Control'> {
@@ -32,6 +34,14 @@ const paletteOf = (page: Page) => page.getByRole('dialog', { name: 'Найти �
 async function openRow(page: Page, n: number) {
 	await rowOf(page, n).getByRole('gridcell').nth(3).click();
 	await expect(titleOf(page)).toHaveText(new RegExp(`^№ ${n} · `));
+}
+
+/** Shows only the orders of one quick filter, e.g. «Готов» or «Все». */
+async function quickFilter(page: Page, name: string) {
+	await page
+		.getByRole('group', { name: 'Быстрые фильтры' })
+		.getByRole('button', { name: new RegExp(`^${name}`) })
+		.click();
 }
 
 test.describe('orders demo', () => {
@@ -221,6 +231,81 @@ test.describe('orders demo', () => {
 		await expect(rowOf(page, READY)).toContainText('Готов');
 		await expect(rowOf(page, READY)).toContainText(/4\s050\s₽/);
 		await expect(rowOf(page, READY)).not.toContainText('Выдан');
+	});
+
+	test('«Выдать» with «4 O5O» (letter O) in «Итоговая цена»: Ctrl/⌘+Enter and the button do not issue, the field and the sum say why', async ({
+		page
+	}) => {
+		await quickFilter(page, 'Готов');
+		await filterOf(page).fill(String(READY));
+		await openRow(page, READY);
+		const panel = panelOf(page);
+		const statuses = panel.getByRole('radiogroup', { name: 'Статус' });
+		await panel.getByRole('button', { name: /^Выдать/ }).click();
+		const dialog = page.getByRole('dialog', { name: `Выдача заказа № ${READY}` });
+		await expect(dialog).toBeVisible();
+
+		const price = dialog.getByRole('textbox', { name: /^Итоговая цена/ });
+		await price.click();
+		await price.fill('4 O5O');
+		await page.keyboard.press(`${await mod(page)}+Enter`);
+		await expect(dialog).toBeVisible();
+		await expect(price).toBeFocused();
+		await expect(price).toHaveAttribute('aria-invalid', 'true');
+		await expect(dialog.getByText('Введите сумму, например 6 500')).toBeVisible();
+		await expect(dialog.getByText('Неверная сумма: Итоговая цена')).toBeVisible();
+		await dialog.getByRole('button', { name: /^Выдать/ }).click();
+		await expect(dialog).toBeVisible();
+		await expect(price).toBeFocused();
+
+		await page.keyboard.press('Escape');
+		await expect(dialog).toBeHidden();
+		await expect(statuses.getByRole('radio', { name: 'Готов' })).toBeChecked();
+		await expect(rowOf(page, READY)).toContainText('Готов');
+		await expect(rowOf(page, READY)).not.toContainText('Выдан');
+		await expect(rowOf(page, READY)).toContainText(/4\s050\s₽/);
+		await expect(toastsOf(page)).not.toContainText('→ Выдан');
+	});
+
+	test('Alt+↓ with focus in «Итог»: the field shows the next order’s total, leaving it writes nothing', async ({
+		page
+	}) => {
+		await quickFilter(page, 'Готов');
+		await openRow(page, NEWEST_READY);
+		const panel = panelOf(page);
+		const total = panel.getByRole('textbox', { name: 'Итог' });
+		await total.click();
+		await expect(total).toHaveValue('9900');
+
+		await page.keyboard.press('Alt+ArrowDown');
+		await expect(titleOf(page)).toHaveText(new RegExp(`^№ ${NEXT_READY} · `));
+		await expect(total).toBeFocused();
+		await expect(total).toHaveValue('10250');
+		await page.keyboard.press('Tab');
+		await expect(total).toHaveValue(/^10\s250$/);
+		await expect(panel.getByText(/Сохраняю|Сохранено/)).toHaveCount(0);
+		await expect(rowOf(page, NEXT_READY)).toContainText(/10\s250\s₽/);
+		await expect(rowOf(page, NEWEST_READY)).toContainText(/9\s900\s₽/);
+	});
+
+	test('Alt+↑ from an empty «Итог»: the field shows the order’s total, leaving it does not erase it', async ({
+		page
+	}) => {
+		await quickFilter(page, 'Все');
+		await openRow(page, FIRST);
+		const panel = panelOf(page);
+		const total = panel.getByRole('textbox', { name: 'Итог' });
+		await total.click();
+		await expect(total).toHaveValue('');
+
+		await page.keyboard.press('Alt+ArrowUp');
+		await expect(titleOf(page)).toHaveText(new RegExp(`^№ ${NEWEST_READY} · `));
+		await expect(total).toBeFocused();
+		await expect(total).toHaveValue('9900');
+		await page.keyboard.press('Tab');
+		await expect(total).toHaveValue(/^9\s900$/);
+		await expect(panel.getByText(/Сохраняю|Сохранено/)).toHaveCount(0);
+		await expect(rowOf(page, NEWEST_READY)).toContainText(/9\s900\s₽/);
 	});
 
 	test('an issued status picked in the panel opens «Выдать»: the status stays until the dialog issues; arrows onto it do not issue', async ({

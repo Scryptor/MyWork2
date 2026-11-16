@@ -45,3 +45,26 @@ test('a flag icon tooltip opens on hover and on keyboard focus', async ({ page }
 	await expect(flag).toBeFocused();
 	await expect(page.getByRole('tooltip', { name: 'Позвонить' })).toBeVisible();
 });
+
+test('Lucide icons are drawn with a 1.75 stroke (spec 3.4)', async ({ page }) => {
+	await page.goto('/design');
+	const icon = page.locator('#basics svg.lucide').first();
+	await expect(icon).toBeAttached();
+	const widths = await icon.evaluate((svg) =>
+		[svg, ...svg.querySelectorAll('*')].map((el) => parseFloat(getComputedStyle(el).strokeWidth))
+	);
+	expect([...new Set(widths)]).toEqual([1.75]);
+});
+
+test('the spinner stands still when the system asks for less motion (spec 10)', async ({
+	page
+}) => {
+	await page.emulateMedia({ reducedMotion: 'reduce' });
+	await page.goto('/design');
+	const ring = page.locator('#basics .spinner .ring').first();
+	await expect(ring).toBeAttached();
+	const animation = () => ring.evaluate((el) => getComputedStyle(el).animationName);
+	expect(await animation()).toBe('none');
+	await page.emulateMedia({ reducedMotion: 'no-preference' });
+	expect(await animation()).not.toBe('none');
+});

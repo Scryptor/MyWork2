@@ -35,7 +35,13 @@
 	const DICTIONARIES = makeDictionaries();
 	const masterItems = DICTIONARIES.master.map((m) => ({ value: m, label: displayName(m) }));
 	const warrantyItems = DICTIONARIES.warranty.map((w) => ({ value: w, label: w }));
-	const ids = { work: 'issue-work', master: 'issue-master', price: 'issue-price' } as const;
+	const ids = {
+		work: 'issue-work',
+		master: 'issue-master',
+		price: 'issue-price',
+		discount: 'issue-discount'
+	} as const;
+	const LABELS = { price: 'Итоговая цена', discount: 'Скидка' } as const;
 
 	let work = $state('');
 	let master = $state<string | null>(null);
@@ -43,6 +49,9 @@
 	let discount = $state<number | null>(0);
 	let warranty = $state<string | null>(null);
 	let printAct = $state(readPrintAct());
+	/** The money fields hold text that is not an amount: nothing is issued until it is fixed. */
+	let priceInvalid = $state(false);
+	let discountInvalid = $state(false);
 
 	function readPrintAct(): boolean {
 		try {
@@ -64,6 +73,8 @@
 	$effect.pre(() => {
 		if (!open) return;
 		untrack(() => {
+			priceInvalid = false;
+			discountInvalid = false;
 			if (!order) return;
 			work = order.work_done;
 			master = order.master || null;
@@ -78,15 +89,27 @@
 		master: master === null,
 		price: price === null
 	});
+	/** What stops the issue, in the order of the fields: an empty required field or a wrong amount. */
+	const blocking = $derived({
+		work: missing.work,
+		master: missing.master,
+		price: missing.price || priceInvalid,
+		discount: discountInvalid
+	});
+	const wrong = $derived([
+		...(priceInvalid ? [LABELS.price] : []),
+		...(discountInvalid ? [LABELS.discount] : [])
+	]);
+	// A wrong amount leaves the sum unknown.
 	const pay = $derived(
-		order
+		order && wrong.length === 0
 			? toPay({ final_price: price, prepayment: order.prepayment, discount: discount ?? 0 })
 			: null
 	);
 	const payText = $derived(pay === null ? '—' : formatMoney(pay));
 
 	function issue() {
-		const first = (Object.keys(missing) as (keyof typeof missing)[]).find((k) => missing[k]);
+		const first = (Object.keys(blocking) as (keyof typeof blocking)[]).find((k) => blocking[k]);
 		if (first !== undefined) {
 			document.getElementById(ids[first])?.focus();
 			return;
@@ -135,21 +158,32 @@
 			<div class="pair">
 				<MoneyInput
 					id={ids.price}
-					label="Итоговая цена"
+					label={LABELS.price}
 					required
 					bind:value={price}
-					error={missing.price ? REQUIRED : undefined}
+					bind:invalid={priceInvalid}
+					error={missing.price && !priceInvalid ? REQUIRED : undefined}
 				/>
-				<MoneyInput label="Скидка" nullable={false} bind:value={discount} />
+				<MoneyInput
+					id={ids.discount}
+					label={LABELS.discount}
+					nullable={false}
+					bind:value={discount}
+					bind:invalid={discountInvalid}
+				/>
 			</div>
 			<div class="sum num">
 				<p class="to-pay" class:negative={pay !== null && pay < 0}>К оплате {payText}</p>
-				<p class="muted">
-					Итог {price === null ? '—' : formatMoney(price)} − предоплата {formatMoney(
-						order.prepayment
-					)}
-					− скидка {formatMoney(discount ?? 0)}
-				</p>
+				{#if wrong.length > 0}
+					<p class="wrong">Неверная сумма: {wrong.join(', ')}</p>
+				{:else}
+					<p class="muted">
+						Итог {price === null ? '—' : formatMoney(price)} − предоплата {formatMoney(
+							order.prepayment
+						)}
+						− скидка {formatMoney(discount ?? 0)}
+					</p>
+				{/if}
 			</div>
 			<Select label="Гарантия" items={warrantyItems} bind:value={warranty} />
 			<Switch
@@ -196,6 +230,10 @@
 	}
 	.muted {
 		color: var(--text-3);
+		font-size: var(--text-sm);
+	}
+	.wrong {
+		color: var(--warning-text);
 		font-size: var(--text-sm);
 	}
 </style>

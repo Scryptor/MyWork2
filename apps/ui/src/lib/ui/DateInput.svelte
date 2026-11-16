@@ -12,6 +12,7 @@
 
 	let {
 		value = $bindable(null),
+		invalid = $bindable(false),
 		min,
 		max,
 		label,
@@ -22,6 +23,8 @@
 		id
 	}: {
 		value: string | null;
+		/** Out: the text is not a date within min and max (the value stays); forms do not submit. */
+		invalid?: boolean;
 		min?: string;
 		max?: string;
 		label?: string;
@@ -64,6 +67,9 @@
 	$effect(() => {
 		text = toDisplay(value);
 		problem = undefined;
+		untrack(() => {
+			if (invalid) invalid = false;
+		});
 	});
 	$effect(() => {
 		if (open) return untrack(() => layers.open('popup', () => (open = false)));
@@ -73,25 +79,32 @@
 	const minValue = $derived(tryIso(min));
 	const maxValue = $derived(tryIso(max));
 
-	function commit() {
-		const t = text.trim();
-		if (t === '') {
-			value = null;
-			problem = undefined;
-			return;
-		}
-		const d = parseDisplay(t);
-		if (!d) {
-			problem = ru.fields.dateError;
-			return;
-		}
+	/** The date of a text: null when empty, a problem when it is not a date within min and max. */
+	function check(t: string): { date: CalendarDate | null } | { problem: string } {
+		const s = t.trim();
+		if (s === '') return { date: null };
+		const d = parseDisplay(s);
+		if (!d) return { problem: ru.fields.dateError };
 		if ((minValue && d.compare(minValue) < 0) || (maxValue && d.compare(maxValue) > 0)) {
-			problem = ru.fields.dateRangeError;
+			return { problem: ru.fields.dateRangeError };
+		}
+		return { date: d };
+	}
+
+	function markInvalid(bad: boolean) {
+		if (bad !== invalid) invalid = bad;
+	}
+
+	function commit() {
+		const r = check(text);
+		markInvalid('problem' in r);
+		if ('problem' in r) {
+			problem = r.problem;
 			return;
 		}
 		problem = undefined;
-		value = toIso(d);
-		text = toDisplay(value);
+		value = r.date === null ? null : toIso(r.date);
+		if (r.date) text = toDisplay(value);
 	}
 </script>
 
@@ -110,6 +123,7 @@
 				aria-describedby={f.describedBy}
 				aria-invalid={f.invalid ? 'true' : undefined}
 				aria-required={required ? 'true' : undefined}
+				oninput={(e) => markInvalid('problem' in check(e.currentTarget.value))}
 				onblur={commit}
 				onkeydown={(e) => {
 					if (e.key === 'Enter') commit();

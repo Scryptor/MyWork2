@@ -28,4 +28,9 @@ describe('parseMoney', () => {
 		for (const bad of ['', 'abc', '-100', '−100', '1e3', '10,555', '1,2,3', '999999999999'])
 			expect(parseMoney(bad)).toBeNull();
 	});
+	it('rejects amounts over the maximum', () => {
+		// 1 000 000 000 ₽ is 100 000 000 000 kopecks, one kopeck over the maximum.
+		expect(parseMoney('1000000000')).toBeNull();
+		expect(parseMoney('999999999,99')).toBe(MAX_MONEY_KOPECKS);
+	});
 });

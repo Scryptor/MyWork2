@@ -98,6 +98,38 @@ test.describe('layers', () => {
 		await expect(title).toHaveText('Запись № 2');
 	});
 
+	test('slide-over: an arrow from ‹ or › onto the first or last record keeps focus in the panel', async ({
+		page
+	}) => {
+		await page.locator('#layers').getByRole('button', { name: 'Открыть панель' }).click();
+		const panel = panelOf(page);
+		const title = panel.getByRole('heading', { level: 2 });
+		const prev = panel.getByRole('button', { name: 'Предыдущая запись' });
+		const next = panel.getByRole('button', { name: 'Следующая запись' });
+		for (let i = 0; i < 3; i++) await next.click();
+		await expect(title).toHaveText('Запись № 4');
+
+		// Alt+↓ from › onto the last record: › turns disabled, focus goes to the panel, ↑ still works.
+		await next.focus();
+		await page.keyboard.press('Alt+ArrowDown');
+		await expect(title).toHaveText('Запись № 5');
+		await expect(next).toBeDisabled();
+		await expect(panel).toBeFocused();
+		await page.keyboard.press('ArrowUp');
+		await expect(title).toHaveText('Запись № 4');
+
+		// ↑ from ‹ onto the first record, the same.
+		for (let i = 0; i < 2; i++) await page.keyboard.press('ArrowUp');
+		await expect(title).toHaveText('Запись № 2');
+		await prev.focus();
+		await page.keyboard.press('ArrowUp');
+		await expect(title).toHaveText('Запись № 1');
+		await expect(prev).toBeDisabled();
+		await expect(panel).toBeFocused();
+		await page.keyboard.press('ArrowDown');
+		await expect(title).toHaveText('Запись № 2');
+	});
+
 	test('sheet: scrim, focus stays inside, Esc closes, Ctrl/⌘+Enter accepts', async ({ page }) => {
 		const section = page.locator('#layers');
 		const opener = section.getByRole('button', { name: 'Открыть широкую панель' });
@@ -217,6 +249,15 @@ test.describe('layers', () => {
 });
 
 test.describe('toaster', () => {
+	test('the region is polite and not atomic: a new toast is read alone, not with the others', async ({
+		page
+	}) => {
+		await page.goto('/design');
+		const toasts = page.getByRole('status', { name: 'Уведомления' });
+		await expect(toasts).toHaveAttribute('aria-live', 'polite');
+		await expect(toasts).toHaveAttribute('aria-atomic', 'false');
+	});
+
 	test('a toast waits while hovered or focused, then leaves 6 s later', async ({ page }) => {
 		await page.clock.install();
 		await page.goto('/design');

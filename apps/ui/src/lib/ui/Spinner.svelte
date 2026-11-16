@@ -35,9 +35,10 @@
 			transform: rotate(360deg);
 		}
 	}
+	/* No animations under reduced motion (spec 10): the ring and the label still say «loading». */
 	@media (prefers-reduced-motion: reduce) {
 		.ring {
-			animation-duration: 2.4s;
+			animation: none;
 		}
 	}
 </style>

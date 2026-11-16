@@ -1,10 +1,12 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { formatMoney, parseMoney } from '#lib/format/money.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import Field from './Field.svelte';
 
 	let {
 		value = $bindable(null),
+		invalid = $bindable(false),
 		nullable = true,
 		currency = '₽',
 		placeholder,
@@ -16,6 +18,8 @@
 		id
 	}: {
 		value: number | null;
+		/** Out: the text is not an amount (the value keeps the last amount typed); forms do not submit. */
+		invalid?: boolean;
 		nullable?: boolean;
 		currency?: string;
 		placeholder?: string;
@@ -30,37 +34,57 @@
 	const uid = $props.id();
 	const fid = $derived(id ?? uid);
 	let focused = $state(false);
+	/** What the field shows while focused or wrong: the typed text, or the value as plain digits. */
 	let text = $state('');
-	let parseError = $state(false);
+	/** The error shows once the field is left or Enter is pressed and goes as soon as the text is an amount. */
+	let showError = $state(false);
+	/** The value the text stands for; any other value came from outside (another record, an undo). */
+	let synced: number | null | undefined;
 
 	function plain(v: number | null): string {
 		return v === null ? '' : formatMoney(v, { currency: null }).replace(/\s/g, '');
 	}
+
+	/** Empty is null (0 when not nullable); undefined when the text is not an amount. */
+	function amountOf(t: string): number | null | undefined {
+		if (t.trim() === '') return nullable ? null : 0;
+		return parseMoney(t) ?? undefined;
+	}
+
+	// A value from outside replaces the text, also while focused: what was typed and parsed is already in
+	// the previous value, and a text that is not an amount belonged to it too.
+	$effect.pre(() => {
+		const v = value;
+		untrack(() => {
+			if (v === synced) return;
+			synced = v;
+			text = plain(v);
+			showError = false;
+			if (invalid) invalid = false;
+		});
+	});
+
 	const shown = $derived(
-		focused || parseError ? text : value === null ? '' : formatMoney(value, { currency: null })
+		focused || showError ? text : value === null ? '' : formatMoney(value, { currency: null })
 	);
 
-	function commit() {
-		const t = text.trim();
-		if (t === '') {
-			value = nullable ? null : 0;
-			parseError = false;
-			return;
-		}
-		const parsed = parseMoney(t);
-		if (parsed === null) {
-			parseError = true;
-			return;
-		}
-		value = parsed;
-		parseError = false;
+	/** The value changes only here, as the user types: an amount is written at once, anything else is not. */
+	function input(next: string) {
+		text = next;
+		const amount = amountOf(next);
+		const bad = amount === undefined;
+		if (bad !== invalid) invalid = bad;
+		if (amount === undefined) return;
+		showError = false;
+		synced = amount;
+		if (amount !== value) value = amount;
 	}
 </script>
 
 <Field
 	{label}
 	{hint}
-	error={error ?? (parseError ? ru.fields.moneyError : undefined)}
+	error={error ?? (showError ? ru.fields.moneyError : undefined)}
 	{required}
 	id={fid}
 >
@@ -78,16 +102,16 @@
 				aria-invalid={f.invalid ? 'true' : undefined}
 				aria-required={required ? 'true' : undefined}
 				onfocus={() => {
-					if (!parseError) text = plain(value);
+					if (!showError) text = plain(value);
 					focused = true;
 				}}
-				oninput={(e) => (text = e.currentTarget.value)}
+				oninput={(e) => input(e.currentTarget.value)}
 				onblur={() => {
-					commit();
+					showError = invalid;
 					focused = false;
 				}}
 				onkeydown={(e) => {
-					if (e.key === 'Enter') commit();
+					if (e.key === 'Enter') showError = invalid;
 				}}
 			/>
 			<span class="mw-affix">{currency}</span>

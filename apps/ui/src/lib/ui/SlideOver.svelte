@@ -75,8 +75,8 @@
 		const prev = onprev;
 		const next = onnext;
 		const offs = [
-			prev ? registerHotkey('Alt+ArrowUp', () => prev(), { allowInFields: true }) : null,
-			next ? registerHotkey('Alt+ArrowDown', () => next(), { allowInFields: true }) : null
+			prev ? registerHotkey('Alt+ArrowUp', () => void step(prev), { allowInFields: true }) : null,
+			next ? registerHotkey('Alt+ArrowDown', () => void step(next), { allowInFields: true }) : null
 		];
 		return () => {
 			for (const off of offs) off?.();
@@ -96,10 +96,13 @@
 		const go = e.key === 'ArrowUp' ? onprev : e.key === 'ArrowDown' ? onnext : undefined;
 		if (!go || isEditableTarget(e.target) || ownsArrows(e.target)) return;
 		e.preventDefault();
-		go();
+		void step(go);
 	}
 
-	/** ‹ ›: on the first or last record the pressed button turns disabled; keep focus in the panel. */
+	/**
+	 * Every move to the neighbouring record (‹ ›, ↑↓, Alt+↑↓). On the first or last record the focused
+	 * ‹ or › turns disabled and the browser drops focus to the page: keep it in the panel.
+	 */
 	async function step(go: (() => void) | undefined) {
 		go?.();
 		await tick();

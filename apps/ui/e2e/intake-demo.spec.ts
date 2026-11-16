@@ -11,6 +11,7 @@ const phoneOf = (page: Page) => sheetOf(page).getByRole('textbox', { name: 'Те
 const typeOf = (page: Page) => sheetOf(page).getByRole('combobox', { name: /^Тип устройства/ });
 const malfunctionOf = (page: Page) =>
 	sheetOf(page).getByRole('textbox', { name: /^Неисправность/ });
+const prepaymentOf = (page: Page) => sheetOf(page).getByRole('textbox', { name: 'Предоплата' });
 const toastsOf = (page: Page) => page.getByRole('status', { name: 'Уведомления' });
 
 test.describe('intake demo', () => {
@@ -97,5 +98,46 @@ test.describe('intake demo', () => {
 		await expect(sheetOf(page)).toBeVisible();
 		await expect(malfunctionOf(page)).toHaveValue('Разбит экран');
 		await expect(phoneOf(page)).toHaveValue('+7 000 123-45-67');
+	});
+
+	test('a draft keeps an amount typed right before Esc: «Предоплата» 1 500 is back after reopening and a reload', async ({
+		page
+	}) => {
+		await prepaymentOf(page).click();
+		await page.keyboard.type('1500');
+		await page.keyboard.press('Escape');
+		await expect(sheetOf(page)).toBeHidden();
+
+		await page.getByRole('button', { name: 'Новый заказ' }).click();
+		await expect(sheetOf(page)).toBeVisible();
+		await expect(prepaymentOf(page)).toHaveValue(/^1\s500$/);
+
+		await page.reload();
+		await expect(sheetOf(page)).toBeVisible();
+		await expect(prepaymentOf(page)).toHaveValue(/^1\s500$/);
+	});
+
+	test('a wrong amount: Ctrl/⌘+Enter does not accept, focus goes to the field, the summary names it', async ({
+		page
+	}) => {
+		await phoneOf(page).fill('70000000001');
+		await typeOf(page).fill('Телефон');
+		await malfunctionOf(page).fill('Не включается');
+		const prepayment = prepaymentOf(page);
+		await prepayment.click();
+		await prepayment.fill('15O0');
+		await malfunctionOf(page).focus();
+		await expect(sheetOf(page).getByText('Неверная сумма: Предоплата')).toBeVisible();
+		await page.keyboard.press(`${await mod(page)}+Enter`);
+		await expect(sheetOf(page)).toBeVisible();
+		await expect(prepayment).toBeFocused();
+		await expect(prepayment).toHaveAttribute('aria-invalid', 'true');
+		await expect(toastsOf(page)).not.toContainText('принят');
+
+		await prepayment.fill('1500');
+		await expect(sheetOf(page).getByText(/^Неверная сумма/)).toHaveCount(0);
+		await page.keyboard.press(`${await mod(page)}+Enter`);
+		await expect(sheetOf(page)).toBeHidden();
+		await expect(toastsOf(page)).toContainText(/Заказ № \d+ принят/);
 	});
 });

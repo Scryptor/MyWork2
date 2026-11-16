@@ -52,6 +52,11 @@ body {
 	font-variant-numeric: tabular-nums;
 }
 
+/* Lucide icons: line width 1.75 (spec 3.4); the icons draw 2 by their attribute, CSS overrides it. */
+.lucide {
+	stroke-width: 1.75;
+}
+
 .label-caps {
 	font-size: var(--text-xs);
 	font-weight: 600;

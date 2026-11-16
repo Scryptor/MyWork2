@@ -56,6 +56,7 @@
 	class:phone={phone.current}
 	role="status"
 	aria-live="polite"
+	aria-atomic="false"
 	aria-label={ru.toast.region}
 	onmouseenter={() => (hovered = true)}
 	onmouseleave={() => (hovered = false)}

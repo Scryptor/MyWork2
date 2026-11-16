@@ -53,6 +53,14 @@
 		deviceType: 'intake-type',
 		malfunction: 'intake-malfunction'
 	};
+	type MoneyKey = 'estimateFrom' | 'estimateTo' | 'prepayment';
+	/** The money fields, in the order of the form. */
+	const MONEY_FIELDS: Record<MoneyKey, { label: string; id: string }> = {
+		estimateFrom: { label: 'Оценка от', id: 'intake-estimate-from' },
+		estimateTo: { label: 'Оценка до', id: 'intake-estimate-to' },
+		prepayment: { label: 'Предоплата', id: 'intake-prepayment' }
+	};
+	const MONEY_KEYS = Object.keys(MONEY_FIELDS) as MoneyKey[];
 
 	const statusById = new Map(DEMO_STATUSES.map((s) => [s.id, s]));
 	// A new order starts in work: the first status of kind «Диагностика» unless chosen otherwise.
@@ -74,6 +82,12 @@
 	let photos = $state.raw<DemoPhoto[]>([]);
 	let printing = $state(readPrinting());
 	let accepted = $state.raw<number[]>([]);
+	/** Money fields holding text that is not an amount: the order is not accepted until they are fixed. */
+	let wrongMoney = $state<Record<MoneyKey, boolean>>({
+		estimateFrom: false,
+		estimateTo: false,
+		prepayment: false
+	});
 	let nextNumber = Math.max(...ORDERS.map((o) => o.id)) + 1;
 	let photoSeq = 0;
 	let drop = $state<ReturnType<typeof FileDrop>>();
@@ -128,6 +142,7 @@
 	const client = $derived(findClient(draft.phone, ORDERS));
 	const seen = $derived(findSerial(draft.serial, ORDERS));
 	const missing = $derived(missingRequired(draft));
+	const wrong = $derived(MONEY_KEYS.filter((k) => wrongMoney[k]));
 	const errors = $derived({
 		contact: attempted && missing.includes('contact') ? 'Укажите телефон или ФИО' : undefined,
 		deviceType: attempted && missing.includes('deviceType') ? 'Укажите тип устройства' : undefined,
@@ -169,10 +184,13 @@
 	});
 
 	async function accept() {
-		if (missing.length > 0) {
+		if (missing.length > 0 || wrong.length > 0) {
 			attempted = true;
+			// The first field to fix, in the order of the form: the required ones come before the money.
 			const first = missing[0];
-			if (first) document.getElementById(FIELD_IDS[first])?.focus();
+			const wrongFirst = wrong[0];
+			const id = first ? FIELD_IDS[first] : wrongFirst ? MONEY_FIELDS[wrongFirst].id : undefined;
+			if (id) document.getElementById(id)?.focus();
 			return;
 		}
 		const number = nextNumber++;
@@ -315,9 +333,14 @@
 						items={warrantyItems}
 						bind:value={() => draft.warranty, (v) => (draft.warranty = v ?? '')}
 					/>
-					<MoneyInput label="Оценка от" bind:value={draft.estimateFrom} />
-					<MoneyInput label="Оценка до" bind:value={draft.estimateTo} />
-					<MoneyInput label="Предоплата" bind:value={draft.prepayment} />
+					{#each MONEY_KEYS as key (key)}
+						<MoneyInput
+							id={MONEY_FIELDS[key].id}
+							label={MONEY_FIELDS[key].label}
+							bind:value={draft[key]}
+							bind:invalid={wrongMoney[key]}
+						/>
+					{/each}
 				</div>
 				<Textarea label="Комментарий (только для сервиса)" bind:value={draft.comment} />
 			</Section>
@@ -328,7 +351,13 @@
 				<Section title="Сводка">
 					{#if missing.length > 0}
 						<p class="missing">Не заполнено: {missing.map((k) => REQUIRED_LABELS[k]).join(', ')}</p>
-					{:else}
+					{/if}
+					{#if wrong.length > 0}
+						<p class="missing">
+							Неверная сумма: {wrong.map((k) => MONEY_FIELDS[k].label).join(', ')}
+						</p>
+					{/if}
+					{#if missing.length === 0 && wrong.length === 0}
 						<p class="ready">Всё обязательное заполнено</p>
 					{/if}
 				</Section>
