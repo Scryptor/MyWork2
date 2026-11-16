@@ -5,9 +5,14 @@ import type { Status } from '$api/Status';
 import type { StatusKind } from '$api/StatusKind';
 import type { ScanResult } from '#lib/design/scanner.js';
 import { dayNumber, parseLocalDateTime, type LocalDateTime } from '#lib/format/date.js';
-import { formatMoney } from '#lib/format/money.js';
 import { formatPhone } from '#lib/format/phone.js';
 import { normalizeSearch } from '#lib/format/search.js';
+import {
+	ATTENTION_KEYS,
+	deviceOf,
+	type AttentionKey,
+	type QuickFilterItem
+} from '#lib/orders/view.js';
 import type { SortState } from '#lib/ui/table/types.js';
 
 export interface DemoPhoto {
@@ -72,32 +77,12 @@ export function withDetails(o: OrderListItem, kind: StatusKind): DemoOrder {
 	};
 }
 
-/** «Устройство» of the table: brand and model, or the type when both are empty. */
-export function deviceOf(o: Pick<OrderListItem, 'brand' | 'model' | 'device_type'>): string {
-	return [o.brand, o.model].filter(Boolean).join(' ') || o.device_type;
-}
-
-/** «6 000–7 000», «6 000» or '' without an estimate. */
-export function estimateText(o: Pick<OrderListItem, 'estimate_from' | 'estimate_to'>): string {
-	const [from, to] = [o.estimate_from, o.estimate_to].filter((v): v is number => v !== null);
-	if (from === undefined) return '';
-	const money = (v: number) => formatMoney(v, { currency: null });
-	return to === undefined || to === from ? money(from) : `${money(from)}–${money(to)}`;
-}
-
 /** Calendar days from a local date to `now`; null when the date cannot be read. */
 export function daysSince(value: string, now: LocalDateTime): number | null {
 	const t = parseLocalDateTime(value);
 	return t ? dayNumber(now) - dayNumber(t) : null;
 }
 
-export type AttentionKey = 'call' | 'parts' | 'longDiagnostics' | 'longReady';
-export const ATTENTION_KEYS: readonly AttentionKey[] = [
-	'call',
-	'parts',
-	'longDiagnostics',
-	'longReady'
-];
 /** Defaults of the settings «срок долгой диагностики» and «давно готов» (spec 6.8). */
 export const LONG_DIAGNOSTICS_DAYS = 5;
 export const LONG_READY_DAYS = 30;
@@ -185,13 +170,6 @@ export function matchesWords(text: string, words: readonly string[]): boolean {
 /** The list filter over orders (spec 6.1, «внутри текущего вида»). */
 export function matchesOrder(o: OrderListItem, words: readonly string[]): boolean {
 	return words.length === 0 || matchesWords(textOf(o), words);
-}
-
-export interface QuickFilterItem {
-	id: string;
-	label: string;
-	count?: number;
-	color?: string;
 }
 
 const IN_WORK: readonly StatusKind[] = ['open', 'diagnostics'];
@@ -328,11 +306,6 @@ export function withStatus(
 			history: current.history.filter((h) => h !== entry)
 		})
 	};
-}
-
-/** «К оплате» (spec 6.2): final price minus prepayment and discount; null without a final price. */
-export function toPay(o: { final_price: number | null; prepayment: number; discount: number }) {
-	return o.final_price === null ? null : o.final_price - o.prepayment - o.discount;
 }
 
 const newestFirst = (a: OrderListItem, b: OrderListItem) =>

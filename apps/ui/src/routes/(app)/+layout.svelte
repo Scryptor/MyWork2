@@ -166,7 +166,8 @@
 			// eslint-disable-next-line svelte/no-navigation-without-resolve
 			return void goto(`/orders/${id}`);
 		}
-		if (kind === 'client') return void goto(resolve(`orders?client=${value}`));
+		// A client's orders: all of them, issued too.
+		if (kind === 'client') return void goto(resolve(`orders?client=${value}&chips=all`));
 		const [command, arg] = value.split(':');
 		if (command === 'intake') intake.open();
 		else if (command === 'theme') prefs.set({ theme: arg as ThemePref });
@@ -217,6 +218,14 @@
 				{ label: ru.shortcuts.undo, shortcut: 'Mod+Z' },
 				{ label: ru.shortcuts.help, shortcut: '?' },
 				{ label: ru.shortcuts.close, shortcut: 'Escape' }
+			]
+		},
+		{
+			title: ru.shortcuts.list,
+			items: [
+				{ label: ru.shortcuts.filter, shortcut: '/' },
+				{ label: ru.shortcuts.nextRow, shortcut: 'ArrowDown' },
+				{ label: ru.shortcuts.openOrder, shortcut: 'Enter' }
 			]
 		},
 		{

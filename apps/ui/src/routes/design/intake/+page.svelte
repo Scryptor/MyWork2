@@ -18,8 +18,9 @@
 		type IntakeDraft,
 		type RequiredKey
 	} from '#lib/demo/intake.js';
-	import { daysSince, deviceOf, type DemoPhoto } from '#lib/demo/orders.js';
+	import { daysSince, type DemoPhoto } from '#lib/demo/orders.js';
 	import { countLabel, displayName, formatDate, formatPhone } from '#lib/format/index.js';
+	import { deviceOf } from '#lib/orders/view.js';
 	import {
 		Avatar,
 		Badge,

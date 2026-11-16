@@ -9,7 +9,8 @@
 		children,
 		side = 'bottom',
 		align = 'start',
-		width
+		width,
+		label
 	}: {
 		open?: boolean;
 		/** Spread the props onto the trigger element: `<button {...props}>`. */
@@ -18,6 +19,8 @@
 		side?: 'top' | 'bottom' | 'left' | 'right';
 		align?: 'start' | 'center' | 'end';
 		width?: string;
+		/** A name for the popover, such as a form of filters: it becomes a named dialog. */
+		label?: string;
 	} = $props();
 
 	$effect(() => {
@@ -36,6 +39,8 @@
 			{align}
 			sideOffset={6}
 			collisionPadding={8}
+			role={label ? 'dialog' : undefined}
+			aria-label={label}
 			style={width ? `width: ${width}` : undefined}
 		>
 			{@render children()}

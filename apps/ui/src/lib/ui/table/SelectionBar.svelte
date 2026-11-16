@@ -6,7 +6,7 @@
 	import IconButton from '../IconButton.svelte';
 
 	/** Bulk actions for the selected rows; nothing is shown while nothing is selected. */
-	let { count, onclear, children }: { count: number; onclear: () => void; children: Snippet } =
+	let { count, onclear, children }: { count: number; onclear: () => void; children?: Snippet } =
 		$props();
 
 	// Thousands separated by a narrow no-break space, as in sums: «Выбрано 2 500».
@@ -16,7 +16,7 @@
 {#if count > 0}
 	<div class="bar" role="region" aria-label={ru.table.selection}>
 		<span class="count" aria-live="polite">{ru.table.selected} {shown}</span>
-		<span class="actions">{@render children()}</span>
+		{#if children}<span class="actions">{@render children()}</span>{/if}
 		<IconButton label={ru.table.clearSelection} icon={X} size="sm" onclick={onclear} />
 	</div>
 {/if}

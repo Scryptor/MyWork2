@@ -122,7 +122,7 @@
 
 <h3>Всплывающие</h3>
 <div class="row">
-	<Popover>
+	<Popover label="Гарантия">
 		{#snippet trigger(props)}
 			<Button {...props} icon={Info}>Подробнее</Button>
 		{/snippet}

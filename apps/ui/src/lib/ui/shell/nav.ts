@@ -7,6 +7,8 @@ export interface NavItem {
 	href?: string;
 	count?: number;
 	attention?: boolean;
+	/** A small «✕» after the item, such as removing a saved view; not shown on the icon rail. */
+	remove?: { label: string; onclick: () => void };
 }
 
 export interface NavSection {

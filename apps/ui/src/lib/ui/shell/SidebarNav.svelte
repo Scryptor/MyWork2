@@ -1,7 +1,9 @@
 <script lang="ts">
 	/* eslint-disable svelte/no-navigation-without-resolve -- hrefs come ready from the caller */
+	import X from '@lucide/svelte/icons/x';
 	import type { Snippet } from 'svelte';
 	import { ru } from '#lib/i18n/ru.js';
+	import IconButton from '../IconButton.svelte';
 	import Tooltip from '../Tooltip.svelte';
 	import { getShellLayout } from './AppShell.svelte';
 	import type { NavSection } from './nav.js';
@@ -58,13 +60,30 @@
 						{/snippet}
 					</Tooltip>
 				{:else}
-					<a
-						class="item"
-						class:current={item.id === active}
-						href={item.href ?? '#'}
-						aria-current={item.id === active ? 'page' : undefined}
-						onclick={() => onnavigate?.(item.id)}>{@render body()}</a
-					>
+					{#snippet link()}
+						<a
+							class="item"
+							class:current={item.id === active}
+							href={item.href ?? '#'}
+							aria-current={item.id === active ? 'page' : undefined}
+							onclick={() => onnavigate?.(item.id)}>{@render body()}</a
+						>
+					{/snippet}
+					{#if item.remove}
+						<div class="removable">
+							{@render link()}
+							<span class="remove">
+								<IconButton
+									label={item.remove.label}
+									icon={X}
+									size="sm"
+									onclick={item.remove.onclick}
+								/>
+							</span>
+						</div>
+					{:else}
+						{@render link()}
+					{/if}
 				{/if}
 			{/each}
 		</div>
@@ -162,12 +181,38 @@
 	.dot.attention {
 		background: var(--warning-text);
 	}
+	.removable {
+		position: relative;
+		display: flex;
+		align-items: center;
+	}
+	.removable .item {
+		flex: 1;
+		min-width: 0;
+		padding-right: calc(var(--control-sm) + var(--space-1));
+	}
+	.remove {
+		position: absolute;
+		right: var(--space-0-5);
+		display: inline-flex;
+		opacity: 0;
+	}
+	.removable:hover .remove,
+	.removable:focus-within .remove {
+		opacity: 1;
+	}
 	.footer {
 		margin-top: auto;
 	}
 	@media (pointer: coarse) {
 		.item {
 			min-height: 2.75rem;
+		}
+		.remove {
+			opacity: 1;
+		}
+		.removable .item {
+			padding-right: 2.75rem;
 		}
 	}
 </style>

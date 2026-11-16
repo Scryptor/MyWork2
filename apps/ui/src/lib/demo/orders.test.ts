@@ -5,8 +5,6 @@ import { DEMO_NOW, DEMO_STATUSES, makeOrders } from './fake.js';
 import {
 	attentionCounts,
 	daysSince,
-	deviceOf,
-	estimateText,
 	matchesQuickFilter,
 	matchesWords,
 	needsAttention,
@@ -17,7 +15,6 @@ import {
 	searchClients,
 	searchOrders,
 	sortOrders,
-	toPay,
 	withDetails,
 	withStatus
 } from './orders.js';
@@ -85,20 +82,6 @@ describe('withDetails', () => {
 	it('an issued order has the issue in its history', () => {
 		const issued = withDetails(order({ status_id: 8, issued_at: '2026-11-16T12:00:00' }), 'issued');
 		expect(issued.history.map((h) => h.text)).toEqual(['Принят', 'Выдан']);
-	});
-});
-
-describe('deviceOf and estimateText', () => {
-	it('device is brand and model, or the type when both are empty', () => {
-		expect(deviceOf(order())).toBe('Samsung Galaxy A52');
-		expect(deviceOf(order({ brand: '', model: '' }))).toBe('Телефон');
-	});
-
-	it('estimate is a range, one sum, or empty', () => {
-		expect(estimateText(order({ estimate_from: 600000, estimate_to: 700000 }))).toBe('6 000–7 000');
-		expect(estimateText(order({ estimate_from: 600000, estimate_to: 600000 }))).toBe('6 000');
-		expect(estimateText(order({ estimate_from: 600000 }))).toBe('6 000');
-		expect(estimateText(order())).toBe('');
 	});
 });
 
@@ -269,15 +252,6 @@ describe('withStatus', () => {
 		// An edit made after the change is not undone with it.
 		const edited = { ...next, internal_comment: 'Позвонить после 18:00' };
 		expect(undo(edited)).toEqual({ ...base, internal_comment: 'Позвонить после 18:00' });
-	});
-});
-
-describe('toPay', () => {
-	it('is the final price minus prepayment and discount', () => {
-		expect(toPay({ final_price: 650000, prepayment: 200000, discount: 0 })).toBe(450000);
-		expect(toPay({ final_price: 650000, prepayment: 200000, discount: 50000 })).toBe(400000);
-		expect(toPay({ final_price: 100000, prepayment: 200000, discount: 0 })).toBe(-100000);
-		expect(toPay({ final_price: null, prepayment: 200000, discount: 0 })).toBeNull();
 	});
 });
 

@@ -11,9 +11,10 @@
 	import type { Status } from '$api/Status';
 	import { PHONE_QUERY } from '#lib/design/breakpoints.js';
 	import { DEMO_NOW, makeDictionaries } from '#lib/demo/fake.js';
-	import { deviceOf, estimateText, toPay, type DemoOrder } from '#lib/demo/orders.js';
+	import type { DemoOrder } from '#lib/demo/orders.js';
 	import { displayName, formatMoney, formatPhone, formatRelative } from '#lib/format/index.js';
 	import { ru } from '#lib/i18n/ru.js';
+	import { deviceOf, estimateText, toPay } from '#lib/orders/view.js';
 	import {
 		Badge,
 		Button,

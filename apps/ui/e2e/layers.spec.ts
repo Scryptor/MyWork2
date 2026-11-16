@@ -327,6 +327,8 @@ test.describe('layers', () => {
 		await trigger.click();
 		const text = page.getByText('Гарантия 30 дней с даты выдачи.');
 		await expect(text).toBeVisible();
+		// A named popover is a dialog with that name.
+		await expect(page.getByRole('dialog', { name: 'Гарантия' })).toContainText('Гарантия 30 дней');
 		await page.keyboard.press('Escape');
 		await expect(text).toBeHidden();
 	});

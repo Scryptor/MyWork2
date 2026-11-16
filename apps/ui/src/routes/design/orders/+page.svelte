@@ -29,10 +29,7 @@
 	import { installScanner } from '#lib/design/scanner.js';
 	import { DEMO_NOW, DEMO_POINTS, DEMO_STATUSES, makeOrders } from '#lib/demo/fake.js';
 	import {
-		ATTENTION_KEYS,
 		attentionCounts,
-		deviceOf,
-		estimateText,
 		matchesOrder,
 		matchesQuickFilter,
 		needsAttention,
@@ -44,7 +41,6 @@
 		sortOrders,
 		withDetails,
 		withStatus,
-		type AttentionKey,
 		type DemoOrder,
 		type DemoPhoto
 	} from '#lib/demo/orders.js';
@@ -58,6 +54,7 @@
 		shortName
 	} from '#lib/format/index.js';
 	import { ru } from '#lib/i18n/ru.js';
+	import { ATTENTION_KEYS, deviceOf, estimateText, type AttentionKey } from '#lib/orders/view.js';
 	import '#lib/ui/field.css';
 	import {
 		AppShell,

@@ -28,6 +28,16 @@ test.describe('navigation', () => {
 		await expect.poll(async () => (await nav.boundingBox())?.width).toBe(232);
 	});
 
+	test('1440: a saved view has «✕» that removes it', async ({ page }) => {
+		await page.setViewportSize({ width: 1440, height: 900 });
+		const nav = page.locator('#navigation').getByRole('navigation', { name: 'Разделы' });
+		await expect(nav.getByText('Мои виды')).toBeVisible();
+		await expect(nav.getByRole('link', { name: 'Готовые Samsung' })).toBeVisible();
+		await nav.getByRole('button', { name: 'Удалить вид' }).first().click();
+		await expect(nav.getByRole('link', { name: 'Готовые Samsung' })).toHaveCount(0);
+		await expect(nav.getByRole('link', { name: 'Звонки мастера' })).toBeVisible();
+	});
+
 	test('1024: icon rail with the label in a tooltip', async ({ page }) => {
 		await page.setViewportSize({ width: 1024, height: 800 });
 		const nav = page.locator('#navigation').getByRole('navigation', { name: 'Разделы' });

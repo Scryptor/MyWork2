@@ -127,13 +127,7 @@ test('unknown barcode shows a toast', async ({ page }) => {
 
 test('scan into a focused field stays in the field', async ({ page }) => {
 	await openOrders(page);
-	// The list filter comes with the orders screen; any text field of the page behaves the same.
-	await page.evaluate(() => {
-		const input = document.createElement('input');
-		input.setAttribute('aria-label', 'Поле для проверки');
-		document.querySelector('main')?.append(input);
-	});
-	const field = page.getByRole('textbox', { name: 'Поле для проверки' });
+	const field = page.getByRole('searchbox', { name: 'Фильтр списка' });
 	await field.focus();
 	await scan(page, '199999999991');
 	await expect(field).toHaveValue('199999999991');

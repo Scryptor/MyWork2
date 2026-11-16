@@ -5,7 +5,8 @@
 	import type { OrderListItem } from '$api/OrderListItem';
 	import { PHONE_QUERY } from '#lib/design/breakpoints.js';
 	import { DEMO_NOW, DEMO_POINTS, DEMO_STATUSES, makeOrders } from '#lib/demo/fake.js';
-	import { deviceOf, estimateText, sortOrders } from '#lib/demo/orders.js';
+	import { sortOrders } from '#lib/demo/orders.js';
+	import { deviceOf, estimateText } from '#lib/orders/view.js';
 	import {
 		countLabel,
 		displayName,

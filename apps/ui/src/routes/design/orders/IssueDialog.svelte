@@ -15,9 +15,10 @@
 	import { submitShortcut } from '#lib/design/hotkeys.svelte.js';
 	import { readStorage, writeStorage } from '#lib/design/storage.js';
 	import { makeDictionaries } from '#lib/demo/fake.js';
-	import { toPay, type DemoOrder } from '#lib/demo/orders.js';
+	import type { DemoOrder } from '#lib/demo/orders.js';
 	import { displayName, formatMoney } from '#lib/format/index.js';
 	import { ru } from '#lib/i18n/ru.js';
+	import { toPay } from '#lib/orders/view.js';
 	import { Button, Dialog, MoneyInput, Select, Switch, Textarea } from '#lib/ui/index.js';
 
 	let {

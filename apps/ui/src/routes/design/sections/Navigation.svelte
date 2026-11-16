@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Bookmark from '@lucide/svelte/icons/bookmark';
 	import Gauge from '@lucide/svelte/icons/gauge';
 	import Package from '@lucide/svelte/icons/package';
 	import PhoneCall from '@lucide/svelte/icons/phone-call';
@@ -51,11 +52,30 @@
 			attention: true
 		}
 	];
-	const SECTIONS: NavSection[] = [
+	// «Мои виды»: an item with «✕» (NavItem.remove), shown with the labels only.
+	let views = $state(['Готовые Samsung', 'Звонки мастера']);
+	const SECTIONS = $derived<NavSection[]>([
 		{ items: MAIN },
 		{ title: 'Требуют внимания', items: ATTENTION },
+		...(views.length > 0
+			? [
+					{
+						title: 'Мои виды',
+						items: views.map((name) => ({
+							id: `view:${name}`,
+							label: name,
+							icon: Bookmark,
+							href: '#nav-view',
+							remove: {
+								label: 'Удалить вид',
+								onclick: () => (views = views.filter((v) => v !== name))
+							}
+						}))
+					}
+				]
+			: []),
 		{ items: [{ id: 'settings', label: 'Настройки', icon: Settings, href: '#nav-settings' }] }
-	];
+	]);
 	const BOTTOM: NavItem[] = [MAIN[0]!, MAIN[1]!, MAIN[3]!];
 
 	const CHIPS = [

@@ -18,20 +18,31 @@
 </script>
 
 <script lang="ts">
+	import Bookmark from '@lucide/svelte/icons/bookmark';
 	import CircleCheck from '@lucide/svelte/icons/circle-check';
 	import Wrench from '@lucide/svelte/icons/wrench';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { ru } from '#lib/i18n/ru.js';
+	import { savedViews } from '#lib/orders/saved-views.svelte.js';
+	import { viewFromSearch, viewToSearch } from '#lib/orders/view.js';
 	import type { NavItem, NavSection } from '#lib/ui/shell/nav.js';
 	import SidebarNav from '#lib/ui/shell/SidebarNav.svelte';
 	import { app } from './context.svelte.js';
 	import { ATTENTION_KEYS, attentionCounts, inWorkCount, summary } from './summary.svelte.js';
 
-	/** Saved views of the orders list (task 7). */
-	let { views = [] }: { views?: NavItem[] } = $props();
-
 	const ORDERS = resolve('orders');
+
+	// «Мои виды»: views of the orders list saved on this device (the «Фильтры ▾» menu saves them).
+	const views = $derived<NavItem[]>(
+		savedViews.list.map((v, i) => ({
+			id: `view:${i}`,
+			label: v.name,
+			icon: Bookmark,
+			href: v.search ? resolve(`orders?${v.search}`) : ORDERS,
+			remove: { label: ru.orders.removeView, onclick: () => savedViews.remove(i) }
+		}))
+	);
 
 	const counts = $derived(attentionCounts(summary.current));
 	const attentionItems = $derived<NavItem[]>(
@@ -78,6 +89,10 @@
 
 	const active = $derived.by(() => {
 		if (page.url.pathname !== ORDERS) return '';
+		// The address in its own form: a saved view is current however its address was written.
+		const search = viewToSearch(viewFromSearch(page.url.searchParams));
+		const saved = savedViews.list.findIndex((v) => v.search === search);
+		if (saved >= 0) return `view:${saved}`;
 		const key = ATTENTION_KEYS.find((k) => k === page.url.searchParams.get('attention'));
 		return key ? `attention:${key}` : 'orders';
 	});
