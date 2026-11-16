@@ -83,6 +83,10 @@ jobs:
         working-directory: apps/ui
     steps:
       - uses: actions/checkout@v4
+      - name: Install toolchain from rust-toolchain.toml
+        shell: bash
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-node@v4
         with:
           node-version: 24

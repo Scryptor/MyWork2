@@ -19,6 +19,9 @@ export default defineConfig({
 		}),
 		svelteTesting()
 	],
+	server: {
+		proxy: { '/api': process.env.MW_API_URL ?? 'http://127.0.0.1:8080' }
+	},
 	test: {
 		environment: 'jsdom',
 		css: { include: [/\.css\?raw/] },

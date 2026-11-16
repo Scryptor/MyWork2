@@ -9,6 +9,7 @@ export const ru = {
 		nothingFound: 'Ничего не найдено',
 		back: 'Назад'
 	},
+	api: { offline: 'Нет связи с сервером', failed: 'Не удалось выполнить запрос' },
 	flags: { needCall: 'Позвонить', needParts: 'Заказать запчасть', blacklisted: 'Чёрный список' },
 	fields: {
 		moneyError: 'Введите сумму, например 6 500',
