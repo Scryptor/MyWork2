@@ -305,3 +305,49 @@ async fn draft_attachments_are_discarded_and_cleaned() -> Result<(), CoreError> 
     }
     Ok(())
 }
+
+#[test]
+fn bmp_becomes_a_jpeg_photo() {
+    let img = image::RgbImage::from_pixel(12, 6, image::Rgb([1, 2, 3]));
+    let bmp = encode(image::DynamicImage::ImageRgb8(img), image::ImageFormat::Bmp);
+    let p = process_photo(&bmp).unwrap();
+    assert_eq!((p.width, p.height), (12, 6));
+    assert_eq!(&p.jpeg[..2], &[0xFF, 0xD8]);
+}
+
+#[tokio::test]
+async fn failed_draft_move_leaves_every_attachment_readable() -> Result<(), CoreError> {
+    for t in cores().await {
+        let dir = tempfile::tempdir().unwrap();
+        let core = with_dir(&t, dir.path()).await;
+        let first = core.create_order(&admin(), sample_new_order()).await?;
+        for _ in 0..2 {
+            core.add_draft_attachment(&creator(), "mv", "p.jpg", jpeg_bytes(20, 20))
+                .await?;
+        }
+        // Папку следующего заказа занимает файл: перенос невозможен.
+        let blocked = dir
+            .path()
+            .join(format!("attachments/orders/{}", first.id + 1));
+        std::fs::create_dir_all(blocked.parent().unwrap()).unwrap();
+        std::fs::write(&blocked, b"x").unwrap();
+        let o = core
+            .create_order(
+                &admin(),
+                NewOrder {
+                    attachment_draft: Some("mv".into()),
+                    ..sample_new_order()
+                },
+            )
+            .await?;
+        assert_eq!(o.id, first.id + 1);
+        let list = core.list_order_attachments(&admin(), o.id).await?;
+        assert_eq!(list.len(), 2);
+        for a in &list {
+            assert!(!a.missing, "{}", t.label);
+            core.attachment_file(&admin(), a.id, mw_core::AttachmentVariant::Thumb)
+                .await?;
+        }
+    }
+    Ok(())
+}

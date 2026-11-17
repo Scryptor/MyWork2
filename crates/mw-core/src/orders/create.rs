@@ -57,12 +57,12 @@ impl Core {
         let Some(key) = new.request_key.clone() else {
             return self.create_order_once(actor, new).await;
         };
-        if let Some(found) = self.order_by_request_key(&key, false).await? {
+        if let Some(found) = self.order_by_request_key(&key).await? {
             return Ok(found);
         }
         match self.create_order_once(actor, new).await {
             // Параллельный приём с тем же ключом: победитель уже записан.
-            Err(e @ CoreError::Db(_)) => match self.order_by_request_key(&key, true).await? {
+            Err(e @ CoreError::Db(_)) => match self.order_by_request_key(&key).await? {
                 Some(found) => Ok(found),
                 None => Err(e),
             },
@@ -70,16 +70,23 @@ impl Core {
         }
     }
 
-    async fn order_by_request_key(
-        &self,
-        key: &str,
-        with_deleted: bool,
-    ) -> Result<Option<Order>, CoreError> {
-        let mut q = order::Entity::find().filter(order::Column::RequestKey.eq(key));
-        if !with_deleted {
-            q = q.filter(order::Column::DeletedAt.is_null());
+    /// Заказ по ключу приёма. Удалённый заказ держит ключ: повтор не возвращает его
+    /// и не создаёт новый, а просит начать приём заново.
+    async fn order_by_request_key(&self, key: &str) -> Result<Option<Order>, CoreError> {
+        let found = order::Entity::find()
+            .filter(order::Column::RequestKey.eq(key))
+            .one(&self.db)
+            .await?;
+        match found {
+            Some(m) if m.deleted_at.is_some() => {
+                Err(CoreError::Validation(vec![FieldError::with_message(
+                    "request_key",
+                    "invalid",
+                    "Этот приём уже был удалён — начните новый",
+                )]))
+            }
+            other => Ok(other.map(Order::from)),
         }
-        Ok(q.one(&self.db).await?.map(Order::from))
     }
 
     async fn create_order_once(&self, actor: &Actor, new: NewOrder) -> Result<Order, CoreError> {

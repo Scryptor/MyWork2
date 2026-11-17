@@ -193,3 +193,48 @@ async fn create_order_is_idempotent_by_request_key() -> Result<(), CoreError> {
     }
     Ok(())
 }
+
+#[tokio::test]
+async fn deleted_orders_keep_their_request_key() -> Result<(), CoreError> {
+    for t in cores().await {
+        let actor = actor_with(&[Permission::OrdersCreate]);
+        let new = NewOrder {
+            request_key: Some("gone".into()),
+            ..sample_new_order()
+        };
+        let o = t.core.create_order(&actor, new.clone()).await?;
+        t.core.delete_order(&admin(), o.id, o.version).await?;
+        match t.core.create_order(&actor, new).await {
+            Err(CoreError::Validation(f)) => {
+                assert_eq!(
+                    (f[0].field.as_str(), f[0].code.as_str()),
+                    ("request_key", "invalid")
+                );
+                assert_eq!(
+                    f[0].message_ru(),
+                    "Этот приём уже был удалён — начните новый"
+                );
+            }
+            other => panic!("{}: {other:?}", t.label),
+        }
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn concurrent_intakes_with_one_key_make_one_order() -> Result<(), CoreError> {
+    for t in cores().await {
+        let actor = actor_with(&[Permission::OrdersCreate]);
+        let new = NewOrder {
+            request_key: Some("race".into()),
+            ..sample_new_order()
+        };
+        let (a, b) = tokio::join!(
+            t.core.create_order(&actor, new.clone()),
+            t.core.create_order(&actor, new.clone())
+        );
+        assert_eq!(a?.id, b?.id, "{}", t.label);
+        assert_eq!(count_audit(&t.core, "order.created").await, 1);
+    }
+    Ok(())
+}

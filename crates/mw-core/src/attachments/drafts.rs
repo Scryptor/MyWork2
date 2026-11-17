@@ -191,69 +191,33 @@ impl Core {
     }
 
     /// После фиксации заказа: переносит файлы вложений из черновика в папку заказа.
-    /// Неудача не отменяет заказ: вложение остаётся по старому пути.
-    pub(crate) async fn move_draft_files(&self, order_id: i64, moved: Vec<attachment::Model>) {
+    /// Неудача не отменяет заказ: вложение остаётся по старому пути, а частично сделанный
+    /// перенос откатывается, чтобы путь в базе и файл на диске не расходились.
+    pub(crate) async fn move_draft_files(&self, order_id: i64, rows: Vec<attachment::Model>) {
         let Some(data_dir) = self.data_dir.clone() else {
             return;
         };
-        let draft_key = moved.first().and_then(|m| m.draft_key.clone());
-        let updates = tokio::task::spawn_blocking(move || {
-            let mut updates: Vec<(i64, String, Option<String>)> = Vec::new();
-            for m in moved {
-                let Some(file_name) = m.path.rsplit('/').next() else {
-                    continue;
-                };
-                let new_rel = format!("attachments/orders/{order_id}/{file_name}");
-                let new_thumb = m.thumb_path.as_ref().map(|_| store::thumb_rel(&new_rel));
-                let (Some(from), Some(to)) = (
-                    store::resolve(&data_dir, &m.path),
-                    store::resolve(&data_dir, &new_rel),
-                ) else {
-                    continue;
-                };
-                let moved_ok = (|| -> std::io::Result<()> {
-                    if let Some(parent) = to.parent() {
-                        std::fs::create_dir_all(parent)?;
-                    }
-                    std::fs::rename(&from, &to)?;
-                    if let (Some(old), Some(new)) = (
-                        m.thumb_path
-                            .as_deref()
-                            .and_then(|r| store::resolve(&data_dir, r)),
-                        new_thumb
-                            .as_deref()
-                            .and_then(|r| store::resolve(&data_dir, r)),
-                    ) && old.exists()
-                    {
-                        std::fs::rename(old, new)?;
-                    }
-                    Ok(())
-                })();
-                match moved_ok {
-                    Ok(()) => updates.push((m.id, new_rel, new_thumb)),
-                    Err(e) => tracing::warn!(
-                        attachment_id = m.id, error = %e, "файл черновика не перенесён в заказ"
-                    ),
-                }
-            }
-            if let Some(key) = &draft_key {
-                // Пустая папка черновика не нужна; непустая (неудачный перенос) остаётся.
-                std::fs::remove_dir(data_dir.join("attachments/drafts").join(key)).ok();
-            }
-            updates
-        })
-        .await
-        .unwrap_or_default();
-        if updates.is_empty() {
+        let draft_key = rows.first().and_then(|m| m.draft_key.clone());
+        let moved = {
+            let data_dir = data_dir.clone();
+            tokio::task::spawn_blocking(move || move_files(&data_dir, order_id, rows))
+                .await
+                .unwrap_or_default()
+        };
+        if let Some(key) = &draft_key {
+            // Пустая папка черновика не нужна; непустая (неудачный перенос) остаётся.
+            std::fs::remove_dir(data_dir.join("attachments/drafts").join(key)).ok();
+        }
+        if moved.is_empty() {
             return;
         }
         let result = async {
             let tx = self.begin_write().await?;
-            for (id, path, thumb) in updates {
+            for m in &moved {
                 attachment::ActiveModel {
-                    id: Set(id),
-                    path: Set(path),
-                    thumb_path: Set(thumb),
+                    id: Set(m.id),
+                    path: Set(m.new_path.clone()),
+                    thumb_path: Set(m.new_thumb.clone()),
                     ..Default::default()
                 }
                 .update(&tx)
@@ -265,8 +229,96 @@ impl Core {
         .await;
         if let Err(e) = result {
             tracing::warn!(order_id, error = %e, "пути вложений после переноса не записаны");
+            for m in moved.iter().rev() {
+                undo(&m.done);
+            }
         }
     }
+}
+
+/// Перенесённое вложение: новые пути для базы и сделанные переименования для отката.
+#[derive(Debug)]
+pub(crate) struct MovedAttachment {
+    pub id: i64,
+    pub new_path: String,
+    pub new_thumb: Option<String>,
+    pub done: Vec<(PathBuf, PathBuf)>,
+}
+
+/// Возвращает файлы на прежние места (в обратном порядке).
+fn undo(done: &[(PathBuf, PathBuf)]) {
+    for (from, to) in done.iter().rev() {
+        if let Err(e) = std::fs::rename(to, from) {
+            tracing::warn!(path = %from.display(), error = %e, "перенос вложения не откатился");
+        }
+    }
+}
+
+/// Переносит файлы вложений в папку заказа. Вложение либо переносится целиком (основной
+/// файл и миниатюра, если она есть на диске), либо остаётся на месте.
+pub(crate) fn move_files(
+    data_dir: &std::path::Path,
+    order_id: i64,
+    rows: Vec<attachment::Model>,
+) -> Vec<MovedAttachment> {
+    let mut out = Vec::new();
+    for m in rows {
+        let Some(file_name) = m.path.rsplit('/').next() else {
+            continue;
+        };
+        let new_rel = format!("attachments/orders/{order_id}/{file_name}");
+        let (Some(from), Some(to)) = (
+            store::resolve(data_dir, &m.path),
+            store::resolve(data_dir, &new_rel),
+        ) else {
+            continue;
+        };
+        let mut pairs = vec![(from, to)];
+        let mut new_thumb = None;
+        if let Some(old) = m
+            .thumb_path
+            .as_deref()
+            .and_then(|r| store::resolve(data_dir, r))
+            && old.exists()
+        {
+            let rel = store::thumb_rel(&new_rel);
+            if let Some(new) = store::resolve(data_dir, &rel) {
+                pairs.push((old, new));
+                new_thumb = Some(rel);
+            }
+        }
+        let mut done: Vec<(PathBuf, PathBuf)> = Vec::new();
+        let mut failure = None;
+        for (from, to) in pairs {
+            let step = (|| -> std::io::Result<()> {
+                if let Some(parent) = to.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                std::fs::rename(&from, &to)
+            })();
+            match step {
+                Ok(()) => done.push((from, to)),
+                Err(e) => {
+                    failure = Some(e);
+                    break;
+                }
+            }
+        }
+        if let Some(e) = failure {
+            undo(&done);
+            tracing::warn!(
+                attachment_id = m.id, error = %e, "файл черновика не перенесён в заказ"
+            );
+            continue;
+        }
+        out.push(MovedAttachment {
+            id: m.id,
+            new_path: new_rel,
+            new_thumb,
+            done,
+        });
+    }
+    out
 }
 
 fn remove_draft_dir(data_dir: &std::path::Path, key: &str) {
@@ -275,5 +327,95 @@ fn remove_draft_dir(data_dir: &std::path::Path, key: &str) {
         Ok(()) => {}
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(e) => tracing::warn!(path = %dir.display(), error = %e, "папка черновика не удалена"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+    use super::*;
+
+    fn row(id: i64, path: &str, thumb: Option<&str>) -> attachment::Model {
+        attachment::Model {
+            id,
+            order_id: None,
+            draft_key: Some("k".into()),
+            kind: "photo".into(),
+            name: "a.jpg".into(),
+            caption: String::new(),
+            content_type: "image/jpeg".into(),
+            size: 1,
+            width: None,
+            height: None,
+            path: path.into(),
+            thumb_path: thumb.map(str::to_owned),
+            legacy: false,
+            created_at: chrono::NaiveDateTime::default(),
+        }
+    }
+
+    fn put(dir: &std::path::Path, rel: &str) {
+        let p = dir.join(rel);
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(p, b"x").unwrap();
+    }
+
+    #[test]
+    fn failed_thumbnail_move_puts_the_main_file_back() {
+        let dir = tempfile::tempdir().unwrap();
+        put(dir.path(), "attachments/drafts/k/a.jpg");
+        put(dir.path(), "attachments/drafts/k/a.jpg.thumb.jpg");
+        // Целевое имя миниатюры занято непустой папкой: переименование не удастся.
+        put(dir.path(), "attachments/orders/7/a.jpg.thumb.jpg/inner");
+        let rows = vec![row(
+            1,
+            "attachments/drafts/k/a.jpg",
+            Some("attachments/drafts/k/a.jpg.thumb.jpg"),
+        )];
+        assert!(move_files(dir.path(), 7, rows).is_empty());
+        assert!(dir.path().join("attachments/drafts/k/a.jpg").exists());
+        assert!(
+            dir.path()
+                .join("attachments/drafts/k/a.jpg.thumb.jpg")
+                .exists()
+        );
+        assert!(!dir.path().join("attachments/orders/7/a.jpg").exists());
+    }
+
+    #[test]
+    fn missing_thumbnail_is_not_recorded_and_undo_restores_files() {
+        let dir = tempfile::tempdir().unwrap();
+        put(dir.path(), "attachments/drafts/k/a.jpg");
+        put(dir.path(), "attachments/drafts/k/b.jpg");
+        put(dir.path(), "attachments/drafts/k/b.jpg.thumb.jpg");
+        let rows = vec![
+            row(
+                1,
+                "attachments/drafts/k/a.jpg",
+                Some("attachments/drafts/k/a.jpg.thumb.jpg"),
+            ),
+            row(
+                2,
+                "attachments/drafts/k/b.jpg",
+                Some("attachments/drafts/k/b.jpg.thumb.jpg"),
+            ),
+        ];
+        let moved = move_files(dir.path(), 7, rows);
+        assert_eq!(moved.len(), 2);
+        assert_eq!(moved[0].new_thumb, None);
+        assert_eq!(
+            moved[1].new_thumb.as_deref(),
+            Some("attachments/orders/7/b.jpg.thumb.jpg")
+        );
+        for m in moved.iter().rev() {
+            undo(&m.done);
+        }
+        for rel in [
+            "attachments/drafts/k/a.jpg",
+            "attachments/drafts/k/b.jpg",
+            "attachments/drafts/k/b.jpg.thumb.jpg",
+        ] {
+            assert!(dir.path().join(rel).exists(), "{rel}");
+        }
     }
 }
