@@ -9,7 +9,9 @@ import {
 	displayedChips,
 	estimateText,
 	hasFilters,
+	isNoWarranty,
 	isOverdueDiagnostics,
+	issueWarranty,
 	parseSavedViews,
 	quickFilterItems,
 	resetFilters,
@@ -390,6 +392,23 @@ describe('cells', () => {
 		expect(toPay({ final_price: 650000, prepayment: 200000, discount: 50000 })).toBe(400000);
 		expect(toPay({ final_price: 100000, prepayment: 200000, discount: 0 })).toBe(-100000);
 		expect(toPay({ final_price: null, prepayment: 200000, discount: 0 })).toBeNull();
+	});
+
+	it('«0 мес» and «0 дней» are both «без гарантии»: the term decides, not its unit', () => {
+		expect(isNoWarranty({ warranty_term: { unit: 'months', value: 0 } })).toBe(true);
+		expect(isNoWarranty({ warranty_term: { unit: 'days', value: 0 } })).toBe(true);
+		expect(isNoWarranty({ warranty_term: { unit: 'days', value: 30 } })).toBe(false);
+		expect(isNoWarranty({ warranty_term: null })).toBe(false);
+	});
+
+	it('«Выдать» starts with the order’s warranty, the default only when there is none', () => {
+		expect(issueWarranty({ warranty: '3 месяца', warranty_term: null }, '30 дней')).toBe(
+			'3 месяца'
+		);
+		expect(issueWarranty({ warranty: ' ', warranty_term: null }, '30 дней')).toBe('30 дней');
+		expect(
+			issueWarranty({ warranty: '0 мес', warranty_term: { unit: 'months', value: 0 } }, '30 дней')
+		).toBe('0 мес');
 	});
 
 	it('long diagnostics: a diagnostics order received more than the days ago', () => {

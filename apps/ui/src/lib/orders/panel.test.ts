@@ -45,4 +45,46 @@ describe('orderPanel', () => {
 		orderPanel.next(-1);
 		expect(orderPanel.id).toBe(6);
 	});
+
+	it('a guard decides whether the panel leaves the order: another one, a neighbour or closing', async () => {
+		orderPanel.open(1, { neighbors: () => [1, 2, 3] });
+		let allow = false;
+		const asked: number[] = [];
+		const off = orderPanel.guard(async () => {
+			asked.push(orderPanel.id ?? 0);
+			return allow;
+		});
+
+		await expect(orderPanel.open(2)).resolves.toBe(false);
+		expect(orderPanel.id).toBe(1);
+		await expect(orderPanel.next(1)).resolves.toBe(false);
+		expect(orderPanel.id).toBe(1);
+		await expect(orderPanel.close()).resolves.toBe(false);
+		expect(orderPanel.id).toBe(1);
+		expect(asked).toEqual([1, 1, 1]);
+
+		// The same order again needs no check.
+		await expect(orderPanel.open(1, { neighbors: () => [1, 2, 3] })).resolves.toBe(true);
+		expect(asked).toHaveLength(3);
+
+		allow = true;
+		await expect(orderPanel.next(1)).resolves.toBe(true);
+		expect(orderPanel.id).toBe(2);
+		await expect(orderPanel.close()).resolves.toBe(true);
+		expect(orderPanel.id).toBeNull();
+		// Opening from closed needs no check either.
+		allow = false;
+		await expect(orderPanel.open(3)).resolves.toBe(true);
+		off();
+		await expect(orderPanel.open(2)).resolves.toBe(true);
+		expect(orderPanel.id).toBe(2);
+	});
+
+	it('a guard that fails keeps the order', async () => {
+		orderPanel.open(1);
+		const off = orderPanel.guard(() => Promise.reject(new Error('нет связи')));
+		await expect(orderPanel.close()).resolves.toBe(false);
+		expect(orderPanel.id).toBe(1);
+		off();
+	});
 });

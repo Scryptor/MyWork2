@@ -17,6 +17,8 @@ const chipsOf = (page: Page) => page.getByRole('group', { name: 'Быстрые 
 const chip = (page: Page, name: string) =>
 	chipsOf(page).getByRole('button', { name: new RegExp(`^${name}`) });
 const navOf = (page: Page) => page.getByRole('navigation', { name: 'Разделы' });
+const panelOf = (page: Page, id: number) =>
+	page.getByRole('dialog', { name: new RegExp(`^№ ${id}(?!\\d)`) });
 
 async function openOrders(page: Page, search = '') {
 	await page.goto(`/orders${search}`);
@@ -182,12 +184,12 @@ test('a row opens its order in the panel and stays marked', async ({ page, reque
 	await narrow(page, m);
 	const row = rowsOf(page, m).filter({ hasText: String(first.id) });
 	await row.getByRole('gridcell').nth(3).click();
-	await expect(page.getByRole('dialog', { name: `№ ${first.id}`, exact: true })).toBeVisible();
+	await expect(panelOf(page, first.id)).toBeVisible();
 	await expect(row).toHaveAttribute('aria-current', 'true');
 	// The panel goes along the list: newest first, so the older order is next after the newer one.
 	expect(second.id).toBeGreaterThan(first.id);
 	await page.getByRole('button', { name: 'Предыдущая запись' }).click();
-	await expect(page.getByRole('dialog', { name: `№ ${second.id}`, exact: true })).toBeVisible();
+	await expect(panelOf(page, second.id)).toBeVisible();
 	await expect(rowsOf(page, m).filter({ hasText: String(second.id) })).toHaveAttribute(
 		'aria-current',
 		'true'
@@ -309,6 +311,6 @@ test.describe('on a phone', () => {
 		await expect(card).toBeVisible();
 		await expect(card).toContainText(m);
 		await card.click();
-		await expect(page.getByRole('dialog', { name: `№ ${o.id}`, exact: true })).toBeVisible();
+		await expect(panelOf(page, o.id)).toBeVisible();
 	});
 });

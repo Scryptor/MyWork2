@@ -68,10 +68,10 @@ export async function request<T>(
 	const token = getToken();
 	if (token) headers.set('Authorization', `Bearer ${token}`);
 	let body: string | undefined;
-	if (opts.body !== undefined && method !== 'GET') {
-		headers.set('Content-Type', 'application/json');
-		body = JSON.stringify(opts.body);
-	}
+	// The server takes changing requests only as JSON, an empty one too (a page of another site cannot
+	// send that without CORS).
+	if (method !== 'GET') headers.set('Content-Type', 'application/json');
+	if (opts.body !== undefined && method !== 'GET') body = JSON.stringify(opts.body);
 	let response: Response;
 	try {
 		response = await fetch(apiUrl(path, opts.query), {

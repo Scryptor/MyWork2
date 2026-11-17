@@ -97,6 +97,16 @@ describe('request', () => {
 		expect(new Headers(post.headers).get('Content-Type')).toBe('application/json');
 		expect(get.body).toBeUndefined();
 	});
+	it('a changing request without a body still says JSON: the server refuses it otherwise', async () => {
+		const fn = stubFetch(200, { ok: 1 });
+		await request('POST', '/orders/1/issue', { query: { version: 3 } });
+		await request('GET', '/x');
+		const [, post] = fn.mock.calls[0] as unknown as [string, RequestInit];
+		const [, get] = fn.mock.calls[1] as unknown as [string, RequestInit];
+		expect(new Headers(post.headers).get('Content-Type')).toBe('application/json');
+		expect(post.body).toBeUndefined();
+		expect(new Headers(get.headers).get('Content-Type')).toBeNull();
+	});
 	it('returns undefined for 204 and empty bodies', async () => {
 		stubFetch(204, undefined);
 		expect(await request('DELETE', '/x')).toBeUndefined();

@@ -6,6 +6,7 @@ import type { OrderListQuery } from '$api/OrderListQuery';
 import type { OrderSummary } from '$api/OrderSummary';
 import type { Status } from '$api/Status';
 import type { StatusKind } from '$api/StatusKind';
+import type { WarrantyTerm } from '$api/WarrantyTerm';
 import { formatDate, parseLocalDateTime, type LocalDateTime } from '#lib/format/date.js';
 import { formatMoney } from '#lib/format/money.js';
 import { ru } from '#lib/i18n/ru.js';
@@ -359,6 +360,19 @@ export function estimateText(o: Pick<OrderListItem, 'estimate_from' | 'estimate_
 /** «К оплате» (spec 6.2): final price minus prepayment and discount; null without a final price. */
 export function toPay(o: { final_price: number | null; prepayment: number; discount: number }) {
 	return o.final_price === null ? null : o.final_price - o.prepayment - o.discount;
+}
+
+/** «Без гарантии» by the term the server derived from the text: «0 мес» and «0 дней» alike. */
+export function isNoWarranty(o: { warranty_term: WarrantyTerm | null }): boolean {
+	return o.warranty_term?.value === 0;
+}
+
+/** The warranty «Выдать» starts with: the order's own, the default of the settings when it has none. */
+export function issueWarranty(
+	o: { warranty: string; warranty_term: WarrantyTerm | null },
+	fallback: string
+): string {
+	return o.warranty.trim() !== '' || isNoWarranty(o) ? o.warranty : fallback;
 }
 
 const DAY_MS = 86_400_000;

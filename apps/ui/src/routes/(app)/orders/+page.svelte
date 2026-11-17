@@ -197,7 +197,10 @@
 		if (id !== null) untrack(() => (activeId = id));
 	});
 	function openOrder(id: number) {
-		orderPanel.open(id, { neighbors: () => list.rows.map((r) => r.id) });
+		// The panel stays on its order when the edits there cannot be saved: so does the cursor.
+		void orderPanel.open(id, { neighbors: () => list.rows.map((r) => r.id) }).then((ok) => {
+			if (!ok && orderPanel.id !== null) activeId = orderPanel.id;
+		});
 	}
 
 	const pointName = (id: number | null) =>

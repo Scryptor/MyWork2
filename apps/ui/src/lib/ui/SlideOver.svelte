@@ -34,8 +34,9 @@
 		children: Snippet;
 		footer?: Snippet;
 		onclose?: () => void;
-		onprev?: () => void;
-		onnext?: () => void;
+		/** May return a promise: the move waits for it (the panel saves first). */
+		onprev?: () => unknown;
+		onnext?: () => unknown;
 		returnFocusTo?: HTMLElement | null;
 	} = $props();
 
@@ -103,8 +104,8 @@
 	 * Every move to the neighbouring record (‹ ›, ↑↓, Alt+↑↓). On the first or last record the focused
 	 * ‹ or › turns disabled and the browser drops focus to the page: keep it in the panel.
 	 */
-	async function step(go: (() => void) | undefined) {
-		go?.();
+	async function step(go: (() => unknown) | undefined) {
+		await go?.();
 		await tick();
 		const active = document.activeElement;
 		const lost =

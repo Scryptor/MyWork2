@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatPhone, phoneDigits } from './phone.js';
+import { dialNumber, formatPhone, phoneDigits } from './phone.js';
 
 describe('phone', () => {
 	it('formats', () => {
@@ -13,5 +13,12 @@ describe('phone', () => {
 	});
 	it('extracts digits', () => {
 		expect(phoneDigits('+7 (921) 123-45-67')).toBe('79211234567');
+	});
+	it('dials with the country code', () => {
+		expect(dialNumber('79211234567')).toBe('+79211234567');
+		expect(dialNumber('89211234567')).toBe('+79211234567');
+		expect(dialNumber('9211234567')).toBe('+79211234567');
+		expect(dialNumber('123456')).toBe('123456');
+		expect(dialNumber('')).toBe('');
 	});
 });

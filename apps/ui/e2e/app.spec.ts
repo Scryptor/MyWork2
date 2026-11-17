@@ -20,7 +20,7 @@ async function scan(page: Page, code: string) {
 const number = (id: number) => new RegExp(`№ ${id}(?!\\d)`);
 const paletteOf = (page: Page) => page.getByRole('dialog', { name: 'Найти или выполнить' });
 const panelOf = (page: Page, id: number) =>
-	page.getByRole('dialog', { name: `№ ${id}`, exact: true });
+	page.getByRole('dialog', { name: new RegExp(`^№ ${id}(?!\\d)`) });
 const toastsOf = (page: Page) => page.getByRole('status', { name: 'Уведомления' });
 const navOf = (page: Page) => page.getByRole('navigation', { name: 'Разделы' });
 

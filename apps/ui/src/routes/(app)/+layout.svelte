@@ -42,6 +42,7 @@
 	import { ru } from '#lib/i18n/ru.js';
 	import { intake } from '#lib/intake/intake.svelte.js';
 	import { onOrderChanged } from '#lib/orders/events.js';
+	import OrderPanel from '#lib/orders/OrderPanel.svelte';
 	import { orderPanel } from '#lib/orders/panel.svelte.js';
 	import AppShell from '#lib/ui/shell/AppShell.svelte';
 	import BottomNav from '#lib/ui/shell/BottomNav.svelte';
@@ -53,7 +54,6 @@
 	import SegmentedControl from '#lib/ui/SegmentedControl.svelte';
 	import Select from '#lib/ui/Select.svelte';
 	import ShortcutsHelp from '#lib/ui/ShortcutsHelp.svelte';
-	import SlideOver from '#lib/ui/SlideOver.svelte';
 	import { toast } from '#lib/ui/toast/toast.svelte.js';
 	import type { LayoutProps } from './$types';
 
@@ -160,7 +160,7 @@
 		const value = rest.join(':');
 		if (kind === 'order') {
 			const id = Number(value);
-			if (!opts.alt) return orderPanel.open(id);
+			if (!opts.alt) return void orderPanel.open(id);
 			pushRecent(id);
 			// The full card comes with task 9 (route /orders/[id]); then this becomes resolve().
 			// eslint-disable-next-line svelte/no-navigation-without-resolve
@@ -185,7 +185,7 @@
 	async function onscan(scan: ScanResult) {
 		try {
 			const action = await resolveScan(scan, { byBarcode: ordersByBarcode, byNumber });
-			if (action.kind === 'open') orderPanel.open(action.id);
+			if (action.kind === 'open') void orderPanel.open(action.id);
 			else if (action.kind === 'choose') {
 				choice = { code: scan.kind === 'barcode' ? scan.value : '', orders: action.orders };
 				choiceOpen = true;
@@ -230,7 +230,10 @@
 		},
 		{
 			title: ru.shortcuts.panel,
-			items: [{ label: ru.shortcuts.neighbour, shortcut: 'Alt+ArrowDown' }]
+			items: [
+				{ label: ru.shortcuts.neighbour, shortcut: 'Alt+ArrowDown' },
+				{ label: ru.shortcuts.issue, shortcut: 'Mod+Enter' }
+			]
 		}
 	];
 	let helpOpen = $state(false);
@@ -283,15 +286,7 @@
 	</AppShell>
 </div>
 
-<!-- Task 8: OrderPanel takes the place of this placeholder (orderPanel.id, close, next). -->
-<SlideOver
-	bind:open={() => orderPanel.id !== null, (v) => !v && orderPanel.close()}
-	title="№ {orderPanel.id ?? ''}"
-	onprev={orderPanel.hasNext(-1) ? () => orderPanel.next(-1) : undefined}
-	onnext={orderPanel.hasNext(1) ? () => orderPanel.next(1) : undefined}
->
-	<div></div>
-</SlideOver>
+<OrderPanel />
 
 <!-- Task 10: IntakeSheet mounts here (intake.isOpen, intake.prefill, intake.close). -->
 
@@ -306,7 +301,7 @@
 	bind:open={choiceOpen}
 	code={choice.code}
 	orders={choice.orders}
-	onchoose={(id) => orderPanel.open(id)}
+	onchoose={(id) => void orderPanel.open(id)}
 />
 <ShortcutsHelp bind:open={helpOpen} groups={SHORTCUTS} />
 {#if !app.me.open_mode}

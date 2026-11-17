@@ -1,0 +1,488 @@
+<!-- The fields of an order (spec 6.2), shared by the panel and the full card: text is saved a moment after
+     the last key or on leaving the field, choices and switches at once. A conflict with another computer
+     marks the disputed fields with «Оставить моё» / «Взять новое». -->
+<script lang="ts">
+	import Eye from '@lucide/svelte/icons/eye';
+	import EyeOff from '@lucide/svelte/icons/eye-off';
+	import { untrack } from 'svelte';
+	import type { Client } from '$api/Client';
+	import type { Order } from '$api/Order';
+	import { serverClock } from '#lib/api/server-clock.svelte.js';
+	import {
+		countLabel,
+		displayName,
+		formatMoney,
+		formatPhone,
+		formatRelative,
+		dialNumber
+	} from '#lib/format/index.js';
+	import { ru } from '#lib/i18n/ru.js';
+	import Badge from '#lib/ui/Badge.svelte';
+	import Button from '#lib/ui/Button.svelte';
+	import Callout from '#lib/ui/Callout.svelte';
+	import Combobox from '#lib/ui/Combobox.svelte';
+	import MoneyInput from '#lib/ui/MoneyInput.svelte';
+	import Section from '#lib/ui/Section.svelte';
+	import Switch from '#lib/ui/Switch.svelte';
+	import Textarea from '#lib/ui/Textarea.svelte';
+	import type { Autosave } from './autosave.js';
+	import type { Conflict, OrderField, OrderValues } from './editor.svelte.js';
+	import { estimateText, isNoWarranty, toPay } from './view.js';
+
+	let {
+		order,
+		autosave,
+		client,
+		dictionaries,
+		readonly = false,
+		idPrefix = 'order',
+		conflicts = new Map(),
+		flashed = new Set(),
+		onkeep,
+		ontake,
+		onflashend
+	}: {
+		order: Order;
+		autosave: Autosave<OrderValues>;
+		client: Client | null;
+		dictionaries: { master: string[]; warranty: string[] };
+		/** No editing (no right to edit orders). An issued order keeps its fields editable. */
+		readonly?: boolean;
+		/** Field ids are `<idPrefix>-<field>`: the same field gets focus back on another order. */
+		idPrefix?: string;
+		conflicts?: ReadonlyMap<OrderField, Conflict>;
+		flashed?: ReadonlySet<OrderField>;
+		onkeep?: (field: OrderField) => void;
+		ontake?: (field: OrderField) => void;
+		onflashend?: (field: OrderField) => void;
+	} = $props();
+
+	const t = ru.order;
+	const LABELS: Partial<Record<OrderField, string>> = {
+		malfunction: t.malfunction,
+		work_done: t.workDone,
+		master: t.master,
+		final_price: t.finalPrice,
+		discount: t.discount,
+		extra_costs: t.extraCosts,
+		warranty: t.warrantyTerm,
+		need_call: ru.flags.needCall,
+		need_parts: ru.flags.needParts,
+		internal_comment: t.comment
+	};
+	const DEVICE: OrderField[] = [
+		'device_type',
+		'brand',
+		'model',
+		'color',
+		'serial',
+		'device_password'
+	];
+	const idOf = (f: OrderField) => `${idPrefix}-${f}`;
+
+	const masterItems = $derived(dictionaries.master.map((value) => ({ value })));
+	const warrantyItems = $derived(dictionaries.warranty.map((value) => ({ value })));
+
+	/** What the field shows: own unsaved value, or the order's. */
+	const shown = <K extends OrderField>(f: K): OrderValues[K] => autosave.value(f, order[f]);
+
+	// Money: an amount goes as it is typed; while the text is not an amount nothing is sent and the field
+	// keeps the last amount it wrote, so leaving it shows the error instead of the old sum.
+	type MoneyField = 'final_price' | 'discount' | 'extra_costs';
+	const MONEY: MoneyField[] = ['final_price', 'discount', 'extra_costs'];
+	let invalid = $state<Record<MoneyField, boolean>>({
+		final_price: false,
+		discount: false,
+		extra_costs: false
+	});
+	const held: Partial<Record<MoneyField, number | null>> = {};
+	function money(f: MoneyField): number | null {
+		return invalid[f] && f in held ? (held[f] ?? null) : shown(f);
+	}
+	function setMoney(f: MoneyField, v: number | null) {
+		held[f] = v;
+		if (f === 'final_price') autosave.edit(f, v);
+		else autosave.edit(f, v ?? 0);
+	}
+	$effect(() => {
+		for (const f of MONEY) if (invalid[f]) untrack(() => autosave.discard(f));
+	});
+
+	const pay = $derived(
+		MONEY.some((f) => invalid[f])
+			? null
+			: toPay({
+					final_price: money('final_price'),
+					prepayment: order.prepayment,
+					discount: money('discount') ?? 0
+				})
+	);
+	const estimate = $derived(estimateText(order));
+
+	let revealed = $state(false);
+	let allPhones = $state(false);
+	const phones = $derived(client?.phones ?? []);
+	const mainPhone = $derived(phones[0]);
+	const otherPhones = $derived(phones.slice(1));
+	const deviceLine = $derived(
+		[order.device_type, order.brand, order.model, order.color].filter(Boolean).join(' · ')
+	);
+
+	/** Leaving a field saves what was typed in it. */
+	function leave() {
+		void autosave.flush().catch(() => {});
+	}
+
+	const flash = (fields: OrderField[]) => fields.some((f) => flashed.has(f));
+	function endFlash(fields: OrderField[]) {
+		for (const f of fields) onflashend?.(f);
+	}
+
+	function asText(f: OrderField, v: unknown): string {
+		if (typeof v === 'boolean') return v ? t.yes : t.no;
+		if (v === null || v === '') return t.empty;
+		if (MONEY.includes(f as MoneyField) && typeof v === 'number') return formatMoney(v);
+		return String(v);
+	}
+</script>
+
+{#snippet dispute(f: OrderField)}
+	{@const c = conflicts.get(f)}
+	{#if c}
+		<div class="dispute" role="group" aria-label={t.conflictField(LABELS[f] ?? f)}>
+			<p class="theirs"><span class="muted">{t.theirs}:</span> {asText(f, c.theirs)}</p>
+			<div class="choices">
+				<Button size="sm" onclick={() => onkeep?.(f)}>{t.keepMine}</Button>
+				<Button size="sm" onclick={() => ontake?.(f)}>{t.takeNew}</Button>
+			</div>
+		</div>
+	{/if}
+{/snippet}
+
+<div class="fields" onfocusout={leave}>
+	{#if conflicts.size > 0}
+		<Callout tone="warning" title={t.conflictTitle}>{t.conflictText}</Callout>
+	{/if}
+
+	<Section title={t.client}>
+		{#if client}
+			<p class="line">
+				<span class="strong">{displayName(client.full_name)}</span>
+				{#if client.blacklisted}<Badge tone="danger">{ru.flags.blacklisted}</Badge>{/if}
+			</p>
+			{#if mainPhone}
+				<p class="line num">
+					<a href="tel:{dialNumber(mainPhone.phone)}">{formatPhone(mainPhone.phone)}</a>
+					{#if mainPhone.note}<span class="muted">{mainPhone.note}</span>{/if}
+					{#if otherPhones.length > 0 && !allPhones}
+						<button type="button" class="link" onclick={() => (allPhones = true)}>
+							{t.morePhones}
+							{countLabel(otherPhones.length, t.phoneForms)}
+						</button>
+					{/if}
+				</p>
+			{/if}
+			{#if allPhones}
+				{#each otherPhones as p, i (i)}
+					<p class="line num">
+						<a href="tel:{dialNumber(p.phone)}">{formatPhone(p.phone)}</a>
+						{#if p.note}<span class="muted">{p.note}</span>{/if}
+					</p>
+				{/each}
+			{/if}
+		{:else}
+			<p class="line muted">{t.clientNumber(order.client_id)}</p>
+		{/if}
+	</Section>
+
+	<div class="flashable" class:flash={flash(DEVICE)} onanimationend={() => endFlash(DEVICE)}>
+		<Section title={t.device}>
+			{#if deviceLine}<p class="line">{deviceLine}</p>{/if}
+			{#if order.serial || order.device_password}
+				<p class="line muted num">
+					{#if order.serial}<span>{t.serial} {order.serial}</span>{/if}
+					{#if order.device_password}
+						<span>
+							{t.password}
+							{revealed ? order.device_password : '••••'}
+							<button
+								type="button"
+								class="reveal"
+								aria-pressed={revealed}
+								aria-label={revealed ? ru.fields.hidePassword : ru.fields.showPassword}
+								onclick={() => (revealed = !revealed)}
+							>
+								{#if revealed}
+									<EyeOff size={16} aria-hidden="true" />
+								{:else}
+									<Eye size={16} aria-hidden="true" />
+								{/if}
+							</button>
+						</span>
+					{/if}
+				</p>
+			{/if}
+		</Section>
+	</div>
+
+	<Section title={t.work}>
+		<div
+			class="flashable"
+			class:flash={flash(['malfunction'])}
+			onanimationend={() => endFlash(['malfunction'])}
+		>
+			<Textarea
+				id={idOf('malfunction')}
+				label={t.malfunction}
+				disabled={readonly}
+				bind:value={() => shown('malfunction'), (v) => autosave.edit('malfunction', v)}
+			/>
+			{@render dispute('malfunction')}
+		</div>
+		<div class="pair">
+			<div
+				class="flashable"
+				class:flash={flash(['work_done'])}
+				onanimationend={() => endFlash(['work_done'])}
+			>
+				<Textarea
+					id={idOf('work_done')}
+					label={t.workDone}
+					disabled={readonly}
+					bind:value={() => shown('work_done'), (v) => autosave.edit('work_done', v)}
+				/>
+				{@render dispute('work_done')}
+			</div>
+			<div
+				class="flashable"
+				class:flash={flash(['master'])}
+				onanimationend={() => endFlash(['master'])}
+			>
+				<Combobox
+					id={idOf('master')}
+					label={t.master}
+					items={masterItems}
+					disabled={readonly}
+					bind:value={() => shown('master'), (v) => autosave.edit('master', v)}
+					onselect={(v) => autosave.commit('master', v)}
+				/>
+				{@render dispute('master')}
+			</div>
+		</div>
+	</Section>
+
+	<Section title={t.money}>
+		<p class="line muted num">
+			{estimate ? `${t.estimate} ${estimate}` : t.noEstimate}
+			{#if order.prepayment > 0}
+				· {t.prepayment}
+				{formatMoney(order.prepayment)}{order.prepaid_at
+					? ` (${formatRelative(order.prepaid_at, serverClock.now())})`
+					: ''}
+			{/if}
+		</p>
+		<div class="money">
+			{#each MONEY as f (f)}
+				<div class="flashable" class:flash={flash([f])} onanimationend={() => endFlash([f])}>
+					<MoneyInput
+						id={idOf(f)}
+						label={LABELS[f]}
+						nullable={f === 'final_price'}
+						disabled={readonly}
+						bind:invalid={invalid[f]}
+						bind:value={() => money(f), (v) => setMoney(f, v)}
+					/>
+					{@render dispute(f)}
+				</div>
+			{/each}
+		</div>
+		<p class="to-pay num" class:negative={pay !== null && pay < 0}>
+			{t.toPay} <strong>{pay === null ? '—' : formatMoney(pay)}</strong>
+		</p>
+		{#if pay !== null && pay < 0}<p class="error">{t.toPayNegative}</p>{/if}
+	</Section>
+
+	<Section title={t.warranty}>
+		<div
+			class="flashable"
+			class:flash={flash(['warranty'])}
+			onanimationend={() => endFlash(['warranty'])}
+		>
+			<Combobox
+				id={idOf('warranty')}
+				label={t.warrantyTerm}
+				items={warrantyItems}
+				disabled={readonly}
+				hint={isNoWarranty(order) && shown('warranty') === order.warranty
+					? t.noWarranty
+					: undefined}
+				bind:value={() => shown('warranty'), (v) => autosave.edit('warranty', v)}
+				onselect={(v) => autosave.commit('warranty', v)}
+			/>
+			{@render dispute('warranty')}
+		</div>
+	</Section>
+
+	<Section title={t.marks}>
+		<div class="marks">
+			{#each ['need_call', 'need_parts'] as const as f (f)}
+				<div class="flashable" class:flash={flash([f])} onanimationend={() => endFlash([f])}>
+					<Switch
+						label={LABELS[f] ?? f}
+						disabled={readonly}
+						bind:checked={() => shown(f), (v) => autosave.commit(f, v)}
+					/>
+					{@render dispute(f)}
+				</div>
+			{/each}
+		</div>
+	</Section>
+
+	<div
+		class="flashable"
+		class:flash={flash(['internal_comment'])}
+		onanimationend={() => endFlash(['internal_comment'])}
+	>
+		<Textarea
+			id={idOf('internal_comment')}
+			label={t.comment}
+			disabled={readonly}
+			bind:value={() => shown('internal_comment'), (v) => autosave.edit('internal_comment', v)}
+		/>
+		{@render dispute('internal_comment')}
+	</div>
+</div>
+
+<style>
+	.fields {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-5);
+	}
+	.line {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--space-2);
+		margin: 0;
+	}
+	.strong {
+		font-weight: 500;
+	}
+	.muted {
+		color: var(--text-3);
+		font-size: var(--text-sm);
+	}
+	a,
+	.link {
+		color: var(--accent);
+	}
+	.link {
+		padding: 0;
+		border: 0;
+		background: transparent;
+		font: inherit;
+		font-size: var(--text-sm);
+		cursor: pointer;
+	}
+	.link:hover {
+		text-decoration: underline;
+	}
+	.reveal {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		vertical-align: middle;
+		padding: 0;
+		border: 0;
+		background: transparent;
+		color: var(--text-3);
+		cursor: pointer;
+	}
+	.reveal:hover {
+		color: var(--text);
+	}
+	.pair {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) minmax(0, 11rem);
+		align-items: start;
+		gap: var(--space-3);
+	}
+	.money {
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		align-items: start;
+		gap: var(--space-3);
+	}
+	.marks {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-2) var(--space-5);
+	}
+	.to-pay {
+		margin: 0;
+		font-size: var(--text-lg);
+	}
+	.to-pay strong {
+		font-weight: 600;
+	}
+	.to-pay.negative {
+		color: var(--danger-text);
+	}
+	.error {
+		margin: 0;
+		color: var(--danger-text);
+		font-size: var(--text-sm);
+	}
+	.flashable {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-2);
+		min-width: 0;
+		border-radius: var(--radius-md);
+	}
+	/* Taken from another computer: a short highlight (spec 6.2). */
+	.flash {
+		animation: flash var(--duration-flash) var(--ease-out);
+	}
+	@keyframes flash {
+		from {
+			background: var(--warning-soft);
+			box-shadow: 0 0 0 var(--space-1) var(--warning-soft);
+		}
+	}
+	.dispute {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--space-2);
+		padding: var(--space-2) var(--space-3);
+		border-radius: var(--radius-md);
+		background: var(--warning-soft);
+		color: var(--warning-text);
+		font-size: var(--text-sm);
+	}
+	.theirs {
+		margin: 0;
+		min-width: 0;
+		overflow-wrap: anywhere;
+	}
+	.choices {
+		display: flex;
+		gap: var(--space-2);
+	}
+	@media (pointer: coarse) {
+		.reveal,
+		.link {
+			min-width: 2.75rem;
+			min-height: 2.75rem;
+		}
+	}
+	@media (max-width: 599px) {
+		.pair,
+		.money {
+			grid-template-columns: minmax(0, 1fr);
+		}
+	}
+</style>

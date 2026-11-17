@@ -9,3 +9,10 @@ export function formatPhone(digits: string): string {
 	if (digits.length === 6) return `${digits.slice(0, 2)}-${digits.slice(2, 4)}-${digits.slice(4)}`;
 	return digits;
 }
+
+/** The number to dial (`tel:` links): Russian numbers with +7, short city numbers as they are. */
+export function dialNumber(digits: string): string {
+	let d = digits;
+	if (d.length === 11 && (d.startsWith('7') || d.startsWith('8'))) d = d.slice(1);
+	return d.length === 10 ? `+7${d}` : digits;
+}
