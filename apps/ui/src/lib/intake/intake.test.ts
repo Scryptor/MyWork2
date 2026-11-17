@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { intake } from './intake.svelte.js';
+import { intake, SUBMIT_TIMEOUT_MS } from './intake.svelte.js';
 
 /** A request that answers when told to. */
 function later<T>() {
@@ -69,6 +69,7 @@ describe('intake', () => {
 		await expect(intake.submit(() => Promise.reject(error))).resolves.toEqual({
 			ok: false,
 			error,
+			timedOut: false,
 			current: true
 		});
 		expect(intake.submitting).toBe(false);
@@ -86,5 +87,26 @@ describe('intake', () => {
 		intake.open({ clientId: 2 });
 		req.resolve(5);
 		await expect(pending).resolves.toEqual({ ok: true, value: 5, current: true });
+	});
+
+	it('no answer in 30 s: the request is called off and the sheet can be used again', async () => {
+		vi.useFakeTimers();
+		try {
+			intake.open();
+			let signal: AbortSignal | undefined;
+			const pending = intake.submit((s) => {
+				signal = s;
+				return new Promise<number>(() => {});
+			});
+			vi.advanceTimersByTime(SUBMIT_TIMEOUT_MS - 1);
+			expect(intake.submitting).toBe(true);
+			expect(signal?.aborted).toBe(false);
+			vi.advanceTimersByTime(1);
+			await expect(pending).resolves.toMatchObject({ ok: false, timedOut: true, current: true });
+			expect(signal?.aborted).toBe(true);
+			expect(intake.submitting).toBe(false);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });

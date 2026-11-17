@@ -70,11 +70,13 @@ class OrderPanel {
 	}
 
 	close(): Promise<boolean> {
-		return this.#leave(null, () => {
-			this.id = null;
-			this.back = null;
-			this.#neighbors = undefined;
-		});
+		return this.#leave(null, () => this.#shut());
+	}
+
+	#shut(): void {
+		this.id = null;
+		this.back = null;
+		this.#neighbors = undefined;
 	}
 
 	#neighbor(dir: 1 | -1): number | undefined {
@@ -93,10 +95,13 @@ class OrderPanel {
 	next(dir: 1 | -1): Promise<boolean> {
 		const target = this.#neighbor(dir);
 		if (target === undefined) return Promise.resolve(false);
+		// The card behind shows that order: the panel makes way for it, as in `open`.
+		if (target === this.#card) return this.close();
 		return this.#leave(target, () => {
 			// Counted again: the list or the order may have changed while the guard was saving.
 			const id = this.#neighbor(dir);
 			if (id === undefined) return;
+			if (id === this.#card) return this.#shut();
 			this.id = id;
 			pushRecent(id);
 		});

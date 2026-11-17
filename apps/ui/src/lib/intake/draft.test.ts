@@ -11,6 +11,7 @@ import {
 	parseDraft,
 	phoneQuery,
 	REQUIRED_LABELS,
+	sameOrder,
 	serialHits,
 	serialQuery,
 	splitChips,
@@ -261,9 +262,19 @@ describe('parseDraft', () => {
 			estimateTo: 2,
 			prepayment: 100_000,
 			warranty: '',
-			comment: 'тест'
+			comment: 'тест',
+			acceptedAs: 12
 		});
 		expect(parseDraft(JSON.stringify(d), SETTINGS, STATUS_LIST)).toEqual(d);
+	});
+
+	it('a mark of an order already accepted from the draft is a number or nothing', () => {
+		for (const acceptedAs of ['12', 0, -3, 1.5, null]) {
+			const raw = JSON.stringify({ malfunction: 'Не включается', acceptedAs });
+			expect(parseDraft(raw, SETTINGS, STATUS_LIST).acceptedAs, String(acceptedAs)).toBeNull();
+		}
+		expect(parseDraft('{"acceptedAs":7}', SETTINGS, STATUS_LIST).acceptedAs).toBe(7);
+		expect(empty().acceptedAs).toBeNull();
 	});
 
 	it('keeps valid fields and drops invalid ones', () => {
@@ -403,5 +414,26 @@ describe('warranty of a past order', () => {
 		expect(until('2026-10-18T12:00:00')).toBeNull();
 		expect(until('2026-10-18T12:00:01')).not.toBeNull();
 		expect(underWarranty('2026-11-01T10:00:00', { unit: 'days', value: 0 }, now)).toBeNull();
+	});
+});
+
+describe('sameOrder', () => {
+	it('the same client and device are the same order whatever else changed', () => {
+		const sent = filled({ brand: 'Тест', model: 'М1', serial: '356789' });
+		expect(sameOrder(sent, { ...sent, comment: 'Позвонить вечером', prepayment: 50_000 })).toBe(
+			true
+		);
+		expect(sameOrder(sent, { ...sent, model: ' М1 ' })).toBe(true);
+		for (const other of [
+			{ ...sent, clientId: 4 },
+			{ ...sent, fullName: 'Другой Клиент' },
+			{ ...sent, phones: [{ phone: '89210000001', note: '' }] },
+			{ ...sent, deviceType: 'Ноутбук' },
+			{ ...sent, brand: 'Другой' },
+			{ ...sent, model: 'М2' },
+			{ ...sent, serial: '356780' }
+		]) {
+			expect(sameOrder(sent, other)).toBe(false);
+		}
 	});
 });

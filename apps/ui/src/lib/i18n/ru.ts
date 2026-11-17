@@ -264,6 +264,8 @@ export const ru = {
 		receiver: (name: string) => `Приёмщик: ${name}`,
 		accepted: (id: number) => `Принят № ${id}`,
 		accepting: 'Принимаю…',
+		noAnswer:
+			'Не удалось принять: нет ответа от сервера. Проверьте список заказов, прежде чем принимать ещё раз.',
 		/** The order sent before Esc was accepted while the sheet, opened again, still shows its text. */
 		acceptedMeanwhile: (id: number) =>
 			`Принят № ${id}. Форма не очищена: «Отмена» очистит её, «Принять» создаст ещё один заказ`,

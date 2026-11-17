@@ -27,7 +27,8 @@ export const changeStatus = (id: number, version: number, change: StatusChange) 
 export const issueOrder = (id: number, version: number) =>
 	request<Order>('POST', `/orders/${id}/issue`, { query: { version } });
 
-export const createOrder = (n: NewOrder) => request<Order>('POST', '/orders', { body: n });
+export const createOrder = (n: NewOrder, signal?: AbortSignal) =>
+	request<Order>('POST', '/orders', { body: n, signal });
 
 export const ordersByBarcode = (code: string) =>
 	request<OrderListItem[]>('GET', '/orders/by-barcode', { query: { code } });

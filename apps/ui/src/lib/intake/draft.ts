@@ -39,6 +39,11 @@ export interface IntakeDraft {
 	prepayment: number | null;
 	warranty: string;
 	comment: string;
+	/**
+	 * The order already accepted from this draft: its answer came while the sheet, opened again, was
+	 * being changed, so the draft stayed. The sheet says so until «Отмена» or the next «Принять».
+	 */
+	acceptedAs: number | null;
 }
 
 /** Kept in localStorage of this device until the order is accepted or the intake cancelled. */
@@ -83,7 +88,8 @@ export function emptyDraft(settings: AppSettings, statuses: readonly Status[]): 
 		estimateTo: null,
 		prepayment: null,
 		warranty: settings.default_warranty,
-		comment: ''
+		comment: '',
+		acceptedAs: null
 	};
 }
 
@@ -169,8 +175,24 @@ export function parseDraft(
 		estimateTo: readMoney(o, 'estimateTo'),
 		prepayment: readMoney(o, 'prepayment'),
 		warranty: readText(o, 'warranty', base.warranty),
-		comment: readText(o, 'comment')
+		comment: readText(o, 'comment'),
+		acceptedAs: id(o.acceptedAs)
 	};
+}
+
+/**
+ * Two drafts of one order: the same client and the same device. Other changes (the comment, the money)
+ * do not make another order of it.
+ */
+export function sameOrder(a: IntakeDraft, b: IntakeDraft): boolean {
+	const key = (d: IntakeDraft) =>
+		JSON.stringify([
+			d.clientId,
+			d.fullName.trim(),
+			d.phones.map((p) => p.phone),
+			...[d.deviceType, d.brand, d.model, d.serial].map((v) => v.trim())
+		]);
+	return key(a) === key(b);
 }
 
 /** Intake for a client (from the client's card): their draft stays, a draft of anyone else is replaced. */

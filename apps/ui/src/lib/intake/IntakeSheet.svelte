@@ -32,6 +32,7 @@
 		mergeSuggestions,
 		missingRequired,
 		parseDraft,
+		sameOrder,
 		toNewOrder,
 		withPrefill,
 		type IntakeDraft,
@@ -103,8 +104,6 @@
 	let dictionaries = $state.raw(noDictionaries());
 	let attempted = $state(false);
 	let submitError = $state<string | null>(null);
-	/** An order sent from an earlier opening was accepted while this one was open. */
-	let acceptedMeanwhile = $state<number | null>(null);
 	let serverErrors = $state.raw<Partial<Record<FieldKey, string>>>({});
 	/** Money fields holding text that is not an amount: the order is not accepted until they are fixed. */
 	let wrongMoney = $state<Record<MoneyKey, boolean>>({
@@ -139,7 +138,6 @@
 		written = JSON.stringify(draft);
 		attempted = false;
 		submitError = null;
-		acceptedMeanwhile = null;
 		serverErrors = {};
 		wrongMoney = { estimateFrom: false, estimateTo: false, prepayment: false };
 		loadDictionaries();
@@ -183,9 +181,25 @@
 		written = '';
 		removeStorage(INTAKE_DRAFT_KEY);
 	}
-	/** The draft of an order accepted after the sheet closed is not offered again, unless it was edited. */
-	function forget(sent: string) {
-		if (unsaved === null && readStorage(INTAKE_DRAFT_KEY) === sent) discard();
+	/**
+	 * The answer to an order sent before Esc came when the sheet was closed, or closed and opened again.
+	 * The very draft that was accepted goes, and the sheet with it. One changed since then (the same
+	 * client and device) stays, marked as accepted: the sheet says so at every opening until «Отмена» or
+	 * «Принять». Another order typed meanwhile is left alone.
+	 */
+	function settleLate(sent: string, id: number) {
+		const open = intake.isOpen;
+		const json = open ? JSON.stringify(draft) : readStorage(INTAKE_DRAFT_KEY);
+		if (json === null) return;
+		const now = parseDraft(json, app.settings, app.statuses);
+		const before = parseDraft(sent, app.settings, app.statuses);
+		if (JSON.stringify(now) === JSON.stringify(before)) {
+			discard();
+			if (open) intake.close();
+		} else if (sameOrder(now, before)) {
+			if (open) draft.acceptedAs = id;
+			else writeStorage(INTAKE_DRAFT_KEY, JSON.stringify({ ...now, acceptedAs: id }));
+		}
 	}
 	$effect(() => {
 		window.addEventListener('pagehide', flush);
@@ -306,29 +320,25 @@
 		}
 		submitError = null;
 		serverErrors = {};
-		acceptedMeanwhile = null;
 		// What is sent is what this device keeps: Esc right now leaves the same draft.
 		flush();
 		const sent = JSON.stringify(draft);
-		const answer = await intake.submit(() => createOrder(toNewOrder(draft, point)));
+		const answer = await intake.submit((signal) => createOrder(toNewOrder(draft, point), signal));
 		if (answer === null) return;
 		if (!answer.ok) {
-			refused(answer.error, answer.current);
+			refused(answer.error, answer.current, answer.timedOut);
 			return;
 		}
 		const order: Order = answer.value;
 		if (answer.current) {
 			discard();
 			intake.close();
-		} else if (intake.isOpen) {
-			// Opened again meanwhile: what this sheet shows stays, it only says what happened.
-			acceptedMeanwhile = order.id;
 		} else {
-			forget(sent);
+			settleLate(sent, order.id);
 		}
 		emitOrderChanged(order, 'created');
 		// Toasts cannot be used under a modal: this one waits for the sheet to go; a sheet opened again
-		// meanwhile says it above «Принять» too.
+		// and changed meanwhile says it above «Принять».
 		await tick();
 		const id = order.id;
 		toast.show({
@@ -344,9 +354,10 @@
 	 * Errors of the fields go to the fields; anything else (no connection) above «Принять». An answer
 	 * about an earlier opening only says why, above «Принять» or in a toast once the sheet is closed.
 	 */
-	function refused(e: unknown, current: boolean) {
-		if (!current) {
-			const message = t.failed(lowerFirst(errorMessage(e)));
+	function refused(e: unknown, current: boolean, timedOut: boolean) {
+		// No answer in time: the server may have made the order all the same.
+		if (timedOut || !current) {
+			const message = timedOut ? t.noAnswer : t.failed(lowerFirst(errorMessage(e)));
 			// Closed while it was on its way: the draft waits, the toast says why.
 			if (intake.isOpen) submitError = message;
 			else toast.show({ message, tone: 'danger' });
@@ -494,8 +505,8 @@
 
 	{#snippet footer()}
 		{#if submitError}<p class="failed" role="alert">{submitError}</p>{/if}
-		{#if acceptedMeanwhile !== null}
-			<p class="note" role="status">{t.acceptedMeanwhile(acceptedMeanwhile)}</p>
+		{#if draft.acceptedAs !== null}
+			<p class="note" role="status">{t.acceptedMeanwhile(draft.acceptedAs)}</p>
 		{/if}
 		{#if !app.me.open_mode}<span class="receiver">{t.receiver(app.me.name)}</span>{/if}
 		{#if intake.submitting}<span class="sending" role="status">{t.accepting}</span>{/if}

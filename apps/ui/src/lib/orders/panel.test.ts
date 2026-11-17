@@ -100,6 +100,25 @@ describe('orderPanel', () => {
 		again();
 	});
 
+	it('the next order being the one of the card: the panel makes way for the card', async () => {
+		const off = orderPanel.cardShows(2);
+		await orderPanel.open(1, { neighbors: () => [1, 2, 3] });
+		await expect(orderPanel.next(1)).resolves.toBe(true);
+		expect(orderPanel.id).toBeNull();
+		// Counted again after the guard: the list changed meanwhile and now the card's order is next.
+		let list = [4, 5];
+		await orderPanel.open(4, { neighbors: () => list });
+		let allow: (ok: boolean) => void = () => {};
+		const offGuard = orderPanel.guard(() => new Promise((r) => (allow = r)));
+		const moving = orderPanel.next(1);
+		list = [4, 2];
+		allow(true);
+		await moving;
+		expect(orderPanel.id).toBeNull();
+		offGuard();
+		off();
+	});
+
 	it('a guard that fails keeps the order', async () => {
 		orderPanel.open(1);
 		const off = orderPanel.guard(() => Promise.reject(new Error('нет связи')));
