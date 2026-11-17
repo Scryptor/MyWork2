@@ -49,6 +49,9 @@ clap = { version = "4", features = ["derive", "env"] }
 rpassword = "7"
 iana-time-zone = "0.1"
 url = "2"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "gif"] }
+uuid = { version = "1", features = ["v4"] }
+mime_guess = "2"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

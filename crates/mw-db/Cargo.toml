@@ -17,6 +17,7 @@ serde_json = { workspace = true }
 getrandom = { workspace = true }
 hex = { workspace = true }
 sqlx = { workspace = true }
+mime_guess = { workspace = true }
 
 [dev-dependencies]
 url = "2"

@@ -26,6 +26,9 @@ hex = { workspace = true }
 sha2 = { workspace = true }
 getrandom = { workspace = true }
 tokio = { workspace = true, features = ["rt", "sync"] }
+image = { workspace = true }
+uuid = { workspace = true }
+mime_guess = { workspace = true }
 
 [features]
 # Помощники для тестов (`Actor::for_tests`, `Core::db`); включается dev-зависимостью ниже.

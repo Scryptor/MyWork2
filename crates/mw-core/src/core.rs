@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
 use chrono::{NaiveDateTime, SubsecRound, TimeZone};
@@ -17,6 +18,8 @@ pub struct Core {
     pub(crate) clock: Arc<dyn Clock>,
     pub(crate) settings: Arc<RwLock<AppSettings>>,
     pub(crate) hash_gate: HashGate,
+    /// Корень папки данных: файлы вложений лежат в `<корень>/attachments`.
+    pub(crate) data_dir: Option<PathBuf>,
 }
 
 impl Core {
@@ -33,7 +36,14 @@ impl Core {
             clock,
             settings: Arc::new(RwLock::new(loaded)),
             hash_gate: HashGate::new(MAX_CONCURRENT_PASSWORD_HASHES),
+            data_dir: None,
         })
+    }
+
+    /// Задаёт папку данных; без неё операции с файлами вложений недоступны.
+    pub fn with_attachments_dir(mut self, data_dir: PathBuf) -> Core {
+        self.data_dir = Some(data_dir);
+        self
     }
 
     #[cfg(any(test, feature = "testing"))]

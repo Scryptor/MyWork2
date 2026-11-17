@@ -168,6 +168,7 @@ impl Core {
             brand_key: Set(String::new()),
             model_key: Set(String::new()),
             master_key: Set(String::new()),
+            request_key: Set(None),
         }
         .insert(&tx)
         .await?;

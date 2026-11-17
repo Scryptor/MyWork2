@@ -505,6 +505,7 @@ mod tests {
             brand_key: String::new(),
             model_key: String::new(),
             master_key: String::new(),
+            request_key: None,
         });
         for (text, brand) in [
             (format!("{new:?}"), "Samsung"),

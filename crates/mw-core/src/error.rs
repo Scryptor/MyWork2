@@ -23,6 +23,8 @@ pub enum CoreError {
     InvalidCredentials,
     #[error("требуется вход в систему")]
     Unauthenticated,
+    #[error("{0}")]
+    Unavailable(&'static str),
     #[error("внутренняя ошибка: {0}")]
     Internal(String),
     #[error("ошибка базы данных: {0}")]

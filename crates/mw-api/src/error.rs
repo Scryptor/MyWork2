@@ -203,6 +203,11 @@ impl From<CoreError> for ApiError {
                 ErrorCode::Unauthenticated,
                 "Требуется вход в программу",
             ),
+            CoreError::Unavailable(message) => Self::new(
+                StatusCode::SERVICE_UNAVAILABLE,
+                ErrorCode::Unavailable,
+                message,
+            ),
             err @ (CoreError::Db(_) | CoreError::Internal(_)) => {
                 tracing::error!(error = %err, "внутренняя ошибка");
                 Self::new(

@@ -17,6 +17,7 @@ pub struct Model {
     pub deleted_at: Option<DateTime>,
     pub version: i64,
     pub search_text: String,
+    pub name_key: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

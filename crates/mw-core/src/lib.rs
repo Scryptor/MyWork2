@@ -1,6 +1,7 @@
 //! Прикладной слой MyWork2: бизнес-правила поверх `mw-db`. Все операции — методы `Core`.
 
 mod actor;
+pub mod attachments;
 mod audit;
 mod auth;
 mod clients;
@@ -19,6 +20,7 @@ mod sql;
 mod statuses;
 
 pub use actor::Actor;
+pub use attachments::{Attachment, AttachmentFile, AttachmentKind, AttachmentVariant};
 pub use audit::{AuditEntry, AuditFilter};
 pub use auth::{
     LAST_SEEN_THROTTLE_SECS, MAX_CONCURRENT_PASSWORD_HASHES, MIN_PASSWORD_CHARS, NewRole, NewUser,

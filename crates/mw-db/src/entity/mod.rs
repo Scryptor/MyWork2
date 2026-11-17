@@ -1,5 +1,6 @@
 //! SeaORM-сущности; поля совпадают со схемой миграций.
 
+pub mod attachment;
 pub mod audit_log;
 pub mod client;
 pub mod client_phone;

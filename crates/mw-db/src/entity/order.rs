@@ -45,6 +45,7 @@ pub struct Model {
     pub brand_key: String,
     pub model_key: String,
     pub master_key: String,
+    pub request_key: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

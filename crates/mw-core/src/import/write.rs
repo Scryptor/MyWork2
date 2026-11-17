@@ -3,7 +3,7 @@
 use std::collections::{HashMap, HashSet};
 
 use mw_db::entity::{
-    audit_log, client, client_phone, dictionary_item, legacy_import, legacy_row, order,
+    attachment, audit_log, client, client_phone, dictionary_item, legacy_import, legacy_row, order,
     order_tracking, role, service_point, session, setting, status, user,
 };
 use mw_db::ids::{IdTable, set_next_id};
@@ -232,6 +232,7 @@ where
 
 async fn wipe(conn: &impl ConnectionTrait) -> Result<(), CoreError> {
     session::Entity::delete_many().exec(conn).await?;
+    attachment::Entity::delete_many().exec(conn).await?;
     legacy_row::Entity::delete_many().exec(conn).await?;
     legacy_import::Entity::delete_many().exec(conn).await?;
     order_tracking::Entity::delete_many().exec(conn).await?;
@@ -379,6 +380,7 @@ async fn write_clients(conn: &impl ConnectionTrait, b: &ImportBundle) -> Result<
             deleted_at: Set(None),
             version: Set(1),
             search_text: Set(client_search_text(&c.full_name, &numbers)),
+            name_key: Set(String::new()),
         });
         for (i, p) in list.iter().enumerate() {
             phones.push(client_phone::ActiveModel {
@@ -450,6 +452,7 @@ async fn write_orders(
             brand_key: String::new(),
             model_key: String::new(),
             master_key: String::new(),
+            request_key: None,
         };
         m.search_text = order_search_text(&m);
         set_order_keys(&mut m);
@@ -718,6 +721,7 @@ impl Core {
             })
             .collect();
         insert_chunked::<legacy_row::Entity>(tx, rows).await?;
+        mw_db::backfill::legacy_client_files(tx).await?;
 
         write_settings(tx, b, &point_ids, timezone).await?;
 

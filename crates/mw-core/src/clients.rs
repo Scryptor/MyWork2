@@ -269,6 +269,7 @@ pub(crate) async fn insert_client(
         updated_at: Set(now),
         deleted_at: Set(None),
         version: Set(1),
+        name_key: Set(String::new()),
     }
     .insert(conn)
     .await?;

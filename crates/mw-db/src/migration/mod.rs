@@ -8,6 +8,7 @@ mod m20261112_000001_legacy_import;
 mod m20261112_000002_warranty_dictionary;
 mod m20261112_000003_default_warranty_text;
 mod m20261116_000001_order_keys;
+mod m20261117_000001_attachments;
 
 pub struct Migrator;
 
@@ -20,6 +21,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261112_000002_warranty_dictionary::Migration),
             Box::new(m20261112_000003_default_warranty_text::Migration),
             Box::new(m20261116_000001_order_keys::Migration),
+            Box::new(m20261117_000001_attachments::Migration),
         ]
     }
 }
