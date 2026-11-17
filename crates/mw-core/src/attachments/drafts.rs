@@ -204,14 +204,14 @@ impl Core {
                 .await
                 .unwrap_or_default()
         };
-        if let Some(key) = &draft_key {
-            // Пустая папка черновика не нужна; непустая (неудачный перенос) остаётся.
-            std::fs::remove_dir(data_dir.join("attachments/drafts").join(key)).ok();
-        }
         if moved.is_empty() {
             return;
         }
         let result = async {
+            #[cfg(test)]
+            if tests::FAIL_PATH_UPDATE.swap(false, std::sync::atomic::Ordering::SeqCst) {
+                return Err(CoreError::Internal("тестовый сбой записи путей".into()));
+            }
             let tx = self.begin_write().await?;
             for m in &moved {
                 attachment::ActiveModel {
@@ -227,10 +227,18 @@ impl Core {
             Ok::<(), CoreError>(())
         }
         .await;
-        if let Err(e) = result {
-            tracing::warn!(order_id, error = %e, "пути вложений после переноса не записаны");
-            for m in moved.iter().rev() {
-                undo(&m.done);
+        match result {
+            Ok(()) => {
+                if let Some(key) = &draft_key {
+                    // Пустая папка черновика не нужна; непустая (часть не перенесена) остаётся.
+                    std::fs::remove_dir(data_dir.join("attachments/drafts").join(key)).ok();
+                }
+            }
+            Err(e) => {
+                tracing::warn!(order_id, error = %e, "пути вложений после переноса не записаны");
+                for m in moved.iter().rev() {
+                    undo(&m.done);
+                }
             }
         }
     }
@@ -248,6 +256,9 @@ pub(crate) struct MovedAttachment {
 /// Возвращает файлы на прежние места (в обратном порядке).
 fn undo(done: &[(PathBuf, PathBuf)]) {
     for (from, to) in done.iter().rev() {
+        if let Some(parent) = from.parent() {
+            std::fs::create_dir_all(parent).ok();
+        }
         if let Err(e) = std::fs::rename(to, from) {
             tracing::warn!(path = %from.display(), error = %e, "перенос вложения не откатился");
         }
@@ -333,7 +344,12 @@ fn remove_draft_dir(data_dir: &std::path::Path, key: &str) {
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used)]
+    use std::sync::atomic::AtomicBool;
+
     use super::*;
+
+    /// Заставляет следующую запись путей после переноса файлов завершиться ошибкой.
+    pub(super) static FAIL_PATH_UPDATE: AtomicBool = AtomicBool::new(false);
 
     fn row(id: i64, path: &str, thumb: Option<&str>) -> attachment::Model {
         attachment::Model {
@@ -416,6 +432,61 @@ mod tests {
             "attachments/drafts/k/b.jpg.thumb.jpg",
         ] {
             assert!(dir.path().join(rel).exists(), "{rel}");
+        }
+    }
+
+    #[tokio::test]
+    async fn failed_path_update_moves_files_back_even_if_the_draft_folder_is_gone() {
+        use std::sync::Arc;
+
+        use crate::{Actor, ClientRef, Core, FixedClock, NewClient, NewOrder};
+
+        for (label, db) in mw_db::testing::all_backends().await {
+            let clock = Arc::new(FixedClock::new(chrono::Utc::now()));
+            let dir = tempfile::tempdir().unwrap();
+            let core = Core::open(db, clock, "UTC")
+                .await
+                .unwrap()
+                .with_attachments_dir(dir.path().to_path_buf());
+            let actor = Actor::unrestricted("Тест");
+            let img = image::RgbImage::from_pixel(20, 20, image::Rgb([9, 9, 9]));
+            let mut png = std::io::Cursor::new(Vec::new());
+            image::DynamicImage::ImageRgb8(img)
+                .write_to(&mut png, image::ImageFormat::Png)
+                .unwrap();
+            for _ in 0..2 {
+                core.add_draft_attachment(&actor, "fail", "p.png", png.get_ref().clone())
+                    .await
+                    .unwrap();
+            }
+            FAIL_PATH_UPDATE.store(true, std::sync::atomic::Ordering::SeqCst);
+            let order = core
+                .create_order(
+                    &actor,
+                    NewOrder {
+                        client: ClientRef::New(NewClient {
+                            full_name: "Ким".into(),
+                            ..Default::default()
+                        }),
+                        device_type: "Телефон".into(),
+                        brand: "А".into(),
+                        model: "Б".into(),
+                        malfunction: "Не включается".into(),
+                        attachment_draft: Some("fail".into()),
+                        ..Default::default()
+                    },
+                )
+                .await
+                .unwrap();
+            assert!(!FAIL_PATH_UPDATE.load(std::sync::atomic::Ordering::SeqCst));
+            let list = core.list_order_attachments(&actor, order.id).await.unwrap();
+            assert_eq!(list.len(), 2, "{label}");
+            for a in &list {
+                assert!(!a.missing, "{label}");
+                core.attachment_file(&actor, a.id, crate::AttachmentVariant::Thumb)
+                    .await
+                    .unwrap();
+            }
         }
     }
 }
