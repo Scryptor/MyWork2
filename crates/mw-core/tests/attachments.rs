@@ -172,6 +172,56 @@ async fn legacy_photo_gets_a_thumbnail_on_first_request() -> Result<(), CoreErro
 }
 
 #[tokio::test]
+async fn concurrent_first_thumbnail_requests_leave_one_file() -> Result<(), CoreError> {
+    for t in cores().await {
+        let dir = tempfile::tempdir().unwrap();
+        let core = imported(t.core.clone(), dir.path()).await;
+        let id = core.list_order_attachments(&admin(), 5).await?[0].id;
+        let who = admin();
+        let (a, b) = tokio::join!(
+            core.attachment_file(&who, id, AttachmentVariant::Thumb),
+            core.attachment_file(&who, id, AttachmentVariant::Thumb)
+        );
+        let (a, b) = (a?, b?);
+        assert_eq!(a.path, b.path, "{}", t.label);
+        let files: Vec<_> = std::fs::read_dir(dir.path().join("attachments/orders/5"))
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(files.len(), 3, "{}: {files:?}", t.label); // фото, видео, одна миниатюра
+        assert!(!files.iter().any(|f| f.contains("tmp-")), "{files:?}");
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn thumbnail_of_a_concurrently_deleted_attachment_is_not_found_and_leaves_no_file()
+-> Result<(), CoreError> {
+    for t in cores().await {
+        let dir = tempfile::tempdir().unwrap();
+        let core = imported(t.core.clone(), dir.path()).await;
+        let id = core.list_order_attachments(&admin(), 5).await?[0].id;
+        let who = admin();
+        let (thumb, deleted) = tokio::join!(
+            core.attachment_file(&who, id, AttachmentVariant::Thumb),
+            core.delete_attachment(&who, id)
+        );
+        deleted?;
+        assert!(
+            matches!(thumb, Ok(_) | Err(CoreError::NotFound { .. })),
+            "{}: {thumb:?}",
+            t.label
+        );
+        let left: Vec<_> = std::fs::read_dir(dir.path().join("attachments/orders/5"))
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(left, vec!["video.mp4".to_owned()], "{}", t.label);
+    }
+    Ok(())
+}
+
+#[tokio::test]
 async fn caption_is_edited_with_history() -> Result<(), CoreError> {
     for t in cores().await {
         let dir = tempfile::tempdir().unwrap();

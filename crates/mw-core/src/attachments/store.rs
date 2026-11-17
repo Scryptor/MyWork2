@@ -24,10 +24,10 @@ pub fn resolve(data_dir: &Path, rel: &str) -> Option<PathBuf> {
     Some(data_dir.join(path))
 }
 
-/// Имя файла миниатюры рядом с основным: `<uuid>.thumb.jpg`.
-pub(crate) fn new_thumb_rel(main_rel: &str) -> String {
-    let dir = main_rel.rsplit_once('/').map_or("", |(d, _)| d);
-    format!("{dir}/{}.thumb.jpg", uuid::Uuid::new_v4())
+/// Имя миниатюры, выводимое из основного пути: `<файл>.thumb.jpg` рядом с ним.
+/// Одинаковое для всех запросов, поэтому параллельные запросы пишут один и тот же файл.
+pub(crate) fn thumb_rel(main_rel: &str) -> String {
+    format!("{main_rel}.thumb.jpg")
 }
 
 /// Строит миниатюру JPEG (длинная сторона до 320 px) и пишет её в `to`.
@@ -39,12 +39,21 @@ pub(crate) fn write_thumbnail(from: &Path, to: &Path) -> Result<(), String> {
         .decode()
         .map_err(|e| e.to_string())?;
     let thumb = img.thumbnail(THUMB_SIDE, THUMB_SIDE).to_rgb8();
-    let file = std::fs::File::create(to).map_err(|e| e.to_string())?;
-    let mut out = std::io::BufWriter::new(file);
-    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, THUMB_QUALITY)
-        .encode_image(&image::DynamicImage::ImageRgb8(thumb))
-        .map_err(|e| e.to_string())?;
-    std::io::Write::flush(&mut out).map_err(|e| e.to_string())
+    // Сначала во временный файл, затем атомарно на место: читатель не увидит половину файла.
+    let tmp = to.with_extension(format!("tmp-{}", uuid::Uuid::new_v4()));
+    let written = (|| {
+        let file = std::fs::File::create(&tmp).map_err(|e| e.to_string())?;
+        let mut out = std::io::BufWriter::new(file);
+        image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, THUMB_QUALITY)
+            .encode_image(&image::DynamicImage::ImageRgb8(thumb))
+            .map_err(|e| e.to_string())?;
+        std::io::Write::flush(&mut out).map_err(|e| e.to_string())?;
+        std::fs::rename(&tmp, to).map_err(|e| e.to_string())
+    })();
+    if written.is_err() {
+        std::fs::remove_file(&tmp).ok();
+    }
+    written
 }
 
 /// Удаляет файлы после фиксации записи: «нет файла» не ошибка, остальное — в журнал работы.

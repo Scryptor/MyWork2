@@ -8,7 +8,8 @@ use chrono::NaiveDateTime;
 use mw_db::entity::attachment;
 use mw_domain::permission::Permission;
 use mw_domain::validation::FieldError;
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
+use sea_orm::sea_query::Expr;
+use sea_orm::{ActiveModelTrait, ColumnTrait, Condition, EntityTrait, QueryFilter, Set};
 use serde::{Deserialize, Serialize};
 
 pub use store::resolve;
@@ -176,7 +177,7 @@ impl Core {
                 name: thumb_name,
             });
         }
-        let rel = store::new_thumb_rel(&m.path);
+        let rel = store::thumb_rel(&m.path);
         let target = store::resolve(data_dir, &rel).ok_or_else(not_found)?;
         let built = {
             let (from, to) = (main.clone(), target.clone());
@@ -189,15 +190,25 @@ impl Core {
             tracing::warn!(attachment_id = id, error = %e, "миниатюра не построена");
             return Err(not_found());
         }
+        // Условная запись: если миниатюру уже записал другой запрос, ничего не меняется.
         let tx = self.begin_write().await?;
-        attachment::ActiveModel {
-            id: Set(id),
-            thumb_path: Set(Some(rel)),
-            ..Default::default()
-        }
-        .update(&tx)
-        .await?;
+        attachment::Entity::update_many()
+            .col_expr(attachment::Column::ThumbPath, Expr::value(rel.clone()))
+            .filter(attachment::Column::Id.eq(id))
+            .filter(
+                Condition::any()
+                    .add(attachment::Column::ThumbPath.is_null())
+                    .add(attachment::Column::ThumbPath.ne(rel.clone())),
+            )
+            .exec(&tx)
+            .await?;
+        let still_there = attachment::Entity::find_by_id(id).one(&tx).await?.is_some();
         tx.commit().await?;
+        if !still_there {
+            // Вложение удалили во время построения: файл больше не нужен.
+            store::remove_files(std::slice::from_ref(&target));
+            return Err(not_found());
+        }
         Ok(AttachmentFile {
             path: target,
             content_type: "image/jpeg".into(),

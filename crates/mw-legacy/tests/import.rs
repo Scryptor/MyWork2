@@ -101,6 +101,40 @@ async fn v32_files_and_warnings_round_trip() -> Res {
 }
 
 #[tokio::test]
+async fn imported_client_files_are_listed_as_attachments() -> Res {
+    use mw_core::AttachmentKind::{File, Photo};
+    for t in cores().await {
+        let (src, data) = (fixture_dir(V32).await, tempfile::tempdir()?);
+        let core = t
+            .core
+            .clone()
+            .with_attachments_dir(data.path().to_path_buf());
+        import_folder(&core, &admin(), &options(src.path(), data.path(), false)).await?;
+        let shown = |list: Vec<mw_core::Attachment>| {
+            list.into_iter()
+                .map(|a| (a.kind, a.name, a.legacy, a.missing))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            shown(core.list_order_attachments(&admin(), 1).await?),
+            vec![
+                (Photo, "photo.jpg".to_owned(), true, false),
+                (File, "act.pdf".to_owned(), true, false)
+            ],
+            "{}",
+            t.label
+        );
+        assert_eq!(
+            shown(core.list_order_attachments(&admin(), 3).await?),
+            vec![(File, "video.mp4".to_owned(), true, false)],
+            "{}",
+            t.label
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test]
 async fn source_folder_is_untouched_by_full_import() -> Res {
     for t in cores().await {
         let (src, data) = (fixture_dir(V32).await, tempfile::tempdir()?);
