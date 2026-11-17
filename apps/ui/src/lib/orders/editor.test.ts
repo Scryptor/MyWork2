@@ -301,7 +301,11 @@ describe('undo of a status', () => {
 		const server = fakeServer(order(7, { status_id: 2, version: 4 }));
 		const emit = vi.fn();
 		await revertStatus(7, 1, { api: server.api, emit });
-		expect(server.api.changeStatus).toHaveBeenCalledWith(7, 4, { status_id: 1 });
+		// Undo restores: going back to an issued status never stamps a new issue date.
+		expect(server.api.changeStatus).toHaveBeenCalledWith(7, 4, {
+			status_id: 1,
+			stamp_issued_at: false
+		});
 		expect(emit).toHaveBeenCalledWith(expect.objectContaining({ status_id: 1, version: 5 }));
 	});
 

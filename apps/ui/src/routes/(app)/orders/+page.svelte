@@ -1,6 +1,7 @@
 <!-- The main screen «Заказы» (spec 6.1, 6.12): quick filters, the list filter, «Фильтры ▾», the table
      (cards on a phone). The view lives in the address: view.ts reads and writes it. -->
 <script lang="ts">
+	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import Clock from '@lucide/svelte/icons/clock';
 	import Search from '@lucide/svelte/icons/search';
 	import X from '@lucide/svelte/icons/x';
@@ -10,6 +11,8 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import type { OrderListItem } from '$api/OrderListItem';
+	import type { Status } from '$api/Status';
+	import { listDictionary } from '#lib/api/catalogs.js';
 	import { getClient } from '#lib/api/clients.js';
 	import { serverClock } from '#lib/api/server-clock.svelte.js';
 	import { app } from '#lib/app/context.svelte.js';
@@ -26,6 +29,8 @@
 		shortName
 	} from '#lib/format/index.js';
 	import { ru } from '#lib/i18n/ru.js';
+	import BulkIssuedDateDialog from '#lib/orders/BulkIssuedDateDialog.svelte';
+	import { performBulk, type BulkChange } from '#lib/orders/bulk.js';
 	import { orderColumns } from '#lib/orders/columns.js';
 	import { onOrderChanged } from '#lib/orders/events.js';
 	import FiltersMenu from '#lib/orders/FiltersMenu.svelte';
@@ -50,6 +55,7 @@
 		type OrderFilters,
 		type OrdersView
 	} from '#lib/orders/view.js';
+	import DropdownMenu, { type MenuItem } from '#lib/ui/DropdownMenu.svelte';
 	import EmptyState from '#lib/ui/EmptyState.svelte';
 	import FlagIcons from '#lib/ui/FlagIcons.svelte';
 	import IconButton from '#lib/ui/IconButton.svelte';
@@ -190,6 +196,74 @@
 		toast.show({ message: t.viewSaved(name.trim()), tone: 'success' });
 	}
 
+	// Bulk actions of the selection bar (spec 6.1): one order after another, one «Отменить» for all.
+	const canEdit = $derived(app.can('orders_edit'));
+	const anySelected = $derived(selected.size > 0);
+	let bulkBusy = $state(false);
+	let masters = $state.raw<string[]>([]);
+	// The masters' dictionary, asked when a selection starts: settings may have changed.
+	$effect(() => {
+		if (!anySelected || !canEdit) return;
+		let current = true;
+		listDictionary('master').then(
+			(items) => {
+				if (current) masters = items.map((d) => d.value);
+			},
+			() => {
+				// Without it «Снять мастера» stays.
+			}
+		);
+		return () => {
+			current = false;
+		};
+	});
+	async function bulk(change: BulkChange) {
+		const items = list.rows.filter((r) => selected.has(r.id));
+		if (bulkBusy || items.length === 0) return;
+		bulkBusy = true;
+		try {
+			await performBulk(items, change, {
+				statusName: (id) => app.statusById(id)?.name ?? '',
+				canClearIssuedAt: app.can('order_dates_edit')
+			});
+		} finally {
+			bulkBusy = false;
+			selected = new Set();
+		}
+	}
+	/** An issued status asks first whether to stamp the issue date. */
+	let issuedTo = $state.raw<Status | null>(null);
+	let issuedOpen = $state(false);
+	function bulkStatus(s: Status) {
+		if (s.kind !== 'issued') return void bulk({ kind: 'status', statusId: s.id });
+		issuedTo = s;
+		issuedOpen = true;
+	}
+	const statusItems = $derived<MenuItem[]>(
+		app.statuses
+			.filter((s) => !s.archived)
+			.map((s) => ({ label: s.name, onselect: () => bulkStatus(s) }))
+	);
+	const masterItems = $derived<MenuItem[]>([
+		...masters.map((m) => ({ label: m, onselect: () => void bulk({ kind: 'master', master: m }) })),
+		...(masters.length > 0 ? [{ separator: true as const }] : []),
+		{ label: ru.bulk.clearMaster, onselect: () => void bulk({ kind: 'master', master: '' }) }
+	]);
+	const FLAGS = [
+		{ flag: 'need_call', label: ru.flags.needCall },
+		{ flag: 'need_parts', label: ru.flags.needParts }
+	] as const;
+	const markItems: MenuItem[] = FLAGS.flatMap(({ flag, label }) => [
+		{
+			label: ru.bulk.markOn(label),
+			onselect: () => void bulk({ kind: 'flag', flag, value: true })
+		},
+		{
+			label: ru.bulk.markOff(label),
+			onselect: () => void bulk({ kind: 'flag', flag, value: false })
+		}
+	]);
+
 	// The order open in the panel is the table's current row while it is in the list.
 	let activeId = $state<RowId | null>(null);
 	$effect(() => {
@@ -299,6 +373,16 @@
 	{/if}
 {/snippet}
 
+{#snippet bulkMenu(items: MenuItem[], label: string, text: string)}
+	<DropdownMenu {items} {label}>
+		{#snippet trigger(props)}
+			<Button {...props} variant="ghost" size="sm" iconEnd={ChevronDown} busy={bulkBusy}
+				>{text}</Button
+			>
+		{/snippet}
+	</DropdownMenu>
+{/snippet}
+
 {#snippet filterField()}
 	<div class="filter">
 		<TextInput
@@ -405,12 +489,29 @@
 				{empty}
 			/>
 			<div class="selection">
-				<!-- Bulk actions (status, master, flags, print) come with task 9. -->
-				<SelectionBar count={selected.size} onclear={() => (selected = new Set())} />
+				<!-- «Печать ▾» comes with plan 6. Without the right to edit orders only the count is shown. -->
+				{#if canEdit}
+					<SelectionBar count={selected.size} onclear={() => (selected = new Set())}>
+						{@render bulkMenu(statusItems, ru.bulk.changeStatus, ru.bulk.status)}
+						{@render bulkMenu(masterItems, ru.bulk.changeMaster, ru.bulk.master)}
+						{@render bulkMenu(markItems, ru.bulk.changeMarks, ru.bulk.marks)}
+					</SelectionBar>
+				{:else}
+					<SelectionBar count={selected.size} onclear={() => (selected = new Set())} />
+				{/if}
 			</div>
 		</div>
 	{/if}
 </div>
+
+<BulkIssuedDateDialog
+	bind:open={issuedOpen}
+	status={issuedTo?.name ?? ''}
+	count={selected.size}
+	onchoose={(stamp) => {
+		if (issuedTo) void bulk({ kind: 'status', statusId: issuedTo.id, stamp });
+	}}
+/>
 
 <style>
 	.orders {

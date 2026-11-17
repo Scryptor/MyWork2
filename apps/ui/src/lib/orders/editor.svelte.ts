@@ -291,7 +291,10 @@ export function createOrderEditor(initial: Order, opts: EditorOptions = {}): Ord
 	};
 }
 
-/** «Отменить» of a status change: the old status on the newest version. */
+/**
+ * «Отменить» of a status change: the old status on the newest version. Going back to an issued status
+ * restores it as it was: no new issue date is stamped.
+ */
 export async function revertStatus(
 	id: number,
 	statusId: number,
@@ -300,7 +303,10 @@ export async function revertStatus(
 	const api = opts.api ?? DEFAULT_API;
 	const emit = opts.emit ?? emitOrderChanged;
 	const current = await api.getOrder(id);
-	const o = await api.changeStatus(id, current.version, { status_id: statusId });
+	const o = await api.changeStatus(id, current.version, {
+		status_id: statusId,
+		stamp_issued_at: false
+	});
 	emit(o);
 	return o;
 }

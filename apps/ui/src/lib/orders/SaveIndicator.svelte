@@ -1,0 +1,54 @@
+<!-- «Сохраняю…», «✓ Сохранено» or «Не сохранено · Повторить» of an order's editor (spec 6.2), after the
+     other parts of a meta line: each state starts with its own «·». -->
+<script lang="ts">
+	import { ru } from '#lib/i18n/ru.js';
+	import type { OrderEditor } from './editor.svelte.js';
+
+	let { editor }: { editor: OrderEditor } = $props();
+
+	const saveState = $derived(editor.saveState);
+</script>
+
+<span class="save" aria-live="polite" title={editor.autosave.error?.message}>
+	{#if saveState === 'saving'}
+		<span aria-hidden="true">·</span> <span>{ru.save.saving}</span>
+	{:else if saveState === 'saved'}
+		<span aria-hidden="true">·</span> <span class="saved">✓ {ru.save.saved}</span>
+	{:else if saveState === 'error' || saveState === 'conflict'}
+		<span aria-hidden="true">·</span> <span class="failed">{ru.save.failed}</span>
+		{#if saveState === 'error'}
+			<span aria-hidden="true">·</span>
+			<button type="button" class="retry" onclick={() => editor.autosave.retry()}
+				>{ru.common.retry}</button
+			>
+		{/if}
+	{/if}
+</span>
+
+<style>
+	.save {
+		display: contents;
+	}
+	.saved {
+		color: var(--success-text);
+	}
+	.failed {
+		color: var(--danger-text);
+	}
+	.retry {
+		padding: 0;
+		border: 0;
+		background: transparent;
+		color: var(--accent);
+		font: inherit;
+		cursor: pointer;
+	}
+	.retry:hover {
+		text-decoration: underline;
+	}
+	@media (pointer: coarse) {
+		.retry {
+			min-height: 2.75rem;
+		}
+	}
+</style>

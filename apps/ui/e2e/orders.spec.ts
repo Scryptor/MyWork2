@@ -12,6 +12,9 @@ async function mod(page: Page): Promise<'Meta' | 'Control'> {
 const gridOf = (page: Page) => page.getByRole('grid', { name: 'Заказы' });
 const rowsOf = (page: Page, marker: string) =>
 	gridOf(page).getByRole('row').filter({ hasText: marker });
+/** The row whose «№» cell is this number: a plain text match would also find it in times and phones. */
+const numberCell = (page: Page, id: number) =>
+	page.getByRole('gridcell', { name: String(id), exact: true });
 const filterOf = (page: Page) => page.getByRole('searchbox', { name: 'Фильтр списка' });
 const chipsOf = (page: Page) => page.getByRole('group', { name: 'Быстрые фильтры' });
 const chip = (page: Page, name: string) =>
@@ -182,7 +185,7 @@ test('a row opens its order in the panel and stays marked', async ({ page, reque
 	const second = await createOrder(request, { model: m });
 	await openOrders(page);
 	await narrow(page, m);
-	const row = rowsOf(page, m).filter({ hasText: String(first.id) });
+	const row = rowsOf(page, m).filter({ has: numberCell(page, first.id) });
 	await row.getByRole('gridcell').nth(3).click();
 	await expect(panelOf(page, first.id)).toBeVisible();
 	await expect(row).toHaveAttribute('aria-current', 'true');
@@ -190,7 +193,7 @@ test('a row opens its order in the panel and stays marked', async ({ page, reque
 	expect(second.id).toBeGreaterThan(first.id);
 	await page.getByRole('button', { name: 'Предыдущая запись' }).click();
 	await expect(panelOf(page, second.id)).toBeVisible();
-	await expect(rowsOf(page, m).filter({ hasText: String(second.id) })).toHaveAttribute(
+	await expect(rowsOf(page, m).filter({ has: numberCell(page, second.id) })).toHaveAttribute(
 		'aria-current',
 		'true'
 	);
@@ -216,7 +219,7 @@ test('a client from Ctrl K shows all their orders under a chip', async ({ page, 
 	await expect(
 		gridOf(page)
 			.getByRole('row')
-			.filter({ hasText: String(mine.id) })
+			.filter({ has: numberCell(page, mine.id) })
 	).toHaveCount(1);
 	// The header and the one order of the client.
 	await expect(gridOf(page).getByRole('row')).toHaveCount(2);

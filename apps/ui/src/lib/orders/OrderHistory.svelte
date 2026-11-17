@@ -1,5 +1,6 @@
 <!-- «История» of the panel: the three newest entries of the order's journal, «все» leads to the card. -->
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import type { AuditEntry } from '$api/AuditEntry';
 	import { orderHistory } from '#lib/api/orders.js';
 	import { serverClock } from '#lib/api/server-clock.svelte.js';
@@ -47,9 +48,7 @@
 
 <Section title={ru.order.history}>
 	{#snippet actions()}
-		<!-- The card route comes with task 9. -->
-		<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-		<a class="all" href="/orders/{orderId}" onclick={onall}>{ru.order.allHistory}</a>
+		<a class="all" href={resolve(`orders/${orderId}`)} onclick={onall}>{ru.order.allHistory}</a>
 	{/snippet}
 	{#if failed}
 		<p class="muted">{ru.order.historyFailed}</p>

@@ -100,7 +100,8 @@
 <Callout tone="warning">Предупреждение.</Callout>
 <Callout tone="danger" title="Ошибка">Не удалось сохранить.</Callout>
 <Callout tone="success">Готово.</Callout>
-<Section title="История">
+<!-- region: a named block of a page, as on the order card. -->
+<Section title="История" region>
 	<Timeline items={EVENTS} now={NOW} emptyText="Событий нет" />
 </Section>
 

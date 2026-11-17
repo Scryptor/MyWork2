@@ -1,6 +1,12 @@
 import type { AuditEntry } from '$api/AuditEntry';
 import { describe, expect, it } from 'vitest';
-import { historyItems, statusBeforeIssue } from './history.js';
+import {
+	historyItems,
+	mergeHistory,
+	statusBeforeIssue,
+	statusTimeline,
+	warrantyCases
+} from './history.js';
 
 function entry(id: number, action: string, details: AuditEntry['details'] = null): AuditEntry {
 	return {
@@ -45,5 +51,50 @@ describe('historyItems', () => {
 		expect(historyItems([entry(3, 'order.status_changed')])).toEqual([
 			{ id: 3, at: '2026-11-13T10:00:00', who: 'Администратор', text: 'Запись 3' }
 		]);
+	});
+});
+
+describe('statusTimeline', () => {
+	it('keeps the creation, status changes, imported statuses and warranty cases', () => {
+		const entries = [
+			entry(6, 'order.warranty_case', {
+				complaint: 'Снова не включается',
+				at: '2026-11-16T09:00:00'
+			}),
+			entry(5, 'order.updated'),
+			entry(4, 'order.status_changed', { from: 6, to: 8 }),
+			entry(3, 'legacy.status'),
+			entry(2, 'legacy.history'),
+			entry(1, 'order.created')
+		];
+		expect(statusTimeline(entries).map((i) => i.id)).toEqual([6, 4, 3, 1]);
+	});
+});
+
+describe('warrantyCases', () => {
+	it('takes the date and the complaint of each case', () => {
+		const entries = [
+			entry(6, 'order.warranty_case', {
+				complaint: 'Снова не включается',
+				at: '2026-11-16T09:00:00'
+			}),
+			entry(5, 'order.status_changed', { from: 6, to: 8 }),
+			entry(4, 'order.warranty_case', { complaint: 'Шумит' }),
+			entry(3, 'order.warranty_case', 'broken')
+		];
+		expect(warrantyCases(entries)).toEqual([
+			{ id: 6, at: '2026-11-16T09:00:00', complaint: 'Снова не включается' },
+			{ id: 4, at: '2026-11-14T10:00:00', complaint: 'Шумит' },
+			{ id: 3, at: '2026-11-13T10:00:00', complaint: 'Запись 3' }
+		]);
+	});
+});
+
+describe('mergeHistory', () => {
+	it('puts new entries on top of those shown, each once, newest first', () => {
+		const shown = [entry(3, 'a'), entry(2, 'a'), entry(1, 'a')];
+		const fresh = [entry(5, 'a'), entry(4, 'a'), entry(3, 'a')];
+		expect(mergeHistory(shown, fresh).map((e) => e.id)).toEqual([5, 4, 3, 2, 1]);
+		expect(mergeHistory(shown, [entry(1, 'b')]).find((e) => e.id === 1)?.action).toBe('b');
 	});
 });

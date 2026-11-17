@@ -25,6 +25,7 @@
 	import Section from '#lib/ui/Section.svelte';
 	import Switch from '#lib/ui/Switch.svelte';
 	import Textarea from '#lib/ui/Textarea.svelte';
+	import TextInput from '#lib/ui/TextInput.svelte';
 	import type { Autosave } from './autosave.js';
 	import type { Conflict, OrderField, OrderValues } from './editor.svelte.js';
 	import { estimateText, isNoWarranty, toPay } from './view.js';
@@ -35,6 +36,7 @@
 		client,
 		dictionaries,
 		readonly = false,
+		editDevice = false,
 		idPrefix = 'order',
 		conflicts = new Map(),
 		flashed = new Set(),
@@ -45,9 +47,17 @@
 		order: Order;
 		autosave: Autosave<OrderValues>;
 		client: Client | null;
-		dictionaries: { master: string[]; warranty: string[] };
+		dictionaries: {
+			master: string[];
+			warranty: string[];
+			device_type?: string[];
+			brand?: string[];
+			color?: string[];
+		};
 		/** No editing (no right to edit orders). An issued order keeps its fields editable. */
 		readonly?: boolean;
+		/** The device as fields (the full card), not as a line of text (the panel). */
+		editDevice?: boolean;
 		/** Field ids are `<idPrefix>-<field>`: the same field gets focus back on another order. */
 		idPrefix?: string;
 		conflicts?: ReadonlyMap<OrderField, Conflict>;
@@ -59,6 +69,12 @@
 
 	const t = ru.order;
 	const LABELS: Partial<Record<OrderField, string>> = {
+		device_type: t.deviceType,
+		brand: t.brand,
+		model: t.model,
+		color: t.color,
+		serial: t.serial,
+		device_password: t.devicePassword,
 		malfunction: t.malfunction,
 		work_done: t.workDone,
 		master: t.master,
@@ -70,16 +86,26 @@
 		need_parts: ru.flags.needParts,
 		internal_comment: t.comment
 	};
-	const DEVICE: OrderField[] = [
+	/** The device's fields, in their order on screen. */
+	const DEVICE = [
 		'device_type',
 		'brand',
 		'model',
 		'color',
 		'serial',
 		'device_password'
-	];
+	] as const satisfies readonly OrderField[];
 	const idOf = (f: OrderField) => `${idPrefix}-${f}`;
 
+	/** Device fields chosen from a dictionary; the others are typed. */
+	type DeviceChoice = 'device_type' | 'brand' | 'color';
+	const DEVICE_CHOICES: DeviceChoice[] = ['device_type', 'brand', 'color'];
+	const isChoice = (f: OrderField): f is DeviceChoice => DEVICE_CHOICES.includes(f as DeviceChoice);
+	const choiceItems = $derived(
+		Object.fromEntries(
+			DEVICE_CHOICES.map((f) => [f, (dictionaries[f] ?? []).map((value) => ({ value }))])
+		) as Record<DeviceChoice, { value: string }[]>
+	);
 	const masterItems = $derived(dictionaries.master.map((value) => ({ value })));
 	const warrantyItems = $derived(dictionaries.warranty.map((value) => ({ value })));
 
@@ -134,8 +160,8 @@
 		autosave.release();
 	}
 
-	const flash = (fields: OrderField[]) => fields.some((f) => flashed.has(f));
-	function endFlash(fields: OrderField[]) {
+	const flash = (fields: readonly OrderField[]) => fields.some((f) => flashed.has(f));
+	function endFlash(fields: readonly OrderField[]) {
 		for (const f of fields) onflashend?.(f);
 	}
 
@@ -196,35 +222,67 @@
 		{/if}
 	</Section>
 
-	<div class="flashable" class:flash={flash(DEVICE)} onanimationend={() => endFlash(DEVICE)}>
+	{#if editDevice}
 		<Section title={t.device}>
-			{#if deviceLine}<p class="line">{deviceLine}</p>{/if}
-			{#if order.serial || order.device_password}
-				<p class="line muted num">
-					{#if order.serial}<span>{t.serial} {order.serial}</span>{/if}
-					{#if order.device_password}
-						<span>
-							{t.password}
-							{revealed ? order.device_password : '••••'}
-							<button
-								type="button"
-								class="reveal"
-								aria-pressed={revealed}
-								aria-label={revealed ? ru.fields.hidePassword : ru.fields.showPassword}
-								onclick={() => (revealed = !revealed)}
-							>
-								{#if revealed}
-									<EyeOff size={16} aria-hidden="true" />
-								{:else}
-									<Eye size={16} aria-hidden="true" />
-								{/if}
-							</button>
-						</span>
-					{/if}
-				</p>
-			{/if}
+			<div class="device">
+				{#each DEVICE as f (f)}
+					<div class="flashable" class:flash={flash([f])} onanimationend={() => endFlash([f])}>
+						{#if isChoice(f)}
+							<Combobox
+								id={idOf(f)}
+								label={LABELS[f]}
+								items={choiceItems[f]}
+								disabled={readonly}
+								bind:value={() => shown(f), (v) => autosave.edit(f, v)}
+								onselect={(v) => autosave.commit(f, v)}
+							/>
+						{:else}
+							<TextInput
+								id={idOf(f)}
+								label={LABELS[f]}
+								type={f === 'device_password' ? 'password' : 'text'}
+								revealable={f === 'device_password'}
+								autocomplete="off"
+								disabled={readonly}
+								bind:value={() => shown(f), (v) => autosave.edit(f, v)}
+							/>
+						{/if}
+						{@render dispute(f)}
+					</div>
+				{/each}
+			</div>
 		</Section>
-	</div>
+	{:else}
+		<div class="flashable" class:flash={flash(DEVICE)} onanimationend={() => endFlash(DEVICE)}>
+			<Section title={t.device}>
+				{#if deviceLine}<p class="line">{deviceLine}</p>{/if}
+				{#if order.serial || order.device_password}
+					<p class="line muted num">
+						{#if order.serial}<span>{t.serial} {order.serial}</span>{/if}
+						{#if order.device_password}
+							<span>
+								{t.password}
+								{revealed ? order.device_password : '••••'}
+								<button
+									type="button"
+									class="reveal"
+									aria-pressed={revealed}
+									aria-label={revealed ? ru.fields.hidePassword : ru.fields.showPassword}
+									onclick={() => (revealed = !revealed)}
+								>
+									{#if revealed}
+										<EyeOff size={16} aria-hidden="true" />
+									{:else}
+										<Eye size={16} aria-hidden="true" />
+									{/if}
+								</button>
+							</span>
+						{/if}
+					</p>
+				{/if}
+			</Section>
+		</div>
+	{/if}
 
 	<Section title={t.work}>
 		<div
@@ -409,6 +467,12 @@
 		align-items: start;
 		gap: var(--space-3);
 	}
+	.device {
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		align-items: start;
+		gap: var(--space-3);
+	}
 	.money {
 		display: grid;
 		grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -482,6 +546,7 @@
 	}
 	@media (max-width: 599px) {
 		.pair,
+		.device,
 		.money {
 			grid-template-columns: minmax(0, 1fr);
 		}

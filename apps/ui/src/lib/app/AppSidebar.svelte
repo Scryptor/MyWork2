@@ -88,6 +88,8 @@
 	]);
 
 	const active = $derived.by(() => {
+		// The full card of an order belongs to «Заказы».
+		if (page.url.pathname.startsWith(`${ORDERS}/`)) return 'orders';
 		if (page.url.pathname !== ORDERS) return '';
 		// The address in its own form: a saved view is current however its address was written.
 		const search = viewToSearch(viewFromSearch(page.url.searchParams));

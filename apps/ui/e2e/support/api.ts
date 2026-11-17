@@ -1,4 +1,5 @@
 import type { APIRequestContext } from '@playwright/test';
+import type { DictionaryKind } from '$api/DictionaryKind';
 import type { NewOrder } from '$api/NewOrder';
 import type { Order } from '$api/Order';
 import type { OrderPatch } from '$api/OrderPatch';
@@ -81,5 +82,33 @@ export async function patchOrder(
 	const current = await json<Order>(await request.get(`/api/v1/orders/${id}`));
 	return json<Order>(
 		await request.patch(`/api/v1/orders/${id}?version=${current.version}`, { data: patch })
+	);
+}
+
+/** Adds a value to a dictionary (`master`, `warranty`, …) through the API. */
+export async function addDictionaryItem(
+	request: APIRequestContext,
+	kind: DictionaryKind,
+	value: string
+): Promise<void> {
+	await json<unknown>(await request.post(`/api/v1/dictionaries/${kind}`, { data: { value } }));
+}
+
+/** Gets an order as the server has it now. */
+export async function fetchOrder(request: APIRequestContext, id: number): Promise<Order> {
+	return json<Order>(await request.get(`/api/v1/orders/${id}`));
+}
+
+/** Sets a status through the API with the order's current version. */
+export async function setStatus(
+	request: APIRequestContext,
+	id: number,
+	status_id: number
+): Promise<Order> {
+	const current = await fetchOrder(request, id);
+	return json<Order>(
+		await request.post(`/api/v1/orders/${id}/status?version=${current.version}`, {
+			data: { status_id }
+		})
 	);
 }

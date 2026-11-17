@@ -1,13 +1,25 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 
-	let { title, actions, children }: { title: string; actions?: Snippet; children: Snippet } =
-		$props();
+	let {
+		title,
+		actions,
+		region = false,
+		children
+	}: {
+		title: string;
+		actions?: Snippet;
+		/** A named region (landmark) of the page: for the blocks one jumps between, as on the order card. */
+		region?: boolean;
+		children: Snippet;
+	} = $props();
+
+	const id = $props.id();
 </script>
 
-<section class="section">
+<section class="section" aria-labelledby={region ? id : undefined}>
 	<header>
-		<h3 class="label-caps">{title}</h3>
+		<h3 class="label-caps" {id}>{title}</h3>
 		{#if actions}<div class="actions">{@render actions()}</div>{/if}
 	</header>
 	{@render children()}

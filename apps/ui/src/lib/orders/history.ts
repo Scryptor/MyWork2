@@ -29,3 +29,50 @@ export function statusBeforeIssue(
 	}
 	return null;
 }
+
+/** Entries of «Статусы и сроки»: the intake, every status the order got, warranty cases. */
+const TIMELINE_ACTIONS = [
+	'order.created',
+	'order.status_changed',
+	'legacy.status',
+	'order.warranty_case'
+];
+
+export function statusTimeline(entries: readonly AuditEntry[]) {
+	return historyItems(entries.filter((e) => TIMELINE_ACTIONS.includes(e.action)));
+}
+
+export interface WarrantyCaseItem {
+	id: number;
+	/** When the client came back; the time of the entry when the details do not say. */
+	at: string;
+	complaint: string;
+}
+
+/** «Гарантийные случаи»: the date and the complaint of each `order.warranty_case`. */
+export function warrantyCases(entries: readonly AuditEntry[]): WarrantyCaseItem[] {
+	return entries
+		.filter((e) => e.action === 'order.warranty_case')
+		.map((e) => {
+			const d = e.details;
+			const fields =
+				typeof d === 'object' && d !== null && !Array.isArray(d)
+					? (d as Record<string, unknown>)
+					: {};
+			return {
+				id: e.id,
+				at: typeof fields.at === 'string' ? fields.at : e.at,
+				complaint: typeof fields.complaint === 'string' ? fields.complaint : e.summary
+			};
+		});
+}
+
+/** A fresh first page over the entries shown: new ones on top, each entry once, newest first. */
+export function mergeHistory(
+	shown: readonly AuditEntry[],
+	fresh: readonly AuditEntry[]
+): AuditEntry[] {
+	const byId = new Map(shown.map((e) => [e.id, e]));
+	for (const e of fresh) byId.set(e.id, e);
+	return [...byId.values()].sort((a, b) => b.id - a.id);
+}

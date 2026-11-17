@@ -30,7 +30,7 @@
 		paletteGroups,
 		type PaletteResults
 	} from '#lib/app/palette.js';
-	import { pushRecent, recentIds } from '#lib/app/recent.js';
+	import { recentIds } from '#lib/app/recent.js';
 	import { resolveScan } from '#lib/app/scan.js';
 	import ScanChoiceDialog from '#lib/app/ScanChoiceDialog.svelte';
 	import { ATTENTION_KEYS, summary } from '#lib/app/summary.svelte.js';
@@ -161,10 +161,7 @@
 		if (kind === 'order') {
 			const id = Number(value);
 			if (!opts.alt) return void orderPanel.open(id);
-			pushRecent(id);
-			// The full card comes with task 9 (route /orders/[id]); then this becomes resolve().
-			// eslint-disable-next-line svelte/no-navigation-without-resolve
-			return void goto(`/orders/${id}`);
+			return void goto(resolve(`orders/${id}`));
 		}
 		// A client's orders: all of them, issued too.
 		if (kind === 'client') return void goto(resolve(`orders?client=${value}&chips=all`));
@@ -275,7 +272,10 @@
 		{#snippet bottomNav()}
 			<BottomNav
 				items={BOTTOM}
-				active={page.url.pathname === resolve('orders') ? 'orders' : ''}
+				active={page.url.pathname === resolve('orders') ||
+				page.url.pathname.startsWith(`${resolve('orders')}/`)
+					? 'orders'
+					: ''}
 				primary={canIntake
 					? { label: ru.app.intake, icon: Plus, onclick: () => intake.open() }
 					: undefined}
