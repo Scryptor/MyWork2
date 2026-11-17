@@ -11,10 +11,30 @@ async function mod(page: Page): Promise<'Meta' | 'Control'> {
 	return mac ? 'Meta' : 'Control';
 }
 
-/** A barcode scanner: characters 5 ms apart, then Enter. */
-async function scan(page: Page, code: string) {
-	await page.keyboard.type(code, { delay: 5 });
-	await page.keyboard.press('Enter');
+/**
+ * A barcode scanner: its keys and the final Enter as one burst of keydowns to the focused element (or
+ * <body>), reaching the program's own listeners. The burst is sent inside the page: `page.keyboard`
+ * makes every key a round trip to the browser and stamps it on arrival, so on a busy machine a gap grows
+ * past SCAN_GAP_MS (35 ms) and the burst is no scan. A real scanner's keys carry the time of the input
+ * itself. Returns how many keydowns the program took for itself (preventDefault).
+ */
+async function scan(page: Page, code: string): Promise<number> {
+	return page.evaluate((text) => {
+		const target = document.activeElement ?? document.body;
+		let taken = 0;
+		for (const key of [...text, 'Enter']) {
+			const code = /^\d$/.test(key) ? `Digit${key}` : key === 'Enter' ? 'Enter' : '';
+			const e = new KeyboardEvent('keydown', {
+				key,
+				code,
+				bubbles: true,
+				cancelable: true,
+				composed: true
+			});
+			if (!target.dispatchEvent(e)) taken += 1;
+		}
+		return taken;
+	}, code);
 }
 
 const number = (id: number) => new RegExp(`№ ${id}(?!\\d)`);
@@ -129,7 +149,11 @@ test('scan into a focused field stays in the field', async ({ page }) => {
 	await openOrders(page);
 	const field = page.getByRole('searchbox', { name: 'Фильтр списка' });
 	await field.focus();
-	await scan(page, '199999999991');
+	// A burst into the field: the program takes none of its keys, they stay the field's…
+	expect(await scan(page, '199999999991')).toBe(0);
+	// …and the browser types them there (a synthetic keydown types nothing, so real keys show it).
+	await page.keyboard.type('199999999991');
+	await page.keyboard.press('Enter');
 	await expect(field).toHaveValue('199999999991');
 
 	// The same scan outside the field is looked up: only that one is reported.
