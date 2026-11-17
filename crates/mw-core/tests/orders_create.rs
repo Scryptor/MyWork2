@@ -157,3 +157,39 @@ async fn negative_money_is_rejected() -> Result<(), CoreError> {
     }
     Ok(())
 }
+
+#[tokio::test]
+async fn create_order_is_idempotent_by_request_key() -> Result<(), CoreError> {
+    for t in cores().await {
+        let actor = actor_with(&[Permission::OrdersCreate]);
+        let new = NewOrder {
+            request_key: Some("r1".into()),
+            ..sample_new_order()
+        };
+        let a = t.core.create_order(&actor, new.clone()).await?;
+        let b = t.core.create_order(&actor, new.clone()).await?;
+        assert_eq!(a.id, b.id, "{}", t.label);
+        let other_client = NewOrder {
+            client: ClientRef::New(NewClient {
+                full_name: "Другой".into(),
+                ..Default::default()
+            }),
+            ..new
+        };
+        assert_eq!(t.core.create_order(&actor, other_client).await?.id, a.id);
+        assert_eq!(count_audit(&t.core, "order.created").await, 1);
+        assert_validation(
+            t.core
+                .create_order(
+                    &actor,
+                    NewOrder {
+                        request_key: Some("не ключ".into()),
+                        ..sample_new_order()
+                    },
+                )
+                .await,
+            &[("request_key", "invalid")],
+        );
+    }
+    Ok(())
+}

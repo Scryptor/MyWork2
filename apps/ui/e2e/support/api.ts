@@ -68,6 +68,8 @@ export async function createOrder(
 		warranty: '',
 		need_call: false,
 		need_parts: false,
+		attachment_draft: null,
+		request_key: null,
 		...rest
 	};
 	return json<Order>(await request.post('/api/v1/orders', { data: body }));

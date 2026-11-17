@@ -183,7 +183,9 @@ describe('toNewOrder', () => {
 			prepayment: 0,
 			warranty: '90 дней',
 			need_call: false,
-			need_parts: false
+			need_parts: false,
+			attachment_draft: null,
+			request_key: null
 		});
 	});
 });

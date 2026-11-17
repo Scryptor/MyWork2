@@ -85,4 +85,12 @@ need_call: boolean,
 /**
  * Нужны запчасти.
  */
-need_parts: boolean, };
+need_parts: boolean, 
+/**
+ * Ключ черновика с фото: его вложения становятся вложениями заказа.
+ */
+attachment_draft: string | null, 
+/**
+ * Ключ попытки приёма: повтор с тем же ключом возвращает уже созданный заказ.
+ */
+request_key: string | null, };

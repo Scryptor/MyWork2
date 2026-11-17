@@ -3326,9 +3326,18 @@
           "prepayment",
           "warranty",
           "need_call",
-          "need_parts"
+          "need_parts",
+          "attachment_draft",
+          "request_key"
         ],
         "properties": {
+          "attachment_draft": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Ключ черновика с фото: его вложения становятся вложениями заказа."
+          },
           "brand": {
             "type": "string",
             "description": "Бренд."
@@ -3406,6 +3415,13 @@
           "prepayment": {
             "$ref": "#/components/schemas/Money",
             "description": "Предоплата, в копейках."
+          },
+          "request_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Ключ попытки приёма: повтор с тем же ключом возвращает уже созданный заказ."
           },
           "serial": {
             "type": "string",

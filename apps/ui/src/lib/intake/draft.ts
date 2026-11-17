@@ -289,7 +289,9 @@ export function toNewOrder(d: IntakeDraft, pointId: number | null): NewOrder {
 		prepayment: d.prepayment ?? 0,
 		warranty: d.warranty.trim(),
 		need_call: false,
-		need_parts: false
+		need_parts: false,
+		attachment_draft: null,
+		request_key: null
 	};
 }
 

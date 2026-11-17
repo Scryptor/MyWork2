@@ -1,9 +1,10 @@
-use mw_db::entity::{order, service_point, status};
+use mw_db::entity::{attachment, order, service_point, status};
 use mw_domain::barcode::order_barcode;
 use mw_domain::money::Money;
 use mw_domain::permission::Permission;
 use mw_domain::status::StatusKind;
 use mw_domain::validation::FieldError;
+use sea_orm::sea_query::Expr;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, NotSet, QueryFilter, QueryOrder,
     Set,
@@ -11,6 +12,7 @@ use sea_orm::{
 use serde_json::json;
 
 use super::types::warranty_columns;
+use crate::attachments::valid_key;
 use crate::clients::{find_live, insert_client};
 use crate::search_index::{order_search_text, set_order_keys};
 use crate::{Actor, ClientRef, Core, CoreError, NewAuditEntry, NewOrder, Order, write_audit};
@@ -39,8 +41,48 @@ async fn default_status_id(conn: &impl ConnectionTrait) -> Result<Option<i64>, C
 
 impl Core {
     /// Приём устройства: клиент, заказ, штрихкод и запись журнала в одной транзакции.
+    /// Повтор с тем же `request_key` возвращает уже созданный заказ.
     pub async fn create_order(&self, actor: &Actor, new: NewOrder) -> Result<Order, CoreError> {
         actor.require(Permission::OrdersCreate)?;
+        for (field, key) in [
+            ("request_key", &new.request_key),
+            ("attachment_draft", &new.attachment_draft),
+        ] {
+            if key.as_deref().is_some_and(|k| !valid_key(k)) {
+                return Err(CoreError::Validation(vec![FieldError::new(
+                    field, "invalid",
+                )]));
+            }
+        }
+        let Some(key) = new.request_key.clone() else {
+            return self.create_order_once(actor, new).await;
+        };
+        if let Some(found) = self.order_by_request_key(&key, false).await? {
+            return Ok(found);
+        }
+        match self.create_order_once(actor, new).await {
+            // Параллельный приём с тем же ключом: победитель уже записан.
+            Err(e @ CoreError::Db(_)) => match self.order_by_request_key(&key, true).await? {
+                Some(found) => Ok(found),
+                None => Err(e),
+            },
+            other => other,
+        }
+    }
+
+    async fn order_by_request_key(
+        &self,
+        key: &str,
+        with_deleted: bool,
+    ) -> Result<Option<Order>, CoreError> {
+        let mut q = order::Entity::find().filter(order::Column::RequestKey.eq(key));
+        if !with_deleted {
+            q = q.filter(order::Column::DeletedAt.is_null());
+        }
+        Ok(q.one(&self.db).await?.map(Order::from))
+    }
+
+    async fn create_order_once(&self, actor: &Actor, new: NewOrder) -> Result<Order, CoreError> {
         let required = self.settings().intake_required_fields;
         let device_type = trimmed(&new.device_type);
         let brand = trimmed(&new.brand);
@@ -168,7 +210,7 @@ impl Core {
             brand_key: Set(String::new()),
             model_key: Set(String::new()),
             master_key: Set(String::new()),
-            request_key: Set(None),
+            request_key: Set(new.request_key.clone()),
         }
         .insert(&tx)
         .await?;
@@ -206,7 +248,33 @@ impl Core {
             },
         )
         .await?;
+        let moved = match &new.attachment_draft {
+            Some(key) => {
+                let rows = attachment::Entity::find()
+                    .filter(attachment::Column::DraftKey.eq(key.as_str()))
+                    .filter(attachment::Column::OrderId.is_null())
+                    .all(&tx)
+                    .await?;
+                if !rows.is_empty() {
+                    attachment::Entity::update_many()
+                        .col_expr(attachment::Column::OrderId, Expr::value(model.id))
+                        .col_expr(
+                            attachment::Column::DraftKey,
+                            Expr::value(Option::<String>::None),
+                        )
+                        .filter(attachment::Column::DraftKey.eq(key.as_str()))
+                        .filter(attachment::Column::OrderId.is_null())
+                        .exec(&tx)
+                        .await?;
+                }
+                rows
+            }
+            None => Vec::new(),
+        };
         tx.commit().await?;
+        if !moved.is_empty() {
+            self.move_draft_files(model.id, moved).await;
+        }
         Ok(model.into())
     }
 

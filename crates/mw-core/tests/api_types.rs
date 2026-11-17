@@ -265,7 +265,8 @@ fn request_bodies_require_every_field() {
         "device_type": "", "brand": "", "model": "", "serial": "", "color": "",
         "device_password": "", "completeness": "", "device_condition": "", "malfunction": "",
         "internal_comment": "", "master": "", "estimate_from": null, "estimate_to": null,
-        "prepayment": 0, "warranty": "30 дней", "need_call": false, "need_parts": false
+        "prepayment": 0, "warranty": "30 дней", "need_call": false, "need_parts": false,
+        "attachment_draft": null, "request_key": null
     }));
 }
 

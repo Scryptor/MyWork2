@@ -85,6 +85,14 @@ pub struct NewOrder {
     pub need_call: bool,
     /// Нужны запчасти.
     pub need_parts: bool,
+    /// Ключ черновика с фото: его вложения становятся вложениями заказа.
+    #[serde(deserialize_with = "crate::patch::required_nullable")]
+    #[schema(required = true)]
+    pub attachment_draft: Option<String>,
+    /// Ключ попытки приёма: повтор с тем же ключом возвращает уже созданный заказ.
+    #[serde(deserialize_with = "crate::patch::required_nullable")]
+    #[schema(required = true)]
+    pub request_key: Option<String>,
 }
 
 /// Частичная правка заказа: не переданное поле не меняется; `null` очищает необязательное поле.

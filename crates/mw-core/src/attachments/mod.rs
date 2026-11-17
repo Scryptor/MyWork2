@@ -1,5 +1,7 @@
 //! Вложения заказов: фото и файлы. Файлы лежат на диске, в базе — только описание.
 
+mod drafts;
+mod photo;
 mod store;
 
 use std::path::PathBuf;
@@ -12,6 +14,9 @@ use sea_orm::sea_query::Expr;
 use sea_orm::{ActiveModelTrait, ColumnTrait, Condition, EntityTrait, QueryFilter, Set};
 use serde::{Deserialize, Serialize};
 
+pub use drafts::MAX_DRAFT_ATTACHMENTS;
+pub(crate) use drafts::valid_key;
+pub use photo::{MAX_ATTACHMENT_BYTES, PhotoError, ProcessedPhoto, process_photo};
 pub use store::resolve;
 
 use crate::{Actor, Core, CoreError, NewAuditEntry, write_audit};
@@ -304,5 +309,167 @@ impl Core {
             .collect();
         store::remove_files(&files);
         Ok(())
+    }
+}
+
+/// Файлы, записанные на диск до записи в базу.
+pub(crate) struct Written {
+    pub prepared: photo::Prepared,
+    pub path: String,
+    pub thumb_path: Option<String>,
+    pub size: i64,
+    pub files: Vec<PathBuf>,
+}
+
+/// Разбирает байты и пишет файлы в `rel_dir` (путь внутри папки данных). Блокирующая работа.
+pub(crate) async fn prepare_and_write(
+    data_dir: PathBuf,
+    rel_dir: String,
+    name: String,
+    bytes: Vec<u8>,
+) -> Result<Written, CoreError> {
+    tokio::task::spawn_blocking(move || {
+        let size = i64::try_from(bytes.len()).unwrap_or(i64::MAX);
+        let prepared = photo::prepare_upload(&name, bytes)?;
+        let file_name = if prepared.ext.is_empty() {
+            uuid::Uuid::new_v4().to_string()
+        } else {
+            format!("{}.{}", uuid::Uuid::new_v4(), prepared.ext)
+        };
+        let path = format!("{rel_dir}/{file_name}");
+        let main = store::resolve(&data_dir, &path)
+            .ok_or_else(|| CoreError::Internal("недопустимый путь вложения".into()))?;
+        let mut files = vec![main.clone()];
+        let thumb_path = prepared.thumb.as_ref().map(|_| store::thumb_rel(&path));
+        let mut write = || -> std::io::Result<()> {
+            if let Some(parent) = main.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(&main, &prepared.main)?;
+            if let (Some(rel), Some(thumb)) = (&thumb_path, &prepared.thumb)
+                && let Some(p) = store::resolve(&data_dir, rel)
+            {
+                files.push(p.clone());
+                std::fs::write(p, thumb)?;
+            }
+            Ok(())
+        };
+        if let Err(e) = write() {
+            store::remove_files(&files);
+            return Err(CoreError::Internal(format!("файл не записан: {e}")));
+        }
+        let size = if prepared.photo {
+            i64::try_from(prepared.main.len()).unwrap_or(size)
+        } else {
+            size
+        };
+        Ok(Written {
+            prepared,
+            path,
+            thumb_path,
+            size,
+            files,
+        })
+    })
+    .await
+    .map_err(|e| CoreError::Internal(e.to_string()))?
+}
+
+impl Written {
+    pub(crate) fn into_active(
+        self,
+        order_id: Option<i64>,
+        draft_key: Option<String>,
+        created_at: NaiveDateTime,
+    ) -> attachment::ActiveModel {
+        let p = self.prepared;
+        attachment::ActiveModel {
+            id: sea_orm::NotSet,
+            order_id: Set(order_id),
+            draft_key: Set(draft_key),
+            kind: Set(if p.photo {
+                AttachmentKind::Photo.code()
+            } else {
+                AttachmentKind::File.code()
+            }
+            .to_owned()),
+            name: Set(p.name),
+            caption: Set(String::new()),
+            content_type: Set(p.content_type),
+            size: Set(self.size),
+            width: Set(p.width),
+            height: Set(p.height),
+            path: Set(self.path),
+            thumb_path: Set(self.thumb_path),
+            legacy: Set(false),
+            created_at: Set(created_at),
+        }
+    }
+}
+
+impl Core {
+    /// Добавляет фото или файл к заказу.
+    pub async fn add_order_attachment(
+        &self,
+        actor: &Actor,
+        order_id: i64,
+        name: &str,
+        bytes: Vec<u8>,
+    ) -> Result<Attachment, CoreError> {
+        actor.require(Permission::OrdersEdit)?;
+        let data_dir = self.data_dir()?.to_path_buf();
+        if mw_db::entity::order::Entity::find_by_id(order_id)
+            .one(&self.db)
+            .await?
+            .is_none()
+        {
+            return Err(CoreError::NotFound {
+                entity: "заказ",
+                id: order_id,
+            });
+        }
+        let written = prepare_and_write(
+            data_dir.clone(),
+            format!("attachments/orders/{order_id}"),
+            name.to_owned(),
+            bytes,
+        )
+        .await?;
+        let files = written.files.clone();
+        let inserted = async {
+            let tx = self.begin_write().await?;
+            let now = self.now();
+            let model = written
+                .into_active(Some(order_id), None, now)
+                .insert(&tx)
+                .await?;
+            write_audit(
+                &tx,
+                now,
+                actor,
+                NewAuditEntry {
+                    action: "attachment.added",
+                    order_id: Some(order_id),
+                    client_id: None,
+                    summary: format!("Добавлен файл «{}»", model.name),
+                    details: Some(serde_json::json!({
+                        "name": model.name,
+                        "kind": model.kind,
+                        "size": model.size,
+                    })),
+                },
+            )
+            .await?;
+            tx.commit().await?;
+            Ok::<_, CoreError>(model)
+        }
+        .await;
+        match inserted {
+            Ok(m) => Ok(to_api(m, false)),
+            Err(e) => {
+                store::remove_files(&files);
+                Err(e)
+            }
+        }
     }
 }
