@@ -209,7 +209,8 @@
 		} catch (e) {
 			toast.show({ message: t.statusFailed(errorMessage(e)), tone: 'danger' });
 		} finally {
-			if (picked?.ed === ed) picked = null;
+			// A later pick still waiting keeps showing.
+			if (picked?.ed === ed && picked.id === id) picked = null;
 		}
 	}
 

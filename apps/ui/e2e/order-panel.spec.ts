@@ -89,6 +89,46 @@ test('typing during a slow save keeps the text', async ({ page, request }) => {
 	expect((await fetchOrder(request, o.id)).work_done).toBe('не заряжается');
 });
 
+test('a space or a new line typed before a save stays: the next word does not stick', async ({
+	page,
+	request
+}) => {
+	const m = uniq('M');
+	const o = await createOrder(request, { model: m });
+	await openPanel(page, m, o.id);
+	const panel = panelOf(page, o.id);
+	const field = panel.getByRole('textbox', { name: 'Выполненные работы' });
+	const isPatch = (r: { request: () => { method: () => string } }) =>
+		r.request().method() === 'PATCH';
+
+	await field.click();
+	let saved = page.waitForResponse(isPatch);
+	await page.keyboard.type('Замена ');
+	await saved;
+	await page.waitForTimeout(100);
+	// The server keeps «Замена»; the field keeps the space.
+	expect((await fetchOrder(request, o.id)).work_done).toBe('Замена');
+	await expect(field).toHaveValue('Замена ');
+	await page.keyboard.type('разъёма');
+	await expect(field).toHaveValue('Замена разъёма');
+	await expect.poll(async () => (await fetchOrder(request, o.id)).work_done).toBe('Замена разъёма');
+
+	saved = page.waitForResponse(isPatch);
+	await page.keyboard.press('Enter');
+	await saved;
+	await page.waitForTimeout(100);
+	await page.keyboard.type('Пайка');
+	await expect(field).toHaveValue('Замена разъёма\nПайка');
+	await expect
+		.poll(async () => (await fetchOrder(request, o.id)).work_done)
+		.toBe('Замена разъёма\nПайка');
+
+	// Leaving the field shows the text as the server keeps it.
+	await page.keyboard.type(' ');
+	await page.keyboard.press('Tab');
+	await expect(field).toHaveValue('Замена разъёма\nПайка');
+});
+
 test('offline save shows retry and retry saves', async ({ page, request }) => {
 	const m = uniq('M');
 	const o = await createOrder(request, { model: m });

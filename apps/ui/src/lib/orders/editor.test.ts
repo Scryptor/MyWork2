@@ -16,27 +16,54 @@ const conflict = () =>
 		retry_after_secs: null
 	});
 
-/** A server of one order: PATCH and status check the version like mw-server does. */
+/**
+ * A server of one order: writes check the version like mw-server does. It counts writes in flight at
+ * once and the 409s; `hold` keeps writes waiting until `release`.
+ */
 function fakeServer(start: Order) {
 	let current = start;
+	let inFlight = 0;
+	let gate: Promise<void> = Promise.resolve();
+	let open = () => {};
+	const stats = { maxInFlight: 0, conflicts: 0 };
+	async function write(version: number, change: () => Order): Promise<Order> {
+		inFlight += 1;
+		stats.maxInFlight = Math.max(stats.maxInFlight, inFlight);
+		try {
+			await gate;
+			await Promise.resolve();
+			if (version !== current.version) {
+				stats.conflicts += 1;
+				throw conflict();
+			}
+			current = { ...change(), version: current.version + 1 };
+			return current;
+		} finally {
+			inFlight -= 1;
+		}
+	}
 	const api = {
 		getOrder: vi.fn(async () => current),
-		updateOrder: vi.fn(async (_id: number, version: number, patch: OrderPatch) => {
-			if (version !== current.version) throw conflict();
-			current = { ...current, ...patch, version: current.version + 1 } as Order;
-			return current;
-		}),
-		changeStatus: vi.fn(async (_id: number, version: number, change: StatusChange) => {
-			if (version !== current.version) throw conflict();
-			current = { ...current, status_id: change.status_id, version: current.version + 1 };
-			return current;
-		})
+		updateOrder: vi.fn((_id: number, version: number, patch: OrderPatch) =>
+			write(version, () => ({ ...current, ...patch }) as Order)
+		),
+		changeStatus: vi.fn((_id: number, version: number, change: StatusChange) =>
+			write(version, () => ({ ...current, status_id: change.status_id }))
+		)
 	} satisfies EditorApi;
 	return {
 		api,
+		stats,
 		/** Someone at another computer edits the order. */
 		elsewhere(patch: Partial<Order>) {
 			current = { ...current, ...patch, version: current.version + 1 };
+		},
+		hold() {
+			gate = new Promise((r) => (open = r));
+		},
+		release() {
+			open();
+			gate = Promise.resolve();
 		},
 		get current() {
 			return current;
@@ -157,6 +184,102 @@ describe('createOrderEditor', () => {
 		expect(again.status_id).toBe(3);
 		expect(ed.order.model).toBe('Новая');
 		expect(server.api.changeStatus).toHaveBeenCalledTimes(3);
+		ed.dispose();
+	});
+
+	it('pending text and a status change: one request at a time, no conflict, both land', async () => {
+		const server = fakeServer(order(7, { status_id: 1 }));
+		const ed = createOrderEditor(server.current, { api: server.api });
+		ed.autosave.edit('malfunction', 'Разбит экран');
+		ed.autosave.edit('work_done', 'Замена экрана');
+		const o = await ed.run((v) => server.api.changeStatus(7, v, { status_id: 2 }));
+		await settle();
+		expect(o.status_id).toBe(2);
+		expect(server.current).toMatchObject({
+			status_id: 2,
+			malfunction: 'Разбит экран',
+			work_done: 'Замена экрана'
+		});
+		expect(server.stats).toEqual({ maxInFlight: 1, conflicts: 0 });
+		expect(ed.autosave.state).toBe('saved');
+		ed.dispose();
+	});
+
+	it('typing during a status change sends after it, with the new version', async () => {
+		const server = fakeServer(order(7, { status_id: 1 }));
+		const ed = createOrderEditor(server.current, { api: server.api });
+		server.hold();
+		const changed = ed.run((v) => server.api.changeStatus(7, v, { status_id: 2 }));
+		await settle();
+		expect(server.api.changeStatus).toHaveBeenCalledTimes(1);
+
+		ed.autosave.commit('need_call', true);
+		ed.autosave.edit('malfunction', 'Текст');
+		vi.advanceTimersByTime(600);
+		await settle();
+		// Waiting for the status: nothing else is out.
+		expect(server.api.updateOrder).not.toHaveBeenCalled();
+		expect(ed.autosave.state).toBe('saving');
+
+		server.release();
+		await changed;
+		await settle();
+		// The switch left at once and the text after it: each with the version the previous answer left.
+		expect(server.api.updateOrder.mock.calls.map((c) => [c[1], c[2]])).toEqual([
+			[2, { need_call: true }],
+			[3, { malfunction: 'Текст' }]
+		]);
+		expect(server.current).toMatchObject({ status_id: 2, need_call: true, malfunction: 'Текст' });
+		expect(server.stats).toEqual({ maxInFlight: 1, conflicts: 0 });
+		expect(ed.order.version).toBe(4);
+		ed.dispose();
+	});
+
+	it('two status picks in a row go one after the other; the second one stays', async () => {
+		const server = fakeServer(order(7, { status_id: 1 }));
+		const ed = createOrderEditor(server.current, { api: server.api });
+		server.hold();
+		const first = ed.run((v) => server.api.changeStatus(7, v, { status_id: 2 }));
+		const second = ed.run((v) => server.api.changeStatus(7, v, { status_id: 3 }));
+		await settle();
+		server.release();
+		await Promise.all([first, second]);
+		expect(server.api.changeStatus.mock.calls.map((c) => c[1])).toEqual([1, 2]);
+		expect(server.current.status_id).toBe(3);
+		expect(ed.order.status_id).toBe(3);
+		expect(server.stats).toEqual({ maxInFlight: 1, conflicts: 0 });
+		ed.dispose();
+	});
+
+	it('a status change over a conflict: the remaining text goes first, then the status', async () => {
+		const server = fakeServer(order(7, { status_id: 1 }));
+		const ed = createOrderEditor(server.current, { api: server.api });
+		server.elsewhere({ model: 'Другая' });
+		ed.autosave.edit('work_done', 'Чистка');
+		const o = await ed.run((v) => server.api.changeStatus(7, v, { status_id: 4 }));
+		await settle();
+		expect(o.status_id).toBe(4);
+		expect(server.current).toMatchObject({ status_id: 4, work_done: 'Чистка', model: 'Другая' });
+		// The one 409 is the edit made elsewhere; nothing ran side by side.
+		expect(server.stats).toEqual({ maxInFlight: 1, conflicts: 1 });
+		expect(ed.order.version).toBe(server.current.version);
+		ed.dispose();
+	});
+
+	it('a disputed field waiting in the queue is not sent over the other computer', async () => {
+		const server = fakeServer(order(7, { status_id: 1, malfunction: 'Старое' }));
+		const ed = createOrderEditor(server.current, { api: server.api });
+		server.hold();
+		const changed = ed.run((v) => server.api.changeStatus(7, v, { status_id: 2 }));
+		await settle();
+		ed.autosave.commit('malfunction', 'Моё');
+		server.elsewhere({ malfunction: 'Чужое' });
+		server.release();
+		await changed;
+		await settle();
+		expect(ed.conflicts.get('malfunction')).toEqual({ mine: 'Моё', theirs: 'Чужое' });
+		expect(server.current.malfunction).toBe('Чужое');
+		expect(ed.autosave.value('malfunction', ed.order.malfunction)).toBe('Моё');
 		ed.dispose();
 	});
 

@@ -207,6 +207,39 @@ describe('createAutosave', () => {
 		expect(save).toHaveBeenCalledTimes(1);
 	});
 
+	it('a save the server only trimmed keeps the typed text until the field is left', async () => {
+		a.edit('malfunction', 'Замена ');
+		vi.advanceTimersByTime(600);
+		calls[0]!.resolve();
+		await settle();
+		// The server keeps «Замена»: the field still shows the space typed, the next word goes after it.
+		expect(a.value('malfunction', 'Замена')).toBe('Замена ');
+		expect(a.state).toBe('saved');
+		// Something else on the server is not a trimmed copy: the server's.
+		expect(a.value('malfunction', 'Другое')).toBe('Другое');
+		a.release();
+		expect(a.value('malfunction', 'Замена')).toBe('Замена');
+	});
+
+	it('a trailing newline survives the save while the field is in use', async () => {
+		a.edit('work_done', 'Чистка\n');
+		vi.advanceTimersByTime(600);
+		calls[0]!.resolve();
+		await settle();
+		expect(a.value('work_done', 'Чистка')).toBe('Чистка\n');
+		a.edit('work_done', 'Чистка\nЗамена');
+		expect(a.value('work_done', 'Чистка')).toBe('Чистка\nЗамена');
+	});
+
+	it('leaving the field while its save is out shows the server text after the answer', async () => {
+		a.edit('malfunction', 'Замена ');
+		void a.flush();
+		a.release();
+		calls[0]!.resolve();
+		await settle();
+		expect(a.value('malfunction', 'Замена')).toBe('Замена');
+	});
+
 	it('dispose stops the timer', () => {
 		a.edit('malfunction', 'x');
 		a.dispose();

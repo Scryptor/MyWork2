@@ -102,8 +102,24 @@ export function createOrderEditor(initial: Order, opts: EditorOptions = {}): Ord
 	let flashed = $state.raw<ReadonlySet<OrderField>>(new Set());
 	let resolving: Promise<void> | null = null;
 	let again = false;
+	let tail: Promise<unknown> = Promise.resolve();
 
+	/**
+	 * Every write of this order goes one after another, saves and actions alike: each one is sent with the
+	 * version the previous answer left, and after a conflict only once it is resolved.
+	 */
+	function serial<T>(write: () => Promise<T>): Promise<T> {
+		const next = tail.then(async () => {
+			if (resolving) await resolving;
+			return write();
+		});
+		tail = next.catch(() => {});
+		return next;
+	}
+
+	/** An answer of the server; one older than the order shown changes nothing. */
 	function apply(o: Order): Order {
+		if (o.id !== order.id || o.version < order.version) return o;
 		order = o;
 		emit(o);
 		return o;
@@ -111,9 +127,15 @@ export function createOrderEditor(initial: Order, opts: EditorOptions = {}): Ord
 
 	const inner = createAutosave<OrderValues>({
 		delayMs: opts.delayMs ?? SAVE_DELAY_MS,
-		save: async (patch) => {
-			apply(await api.updateOrder(order.id, order.version, patch));
-		},
+		save: (patch) =>
+			serial(async () => {
+				// A field that became disputed while this save waited is not sent over the other computer.
+				const send = Object.fromEntries(
+					Object.entries(patch).filter(([f]) => !conflicts.has(f as OrderField))
+				) as Partial<OrderValues>;
+				if (Object.keys(send).length === 0) return;
+				apply(await api.updateOrder(order.id, order.version, send));
+			}),
 		onstate: (s) => {
 			if (s === 'error' && isConflict(inner.error)) void resolveConflict();
 		}
@@ -194,6 +216,7 @@ export function createOrderEditor(initial: Order, opts: EditorOptions = {}): Ord
 			return c ? (c.mine as typeof server) : inner.value(field, server);
 		},
 		discard: (...fields) => inner.discard(...fields),
+		release: () => inner.release(),
 		dispose: () => inner.dispose()
 	};
 
@@ -250,16 +273,17 @@ export function createOrderEditor(initial: Order, opts: EditorOptions = {}): Ord
 			return conflicts.size === 0;
 		},
 		async run(action) {
-			// A failed save shows in the indicator; the action itself is still tried.
+			// What was typed goes first; a failed save shows in the indicator, the action is still tried.
 			await inner.flush().catch(() => {});
-			if (resolving) await resolving;
-			try {
-				return apply(await action(order.version));
-			} catch (e) {
-				if (!isConflict(e)) throw e;
-				await resolveConflict();
-				return apply(await action(order.version));
-			}
+			return serial(async () => {
+				try {
+					return apply(await action(order.version));
+				} catch (e) {
+					if (!isConflict(e)) throw e;
+					await resolveConflict();
+					return apply(await action(order.version));
+				}
+			});
 		},
 		dispose() {
 			inner.dispose();

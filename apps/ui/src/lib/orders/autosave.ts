@@ -25,6 +25,11 @@ export interface Autosave<T extends object> {
 	value<K extends keyof T>(field: K, server: T[K]): T[K];
 	/** Drops the unsent changes of these fields: a conflict decided, an amount that is not one. */
 	discard(...fields: (keyof T)[]): void;
+	/**
+	 * The fields are left. Until then a text the server saved only trimmed («Замена » → «Замена») stays
+	 * as typed, so the next word does not stick to it; after it the field shows the server's text.
+	 */
+	release(): void;
 	dispose(): void;
 }
 
@@ -46,6 +51,8 @@ export function createAutosave<T extends object>(opts: {
 	let waiting: Partial<T> = {};
 	/** The patch of the request in flight. */
 	let sending: Partial<T> | null = null;
+	/** Texts as they were sent, kept for the field in use (see `release`). */
+	let typed: Partial<T> = {};
 	let state: SaveState = 'idle';
 	let error: ApiError | null = null;
 	let savedOnce = false;
@@ -86,6 +93,8 @@ export function createAutosave<T extends object>(opts: {
 		const patch = waiting;
 		waiting = {};
 		sending = patch;
+		for (const [k, v] of Object.entries(patch))
+			if (typeof v === 'string') typed = { ...typed, [k]: v };
 		error = null;
 		refresh();
 		opts.save(patch).then(
@@ -166,6 +175,10 @@ export function createAutosave<T extends object>(opts: {
 			subscribe();
 			if (field in waiting) return waiting[field] as T[typeof field];
 			if (sending && field in sending) return sending[field] as T[typeof field];
+			const own = typed[field];
+			if (typeof own === 'string' && typeof server === 'string' && own.trim() === server) {
+				return own as T[typeof field];
+			}
 			return server;
 		},
 		discard(...fields) {
@@ -174,6 +187,11 @@ export function createAutosave<T extends object>(opts: {
 			waiting = next;
 			if (isEmpty(waiting)) stopTimer();
 			refresh();
+		},
+		release() {
+			if (Object.keys(typed).length === 0) return;
+			typed = {};
+			notify();
 		},
 		dispose() {
 			disposed = true;
