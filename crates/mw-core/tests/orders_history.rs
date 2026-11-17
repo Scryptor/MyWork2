@@ -1,6 +1,6 @@
 mod common;
 
-use chrono::Duration;
+use chrono::{Duration, NaiveDateTime};
 use common::*;
 use mw_core::{CoreError, NewWarrantyCase, OrderPatch, PageRequest};
 use mw_domain::permission::Permission;
@@ -178,6 +178,83 @@ async fn warranty_case_rejects_wrong_input() -> Result<(), CoreError> {
                 .await,
             &[("status", "invalid")],
         );
+    }
+    Ok(())
+}
+
+/// Жалоба с датой обращения; строки дат заданы в тесте руками.
+#[allow(clippy::unwrap_used)]
+fn case_on(at: &str) -> NewWarrantyCase {
+    NewWarrantyCase {
+        complaint: "Сломалось".to_owned(),
+        at: Some(NaiveDateTime::parse_from_str(at, "%Y-%m-%dT%H:%M:%S").unwrap()),
+    }
+}
+
+#[tokio::test]
+async fn warranty_case_day_lies_between_the_issue_and_now() -> Result<(), CoreError> {
+    for t in cores().await {
+        // Выданы 2026-11-11 в 09:00, обращение — через три дня.
+        let first = issued_order(&t).await?;
+        let second = issued_order(&t).await?;
+        let undated = issued_order(&t).await?;
+        let undated = t
+            .core
+            .update_order(
+                &admin(),
+                undated.id,
+                undated.version,
+                OrderPatch {
+                    issued_at: Some(None),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        t.clock.advance(Duration::days(3));
+        for at in [
+            "2026-11-14T09:00:01",
+            "2026-11-15T00:00:00",
+            "2026-11-10T23:59:59",
+        ] {
+            assert_validation(
+                t.core
+                    .accept_warranty_case(&admin(), first.id, first.version, case_on(at))
+                    .await,
+                &[("at", "invalid")],
+            );
+        }
+        // Окно выбирает день: день выдачи годится и с полуночи.
+        t.core
+            .accept_warranty_case(
+                &admin(),
+                first.id,
+                first.version,
+                case_on("2026-11-11T00:00:00"),
+            )
+            .await?;
+        t.core
+            .accept_warranty_case(
+                &admin(),
+                second.id,
+                second.version,
+                case_on("2026-11-14T09:00:00"),
+            )
+            .await?;
+        assert_eq!(
+            last_audit(&t.core, second.id).await.details,
+            Some(serde_json::json!({ "complaint": "Сломалось", "at": "2026-11-14T09:00:00" })),
+            "{}",
+            t.label
+        );
+        // Без даты выдачи проверяется только «не позже сейчас».
+        t.core
+            .accept_warranty_case(
+                &admin(),
+                undated.id,
+                undated.version,
+                case_on("2026-01-05T00:00:00"),
+            )
+            .await?;
     }
     Ok(())
 }

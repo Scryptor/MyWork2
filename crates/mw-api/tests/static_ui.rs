@@ -140,3 +140,22 @@ async fn loopback_host_check_applies_to_files() {
     let (code, _, body) = call(&s, Method::GET, "/", "localhost:8080").await;
     assert_eq!((code, body.as_str()), (200, INDEX));
 }
+
+#[tokio::test]
+async fn no_response_can_be_framed_by_another_site() {
+    let s = site(true, ([127, 0, 0, 1], 8080).into()).await;
+    for (path, host) in [
+        ("/_app/x.js", "localhost:8080"),
+        ("/orders/10481", "localhost:8080"),
+        ("/api/v1/server-info", "localhost:8080"),
+        ("/api/v1/nope", "localhost:8080"),
+        ("/", "evil.example"),
+    ] {
+        let (_, headers, _) = call(&s, Method::GET, path, host).await;
+        assert_eq!(headers["x-frame-options"], "DENY", "{path} {host}");
+        assert_eq!(
+            headers["content-security-policy"], "frame-ancestors 'none'",
+            "{path} {host}"
+        );
+    }
+}

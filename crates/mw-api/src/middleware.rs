@@ -88,12 +88,18 @@ pub(crate) async fn require_json_content_type(req: Request, next: Next) -> Respo
     next.run(req).await
 }
 
-/// Ставит `Cache-Control: no-store` и `X-Content-Type-Options: nosniff`.
+/// Ставит `Cache-Control: no-store`, `X-Content-Type-Options: nosniff` и запрет показа
+/// во фрейме чужого сайта (`X-Frame-Options` и `frame-ancestors` в `Content-Security-Policy`).
 pub(crate) fn set_security_headers(headers: &mut HeaderMap) {
     headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     headers.insert(
         HeaderName::from_static("x-content-type-options"),
         HeaderValue::from_static("nosniff"),
+    );
+    headers.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
+    headers.insert(
+        header::CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static("frame-ancestors 'none'"),
     );
 }
 

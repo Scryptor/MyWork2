@@ -430,6 +430,26 @@ impl Core {
                 "Принять по гарантии можно только выданный заказ",
             )]));
         }
+        let now = self.now();
+        let at = case.at.unwrap_or(now).trunc_subsecs(0);
+        if at > now {
+            return Err(CoreError::Validation(vec![FieldError::with_message(
+                "at",
+                "invalid",
+                "Дата обращения ещё не наступила: укажите сегодняшний или прошедший день",
+            )]));
+        }
+        // Обращение выбирают днём: годится любой момент дня выдачи.
+        if current
+            .issued_at
+            .is_some_and(|issued| at.date() < issued.date())
+        {
+            return Err(CoreError::Validation(vec![FieldError::with_message(
+                "at",
+                "invalid",
+                "Дата обращения раньше выдачи заказа: укажите день выдачи или позже",
+            )]));
+        }
         let key = normalize_search("Принят по гарантии");
         let warranty = status::Entity::find()
             .filter(status::Column::Archived.eq(false))
@@ -449,10 +469,9 @@ impl Core {
         let updated = self
             .change_status_in(&tx, actor, id, expected_version, Some(warranty.id), true)
             .await?;
-        let at = case.at.unwrap_or_else(|| self.now()).trunc_subsecs(0);
         write_audit(
             &tx,
-            self.now(),
+            now,
             actor,
             NewAuditEntry {
                 action: "order.warranty_case",
