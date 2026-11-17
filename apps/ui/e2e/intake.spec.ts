@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import type { DictionaryItem } from '$api/DictionaryItem';
+import type { OrderPage } from '$api/OrderPage';
 import {
 	createOrder,
 	fetchOrder,
@@ -56,6 +57,26 @@ async function fillDevice(page: Page, type = 'Телефон') {
 	await sheetOf(page)
 		.getByRole('combobox', { name: /^Модель/ })
 		.fill('Модель 1');
+}
+
+/**
+ * The device and «Неисправность» field by field with a click, as a person moves: each click closes the
+ * suggestions of the field before, so Esc is left for the sheet.
+ */
+async function fillByHand(page: Page, malfunction: string) {
+	const fields: [RegExp, string][] = [
+		[/^Тип устройства/, 'Телефон'],
+		[/^Бренд/, 'Тест'],
+		[/^Модель/, 'Модель 1']
+	];
+	for (const [name, value] of fields) {
+		const box = sheetOf(page).getByRole('combobox', { name });
+		await box.click();
+		await box.fill(value);
+	}
+	await malfunctionOf(page).click();
+	await expect(sheetOf(page).getByRole('combobox', { expanded: true })).toHaveCount(0);
+	await malfunctionOf(page).fill(malfunction);
 }
 
 /** «Принят № N» of the toast. */
@@ -266,6 +287,85 @@ test('no connection: «Принять» keeps the draft and says why above the b
 	await page.keyboard.press(`${await mod(page)}+Enter`);
 	await expect(sheetOf(page)).toBeHidden();
 	await acceptedNumber(page);
+});
+
+test('Esc while «Принять» is on its way and N again: one order, the reopened sheet keeps its text', async ({
+	page,
+	request
+}) => {
+	const marker = uniq('Не включается');
+	await openIntake(page);
+	await phoneOf(page).fill(uniqPhone());
+	await fillByHand(page, marker);
+	// The server gets the order only when the test lets it go.
+	let letGo: () => void = () => {};
+	const held = new Promise<void>((resolve) => (letGo = resolve));
+	let posts = 0;
+	await page.route('**/api/v1/orders', async (route) => {
+		if (route.request().method() !== 'POST') return route.fallback();
+		posts += 1;
+		await held;
+		await route.fallback();
+	});
+	const answered = page.waitForResponse(
+		(r) => r.request().method() === 'POST' && new URL(r.url()).pathname === '/api/v1/orders'
+	);
+	await page.keyboard.press(`${await mod(page)}+Enter`);
+	await expect(sheetOf(page).getByText('Принимаю…')).toBeVisible();
+	await page.keyboard.press('Escape');
+	await expect(sheetOf(page)).toBeHidden();
+
+	// Opened again, the sheet still waits for that order: «Принять» sends nothing.
+	await openIntake(page);
+	await expect(malfunctionOf(page)).toHaveValue(marker);
+	await expect(sheetOf(page).getByText('Принимаю…')).toBeVisible();
+	await page.keyboard.press(`${await mod(page)}+Enter`);
+	const comment = sheetOf(page).getByRole('textbox', { name: 'Комментарий (только для сервиса)' });
+	await comment.fill('Позвонить вечером');
+	letGo();
+	await answered;
+
+	// The answer is about the earlier opening: this one stays as it is and says what happened.
+	await expect(sheetOf(page).getByText(/^Принят № \d+\./)).toBeVisible();
+	await expect(sheetOf(page).getByText('Принимаю…')).toHaveCount(0);
+	await expect(sheetOf(page)).toBeVisible();
+	await expect(malfunctionOf(page)).toHaveValue(marker);
+	await expect(comment).toHaveValue('Позвонить вечером');
+	expect(posts).toBe(1);
+	const found = (await (
+		await request.get(`/api/v1/orders?query=${encodeURIComponent(marker)}`)
+	).json()) as OrderPage;
+	expect(found.total).toBe(1);
+
+	// «Отмена» clears it for the next client.
+	await sheetOf(page).getByRole('button', { name: 'Отмена' }).click();
+	await openIntake(page);
+	await expect(malfunctionOf(page)).toHaveValue('');
+});
+
+test('Esc while «Принять» is on its way: the accepted draft is not offered again', async ({
+	page,
+	request
+}) => {
+	const marker = uniq('Не заряжается');
+	await openIntake(page);
+	await phoneOf(page).fill(uniqPhone());
+	await fillByHand(page, marker);
+	let letGo: () => void = () => {};
+	const held = new Promise<void>((resolve) => (letGo = resolve));
+	await page.route('**/api/v1/orders', async (route) => {
+		if (route.request().method() !== 'POST') return route.fallback();
+		await held;
+		await route.fallback();
+	});
+	await page.keyboard.press(`${await mod(page)}+Enter`);
+	await page.keyboard.press('Escape');
+	await expect(sheetOf(page)).toBeHidden();
+	letGo();
+	const id = await acceptedNumber(page);
+	expect((await fetchOrder(request, id)).malfunction).toBe(marker);
+	await openIntake(page);
+	await expect(malfunctionOf(page)).toHaveValue('');
 });
 
 test('«Этот IMEI уже был» marks a past order under warranty', async ({ page, request }) => {

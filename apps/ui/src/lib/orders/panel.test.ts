@@ -80,6 +80,26 @@ describe('orderPanel', () => {
 		expect(orderPanel.id).toBe(2);
 	});
 
+	it('the order of the full card is not opened in the panel a second time', async () => {
+		const off = orderPanel.cardShows(7);
+		await expect(orderPanel.open(7)).resolves.toBe(true);
+		expect(orderPanel.id).toBeNull();
+		// Over the card another order makes way for it: the card shows the order asked for.
+		await orderPanel.open(8);
+		expect(orderPanel.id).toBe(8);
+		await expect(orderPanel.open(7)).resolves.toBe(true);
+		expect(orderPanel.id).toBeNull();
+		expect(recentIds()).toEqual([8]);
+		off();
+		await orderPanel.open(7);
+		expect(orderPanel.id).toBe(7);
+		// The card comes for the order the panel shows: the panel goes.
+		const again = orderPanel.cardShows(7);
+		await Promise.resolve();
+		expect(orderPanel.id).toBeNull();
+		again();
+	});
+
 	it('a guard that fails keeps the order', async () => {
 		orderPanel.open(1);
 		const off = orderPanel.guard(() => Promise.reject(new Error('нет связи')));

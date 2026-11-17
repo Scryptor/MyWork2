@@ -9,20 +9,16 @@ import type { Status } from '$api/Status';
 import { ApiError } from '#lib/api/client.js';
 import { displayName, formatPhone, shortName } from '#lib/format/index.js';
 import { ru } from '#lib/i18n/ru.js';
+import { deviceOf } from '#lib/orders/view.js';
 import { filterCommands, type CommandGroup, type CommandItem } from '#lib/ui/commands.js';
 
 /** Pause after the last key before the palette asks the server. */
 export const PALETTE_DELAY_MS = 150;
 const LIMIT = 5;
 
-type DeviceFields = Pick<OrderListItem, 'brand' | 'model' | 'device_type'>;
-
-/** «Устройство»: brand and model, the type when both are empty. */
-export function deviceOf(o: DeviceFields): string {
-	return [o.brand, o.model].filter(Boolean).join(' ') || o.device_type;
-}
-
-type OrderLike = DeviceFields & Pick<OrderListItem, 'id' | 'status_id'> & { client_name?: string };
+type OrderLike = Pick<OrderListItem, 'brand' | 'model' | 'device_type' | 'id' | 'status_id'> & {
+	client_name?: string;
+};
 
 function orderCommand(o: OrderLike, statusOf?: (id: number) => Status | undefined): CommandItem {
 	const status = statusOf?.(o.status_id);

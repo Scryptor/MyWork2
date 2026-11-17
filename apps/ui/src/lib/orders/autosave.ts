@@ -23,7 +23,10 @@ export interface Autosave<T extends object> {
 	retry(): void;
 	/** Значение, которое должно быть в поле: своё несохранённое или с сервера. */
 	value<K extends keyof T>(field: K, server: T[K]): T[K];
-	/** Drops the unsent changes of these fields: a conflict decided, an amount that is not one. */
+	/**
+	 * Drops own changes of these fields: a conflict decided, an amount that is not one, own edits given
+	 * up. A save already out for them may still land; if it fails, they do not come back.
+	 */
 	discard(...fields: (keyof T)[]): void;
 	/**
 	 * The fields are left. Until then a text the server saved only trimmed («Замена » → «Замена») stays
@@ -51,6 +54,8 @@ export function createAutosave<T extends object>(opts: {
 	let waiting: Partial<T> = {};
 	/** The patch of the request in flight. */
 	let sending: Partial<T> | null = null;
+	/** Fields of the request in flight dropped meanwhile: they are not own any more. */
+	let dropped: Partial<Record<keyof T, true>> = {};
 	/** Texts as they were sent, kept for the field in use (see `release`). */
 	let typed: Partial<T> = {};
 	let state: SaveState = 'idle';
@@ -93,6 +98,7 @@ export function createAutosave<T extends object>(opts: {
 		const patch = waiting;
 		waiting = {};
 		sending = patch;
+		dropped = {};
 		for (const [k, v] of Object.entries(patch))
 			if (typeof v === 'string') typed = { ...typed, [k]: v };
 		error = null;
@@ -110,16 +116,28 @@ export function createAutosave<T extends object>(opts: {
 				refresh();
 			},
 			(e: unknown) => {
-				// Edits made meanwhile are newer than the failed ones.
-				waiting = { ...patch, ...waiting };
+				// Edits made meanwhile are newer than the failed ones; dropped ones are gone.
+				waiting = { ...unsent(patch), ...waiting };
 				sending = null;
-				error = asApiError(e);
+				// Everything it carried was dropped: nothing that is still wanted failed.
+				const failure = isEmpty(waiting) ? null : asApiError(e);
+				error = failure;
 				const failed = waiters;
 				waiters = [];
 				refresh();
-				for (const w of failed) w.reject(error);
+				for (const w of failed) {
+					if (failure) w.reject(failure);
+					else w.resolve();
+				}
 			}
 		);
+	}
+
+	/** The part of the patch in flight that is still own. */
+	function unsent(patch: Partial<T>): Partial<T> {
+		const own = { ...patch };
+		for (const f of Object.keys(dropped) as (keyof T)[]) delete own[f];
+		return own;
 	}
 
 	function put<K extends keyof T>(field: K, value: T[K]) {
@@ -137,7 +155,7 @@ export function createAutosave<T extends object>(opts: {
 		},
 		get pending() {
 			subscribe();
-			return { ...sending, ...waiting };
+			return { ...(sending && unsent(sending)), ...waiting };
 		},
 		edit(field, value) {
 			if (disposed) return;
@@ -174,7 +192,7 @@ export function createAutosave<T extends object>(opts: {
 		value(field, server) {
 			subscribe();
 			if (field in waiting) return waiting[field] as T[typeof field];
-			if (sending && field in sending) return sending[field] as T[typeof field];
+			if (sending && field in sending && !dropped[field]) return sending[field] as T[typeof field];
 			const own = typed[field];
 			if (typeof own === 'string' && typeof server === 'string' && own.trim() === server) {
 				return own as T[typeof field];
@@ -183,7 +201,10 @@ export function createAutosave<T extends object>(opts: {
 		},
 		discard(...fields) {
 			const next = { ...waiting };
-			for (const f of fields) delete next[f];
+			for (const f of fields) {
+				delete next[f];
+				if (sending && f in sending) dropped = { ...dropped, [f]: true };
+			}
 			waiting = next;
 			if (isEmpty(waiting)) stopTimer();
 			refresh();

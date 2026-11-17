@@ -20,6 +20,8 @@ class OrderPanel {
 	back = $state.raw<PanelOptions['back'] | null>(null);
 	#neighbors: (() => number[]) | undefined;
 	#guard: LeaveGuard | null = null;
+	/** The order of the full card on screen: it has its own editor there. */
+	#card: number | null = null;
 
 	/** The panel saves its order before another one is shown or the panel closes; returns the removal. */
 	guard(fn: LeaveGuard): () => void {
@@ -45,7 +47,20 @@ class OrderPanel {
 		);
 	}
 
+	/**
+	 * The full card shows this order: the panel does not open it too (two editors of one order would
+	 * argue) and makes way for the card instead; returns the removal.
+	 */
+	cardShows(id: number): () => void {
+		this.#card = id;
+		if (this.id === id) void this.close();
+		return () => {
+			if (this.#card === id) this.#card = null;
+		};
+	}
+
 	open(id: number, opts: PanelOptions = {}): Promise<boolean> {
+		if (id === this.#card) return this.close();
 		return this.#leave(id, () => {
 			this.id = id;
 			this.back = opts.back ?? null;

@@ -47,7 +47,7 @@ export async function runBulk(
 	apply: (row: BulkRow) => Promise<Order>,
 	deps: BulkDeps = {}
 ): Promise<BulkResult> {
-	const fetch = deps.getOrder ?? ((id: number) => getOrder(id));
+	const reload = deps.getOrder ?? ((id: number) => getOrder(id));
 	const emit = deps.emit ?? emitOrderChanged;
 	const done: Order[] = [];
 	const failed: BulkFailure[] = [];
@@ -58,7 +58,7 @@ export async function runBulk(
 				o = await apply(row);
 			} catch (e) {
 				if (!isConflict(e)) throw e;
-				const fresh = await fetch(row.id);
+				const fresh = await reload(row.id);
 				o = await apply({ id: row.id, version: fresh.version });
 			}
 			emit(o);

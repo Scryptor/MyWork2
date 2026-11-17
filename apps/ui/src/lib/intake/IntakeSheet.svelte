@@ -102,8 +102,9 @@
 	let draft = $state<IntakeDraft>(emptyDraft(app.settings, app.statuses));
 	let dictionaries = $state.raw(noDictionaries());
 	let attempted = $state(false);
-	let busy = $state(false);
 	let submitError = $state<string | null>(null);
+	/** An order sent from an earlier opening was accepted while this one was open. */
+	let acceptedMeanwhile = $state<number | null>(null);
 	let serverErrors = $state.raw<Partial<Record<FieldKey, string>>>({});
 	/** Money fields holding text that is not an amount: the order is not accepted until they are fixed. */
 	let wrongMoney = $state<Record<MoneyKey, boolean>>({
@@ -137,8 +138,8 @@
 		);
 		written = JSON.stringify(draft);
 		attempted = false;
-		busy = false;
 		submitError = null;
+		acceptedMeanwhile = null;
 		serverErrors = {};
 		wrongMoney = { estimateFrom: false, estimateTo: false, prepayment: false };
 		loadDictionaries();
@@ -181,6 +182,10 @@
 		unsaved = null;
 		written = '';
 		removeStorage(INTAKE_DRAFT_KEY);
+	}
+	/** The draft of an order accepted after the sheet closed is not offered again, unless it was edited. */
+	function forget(sent: string) {
+		if (unsaved === null && readStorage(INTAKE_DRAFT_KEY) === sent) discard();
 	}
 	$effect(() => {
 		window.addEventListener('pagehide', flush);
@@ -286,8 +291,12 @@
 		document.getElementById(FIELDS[key])?.focus();
 	}
 
+	/**
+	 * The order goes once: while it is on its way «Принять» waits, here and in the sheet opened again
+	 * after Esc. Its answer closes and clears only the opening that sent it.
+	 */
 	async function accept() {
-		if (busy) return;
+		if (intake.submitting) return;
 		if (missing.length > 0 || wrong.length > 0) {
 			attempted = true;
 			// The first field to fix, in the order of the form: the required ones come before the money.
@@ -295,22 +304,31 @@
 			if (first) void focusField(first);
 			return;
 		}
-		busy = true;
 		submitError = null;
 		serverErrors = {};
-		let order: Order;
-		try {
-			order = await createOrder(toNewOrder(draft, point));
-		} catch (e) {
-			busy = false;
-			refused(e);
+		acceptedMeanwhile = null;
+		// What is sent is what this device keeps: Esc right now leaves the same draft.
+		flush();
+		const sent = JSON.stringify(draft);
+		const answer = await intake.submit(() => createOrder(toNewOrder(draft, point)));
+		if (answer === null) return;
+		if (!answer.ok) {
+			refused(answer.error, answer.current);
 			return;
 		}
-		busy = false;
-		discard();
-		intake.close();
+		const order: Order = answer.value;
+		if (answer.current) {
+			discard();
+			intake.close();
+		} else if (intake.isOpen) {
+			// Opened again meanwhile: what this sheet shows stays, it only says what happened.
+			acceptedMeanwhile = order.id;
+		} else {
+			forget(sent);
+		}
 		emitOrderChanged(order, 'created');
-		// Toasts cannot be used under a modal: this one appears once the sheet has gone.
+		// Toasts cannot be used under a modal: this one waits for the sheet to go; a sheet opened again
+		// meanwhile says it above «Принять» too.
 		await tick();
 		const id = order.id;
 		toast.show({
@@ -322,11 +340,16 @@
 
 	const lowerFirst = (text: string) => text.charAt(0).toLowerCase() + text.slice(1);
 
-	/** Errors of the fields go to the fields; anything else (no connection) above «Принять». */
-	function refused(e: unknown) {
-		if (!intake.isOpen) {
+	/**
+	 * Errors of the fields go to the fields; anything else (no connection) above «Принять». An answer
+	 * about an earlier opening only says why, above «Принять» or in a toast once the sheet is closed.
+	 */
+	function refused(e: unknown, current: boolean) {
+		if (!current) {
+			const message = t.failed(lowerFirst(errorMessage(e)));
 			// Closed while it was on its way: the draft waits, the toast says why.
-			toast.show({ message: t.failed(lowerFirst(errorMessage(e))), tone: 'danger' });
+			if (intake.isOpen) submitError = message;
+			else toast.show({ message, tone: 'danger' });
 			return;
 		}
 		const fields = e instanceof ApiError && e.code === 'validation' ? (e.body?.fields ?? []) : [];
@@ -471,10 +494,18 @@
 
 	{#snippet footer()}
 		{#if submitError}<p class="failed" role="alert">{submitError}</p>{/if}
+		{#if acceptedMeanwhile !== null}
+			<p class="note" role="status">{t.acceptedMeanwhile(acceptedMeanwhile)}</p>
+		{/if}
 		{#if !app.me.open_mode}<span class="receiver">{t.receiver(app.me.name)}</span>{/if}
-		<Button onclick={cancel}>{t.cancel}</Button>
-		<Button variant="primary" shortcut="Mod+Enter" {busy} onclick={() => void accept()}
-			>{t.accept}</Button
+		{#if intake.submitting}<span class="sending" role="status">{t.accepting}</span>{/if}
+		<!-- The order on its way cannot be called back: «Отмена» waits for its answer. -->
+		<Button disabled={intake.submitting} onclick={cancel}>{t.cancel}</Button>
+		<Button
+			variant="primary"
+			shortcut="Mod+Enter"
+			busy={intake.submitting}
+			onclick={() => void accept()}>{t.accept}</Button
 		>
 	{/snippet}
 </Sheet>
@@ -499,11 +530,17 @@
 	.grid.three {
 		grid-template-columns: repeat(3, minmax(0, 1fr));
 	}
-	.failed {
+	.failed,
+	.note {
 		flex: 1 0 100%;
 		margin: 0;
-		color: var(--danger-text);
 		text-align: end;
+	}
+	.failed {
+		color: var(--danger-text);
+	}
+	.sending {
+		color: var(--text-3);
 	}
 	.receiver {
 		margin-right: auto;

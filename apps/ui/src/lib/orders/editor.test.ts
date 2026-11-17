@@ -4,7 +4,13 @@ import type { StatusChange } from '$api/StatusChange';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '#lib/api/client.js';
 import { order } from '#lib/app/fixtures.test-helper.js';
-import { createOrderEditor, revertIssue, revertStatus, type EditorApi } from './editor.svelte.js';
+import {
+	createOrderEditor,
+	revertIssue,
+	revertStatus,
+	saveErrorText,
+	type EditorApi
+} from './editor.svelte.js';
 
 const conflict = () =>
 	new ApiError(409, 'conflict', 'Запись изменена', {
@@ -315,6 +321,69 @@ describe('createOrderEditor', () => {
 		expect(ed.unsaved).toBe(true);
 		ed.take('work_done');
 		expect(ed.unsaved).toBe(false);
+		ed.dispose();
+	});
+
+	it('a save refused for good is not offered again: dropping own edits lets the order go', async () => {
+		const deleted = new ApiError(422, 'validation', 'Проверьте введённые данные', {
+			code: 'validation',
+			message: 'Проверьте введённые данные',
+			fields: [{ field: 'id', code: 'deleted', message: 'Запись удалена' }],
+			current_version: null,
+			permission: null,
+			retry_after_secs: null
+		});
+		const forbidden = new ApiError(403, 'forbidden', 'Недостаточно прав: Изменение заказов', null);
+		for (const refusal of [deleted, forbidden]) {
+			const server = fakeServer(order(7, { work_done: '' }));
+			const ed = createOrderEditor(server.current, { api: server.api });
+			let gate = Promise.resolve();
+			server.api.updateOrder.mockImplementation(async () => {
+				await gate;
+				throw refusal;
+			});
+			ed.autosave.edit('work_done', 'Чистка');
+			await expect(ed.flush()).resolves.toBe(false);
+			expect(ed.saveState).toBe('error');
+			expect(ed.lost).toBe(saveErrorText(refusal));
+			expect(ed.unsaved).toBe(true);
+			// Leaving the field sends it again: meanwhile it stays refused, «Отбросить» stays on screen.
+			let answer = () => {};
+			gate = new Promise((r) => (answer = r));
+			void ed.autosave.flush().catch(() => {});
+			await settle();
+			expect(ed.saveState).toBe('saving');
+			expect(ed.lost).toBe(saveErrorText(refusal));
+
+			ed.drop();
+			answer();
+			await settle();
+			expect(ed.unsaved).toBe(false);
+			expect(ed.lost).toBeNull();
+			expect(ed.saveState).not.toBe('error');
+			expect(ed.current.work_done).toBe('');
+			const calls = server.api.updateOrder.mock.calls.length;
+			await expect(ed.flush()).resolves.toBe(true);
+			expect(server.api.updateOrder).toHaveBeenCalledTimes(calls);
+			ed.dispose();
+		}
+		expect(saveErrorText(deleted)).toBe('заказ удалён');
+		expect(saveErrorText(forbidden)).toBe('Недостаточно прав: Изменение заказов');
+	});
+
+	it('no connection or a failure of the server can still be retried', async () => {
+		const server = fakeServer(order(7));
+		const ed = createOrderEditor(server.current, { api: server.api });
+		server.api.updateOrder.mockRejectedValueOnce(new ApiError(0, 'network', 'Нет связи', null));
+		ed.autosave.edit('work_done', 'Чистка');
+		await ed.flush();
+		expect(ed.saveState).toBe('error');
+		expect(ed.lost).toBeNull();
+		server.api.updateOrder.mockRejectedValueOnce(new ApiError(500, 'internal', 'Сбой', null));
+		ed.autosave.retry();
+		await settle();
+		expect(ed.saveState).toBe('error');
+		expect(ed.lost).toBeNull();
 		ed.dispose();
 	});
 

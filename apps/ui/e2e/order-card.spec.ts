@@ -1,5 +1,13 @@
 import { expect, test, type Page } from '@playwright/test';
-import { createOrder, fetchOrder, patchOrder, setStatus, statusId, uniq } from './support/api';
+import {
+	createOrder,
+	deleteOrder,
+	fetchOrder,
+	patchOrder,
+	setStatus,
+	statusId,
+	uniq
+} from './support/api';
 
 // The full order card on the server of 4173 (open mode: every permission). Each test makes its own
 // orders with a unique model.
@@ -239,6 +247,52 @@ test('a save that fails keeps the user on the card', async ({ page, request }) =
 	await card.getByRole('button', { name: 'Назад' }).click();
 	await expect(page).toHaveURL(/\/orders$/);
 	expect((await fetchOrder(request, o.id)).work_done).toBe('Замена кнопки');
+});
+
+test('an order deleted elsewhere: own edits can be dropped and the card left', async ({
+	page,
+	request
+}) => {
+	const o = await createOrder(request, { model: uniq('M') });
+	await openCard(page, o.id);
+	await deleteOrder(request, o.id);
+	const card = cardOf(page);
+	const work = card.getByRole('textbox', { name: 'Выполненные работы' });
+	await work.fill('Замена кнопки');
+	await expect(card.getByText('Не сохранено: заказ удалён')).toBeVisible();
+	await card.getByRole('button', { name: 'Назад' }).click();
+	await expect(toastsOf(page)).toContainText(`Изменения № ${o.id} не сохранены: заказ удалён`);
+	await expect(page).toHaveURL(new RegExp(`/orders/${o.id}$`));
+
+	await card.getByRole('button', { name: 'Отбросить мои правки' }).click();
+	await expect(work).toHaveValue('');
+	await card.getByRole('button', { name: 'Назад' }).click();
+	await expect(page).toHaveURL(/\/orders$/);
+});
+
+test('the order of the card does not open in the panel over it', async ({ page, request }) => {
+	const [shown, other] = [
+		await createOrder(request, { model: uniq('M') }),
+		await createOrder(request, { model: uniq('M') })
+	];
+	await openCard(page, shown.id);
+	async function find(id: number) {
+		await page.keyboard.press(`${await mod(page)}+KeyK`);
+		const palette = page.getByRole('dialog', { name: 'Найти или выполнить' });
+		await palette.getByRole('combobox').fill(String(id));
+		await expect(palette.getByRole('option').first()).toContainText(`№ ${id}`);
+		await page.keyboard.press('Enter');
+		await expect(palette).toBeHidden();
+	}
+	await find(other.id);
+	await expect(panelOf(page, other.id)).toBeVisible();
+	// The card's own order: the panel makes way for the card instead of a second editor.
+	await find(shown.id);
+	await expect(panelOf(page, other.id)).toBeHidden();
+	await expect(panelOf(page, shown.id)).toHaveCount(0);
+	await expect(
+		cardOf(page).getByRole('heading', { name: `№ ${shown.id}`, level: 1 })
+	).toBeVisible();
 });
 
 test('closing the tab with unsaved text asks first', async ({ page, request }) => {

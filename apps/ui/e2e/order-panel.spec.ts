@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Page, type Route } from '@playwright/test';
 import type { Order } from '$api/Order';
-import { createOrder, patchOrder, statusId, uniq } from './support/api';
+import { createOrder, deleteOrder, patchOrder, statusId, uniq } from './support/api';
 
 // The order panel on the server of 4173 (open mode: every permission). Each test makes its own orders
 // with a unique model and opens them from the list narrowed to that model.
@@ -129,6 +129,30 @@ test('a space or a new line typed before a save stays: the next word does not st
 	await expect(field).toHaveValue('Замена разъёма\nПайка');
 });
 
+test('switching to another window keeps the space typed last', async ({ page, request }) => {
+	const m = uniq('M');
+	const o = await createOrder(request, { model: m });
+	await openPanel(page, m, o.id);
+	const field = panelOf(page, o.id).getByRole('textbox', { name: 'Выполненные работы' });
+
+	await field.click();
+	const saved = page.waitForResponse((r) => r.request().method() === 'PATCH');
+	await page.keyboard.type('Замена ');
+	await saved;
+	// Alt-Tab: the field loses focus and nothing else on the page gets it.
+	await field.evaluate((el) => (el as HTMLElement).blur());
+	await page.waitForTimeout(100);
+	// Back in the window: the caret is where it was.
+	await field.evaluate((el) => {
+		const area = el as HTMLTextAreaElement;
+		area.focus();
+		area.setSelectionRange(area.value.length, area.value.length);
+	});
+	await page.keyboard.type('разъёма');
+	await expect(field).toHaveValue('Замена разъёма');
+	await expect.poll(async () => (await fetchOrder(request, o.id)).work_done).toBe('Замена разъёма');
+});
+
 test('offline save shows retry and retry saves', async ({ page, request }) => {
 	const m = uniq('M');
 	const o = await createOrder(request, { model: m });
@@ -154,6 +178,65 @@ test('offline save shows retry and retry saves', async ({ page, request }) => {
 	await panel.getByRole('button', { name: 'Повторить' }).click();
 	await expect(panel.getByText('✓ Сохранено')).toBeVisible();
 	expect((await fetchOrder(request, o.id)).work_done).toBe('Замена разъёма');
+});
+
+test('closing the tab with unsaved text in the panel asks first', async ({ page, request }) => {
+	const m = uniq('M');
+	const o = await createOrder(request, { model: m });
+	await openPanel(page, m, o.id);
+	const panel = panelOf(page, o.id);
+	await page.route(patchesOf(o.id), (route) =>
+		isPatch(route) ? route.abort('internetdisconnected') : route.continue()
+	);
+	await panel.getByRole('textbox', { name: 'Выполненные работы' }).fill('Замена кнопки');
+	await expect(panel.getByText('Не сохранено')).toBeVisible();
+	const asked = page.waitForEvent('dialog');
+	await page.close({ runBeforeUnload: true });
+	const dialog = await asked;
+	expect(dialog.type()).toBe('beforeunload');
+	await dialog.dismiss();
+	expect(page.isClosed()).toBe(false);
+});
+
+test('reloading with nothing left to save does not ask', async ({ page, request }) => {
+	const m = uniq('M');
+	const o = await createOrder(request, { model: m });
+	await openPanel(page, m, o.id);
+	const panel = panelOf(page, o.id);
+	await panel.getByRole('textbox', { name: 'Выполненные работы' }).fill('Чистка');
+	await expect(panel.getByText('✓ Сохранено')).toBeVisible();
+	let asked = false;
+	page.on('dialog', (d) => {
+		asked = true;
+		void d.dismiss();
+	});
+	await page.reload();
+	await expect(gridOf(page)).toBeVisible();
+	expect(asked).toBe(false);
+});
+
+test('an order deleted elsewhere: own edits can be dropped and the panel closes', async ({
+	page,
+	request
+}) => {
+	const m = uniq('M');
+	const o = await createOrder(request, { model: m });
+	await openPanel(page, m, o.id);
+	const panel = panelOf(page, o.id);
+	await deleteOrder(request, o.id);
+	const field = panel.getByRole('textbox', { name: 'Выполненные работы' });
+	await field.fill('Замена кнопки');
+	await expect(panel.getByText('Не сохранено: заказ удалён')).toBeVisible();
+	// Sending again cannot help: no «Повторить».
+	await expect(panel.getByRole('button', { name: 'Повторить' })).toHaveCount(0);
+	await page.keyboard.press('Escape');
+	await expect(panel).toBeVisible();
+
+	await panel.getByRole('button', { name: 'Отбросить мои правки' }).click();
+	await expect(field).toHaveValue('');
+	await expect(panel.getByText(/^Не сохранено/)).toHaveCount(0);
+	await page.keyboard.press('Escape');
+	await expect(panel).toBeHidden();
 });
 
 test('conflict callout lets me take the new value', async ({ page, request }) => {

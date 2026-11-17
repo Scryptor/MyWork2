@@ -7,6 +7,7 @@ import type { OrderPatch } from '$api/OrderPatch';
 import type { StatusChange } from '$api/StatusChange';
 import { ApiError } from '#lib/api/client.js';
 import { changeStatus, getOrder, updateOrder } from '#lib/api/orders.js';
+import { ru } from '#lib/i18n/ru.js';
 import { createAutosave, type Autosave, type SaveState } from './autosave.js';
 import { emitOrderChanged } from './events.js';
 import { mergeRemote, sameValue } from './merge.js';
@@ -74,12 +75,20 @@ export interface OrderEditor {
 	readonly saveState: EditorSaveState;
 	/** Own changes not on the server: waiting, being sent, failed, or disputed. */
 	readonly unsaved: boolean;
+	/**
+	 * Why the server will not take own changes however often they are sent (the order was deleted, the
+	 * right to edit was taken away); null otherwise. Only `drop` lets such an order go. It holds while
+	 * they are sent again (leaving a field), until a save succeeds.
+	 */
+	readonly lost: string | null;
 	/** The order as the fields show it now. */
 	readonly current: Order;
 	/** «Оставить моё»: own value goes over the newer version. */
 	keep(field: OrderField): void;
 	/** «Взять новое»: the field shows what came from the server. */
 	take(field: OrderField): void;
+	/** «Отбросить мои правки»: own unsaved and disputed values go, the fields show the server's order. */
+	drop(): void;
 	endFlash(field: OrderField): void;
 	/** A newer version of this order from elsewhere in the program (an undo, a bulk action). */
 	receive(o: Order): void;
@@ -96,12 +105,28 @@ function valuesOf(o: Order): OrderValues {
 
 const isConflict = (e: unknown) => e instanceof ApiError && e.code === 'conflict';
 
+const isDeleted = (e: ApiError | null) =>
+	e?.code === 'validation' &&
+	(e.body?.fields ?? []).some((f) => f.field === 'id' && f.code === 'deleted');
+
+/** A save no retry can help: the order is deleted, or editing it is not allowed. */
+export function isLost(e: ApiError | null): boolean {
+	return e?.code === 'forbidden' || isDeleted(e);
+}
+
+/** Why a save failed, for the indicator and the toasts: the server's text, the deleted order told plainly. */
+export function saveErrorText(e: ApiError | null): string {
+	if (isDeleted(e)) return ru.save.deleted;
+	return e?.message || ru.api.failed;
+}
+
 export function createOrderEditor(initial: Order, opts: EditorOptions = {}): OrderEditor {
 	const api = opts.api ?? DEFAULT_API;
 	const emit = opts.emit ?? emitOrderChanged;
 	let order = $state.raw(initial);
 	let conflicts = $state.raw<ReadonlyMap<OrderField, Conflict>>(new Map());
 	let flashed = $state.raw<ReadonlySet<OrderField>>(new Set());
+	let lost = $state<string | null>(null);
 	let resolving: Promise<void> | null = null;
 	let again = false;
 	let tail: Promise<unknown> = Promise.resolve();
@@ -139,6 +164,8 @@ export function createOrderEditor(initial: Order, opts: EditorOptions = {}): Ord
 				apply(await api.updateOrder(order.id, order.version, send));
 			}),
 		onstate: (s) => {
+			if (s === 'error') lost = isLost(inner.error) ? saveErrorText(inner.error) : null;
+			else if (s !== 'saving') lost = null;
 			if (s === 'error' && isConflict(inner.error)) void resolveConflict();
 		}
 	});
@@ -239,6 +266,9 @@ export function createOrderEditor(initial: Order, opts: EditorOptions = {}): Ord
 		get unsaved() {
 			return conflicts.size > 0 || Object.keys(inner.pending).length > 0;
 		},
+		get lost() {
+			return lost;
+		},
 		get current() {
 			const shown = Object.fromEntries(ORDER_FIELDS.map((f) => [f, autosave.value(f, order[f])]));
 			return { ...order, ...shown };
@@ -252,6 +282,13 @@ export function createOrderEditor(initial: Order, opts: EditorOptions = {}): Ord
 		take(field) {
 			settle(field);
 			if (conflicts.size === 0) inner.retry();
+		},
+		drop() {
+			lost = null;
+			conflicts = new Map();
+			inner.discard(...ORDER_FIELDS);
+			// Nothing left to send: the error goes with it.
+			inner.retry();
 		},
 		endFlash(field) {
 			if (!flashed.has(field)) return;

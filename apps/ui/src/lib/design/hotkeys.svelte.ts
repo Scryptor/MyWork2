@@ -64,6 +64,8 @@ interface Registration {
 	handler: (e: KeyboardEvent) => void;
 	allowInFields: boolean;
 	allowWithOverlay: boolean;
+	/** Asked at the keydown: false leaves the key to an older registration. */
+	when: () => boolean;
 	/** One printable key without modifiers (N, /, ?): it fires once the scan gap has passed. */
 	deferred: boolean;
 }
@@ -99,6 +101,7 @@ function onKeydown(e: KeyboardEvent) {
 		if (!r || !matchShortcut(e, r.spec)) continue;
 		if (inField && !r.allowInFields) continue;
 		if (layers.blocking && !r.allowWithOverlay) continue;
+		if (!r.when()) continue;
 		e.preventDefault();
 		if (!r.deferred) r.handler(e);
 		else if (!burst) {
@@ -113,12 +116,13 @@ function onKeydown(e: KeyboardEvent) {
 
 /**
  * A shortcut for the whole page. Outside fields and open popups/modals unless allowed. One printable key
- * without modifiers (N, /, ?) fires SCAN_GAP_MS after the keydown, and not at all inside a scan.
+ * without modifiers (N, /, ?) fires SCAN_GAP_MS after the keydown, and not at all inside a scan. While
+ * `when` says false the registration is skipped and an older one of the same key gets it.
  */
 export function registerHotkey(
 	spec: string,
 	handler: (e: KeyboardEvent) => void,
-	opts?: { allowInFields?: boolean; allowWithOverlay?: boolean }
+	opts?: { allowInFields?: boolean; allowWithOverlay?: boolean; when?: () => boolean }
 ): () => void {
 	if (!listening) {
 		window.addEventListener('keydown', onKeydown);
@@ -129,6 +133,7 @@ export function registerHotkey(
 		handler,
 		allowInFields: opts?.allowInFields ?? false,
 		allowWithOverlay: opts?.allowWithOverlay ?? false,
+		when: opts?.when ?? (() => true),
 		deferred: isOneKey(spec)
 	};
 	registrations.push(reg);

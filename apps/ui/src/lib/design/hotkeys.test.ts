@@ -209,6 +209,22 @@ describe('registerHotkey', () => {
 		expect(outer).toHaveBeenCalledTimes(1);
 	});
 
+	it('a registration that does not apply now leaves the key to an older one', () => {
+		const panel = vi.fn();
+		const card = vi.fn();
+		let panelOpen = true;
+		registerHotkey('Mod+Enter', panel, { allowInFields: true });
+		// The card registers again after the panel: it gives way while the panel is open.
+		registerHotkey('Mod+Enter', card, { allowInFields: true, when: () => !panelOpen });
+		press('Enter', document.body, { ctrlKey: true });
+		expect(panel).toHaveBeenCalledTimes(1);
+		expect(card).not.toHaveBeenCalled();
+		panelOpen = false;
+		press('Enter', document.body, { ctrlKey: true });
+		expect(card).toHaveBeenCalledTimes(1);
+		expect(panel).toHaveBeenCalledTimes(1);
+	});
+
 	it('calls the handler and prevents default', () => {
 		const h = vi.fn();
 		registerHotkey('N', h);

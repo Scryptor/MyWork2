@@ -12,7 +12,7 @@ import { registerHotkey } from '#lib/design/hotkeys.svelte.js';
 import { ru } from '#lib/i18n/ru.js';
 import type { MenuItem } from '#lib/ui/DropdownMenu.svelte';
 import { toast } from '#lib/ui/toast/toast.svelte.js';
-import { revertIssue, revertStatus, type OrderEditor } from './editor.svelte.js';
+import { revertIssue, revertStatus, saveErrorText, type OrderEditor } from './editor.svelte.js';
 import type { IssueValues } from './IssueDialog.svelte';
 
 const t = ru.order;
@@ -20,7 +20,7 @@ const t = ru.order;
 /** Why the order's own changes are not saved: the failed save, or a conflict waiting for a choice. */
 export function unsavedText(ed: OrderEditor): string {
 	const reason =
-		ed.conflicts.size > 0 ? t.conflictTitle : (ed.autosave.error?.message ?? ru.api.failed);
+		ed.conflicts.size > 0 ? t.conflictTitle : (ed.lost ?? saveErrorText(ed.autosave.error));
 	return t.unsaved(ed.order.id, reason);
 }
 
@@ -195,16 +195,11 @@ export class OrderActions {
 
 	/**
 	 * «Выдать» on Ctrl/⌘+Enter, fields included, not over a modal (it opens one). Call it in an effect:
-	 * it registers while the order can be issued and `when` allows.
+	 * it registers while the order can be issued; while `when` says false the key goes to an older
+	 * registration (the panel over the card), whichever registered last.
 	 */
 	issueShortcut(when: () => boolean = () => true): (() => void) | undefined {
 		if (!this.editor || this.issued || !this.canEdit) return;
-		return registerHotkey(
-			'Mod+Enter',
-			() => {
-				if (when()) this.openIssue();
-			},
-			{ allowInFields: true }
-		);
+		return registerHotkey('Mod+Enter', () => this.openIssue(), { allowInFields: true, when });
 	}
 }

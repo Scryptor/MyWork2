@@ -207,6 +207,30 @@ describe('createAutosave', () => {
 		expect(save).toHaveBeenCalledTimes(1);
 	});
 
+	it('a field dropped while its save is out does not come back when that save fails', async () => {
+		a.edit('malfunction', 'x');
+		a.edit('work_done', 'y');
+		const flushed = a.flush();
+		expect(calls).toHaveLength(1);
+		a.discard('malfunction');
+		// What is dropped is no longer own: the field shows the server's value, nothing waits for it.
+		expect(a.value('malfunction', 'с сервера')).toBe('с сервера');
+		expect(a.pending).toEqual({ work_done: 'y' });
+		calls[0]!.reject(new ApiError(0, 'network', 'Нет связи с сервером', null));
+		await expect(flushed).rejects.toMatchObject({ code: 'network' });
+		expect(a.pending).toEqual({ work_done: 'y' });
+		expect(a.state).toBe('error');
+
+		// Everything of a failed save dropped: nothing failed that is still wanted.
+		const again = a.flush();
+		a.discard('work_done');
+		calls[1]!.reject(new ApiError(0, 'network', 'Нет связи с сервером', null));
+		await expect(again).resolves.toBeUndefined();
+		expect(a.pending).toEqual({});
+		expect(a.error).toBeNull();
+		expect(a.state).toBe('idle');
+	});
+
 	it('a save the server only trimmed keeps the typed text until the field is left', async () => {
 		a.edit('malfunction', 'Замена ');
 		vi.advanceTimersByTime(600);

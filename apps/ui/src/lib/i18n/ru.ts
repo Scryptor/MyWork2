@@ -24,7 +24,14 @@ export const ru = {
 		showPassword: 'Показать пароль',
 		hidePassword: 'Скрыть пароль'
 	},
-	save: { saving: 'Сохраняю…', saved: 'Сохранено', failed: 'Не сохранено' },
+	save: {
+		saving: 'Сохраняю…',
+		saved: 'Сохранено',
+		failed: 'Не сохранено',
+		/** Why: the order was deleted while it was being edited. */
+		deleted: 'заказ удалён',
+		drop: 'Отбросить мои правки'
+	},
 	panel: { prev: 'Предыдущая запись', next: 'Следующая запись' },
 	toast: { region: 'Уведомления' },
 	shell: {
@@ -256,6 +263,10 @@ export const ru = {
 		accept: 'Принять',
 		receiver: (name: string) => `Приёмщик: ${name}`,
 		accepted: (id: number) => `Принят № ${id}`,
+		accepting: 'Принимаю…',
+		/** The order sent before Esc was accepted while the sheet, opened again, still shows its text. */
+		acceptedMeanwhile: (id: number) =>
+			`Принят № ${id}. Форма не очищена: «Отмена» очистит её, «Принять» создаст ещё один заказ`,
 		open: 'Открыть',
 		failed: (message: string) =>
 			`Заказ не принят: ${message}. Введённое сохранено — нажмите «Принять» ещё раз`

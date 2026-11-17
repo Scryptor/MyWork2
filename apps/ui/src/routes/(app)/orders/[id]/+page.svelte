@@ -149,6 +149,11 @@
 
 	// Changes made elsewhere in the program (an undo, a bulk action, the panel) reach the card.
 	$effect(() => onOrderChanged((o) => editor?.receive(o)));
+	// The scanner or Ctrl K asking for this very order shows the card, not a panel over it.
+	$effect(() => {
+		const n = id;
+		if (n !== null) return untrack(() => orderPanel.cardShows(n));
+	});
 
 	// The history follows every new version: a status picked here is in «Статусы и сроки» at once.
 	const journal = createCardHistory();

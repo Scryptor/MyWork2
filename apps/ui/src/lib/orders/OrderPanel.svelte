@@ -7,7 +7,7 @@
 	import Phone from '@lucide/svelte/icons/phone';
 	import { tick, untrack } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
-	import { goto } from '$app/navigation';
+	import { beforeNavigate, goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import type { Client } from '$api/Client';
 	import { listDictionary } from '#lib/api/catalogs.js';
@@ -168,6 +168,11 @@
 			return ok;
 		})
 	);
+
+	// Closing or reloading the tab while edits wait or failed gets the browser's own question.
+	beforeNavigate((nav) => {
+		if (nav.willUnload && editor?.unsaved) nav.cancel();
+	});
 
 	// Changes made elsewhere in the program (an undo, the list) reach the open order.
 	$effect(() => onOrderChanged((o) => editor?.receive(o)));

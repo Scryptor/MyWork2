@@ -119,3 +119,13 @@ export async function setStatus(
 		})
 	);
 }
+
+/** Deletes an order through the API (soft delete) with its current version. */
+export async function deleteOrder(request: APIRequestContext, id: number): Promise<void> {
+	const current = await fetchOrder(request, id);
+	const response = await request.delete(`/api/v1/orders/${id}?version=${current.version}`, {
+		headers: { 'Content-Type': 'application/json' }
+	});
+	if (!response.ok())
+		throw new Error(`${response.status()} ${response.url()}: ${await response.text()}`);
+}

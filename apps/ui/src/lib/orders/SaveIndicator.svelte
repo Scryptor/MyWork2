@@ -1,5 +1,6 @@
 <!-- «Сохраняю…», «✓ Сохранено» or «Не сохранено · Повторить» of an order's editor (spec 6.2), after the
-     other parts of a meta line: each state starts with its own «·». -->
+     other parts of a meta line: each state starts with its own «·». A save no retry can help (the order
+     deleted, no right to edit) says why and offers «Отбросить мои правки» instead. -->
 <script lang="ts">
 	import { ru } from '#lib/i18n/ru.js';
 	import type { OrderEditor } from './editor.svelte.js';
@@ -7,10 +8,17 @@
 	let { editor }: { editor: OrderEditor } = $props();
 
 	const saveState = $derived(editor.saveState);
+	const lost = $derived(editor.lost);
 </script>
 
 <span class="save" aria-live="polite" title={editor.autosave.error?.message}>
-	{#if saveState === 'saving'}
+	{#if lost}
+		<!-- Also while leaving a field sends it again: the button does not slip away from under the click. -->
+		<span aria-hidden="true">·</span>
+		<span class="failed">{ru.save.failed}: {lost}</span>
+		<span aria-hidden="true">·</span>
+		<button type="button" class="retry" onclick={() => editor.drop()}>{ru.save.drop}</button>
+	{:else if saveState === 'saving'}
 		<span aria-hidden="true">·</span> <span>{ru.save.saving}</span>
 	{:else if saveState === 'saved'}
 		<span aria-hidden="true">·</span> <span class="saved">✓ {ru.save.saved}</span>

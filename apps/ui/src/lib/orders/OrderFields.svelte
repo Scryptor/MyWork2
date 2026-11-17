@@ -162,9 +162,13 @@
 		[order.device_type, order.brand, order.model, order.color].filter(Boolean).join(' · ')
 	);
 
-	/** Leaving a field saves what was typed in it; then it shows the text as the server keeps it. */
-	function leave() {
+	/**
+	 * Leaving a field saves what was typed in it; then it shows the text as the server keeps it. Another
+	 * window taking focus (Alt-Tab) is not leaving: the field gets focus back with the text as typed.
+	 */
+	function leave(e: FocusEvent) {
 		void autosave.flush().catch(() => {});
+		if (e.relatedTarget === null || !document.hasFocus()) return;
 		autosave.release();
 	}
 

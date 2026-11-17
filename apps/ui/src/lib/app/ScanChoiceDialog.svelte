@@ -5,8 +5,8 @@
 	import { serverClock } from '#lib/api/server-clock.svelte.js';
 	import { formatFull, formatRelative, shortName } from '#lib/format/index.js';
 	import { ru } from '#lib/i18n/ru.js';
+	import { deviceOf } from '#lib/orders/view.js';
 	import Dialog from '#lib/ui/Dialog.svelte';
-	import { deviceOf } from './palette.js';
 
 	let {
 		open = $bindable(false),
