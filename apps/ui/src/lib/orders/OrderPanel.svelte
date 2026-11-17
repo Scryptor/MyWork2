@@ -171,7 +171,13 @@
 
 	// Changes made elsewhere in the program (an undo, the list) reach the open order.
 	$effect(() => onOrderChanged((o) => editor?.receive(o)));
-	$effect(() => () => untrack(() => editor?.dispose()));
+	// The program's frame goes (signing out): what is typed is still sent, a failure is told.
+	$effect(
+		() => () =>
+			untrack(() => {
+				if (editor) closeEditor(editor);
+			})
+	);
 
 	/** ⤢ and «все»: the full card; the panel saves and closes first. A click with a modifier opens a tab. */
 	async function openCard(e?: MouseEvent) {

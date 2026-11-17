@@ -75,6 +75,8 @@
 		color: t.color,
 		serial: t.serial,
 		device_password: t.devicePassword,
+		completeness: t.completeness,
+		device_condition: t.condition,
 		malfunction: t.malfunction,
 		work_done: t.workDone,
 		master: t.master,
@@ -95,6 +97,12 @@
 		'serial',
 		'device_password'
 	] as const satisfies readonly OrderField[];
+	/** What came with the device and how it looks: text of any length. */
+	const DEVICE_NOTES = [
+		'completeness',
+		'device_condition'
+	] as const satisfies readonly OrderField[];
+	const DEVICE_ALL = [...DEVICE, ...DEVICE_NOTES];
 	const idOf = (f: OrderField) => `${idPrefix}-${f}`;
 
 	/** Device fields chosen from a dictionary; the others are typed. */
@@ -251,9 +259,27 @@
 					</div>
 				{/each}
 			</div>
+			<div class="notes">
+				{#each DEVICE_NOTES as f (f)}
+					<div class="flashable" class:flash={flash([f])} onanimationend={() => endFlash([f])}>
+						<Textarea
+							id={idOf(f)}
+							label={LABELS[f]}
+							minRows={1}
+							disabled={readonly}
+							bind:value={() => shown(f), (v) => autosave.edit(f, v)}
+						/>
+						{@render dispute(f)}
+					</div>
+				{/each}
+			</div>
 		</Section>
 	{:else}
-		<div class="flashable" class:flash={flash(DEVICE)} onanimationend={() => endFlash(DEVICE)}>
+		<div
+			class="flashable"
+			class:flash={flash(DEVICE_ALL)}
+			onanimationend={() => endFlash(DEVICE_ALL)}
+		>
 			<Section title={t.device}>
 				{#if deviceLine}<p class="line">{deviceLine}</p>{/if}
 				{#if order.serial || order.device_password}
@@ -280,6 +306,9 @@
 						{/if}
 					</p>
 				{/if}
+				{#each DEVICE_NOTES as f (f)}
+					{#if order[f]}<p class="line muted">{LABELS[f]}: {order[f]}</p>{/if}
+				{/each}
 			</Section>
 		</div>
 	{/if}
@@ -473,6 +502,12 @@
 		align-items: start;
 		gap: var(--space-3);
 	}
+	.notes {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		align-items: start;
+		gap: var(--space-3);
+	}
 	.money {
 		display: grid;
 		grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -547,6 +582,7 @@
 	@media (max-width: 599px) {
 		.pair,
 		.device,
+		.notes,
 		.money {
 			grid-template-columns: minmax(0, 1fr);
 		}

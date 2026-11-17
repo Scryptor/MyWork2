@@ -139,7 +139,12 @@ test('the card edits the device and opens from Ctrl K with Ctrl/⌘+Enter', asyn
 	request
 }) => {
 	const m = uniq('M');
-	const o = await createOrder(request, { model: m, serial: '356789104512345' });
+	const o = await createOrder(request, {
+		model: m,
+		serial: '356789104512345',
+		completeness: 'Зарядка',
+		device_condition: 'Царапины на корпусе'
+	});
 	await page.goto('/orders');
 	await expect(gridOf(page)).toBeVisible();
 	await page.keyboard.press(`${await mod(page)}+KeyK`);
@@ -155,14 +160,20 @@ test('the card edits the device and opens from Ctrl K with Ctrl/⌘+Enter', asyn
 	await model.fill(`${m}-Pro`);
 	await card.getByRole('textbox', { name: 'IMEI/серийный' }).fill('356789104512346');
 	await card.getByRole('combobox', { name: 'Цвет' }).fill('Синий');
+	const completeness = card.getByRole('textbox', { name: 'Комплектность' });
+	await expect(completeness).toHaveValue('Зарядка');
+	await completeness.fill('Зарядка, чехол');
+	const condition = card.getByRole('textbox', { name: 'Внешнее состояние' });
+	await expect(condition).toHaveValue('Царапины на корпусе');
+	await condition.fill('Царапины, скол угла');
 	await card.getByRole('textbox', { name: 'Неисправность' }).click();
 	await expect(card.getByText('✓ Сохранено')).toBeVisible();
 	await expect
 		.poll(async () => {
 			const after = await fetchOrder(request, o.id);
-			return [after.model, after.serial, after.color];
+			return [after.model, after.serial, after.color, after.completeness, after.device_condition];
 		})
-		.toEqual([`${m}-Pro`, '356789104512346', 'Синий']);
+		.toEqual([`${m}-Pro`, '356789104512346', 'Синий', 'Зарядка, чехол', 'Царапины, скол угла']);
 	// The header shows the new model.
 	await expect(card.getByText(`Тест ${m}-Pro`)).toBeVisible();
 
@@ -172,7 +183,79 @@ test('the card edits the device and opens from Ctrl K with Ctrl/⌘+Enter', asyn
 	const panel = panelOf(page, o.id);
 	await expect(panel.getByRole('textbox', { name: 'Неисправность' })).toBeVisible();
 	await expect(panel.getByText(`Смартфон · Тест · ${m}-Pro · Синий`)).toBeVisible();
+	await expect(panel.getByText('Комплектность: Зарядка, чехол')).toBeVisible();
+	await expect(panel.getByText('Внешнее состояние: Царапины, скол угла')).toBeVisible();
 	await expect(panel.getByRole('textbox', { name: 'Модель' })).toHaveCount(0);
+	await expect(panel.getByRole('textbox', { name: 'Комплектность' })).toHaveCount(0);
+});
+
+/** PATCH requests of one order. */
+const patchesOf = (id: number) => (url: URL) => url.pathname === `/api/v1/orders/${id}`;
+
+test('leaving the card right after typing saves the text first', async ({ page, request }) => {
+	const o = await createOrder(request, { model: uniq('M') });
+	await openCard(page, o.id);
+	// A slow server: leaving must wait for the answer.
+	await page.route(patchesOf(o.id), async (route) => {
+		if (route.request().method() === 'PATCH') await new Promise((r) => setTimeout(r, 700));
+		await route.continue();
+	});
+	const card = cardOf(page);
+	await card.getByRole('textbox', { name: 'Выполненные работы' }).fill('Чистка платы');
+	await card.getByRole('button', { name: 'Назад' }).click();
+	await expect(page).toHaveURL(/\/orders$/);
+	expect((await fetchOrder(request, o.id)).work_done).toBe('Чистка платы');
+});
+
+test('a save that fails keeps the user on the card', async ({ page, request }) => {
+	const o = await createOrder(request, { model: uniq('M') });
+	await openCard(page, o.id);
+	const patches = patchesOf(o.id);
+	await page.route(patches, (route) =>
+		route.request().method() === 'PATCH' ? route.abort('internetdisconnected') : route.continue()
+	);
+	const card = cardOf(page);
+	const work = card.getByRole('textbox', { name: 'Выполненные работы' });
+	await work.fill('Замена кнопки');
+	await card.getByRole('button', { name: 'Назад' }).click();
+	await expect(toastsOf(page)).toContainText(`Изменения № ${o.id} не сохранены`);
+	await expect(page).toHaveURL(new RegExp(`/orders/${o.id}$`));
+	await expect(card.getByText('Не сохранено')).toBeVisible();
+	await expect(card.getByRole('button', { name: 'Повторить' })).toBeVisible();
+
+	// A link of the sidebar waits for the save as well.
+	await page
+		.getByRole('navigation', { name: 'Разделы' })
+		.getByRole('link', { name: /^Заказы/ })
+		.click();
+	await expect(toastsOf(page).getByText(`Изменения № ${o.id} не сохранены`)).toHaveCount(2);
+	await expect(card.getByText('Не сохранено')).toBeVisible();
+	await expect(page).toHaveURL(new RegExp(`/orders/${o.id}$`));
+	await expect(work).toHaveValue('Замена кнопки');
+
+	await page.unroute(patches);
+	await card.getByRole('button', { name: 'Повторить' }).click();
+	await expect(card.getByText('✓ Сохранено')).toBeVisible();
+	await card.getByRole('button', { name: 'Назад' }).click();
+	await expect(page).toHaveURL(/\/orders$/);
+	expect((await fetchOrder(request, o.id)).work_done).toBe('Замена кнопки');
+});
+
+test('closing the tab with unsaved text asks first', async ({ page, request }) => {
+	const o = await createOrder(request, { model: uniq('M') });
+	await openCard(page, o.id);
+	await page.route(patchesOf(o.id), (route) =>
+		route.request().method() === 'PATCH' ? route.abort('internetdisconnected') : route.continue()
+	);
+	const card = cardOf(page);
+	await card.getByRole('textbox', { name: 'Выполненные работы' }).fill('Замена кнопки');
+	await expect(card.getByText('Не сохранено')).toBeVisible();
+	const asked = page.waitForEvent('dialog');
+	await page.close({ runBeforeUnload: true });
+	const dialog = await asked;
+	expect(dialog.type()).toBe('beforeunload');
+	await dialog.dismiss();
+	expect(page.isClosed()).toBe(false);
 });
 
 test('the whole history comes by pages of 50', async ({ page, request }) => {

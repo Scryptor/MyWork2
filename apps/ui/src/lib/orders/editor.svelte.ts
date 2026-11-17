@@ -72,6 +72,8 @@ export interface OrderEditor {
 	/** Fields just taken from another computer: highlighted for a moment. */
 	readonly flashed: ReadonlySet<OrderField>;
 	readonly saveState: EditorSaveState;
+	/** Own changes not on the server: waiting, being sent, failed, or disputed. */
+	readonly unsaved: boolean;
 	/** The order as the fields show it now. */
 	readonly current: Order;
 	/** «Оставить моё»: own value goes over the newer version. */
@@ -233,6 +235,9 @@ export function createOrderEditor(initial: Order, opts: EditorOptions = {}): Ord
 		},
 		get saveState() {
 			return conflicts.size > 0 ? 'conflict' : inner.state;
+		},
+		get unsaved() {
+			return conflicts.size > 0 || Object.keys(inner.pending).length > 0;
 		},
 		get current() {
 			const shown = Object.fromEntries(ORDER_FIELDS.map((f) => [f, autosave.value(f, order[f])]));

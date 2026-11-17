@@ -187,7 +187,9 @@ export const ru = {
 		brand: 'Бренд',
 		model: 'Модель',
 		color: 'Цвет',
-		devicePassword: 'Пароль'
+		devicePassword: 'Пароль',
+		completeness: 'Комплектность',
+		condition: 'Внешнее состояние'
 	},
 	card: {
 		order: 'Заказ',
@@ -198,6 +200,9 @@ export const ru = {
 		noWarrantyCases: 'Гарантийных случаев не было',
 		changes: 'История изменений',
 		showMore: 'Показать ещё',
+		/** Statuses and warranty cases of a very long journal: only its newest part. */
+		timelineCut: (entries: string) => `Показаны последние ${entries}`,
+		entryForms: ['запись', 'записи', 'записей'],
 		notFound: (id: string) => `Заказ № ${id} не найден`,
 		notFoundHint: 'Проверьте номер или найдите заказ через Ctrl K'
 	},

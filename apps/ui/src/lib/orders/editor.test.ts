@@ -283,6 +283,41 @@ describe('createOrderEditor', () => {
 		ed.dispose();
 	});
 
+	it('unsaved: while text waits, while it is sent, after a failure and with a conflict', async () => {
+		const server = fakeServer(order(7));
+		const ed = createOrderEditor(server.current, { api: server.api });
+		expect(ed.unsaved).toBe(false);
+		ed.autosave.edit('work_done', 'Чистка');
+		expect(ed.unsaved).toBe(true);
+		server.hold();
+		vi.advanceTimersByTime(600);
+		await settle();
+		expect(ed.saveState).toBe('saving');
+		expect(ed.unsaved).toBe(true);
+		server.release();
+		await settle();
+		expect(ed.saveState).toBe('saved');
+		expect(ed.unsaved).toBe(false);
+
+		server.api.updateOrder.mockRejectedValueOnce(new ApiError(0, 'network', 'Нет связи', null));
+		ed.autosave.edit('work_done', 'Чистка контактов');
+		await ed.flush();
+		expect(ed.saveState).toBe('error');
+		expect(ed.unsaved).toBe(true);
+		ed.autosave.retry();
+		await settle();
+		expect(ed.unsaved).toBe(false);
+
+		server.elsewhere({ work_done: 'Чужое' });
+		ed.autosave.edit('work_done', 'Моё');
+		await ed.flush();
+		expect(ed.saveState).toBe('conflict');
+		expect(ed.unsaved).toBe(true);
+		ed.take('work_done');
+		expect(ed.unsaved).toBe(false);
+		ed.dispose();
+	});
+
 	it('takes newer orders from elsewhere in the program and ignores older ones', () => {
 		const server = fakeServer(order(7, { version: 5 }));
 		const ed = createOrderEditor(server.current, { api: server.api });

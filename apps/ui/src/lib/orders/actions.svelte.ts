@@ -17,16 +17,22 @@ import type { IssueValues } from './IssueDialog.svelte';
 
 const t = ru.order;
 
+/** Why the order's own changes are not saved: the failed save, or a conflict waiting for a choice. */
+export function unsavedText(ed: OrderEditor): string {
+	const reason =
+		ed.conflicts.size > 0 ? t.conflictTitle : (ed.autosave.error?.message ?? ru.api.failed);
+	return t.unsaved(ed.order.id, reason);
+}
+
 /**
- * An editor that is no longer shown (another order, the screen left): what is left is saved, a failure
- * is told, then it stops.
+ * An editor that is no longer shown (another order, the screen left): what is left is saved; a failure
+ * or a conflict left undecided (its values are not saved) is told; then it stops.
  */
 export function closeEditor(ed: OrderEditor): void {
 	void ed
 		.flush()
 		.then((ok) => {
-			const e = ed.autosave.error;
-			if (!ok && e) toast.show({ message: t.unsaved(ed.order.id, e.message), tone: 'danger' });
+			if (!ok) toast.show({ message: unsavedText(ed), tone: 'danger' });
 		})
 		.finally(() => ed.dispose());
 }

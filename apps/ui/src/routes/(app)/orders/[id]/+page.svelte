@@ -6,7 +6,7 @@
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import { untrack } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
-	import { afterNavigate, goto } from '$app/navigation';
+	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import type { Client } from '$api/Client';
@@ -19,8 +19,9 @@
 	import { pushRecent } from '#lib/app/recent.js';
 	import { CARD_COLUMNS_QUERY } from '#lib/design/breakpoints.js';
 	import { formatDate, formatRelative } from '#lib/format/date.js';
+	import { countLabel } from '#lib/format/plural.js';
 	import { ru } from '#lib/i18n/ru.js';
-	import { closeEditor, OrderActions } from '#lib/orders/actions.svelte.js';
+	import { closeEditor, OrderActions, unsavedText } from '#lib/orders/actions.svelte.js';
 	import { createCardHistory } from '#lib/orders/card-history.svelte.js';
 	import { createOrderEditor, type OrderEditor } from '#lib/orders/editor.svelte.js';
 	import { onOrderChanged } from '#lib/orders/events.js';
@@ -163,18 +164,62 @@
 			toast.show({ message: t.historyFailed, tone: 'danger' });
 		}
 	}
-	const timeline = $derived(statusTimeline(journal.newest));
-	const cases = $derived(warrantyCases(journal.newest));
+	const timeline = $derived(statusTimeline(journal.timeline));
+	const cases = $derived(warrantyCases(journal.timeline));
+
+	/**
+	 * Before the card is left what is typed is saved. When it cannot be (no connection, a conflict to
+	 * decide) the user stays here, the toast says why; false: stay.
+	 */
+	async function saved(ed: OrderEditor): Promise<boolean> {
+		if (!ed.unsaved) return true;
+		const ok = await ed.flush();
+		if (!ok && editor === ed) toast.show({ message: unsavedText(ed), tone: 'danger' });
+		return ok;
+	}
 
 	// «←»: back where the card was opened from; opened by its address — to the list.
 	let cameFromApp = false;
 	afterNavigate(({ from }) => {
 		cameFromApp = from !== null;
 	});
-	function back() {
-		if (cameFromApp) history.back();
-		else void goto(resolve('orders'));
+	let goingBack = false;
+	async function back() {
+		if (goingBack) return;
+		goingBack = true;
+		try {
+			const ed = editor;
+			if (ed && !(await saved(ed))) return;
+			if (cameFromApp) history.back();
+			else await goto(resolve('orders'));
+		} finally {
+			goingBack = false;
+		}
 	}
+
+	// Any other way out (a link, Ctrl K, the browser's «Назад») waits for the save too and then goes on.
+	// Closing or reloading the tab with unsaved changes gets the browser's own question.
+	let resume: (() => void) | null = null;
+	beforeNavigate((nav) => {
+		const ed = editor;
+		if (!ed?.unsaved) return;
+		nav.cancel();
+		if (nav.willUnload || !nav.to) return;
+		const { url } = nav.to;
+		const delta = nav.type === 'popstate' ? nav.delta : 0;
+		const waiting = resume !== null;
+		resume =
+			delta !== 0
+				? () => history.go(delta)
+				: // eslint-disable-next-line svelte/no-navigation-without-resolve -- where SvelteKit was going
+					() => void goto(url);
+		if (waiting) return;
+		void saved(ed).then((ok) => {
+			const go = resume;
+			resume = null;
+			if (ok && editor === ed) go?.();
+		});
+	});
 
 	// «Выдать» on Ctrl/⌘+Enter; the order panel over the card has its own.
 	$effect(() => orderActions.issueShortcut(() => orderPanel.id === null));
@@ -208,6 +253,12 @@
 	{/key}
 {/snippet}
 
+{#snippet cut()}
+	{#if journal.timelineCut !== null}
+		<p class="muted">{c.timelineCut(countLabel(journal.timelineCut, c.entryForms))}</p>
+	{/if}
+{/snippet}
+
 {#snippet side()}
 	<div class="side">
 		<Section title={c.statuses} region>
@@ -215,6 +266,7 @@
 				<p class="muted">{t.historyFailed}</p>
 			{:else}
 				<Timeline items={timeline} now={serverClock.now()} emptyText={t.historyEmpty} />
+				{@render cut()}
 			{/if}
 		</Section>
 		<Section title={c.warrantyCases} region>
@@ -230,6 +282,7 @@
 					{/each}
 				</ul>
 			{/if}
+			{@render cut()}
 		</Section>
 		<Section title={c.changes} region>
 			{#if journal.failed}

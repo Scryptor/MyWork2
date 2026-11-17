@@ -1,7 +1,12 @@
 import type { AuditEntry } from '$api/AuditEntry';
 import type { PageQuery } from '$api/PageQuery';
 import { describe, expect, it, vi } from 'vitest';
-import { createCardHistory, HISTORY_PAGE, TIMELINE_LIMIT } from './card-history.svelte.js';
+import {
+	createCardHistory,
+	HISTORY_PAGE,
+	TIMELINE_MAX,
+	TIMELINE_PAGE
+} from './card-history.svelte.js';
 
 function entry(id: number): AuditEntry {
 	return {
@@ -9,7 +14,8 @@ function entry(id: number): AuditEntry {
 		at: '2026-11-17T10:00:00',
 		user_id: 1,
 		user_name: 'Администратор',
-		action: 'order.updated',
+		// The oldest entry is the intake, as on the server.
+		action: id === 1 ? 'order.created' : 'order.updated',
 		order_id: 7,
 		client_id: 3,
 		summary: `Запись ${id}`,
@@ -38,10 +44,11 @@ describe('createCardHistory', () => {
 		const h = createCardHistory(api);
 		await h.refresh(7);
 		expect(api.orderHistory).toHaveBeenCalledWith(7, { limit: HISTORY_PAGE });
-		expect(api.orderHistory).toHaveBeenCalledWith(7, { limit: TIMELINE_LIMIT });
+		expect(api.orderHistory).toHaveBeenCalledWith(7, { limit: TIMELINE_PAGE, offset: 0 });
 		expect(h.entries.map((e) => e.id).slice(0, 2)).toEqual([120, 119]);
 		expect(h.entries).toHaveLength(50);
-		expect(h.newest).toHaveLength(120);
+		expect(h.timeline).toHaveLength(120);
+		expect(h.timelineCut).toBeNull();
 		expect(h.hasMore).toBe(true);
 
 		await h.more();
@@ -52,6 +59,41 @@ describe('createCardHistory', () => {
 		expect(h.hasMore).toBe(false);
 		await h.more();
 		expect(api.orderHistory).toHaveBeenCalledTimes(4);
+	});
+
+	it('the timeline pages until the whole journal is there: the intake is the oldest entry', async () => {
+		const api = journal(1200);
+		const h = createCardHistory(api);
+		await h.refresh(7);
+		const timelineCalls = api.orderHistory.mock.calls
+			.map(([, p]) => p)
+			.filter((p) => p.limit === TIMELINE_PAGE);
+		expect(timelineCalls).toEqual([
+			{ limit: TIMELINE_PAGE, offset: 0 },
+			{ limit: TIMELINE_PAGE, offset: 500 },
+			{ limit: TIMELINE_PAGE, offset: 1000 }
+		]);
+		expect(h.timeline).toHaveLength(1200);
+		expect(h.timeline.at(-1)?.action).toBe('order.created');
+		expect(h.timelineCut).toBeNull();
+
+		// A new version asks only for the newest entries again.
+		api.orderHistory.mockClear();
+		api.add(1);
+		await h.refresh(7);
+		expect(api.orderHistory).toHaveBeenCalledTimes(2);
+		expect(h.timeline).toHaveLength(1201);
+		expect(h.timeline[0]?.id).toBe(1201);
+	});
+
+	it('a journal longer than the limit shows the newest part and says so', async () => {
+		expect(TIMELINE_MAX).toBe(20 * TIMELINE_PAGE);
+		const api = journal(1200);
+		const h = createCardHistory(api, { timelineMax: 1000 });
+		await h.refresh(7);
+		expect(h.timeline).toHaveLength(1000);
+		expect(h.timelineCut).toBe(1000);
+		expect(h.timeline.some((e) => e.action === 'order.created')).toBe(false);
 	});
 
 	it('a new version puts its entries on top and keeps the pages shown', async () => {
