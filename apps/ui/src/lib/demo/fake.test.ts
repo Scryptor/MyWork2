@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { formatRelative } from '#lib/format/date.js';
-import { DEMO_NOW, DEMO_POINTS, DEMO_STATUSES, makeDictionaries, makeOrders } from './fake.js';
+import {
+	DEMO_NOW,
+	DEMO_POINTS,
+	DEMO_STATUSES,
+	makeDictionaries,
+	makeOrders,
+	sortOrders
+} from './fake.js';
+import type { OrderListItem } from '$api/OrderListItem';
 
 const orders = makeOrders(2000);
 
@@ -114,5 +122,59 @@ describe('DEMO_POINTS and makeDictionaries', () => {
 		expect(d.master).toEqual(['АНТОН', 'СЕРГЕЙ', 'ИРИНА']);
 		expect(d.completeness).toContain('Чехол');
 		expect(d.warranty).toContain('30 дней');
+	});
+});
+
+function order(patch: Partial<OrderListItem> = {}): OrderListItem {
+	return {
+		id: 10001,
+		received_at: '2026-11-15T10:00:00',
+		issued_at: null,
+		client_id: 2,
+		client_name: 'ИВАНОВ ИВАН',
+		client_phone: '70001234567',
+		client_blacklisted: false,
+		service_point_id: 1,
+		status_id: 1,
+		device_type: 'Телефон',
+		brand: 'Samsung',
+		model: 'Galaxy A52',
+		serial: '356789104512345',
+		malfunction: 'Не включается',
+		master: 'АНТОН',
+		estimate_from: null,
+		estimate_to: null,
+		prepayment: 0,
+		final_price: null,
+		need_call: false,
+		need_parts: false,
+		barcode: '200000010001',
+		deleted_at: null,
+		version: 1,
+		...patch
+	};
+}
+
+describe('sortOrders', () => {
+	const ctx = {
+		statusOrder: (id: number) => DEMO_STATUSES.find((s) => s.id === id)?.sort_order ?? 0,
+		pointName: () => ''
+	};
+	const list = [
+		order({ id: 1, received_at: '2026-11-10T10:00:00', status_id: 7, client_name: 'БЕЛОВ' }),
+		order({ id: 2, received_at: '2026-11-12T10:00:00', status_id: 1, client_name: 'АНДРЕЕВ' }),
+		order({ id: 3, received_at: '2026-11-12T10:00:00', status_id: 4, client_name: 'ВОЛКОВ' })
+	];
+	const ids = (s: { columnId: string; descending: boolean }) =>
+		sortOrders(list, s, ctx).map((o) => o.id);
+
+	it('by «Принят», ties newest first', () => {
+		expect(ids({ columnId: 'received', descending: true })).toEqual([3, 2, 1]);
+		expect(ids({ columnId: 'received', descending: false })).toEqual([1, 3, 2]);
+	});
+
+	it('by client in Russian order and by the status order', () => {
+		expect(ids({ columnId: 'client', descending: false })).toEqual([2, 1, 3]);
+		expect(ids({ columnId: 'status', descending: false })).toEqual([2, 3, 1]);
 	});
 });

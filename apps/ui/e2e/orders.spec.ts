@@ -179,6 +179,15 @@ test('the list filter: «/» focuses it, typing narrows, back brings it back', a
 	await expect(chip(page, 'В работе')).toHaveAttribute('aria-pressed', 'true');
 });
 
+test('typing n in the list filter does not open intake', async ({ page }) => {
+	await openOrders(page);
+	const filter = filterOf(page);
+	await filter.focus();
+	await page.keyboard.press('n');
+	await expect(filter).toHaveValue('n');
+	await expect(page.getByRole('dialog', { name: 'Новый заказ' })).toHaveCount(0);
+});
+
 test('a row opens its order in the panel and stays marked', async ({ page, request }) => {
 	const m = uniq('M');
 	const first = await createOrder(request, { model: m });

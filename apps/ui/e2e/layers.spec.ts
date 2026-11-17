@@ -334,7 +334,8 @@ test.describe('layers', () => {
 	});
 
 	test('an icon button is a popover trigger and keeps its tooltip: «Колонки»', async ({ page }) => {
-		await page.goto('/design/orders');
+		await page.goto('/orders');
+		await expect(page.getByRole('grid', { name: 'Заказы' })).toBeVisible();
 		const trigger = page.getByRole('button', { name: 'Колонки' });
 		await trigger.click();
 		await expect(trigger).toHaveAttribute('aria-expanded', 'true');

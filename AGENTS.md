@@ -43,4 +43,8 @@
   - даты из API — местное время без смещения, только через `#lib/format/date.js`;
   - деньги — копейки, только через `#lib/format/money.js` и `MoneyInput`;
   - однобуквенные клавиши — через `registerHotkey`: в полях и при открытых слоях не срабатывают, буквы — по `code`;
-  - сквозные тесты — Chromium и WebKit, запросы по ролям и подписям.
+  - `fetch` — только в `src/lib/api/client.ts`, данные — через `#lib/api/*.js`;
+  - сквозные тесты — Chromium и WebKit, запросы по ролям и подписям; идут на настоящем `mw-server` (`e2e/support/server.mjs`), данные создают через API с меткой `uniq()`;
+  - вид списка живёт в адресе (`viewToSearch`);
+  - автосохранение — только через `createAutosave`;
+  - Ctrl/⌘+Enter в формах диалогов — `submitShortcut`; «Выдать» из панели — `registerHotkey` без `allowWithOverlay`.

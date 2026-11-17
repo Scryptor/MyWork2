@@ -245,6 +245,67 @@ test('Alt+↓ moves to the next order and money typed does not leak into it', as
 	);
 });
 
+test('status picker: arrows move focus, Space changes the status', async ({ page, request }) => {
+	const m = uniq('M');
+	const diag = await statusId(request, 'Диагностика');
+	const o = await createOrder(request, { model: m, status_id: diag });
+	await openPanel(page, m, o.id);
+	const statuses = statusesOf(page, o.id);
+	await statuses.getByRole('radio', { name: 'Диагностика' }).focus();
+	await page.keyboard.press('ArrowRight');
+	const next = statuses.getByRole('radio', { name: 'Согласование с клиентом' });
+	await expect(next).toBeFocused();
+	await expect(next).not.toBeChecked();
+	await expect(statuses.getByRole('radio', { name: 'Диагностика' })).toBeChecked();
+	await page.keyboard.press('Space');
+	await expect(next).toBeChecked();
+	await expect(toastsOf(page)).toContainText(`№ ${o.id} → Согласование с клиентом`);
+	await expect(rowOf(page, o.id)).toContainText('Согласование с клиентом');
+});
+
+test('Esc closes the panel and focus returns to the list, the row stays marked', async ({
+	page,
+	request
+}) => {
+	const m = uniq('M');
+	const o = await createOrder(request, { model: m });
+	await openPanel(page, m, o.id);
+	await page.keyboard.press('Escape');
+	await expect(panelOf(page, o.id)).toBeHidden();
+	await expect(gridOf(page)).toBeFocused();
+	await expect(rowOf(page, o.id)).toHaveAttribute('aria-current', 'true');
+});
+
+test('a wrong total in the issue dialog blocks issuing and names the field', async ({
+	page,
+	request
+}) => {
+	const m = uniq('M');
+	const ready = await statusId(request, 'Готов');
+	const o = await createOrder(request, { model: m, status_id: ready, estimate_from: 405000 });
+	await openPanel(page, m, o.id);
+	await panelOf(page, o.id)
+		.getByRole('button', { name: /^Выдать/ })
+		.click();
+	const dialog = page.getByRole('dialog', { name: `Выдача заказа № ${o.id}` });
+	await expect(dialog).toBeVisible();
+	const price = dialog.getByRole('textbox', { name: /^Итоговая цена/ });
+	await price.click();
+	await price.fill('4 O5O');
+	await page.keyboard.press(`${await mod(page)}+Enter`);
+	await expect(dialog).toBeVisible();
+	await expect(price).toHaveAttribute('aria-invalid', 'true');
+	await expect(dialog.getByText('Неверная сумма: Итоговая цена')).toBeVisible();
+	await dialog.getByRole('button', { name: /^Выдать/ }).click();
+	await expect(dialog).toBeVisible();
+
+	await page.keyboard.press('Escape');
+	await expect(dialog).toBeHidden();
+	await expect(statusesOf(page, o.id).getByRole('radio', { name: 'Готов' })).toBeChecked();
+	expect((await fetchOrder(request, o.id)).status_id).toBe(ready);
+	await expect(toastsOf(page)).not.toContainText('→ Выдан');
+});
+
 test('issue fills required fields in the dialog, issues and undo brings it back', async ({
 	page,
 	request

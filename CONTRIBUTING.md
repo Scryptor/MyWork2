@@ -13,8 +13,11 @@
 cd apps/ui
 npm ci
 npx playwright install chromium webkit   # один раз, для сквозных тестов
-npm run dev                              # http://localhost:5173/design
+npm run dev                              # http://localhost:5173 (витрина — /design)
 ```
 
+Для работы с настоящими данными в соседнем терминале запустите сервер: `cargo run -p mw-server -- serve`.
+Vite проксирует `/api` на `MW_API_URL` (по умолчанию http://127.0.0.1:8080).
+
 - `npm run verify` — svelte-check, Prettier, ESLint, Vitest, сборка и проверка лицензий;
-- `npm run test:e2e` — сквозные тесты Playwright (Chromium и WebKit).
+- `npm run test:e2e` — сквозные тесты Playwright (Chromium и WebKit) на настоящем `mw-server`: собирает интерфейс и запускает два сервера через `e2e/support/server.mjs` (нужен Rust).

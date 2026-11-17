@@ -1,9 +1,11 @@
-// Fictional demo data for the gallery and the demo screens. Every name, phone and number here is made
+// Fictional demo data for the /design showcase. Every name, phone and number here is made
 // up; phones start with 7000 («+7 000 …»), names are in capitals as in MyWork 2 databases.
 import type { OrderListItem } from '$api/OrderListItem';
 import type { Status } from '$api/Status';
 import type { StatusKind } from '$api/StatusKind';
 import type { LocalDateTime } from '#lib/format/date.js';
+import { deviceOf } from '#lib/orders/view.js';
+import type { SortState } from '#lib/ui/table/types.js';
 
 function status(id: number, name: string, kind: StatusKind, color: string): Status {
 	return { id, name, kind, color, sort_order: id - 1, archived: false };
@@ -332,7 +334,7 @@ interface FakeClient {
 	blacklisted: boolean;
 }
 
-/** Always present: the intake demo finds this client by the phone 8 000 000-00-01. */
+/** Always present: a client with a known phone (8 000 000-00-01) for the showcase. */
 const FIXED_CLIENT: FakeClient = {
 	id: 1,
 	name: 'ЕЛКИН ПЁТР СЕРГЕЕВИЧ',
@@ -486,4 +488,56 @@ export function makeOrders(count: number, seed = 1): OrderListItem[] {
 			version: 1 + int(rng, 4)
 		};
 	});
+}
+
+export interface SortContext {
+	statusOrder: (statusId: number) => number;
+	pointName: (pointId: number | null) => string;
+}
+
+const collator = new Intl.Collator('ru');
+
+function sortKey(columnId: string, o: OrderListItem, ctx: SortContext): number | string {
+	switch (columnId) {
+		case 'received':
+			return o.received_at;
+		case 'client':
+			return o.client_name;
+		case 'device':
+			return deviceOf(o);
+		case 'status':
+			return ctx.statusOrder(o.status_id);
+		case 'master':
+			return o.master;
+		case 'sum':
+			return o.final_price ?? o.estimate_from ?? -1;
+		case 'type':
+			return o.device_type;
+		case 'point':
+			return ctx.pointName(o.service_point_id);
+		case 'issued':
+			return o.issued_at ?? '';
+		case 'prepayment':
+			return o.prepayment;
+		default:
+			return o.id;
+	}
+}
+
+/** What the server would do: the whole list sorted by a column, ties newest first. */
+export function sortOrders<T extends OrderListItem>(
+	list: readonly T[],
+	sort: SortState,
+	ctx: SortContext
+): T[] {
+	const dir = sort.descending ? -1 : 1;
+	const keyed = list.map((o) => ({ o, k: sortKey(sort.columnId, o, ctx) }));
+	keyed.sort((a, b) => {
+		const c =
+			typeof a.k === 'number' && typeof b.k === 'number'
+				? a.k - b.k
+				: collator.compare(String(a.k), String(b.k));
+		return c !== 0 ? c * dir : b.o.id - a.o.id;
+	});
+	return keyed.map((x) => x.o);
 }

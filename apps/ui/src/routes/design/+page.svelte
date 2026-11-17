@@ -31,9 +31,8 @@
 <main tabindex="-1" aria-labelledby="design-title">
 	<header class="bar">
 		<h1 id="design-title">Дизайн-система</h1>
-		<nav class="demos" aria-label="Демо-экраны">
-			<a href={resolve('/design/orders')}>Демо: главный экран</a>
-			<a href={resolve('/design/intake')}>Демо: приём</a>
+		<nav class="demos" aria-label="Рабочие экраны">
+			<a href={resolve('/(app)/orders')}>Заказы</a>
 		</nav>
 		<div class="prefs">
 			<SegmentedControl
