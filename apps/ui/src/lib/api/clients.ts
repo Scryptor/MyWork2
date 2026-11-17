@@ -6,7 +6,7 @@ import { request } from './client.js';
 export const listClients = (q: ClientListQuery, signal?: AbortSignal) =>
 	request<ClientPage>('GET', '/clients', { query: q, signal });
 
-export const clientsByPhone = (phone: string) =>
-	request<Client[]>('GET', '/clients/by-phone', { query: { phone } });
+export const clientsByPhone = (phone: string, signal?: AbortSignal) =>
+	request<Client[]>('GET', '/clients/by-phone', { query: { phone }, signal });
 
 export const getClient = (id: number) => request<Client>('GET', `/clients/${id}`);

@@ -149,8 +149,10 @@
 	// Counts of the quick filters and the sidebar: here, for another point, after edits.
 	$effect(() => summary.refresh(app.point));
 	$effect(() =>
-		onOrderChanged((o) => {
-			list.replace(o);
+		onOrderChanged((o, change) => {
+			// A new order (intake) may belong to the view: the rows come again, the old ones stay meanwhile.
+			if (change === 'created') list.load(query);
+			else list.replace(o);
 			summary.refresh(app.point);
 		})
 	);

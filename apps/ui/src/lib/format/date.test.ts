@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { dayNumber, formatDate, formatFull, formatRelative, parseLocalDateTime } from './date.js';
+import {
+	dayNumber,
+	formatDate,
+	formatDay,
+	formatFull,
+	formatRelative,
+	parseLocalDateTime
+} from './date.js';
 
 const now = { year: 2026, month: 11, day: 15, hour: 12, minute: 0, second: 0 };
 
@@ -65,5 +72,13 @@ describe('dayNumber', () => {
 		const a = { ...now, hour: 23, minute: 59 };
 		const b = { ...now, day: 14, hour: 0, minute: 0 };
 		expect(dayNumber(a) - dayNumber(b)).toBe(1);
+	});
+});
+
+describe('formatDay', () => {
+	it('formats a moment already parsed as the date', () => {
+		expect(formatDay({ year: 2026, month: 3, day: 7, hour: 9, minute: 5, second: 0 })).toBe(
+			'07.03.2026'
+		);
 	});
 });

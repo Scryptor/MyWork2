@@ -1,6 +1,18 @@
 // Logic of the intake demo (spec 6.5): the draft kept on the device, what is required, the client and
-// the IMEI found among the fictional orders.
+// the IMEI found among the fictional orders. What the real intake shares lives in #lib/intake/draft.js.
 import type { OrderListItem } from '$api/OrderListItem';
+import {
+	readList,
+	readMoney,
+	readRecord,
+	readText,
+	REQUIRED_LABELS,
+	type RequiredKey as IntakeRequiredKey
+} from '#lib/intake/draft.js';
+
+export { REQUIRED_LABELS };
+/** The demo has no setting «intake_required_fields»: the three fields of spec 6.5. */
+export type RequiredKey = Exclude<IntakeRequiredKey, 'brand' | 'model'>;
 
 /** The form of a new order as typed so far; money in kopecks. */
 export interface IntakeDraft {
@@ -56,26 +68,14 @@ export function emptyDraft(): IntakeDraft {
 	};
 }
 
-const isMoney = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) >= 0;
-
 /** Never throws: anything missing or of a wrong type falls back to the empty draft's value. */
 export function parseDraft(raw: string | null): IntakeDraft {
-	let obj: unknown;
-	try {
-		obj = raw === null ? null : JSON.parse(raw);
-	} catch {
-		obj = null;
-	}
 	const base = emptyDraft();
-	if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) return base;
-	const o = obj as Record<string, unknown>;
-	const text = (k: keyof IntakeDraft, fallback: string) =>
-		typeof o[k] === 'string' ? (o[k] as string) : fallback;
-	const list = (k: keyof IntakeDraft) =>
-		Array.isArray(o[k])
-			? (o[k] as unknown[]).filter((x): x is string => typeof x === 'string')
-			: [];
-	const money = (k: keyof IntakeDraft) => (isMoney(o[k]) ? (o[k] as number) : null);
+	const o = readRecord(raw);
+	if (o === null) return base;
+	const text = (k: keyof IntakeDraft, fallback: string) => readText(o, k, fallback);
+	const list = (k: keyof IntakeDraft) => readList(o, k);
+	const money = (k: keyof IntakeDraft) => readMoney(o, k);
 	return {
 		phone: text('phone', '').replace(/\D/g, ''),
 		name: text('name', ''),
@@ -99,13 +99,6 @@ export function parseDraft(raw: string | null): IntakeDraft {
 		comment: text('comment', '')
 	};
 }
-
-export type RequiredKey = 'contact' | 'deviceType' | 'malfunction';
-export const REQUIRED_LABELS: Record<RequiredKey, string> = {
-	contact: 'Телефон или ФИО',
-	deviceType: 'Тип устройства',
-	malfunction: 'Неисправность'
-};
 
 /** A phone counts from six digits: a city number «12-34-56» is one too. */
 const MIN_PHONE_DIGITS = 6;

@@ -41,6 +41,7 @@
 	import { installScanner, type ScanResult } from '#lib/design/scanner.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import { intake } from '#lib/intake/intake.svelte.js';
+	import IntakeSheet from '#lib/intake/IntakeSheet.svelte';
 	import { onOrderChanged } from '#lib/orders/events.js';
 	import OrderPanel from '#lib/orders/OrderPanel.svelte';
 	import { orderPanel } from '#lib/orders/panel.svelte.js';
@@ -288,7 +289,7 @@
 
 <OrderPanel />
 
-<!-- Task 10: IntakeSheet mounts here (intake.isOpen, intake.prefill, intake.close). -->
+<IntakeSheet />
 
 <CommandPalette
 	bind:open={paletteOpen}

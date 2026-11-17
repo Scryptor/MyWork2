@@ -17,6 +17,13 @@ export function uniq(prefix = 'e2e'): string {
 	return `${prefix}-${Date.now().toString(36)}${counter.toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 }
 
+/** A fictional mobile number nobody else uses: «+7 911 …», createOrder's own are «+7 900 …». */
+export function uniqPhone(): string {
+	counter += 1;
+	const digits = (Date.now() * 37 + counter * 7919 + Math.floor(Math.random() * 1e6)) % 1e7;
+	return `+7911${String(digits).padStart(7, '0')}`;
+}
+
 async function json<T>(response: Awaited<ReturnType<APIRequestContext['get']>>): Promise<T> {
 	if (!response.ok()) {
 		throw new Error(`${response.status()} ${response.url()}: ${await response.text()}`);

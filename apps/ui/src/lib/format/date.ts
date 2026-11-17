@@ -90,6 +90,11 @@ export function formatFull(value: string): string {
 	return `${t.day} ${FULL_MONTHS[t.month - 1]} ${t.year}, ${time(t)}`;
 }
 
+/** «07.03.2026» of a moment already parsed (one computed here, such as the end of a warranty). */
+export function formatDay(t: LocalDateTime): string {
+	return dotted(t);
+}
+
 export function formatDate(value: string): string {
 	const t = parseLocalDateTime(value);
 	return t ? dotted(t) : value;

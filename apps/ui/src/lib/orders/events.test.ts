@@ -17,6 +17,18 @@ describe('order events', () => {
 		expect(b.mock.calls.map(([o]) => o.id)).toEqual([1, 2]);
 	});
 
+	it('says whether the order was just created (intake) or changed', () => {
+		const heard = vi.fn();
+		const off = onOrderChanged(heard);
+		emitOrderChanged(order(1), 'created');
+		emitOrderChanged(order(2));
+		off();
+		expect(heard.mock.calls.map(([o, change]) => [o.id, change])).toEqual([
+			[1, 'created'],
+			[2, 'updated']
+		]);
+	});
+
 	it('a listener that unsubscribes while being called does not stop the others', () => {
 		const seen: number[] = [];
 		const off = onOrderChanged(() => {

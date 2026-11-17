@@ -35,8 +35,12 @@ export const ordersByBarcode = (code: string) =>
 export const orderSummary = (pointId: number | null) =>
 	request<OrderSummary>('GET', '/orders/summary', { query: { service_point_id: pointId } });
 
-export const orderValues = (field: OrderValueField, query: string, brand?: string) =>
-	request<string[]>('GET', '/orders/values', { query: { field, query, brand } });
+export const orderValues = (
+	field: OrderValueField,
+	query: string,
+	brand?: string,
+	signal?: AbortSignal
+) => request<string[]>('GET', '/orders/values', { query: { field, query, brand }, signal });
 
 export const orderHistory = (id: number, page?: PageQuery) =>
 	request<AuditPage>('GET', `/orders/${id}/history`, { query: { ...page } });
