@@ -33,6 +33,7 @@ pub struct TestApi {
     pub core: Core,
     pub clock: Arc<FixedClock>,
     router: Router,
+    _attachments: tempfile::TempDir,
 }
 
 pub struct TestResponse {
@@ -52,13 +53,18 @@ pub async fn apis(listen: Listen) -> Vec<TestApi> {
         let clock = Arc::new(FixedClock::new(
             Utc.with_ymd_and_hms(2026, 11, 11, 9, 0, 0).unwrap(),
         ));
-        let core = Core::open(db, clock.clone(), "UTC").await.unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let core = Core::open(db, clock.clone(), "UTC")
+            .await
+            .unwrap()
+            .with_attachments_dir(dir.path().to_path_buf());
         let router = router(core.clone(), ApiConfig::for_listen_addr(addr));
         out.push(TestApi {
             label,
             core,
             clock,
             router,
+            _attachments: dir,
         });
     }
     out
@@ -104,6 +110,29 @@ impl TestApi {
         req.extensions_mut()
             .insert(ConnectInfo(SocketAddr::from((ip, 50000))));
         self.request(req).await
+    }
+
+    /// GET с токеном; тело как байты.
+    pub async fn get_raw(&self, path: &str, token: &str) -> (u16, HeaderMap, Vec<u8>) {
+        use tower::ServiceExt as _;
+        let mut req = Request::get(path)
+            .header("host", "127.0.0.1:8080")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())
+            .unwrap();
+        req.extensions_mut()
+            .insert(ConnectInfo(SocketAddr::from(([10, 0, 0, 1], 50000))));
+        let resp = self.router.clone().oneshot(req).await.unwrap();
+        let status = resp.status().as_u16();
+        let headers = resp.headers().clone();
+        let bytes = resp
+            .into_body()
+            .collect()
+            .await
+            .unwrap()
+            .to_bytes()
+            .to_vec();
+        (status, headers, bytes)
     }
 
     /// Отправляет запрос как есть; без `ConnectInfo` подставляет 10.0.0.1:50000.

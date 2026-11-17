@@ -1,6 +1,6 @@
 //! Единый формат ошибок API: всегда JSON `ErrorBody`, сообщения по-русски.
 
-use axum::extract::rejection::{JsonRejection, PathRejection};
+use axum::extract::rejection::{BytesRejection, JsonRejection, PathRejection};
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum_extra::extract::QueryRejection;
@@ -76,6 +76,19 @@ impl ApiError {
                 retry_after_secs: None,
             },
         }
+    }
+
+    pub(crate) fn bad_request(message: impl Into<String>) -> Self {
+        Self::new(StatusCode::BAD_REQUEST, ErrorCode::BadRequest, message)
+    }
+
+    /// Запись о файле есть, а самого файла на диске нет.
+    pub(crate) fn file_missing() -> Self {
+        Self::new(
+            StatusCode::NOT_FOUND,
+            ErrorCode::NotFound,
+            "Файл вложения не найден на диске",
+        )
     }
 
     pub(crate) fn path_not_found() -> Self {
@@ -222,6 +235,12 @@ impl From<CoreError> for ApiError {
 
 impl From<JsonRejection> for ApiError {
     fn from(r: JsonRejection) -> Self {
+        Self::rejection(r.status(), r.body_text())
+    }
+}
+
+impl From<BytesRejection> for ApiError {
+    fn from(r: BytesRejection) -> Self {
         Self::rejection(r.status(), r.body_text())
     }
 }

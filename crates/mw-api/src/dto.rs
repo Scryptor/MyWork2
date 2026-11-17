@@ -159,6 +159,23 @@ pub struct PhoneQuery {
     pub phone: String,
 }
 
+/// Имя загружаемого файла.
+#[derive(Debug, Clone, Deserialize, TS, IntoParams)]
+#[serde(deny_unknown_fields)]
+#[into_params(parameter_in = Query)]
+pub struct AttachmentNameQuery {
+    /// Имя файла, как у пользователя: 1–255 знаков.
+    pub name: String,
+}
+
+/// Правка подписи вложения.
+#[derive(Debug, Clone, Deserialize, TS, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CaptionPatch {
+    /// Новая подпись; пустая строка очищает.
+    pub caption: String,
+}
+
 /// Версия записи, которую правит клиент.
 #[derive(Debug, Clone, Deserialize, TS, IntoParams)]
 #[serde(deny_unknown_fields)]

@@ -132,7 +132,7 @@ fn every_schema_reference_resolves() {
 
 #[test]
 fn parameters_match_their_paths() {
-    const REQUIRED_QUERY: [&str; 4] = ["version", "phone", "code", "field"];
+    const REQUIRED_QUERY: [&str; 5] = ["version", "phone", "code", "field", "name"];
     let api: serde_json::Value =
         serde_json::from_str(&mw_api::openapi().to_json().unwrap()).unwrap();
     for (path, item) in api["paths"].as_object().unwrap() {
@@ -174,7 +174,7 @@ fn parameters_match_their_paths() {
     }
 }
 
-/// Каждая строка «Карты API» (47, включая `openapi.json`) описана в документе OpenAPI.
+/// Каждая строка «Карты API» (56, включая `openapi.json`) описана в документе OpenAPI.
 #[test]
 fn documented_operations_match_the_api_map() {
     let api = serde_json::to_value(mw_api::openapi()).unwrap();
@@ -186,7 +186,7 @@ fn documented_operations_match_the_api_map() {
             }
         }
     }
-    assert_eq!(ops.len(), 47, "{ops:#?}");
+    assert_eq!(ops.len(), 56, "{ops:#?}");
     for expected in [
         "GET /api/v1/server-info",
         "GET /api/v1/openapi.json",
@@ -203,6 +203,9 @@ fn documented_operations_match_the_api_map() {
         "PUT /api/v1/users/{id}/password",
         "PATCH /api/v1/roles/{id}",
         "GET /api/v1/audit",
+        "POST /api/v1/orders/{id}/attachments",
+        "GET /api/v1/attachments/{id}/thumb",
+        "DELETE /api/v1/intake-drafts/{key}",
     ] {
         assert!(ops.iter().any(|o| o == expected), "нет операции {expected}");
     }

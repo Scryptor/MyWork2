@@ -67,6 +67,33 @@ pub(crate) async fn require_local_host(req: Request, next: Next) -> Response {
     }
 }
 
+/// Маршруты загрузки вложений (`POST /orders/{id}/attachments`,
+/// `POST /intake-drafts/{key}/attachments`): только они принимают `application/octet-stream`.
+fn is_upload_route(req: &Request) -> bool {
+    if req.method() != Method::POST {
+        return false;
+    }
+    let octet = req
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.split(';').next())
+        .is_some_and(|essence| {
+            essence
+                .trim()
+                .eq_ignore_ascii_case("application/octet-stream")
+        });
+    if !octet {
+        return false;
+    }
+    let path = req.uri().path();
+    ["/api/v1/orders/", "/api/v1/intake-drafts/"]
+        .iter()
+        .filter_map(|prefix| path.strip_prefix(prefix))
+        .filter_map(|rest| rest.strip_suffix("/attachments"))
+        .any(|id| !id.is_empty() && !id.contains('/'))
+}
+
 /// Изменяющие методы принимаются только с `Content-Type: application/json`:
 /// чужая страница в браузере без разрешения CORS такой запрос не отправит.
 pub(crate) async fn require_json_content_type(req: Request, next: Next) -> Response {
@@ -81,7 +108,7 @@ pub(crate) async fn require_json_content_type(req: Request, next: Next) -> Respo
             .and_then(|v| v.to_str().ok())
             .and_then(|v| v.split(';').next())
             .is_some_and(|essence| essence.trim().eq_ignore_ascii_case("application/json"));
-        if !is_json {
+        if !is_json && !is_upload_route(&req) {
             return ApiError::json_required().into_response();
         }
     }
@@ -91,16 +118,18 @@ pub(crate) async fn require_json_content_type(req: Request, next: Next) -> Respo
 /// Ставит `Cache-Control: no-store`, `X-Content-Type-Options: nosniff` и запрет показа
 /// во фрейме чужого сайта (`X-Frame-Options` и `frame-ancestors` в `Content-Security-Policy`).
 pub(crate) fn set_security_headers(headers: &mut HeaderMap) {
-    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    // Отдача файлов задаёт свои `Cache-Control` и `Content-Security-Policy`: их не затираем.
+    headers
+        .entry(header::CACHE_CONTROL)
+        .or_insert(HeaderValue::from_static("no-store"));
     headers.insert(
         HeaderName::from_static("x-content-type-options"),
         HeaderValue::from_static("nosniff"),
     );
     headers.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
-    headers.insert(
-        header::CONTENT_SECURITY_POLICY,
-        HeaderValue::from_static("frame-ancestors 'none'"),
-    );
+    headers
+        .entry(header::CONTENT_SECURITY_POLICY)
+        .or_insert(HeaderValue::from_static("frame-ancestors 'none'"));
 }
 
 /// Заголовки безопасности у каждого ответа, прошедшего через слой.

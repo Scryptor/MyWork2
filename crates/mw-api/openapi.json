@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "MyWork 3 API",
-    "description": "HTTP API учёта сервисного центра MyWork 3.\n\n**Вход.** `POST /api/v1/auth/login` выдаёт токен; дальше он передаётся в заголовке `Authorization: Bearer <токен>`. Если сервер слушает только локальный адрес и в базе нет активных пользователей, вход не нужен (режим без входа): запросы без токена выполняются с полными правами. Узнать это можно по `GET /api/v1/server-info` (`auth_required`).\n\n**Форматы.** Поля JSON — `snake_case`. Деньги — целое число копеек. Даты и время — местное время предприятия без смещения, `YYYY-MM-DDTHH:MM:SS` (в схемах помечены `date-time`, но смещения в них нет).\n\n**Правки.** В теле `PATCH` непереданное поле не меняется; `null` очищает только те поля, которые бывают пустыми; `null` у остальных полей и неизвестные поля — ошибка 400.\n\n**Версия записи.** Изменение заказов, клиентов, пользователей и ролей принимает параметр `version` — версию записи, которую видел клиент; устаревшая даёт 409 с `current_version`.\n\n**Тело запроса.** Каждый изменяющий запрос (POST, PUT, PATCH, DELETE) должен нести `Content-Type: application/json`, даже без тела (выход, выдача, удаление), иначе ответ 415.\n\n**Ошибки.** Любая ошибка — JSON `ErrorBody` с полями `code`, `message` (по-русски), `fields`, `current_version`, `permission`, `retry_after_secs`. Коды: `bad_request` (400, 405, 413 — тело больше 1 МиБ, 415), `unauthenticated` и `invalid_credentials` (401), `forbidden` (403), `not_found` (404), `conflict` (409), `validation` (422), `too_many_attempts` (429), `unavailable` (503), `internal` (500).",
+    "description": "HTTP API учёта сервисного центра MyWork 3.\n\n**Вход.** `POST /api/v1/auth/login` выдаёт токен; дальше он передаётся в заголовке `Authorization: Bearer <токен>`. Если сервер слушает только локальный адрес и в базе нет активных пользователей, вход не нужен (режим без входа): запросы без токена выполняются с полными правами. Узнать это можно по `GET /api/v1/server-info` (`auth_required`).\n\n**Форматы.** Поля JSON — `snake_case`. Деньги — целое число копеек. Даты и время — местное время предприятия без смещения, `YYYY-MM-DDTHH:MM:SS` (в схемах помечены `date-time`, но смещения в них нет).\n\n**Правки.** В теле `PATCH` непереданное поле не меняется; `null` очищает только те поля, которые бывают пустыми; `null` у остальных полей и неизвестные поля — ошибка 400.\n\n**Версия записи.** Изменение заказов, клиентов, пользователей и ролей принимает параметр `version` — версию записи, которую видел клиент; устаревшая даёт 409 с `current_version`.\n\n**Тело запроса.** Каждый изменяющий запрос (POST, PUT, PATCH, DELETE) должен нести `Content-Type: application/json`, даже без тела (выход, выдача, удаление), иначе ответ 415. Исключение — загрузка вложений (`POST /orders/{id}/attachments`, `POST /intake-drafts/{key}/attachments`): тело — байты файла, `Content-Type: application/octet-stream`, не больше 25 МБ.\n\n**Ошибки.** Любая ошибка — JSON `ErrorBody` с полями `code`, `message` (по-русски), `fields`, `current_version`, `permission`, `retry_after_secs`. Коды: `bad_request` (400, 405, 413 — тело больше 1 МиБ (файла — больше 25 МБ), 415), `unauthenticated` и `invalid_credentials` (401), `forbidden` (403), `not_found` (404), `conflict` (409), `validation` (422), `too_many_attempts` (429), `unavailable` (503), `internal` (500).",
     "license": {
       "name": "MIT",
       "identifier": "MIT"
@@ -10,6 +10,209 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/api/v1/attachments/{id}": {
+      "delete": {
+        "tags": [
+          "Вложения"
+        ],
+        "summary": "Удаление вложения (право `orders_edit`).",
+        "operationId": "delete_attachment",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер вложения",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Вложение удалено"
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "Вложения"
+        ],
+        "summary": "Подпись вложения (право `orders_edit`).",
+        "operationId": "update_attachment",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер вложения",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CaptionPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Вложение после изменения",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Attachment"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/attachments/{id}/file": {
+      "get": {
+        "tags": [
+          "Вложения"
+        ],
+        "summary": "Файл вложения (достаточно войти).",
+        "operationId": "attachment_file",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер вложения",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Содержимое файла",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/attachments/{id}/thumb": {
+      "get": {
+        "tags": [
+          "Вложения"
+        ],
+        "summary": "Миниатюра фото (достаточно войти).",
+        "operationId": "attachment_thumb",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер вложения",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Миниатюра в JPEG",
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/audit": {
       "get": {
         "tags": [
@@ -845,6 +1048,165 @@
         ]
       }
     },
+    "/api/v1/intake-drafts/{key}": {
+      "delete": {
+        "tags": [
+          "Вложения"
+        ],
+        "summary": "Выбрасывает черновик приёма вместе с файлами (право `orders_create`).",
+        "operationId": "discard_draft",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "description": "Ключ черновика",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Черновик выброшен"
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/intake-drafts/{key}/attachments": {
+      "get": {
+        "tags": [
+          "Вложения"
+        ],
+        "summary": "Вложения черновика приёма (право `orders_create`).",
+        "operationId": "list_draft_attachments",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "description": "Ключ черновика",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Вложения черновика по порядку добавления",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Attachment"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Вложения"
+        ],
+        "summary": "Загрузка файла или фото в черновик приёма (право `orders_create`).",
+        "operationId": "upload_draft_attachment",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "description": "Ключ черновика",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "name",
+            "in": "query",
+            "description": "Имя файла, как у пользователя: 1–255 знаков.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Вложение добавлено",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Attachment"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/openapi.json": {
       "get": {
         "tags": [
@@ -1505,6 +1867,127 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Order"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/orders/{id}/attachments": {
+      "get": {
+        "tags": [
+          "Вложения"
+        ],
+        "summary": "Вложения заказа (достаточно войти).",
+        "operationId": "list_order_attachments",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер заказа",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Вложения: сначала фото, затем файлы",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Attachment"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Вложения"
+        ],
+        "summary": "Загрузка файла или фото к заказу (право `orders_edit`). Тело — сами байты,\n`Content-Type: application/octet-stream`; не больше 25 МБ.",
+        "operationId": "upload_order_attachment",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер заказа",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "name",
+            "in": "query",
+            "description": "Имя файла, как у пользователя: 1–255 знаков.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Вложение добавлено",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Attachment"
                 }
               }
             }
@@ -2733,6 +3216,92 @@
           }
         }
       },
+      "Attachment": {
+        "type": "object",
+        "description": "Вложение заказа.",
+        "required": [
+          "id",
+          "order_id",
+          "kind",
+          "name",
+          "caption",
+          "content_type",
+          "size",
+          "width",
+          "height",
+          "legacy",
+          "missing",
+          "created_at"
+        ],
+        "properties": {
+          "caption": {
+            "type": "string",
+            "description": "Подпись."
+          },
+          "content_type": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "height": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Номер вложения."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/AttachmentKind"
+          },
+          "legacy": {
+            "type": "boolean",
+            "description": "Файл из старой программы."
+          },
+          "missing": {
+            "type": "boolean",
+            "description": "Файла нет на диске."
+          },
+          "name": {
+            "type": "string",
+            "description": "Имя файла для человека."
+          },
+          "order_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Номер заказа."
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Размер в байтах."
+          },
+          "width": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "AttachmentKind": {
+        "type": "string",
+        "description": "Вид вложения.",
+        "enum": [
+          "photo",
+          "file"
+        ]
+      },
       "AuditEntry": {
         "type": "object",
         "description": "Запись журнала для чтения. `details` — разобранный JSON; `null`, если его нет или он повреждён.",
@@ -2821,6 +3390,20 @@
             "minimum": 0
           }
         }
+      },
+      "CaptionPatch": {
+        "type": "object",
+        "description": "Правка подписи вложения.",
+        "required": [
+          "caption"
+        ],
+        "properties": {
+          "caption": {
+            "type": "string",
+            "description": "Новая подпись; пустая строка очищает."
+          }
+        },
+        "additionalProperties": false
       },
       "ChangePasswordRequest": {
         "type": "object",

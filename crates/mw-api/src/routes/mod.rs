@@ -1,10 +1,12 @@
 //! Маршруты API; каждый раздел добавляет свои `routes!(…)`.
 
+use axum::extract::DefaultBodyLimit;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
 use crate::state::AppState;
 
+mod attachments;
 mod audit;
 mod auth;
 mod catalogs;
@@ -15,6 +17,25 @@ mod users;
 
 pub(crate) fn api_routes() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
+        .merge(
+            OpenApiRouter::new()
+                .routes(routes!(
+                    attachments::list_order_attachments,
+                    attachments::upload_order_attachment
+                ))
+                .routes(routes!(
+                    attachments::list_draft_attachments,
+                    attachments::upload_draft_attachment
+                ))
+                .layer(DefaultBodyLimit::max(attachments::UPLOAD_BODY_LIMIT)),
+        )
+        .routes(routes!(attachments::discard_draft))
+        .routes(routes!(attachments::attachment_file))
+        .routes(routes!(attachments::attachment_thumb))
+        .routes(routes!(
+            attachments::update_attachment,
+            attachments::delete_attachment
+        ))
         .routes(routes!(meta::server_info))
         .routes(routes!(meta::openapi_json))
         .routes(routes!(auth::login))

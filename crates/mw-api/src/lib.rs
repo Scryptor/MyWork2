@@ -27,10 +27,11 @@ use utoipa::{Modify, OpenApi as _, ToSchema};
 pub use auth::{ACCOUNT_FAILURE_LIMIT, FAILURE_WINDOW_SECS, IP_FAILURE_LIMIT, OPEN_MODE_ACTOR};
 pub use contract::export_typescript;
 pub use dto::{
-    AuditListQuery, AuditPage, BarcodeQuery, ChangePasswordRequest, ClientListQuery, ClientPage,
-    CurrentUser, DictionaryValue, IncludeArchived, LoginRequest, LoginResponse, NewServicePoint,
-    NextOrderNumber, OrderListQuery, OrderPage, OrderSummaryQuery, OrderValuesQuery, PageQuery,
-    PhoneQuery, ReorderRequest, ServerInfo, SetPasswordRequest, StatusChange, VersionParam,
+    AttachmentNameQuery, AuditListQuery, AuditPage, BarcodeQuery, CaptionPatch,
+    ChangePasswordRequest, ClientListQuery, ClientPage, CurrentUser, DictionaryValue,
+    IncludeArchived, LoginRequest, LoginResponse, NewServicePoint, NextOrderNumber, OrderListQuery,
+    OrderPage, OrderSummaryQuery, OrderValuesQuery, PageQuery, PhoneQuery, ReorderRequest,
+    ServerInfo, SetPasswordRequest, StatusChange, VersionParam,
 };
 pub use error::{ErrorBody, ErrorCode, ErrorField};
 pub use state::ApiConfig;
@@ -69,10 +70,12 @@ HTTP API учёта сервисного центра MyWork 3.
 `version` — версию записи, которую видел клиент; устаревшая даёт 409 с `current_version`.
 
 **Тело запроса.** Каждый изменяющий запрос (POST, PUT, PATCH, DELETE) должен нести \
-`Content-Type: application/json`, даже без тела (выход, выдача, удаление), иначе ответ 415.
+`Content-Type: application/json`, даже без тела (выход, выдача, удаление), иначе ответ 415. Исключение — загрузка вложений \
+(`POST /orders/{id}/attachments`, `POST /intake-drafts/{key}/attachments`): тело — байты файла, \
+`Content-Type: application/octet-stream`, не больше 25 МБ.
 
 **Ошибки.** Любая ошибка — JSON `ErrorBody` с полями `code`, `message` (по-русски), `fields`, \
-`current_version`, `permission`, `retry_after_secs`. Коды: `bad_request` (400, 405, 413 — тело больше 1 МиБ, 415), \
+`current_version`, `permission`, `retry_after_secs`. Коды: `bad_request` (400, 405, 413 — тело больше 1 МиБ (файла — больше 25 МБ), 415), \
 `unauthenticated` и `invalid_credentials` (401), `forbidden` (403), `not_found` (404), \
 `conflict` (409), `validation` (422), `too_many_attempts` (429), `unavailable` (503), \
 `internal` (500).";

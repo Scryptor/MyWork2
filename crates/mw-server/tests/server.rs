@@ -256,3 +256,43 @@ async fn serves_the_ui_from_the_same_origin() {
     assert_eq!(status, 200);
     stop(tx, running, addr, "ui").await;
 }
+
+#[tokio::test]
+async fn expired_intake_drafts_are_cleaned_up_at_start() {
+    for (label, db) in mw_db::testing::all_backends().await {
+        let dir = temp_dir(label);
+        let server = Server::start_with_db(&config(dir.clone()), db.clone())
+            .await
+            .unwrap();
+        let actor = mw_core::Actor::unrestricted("Тест");
+        let key = "0f8fad5b-d9cb-469f-a165-70867728950e";
+        server
+            .core()
+            .add_draft_attachment(&actor, key, "a.txt", b"hello".to_vec())
+            .await
+            .unwrap();
+        db.execute_unprepared("UPDATE attachments SET created_at = '2000-01-01 00:00:00'")
+            .await
+            .unwrap();
+        let core = server.core().clone();
+        let addr = server.local_addr();
+        let (tx, stopped) = tokio::sync::oneshot::channel::<()>();
+        let running = tokio::spawn(server.serve(async {
+            stopped.await.ok();
+        }));
+        let mut left = 1;
+        for _ in 0..100 {
+            left = core
+                .list_draft_attachments(&actor, key)
+                .await
+                .unwrap()
+                .len();
+            if left == 0 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        assert_eq!(left, 0, "{label}");
+        stop(tx, running, addr, label).await;
+    }
+}

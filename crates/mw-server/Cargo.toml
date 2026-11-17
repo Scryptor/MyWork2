@@ -24,7 +24,7 @@ mw-domain = { path = "../mw-domain" }
 mw-legacy = { path = "../mw-legacy" }
 axum = { workspace = true }
 sea-orm = { workspace = true }
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "signal", "sync"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "signal", "sync", "time"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 clap = { workspace = true }
@@ -34,6 +34,7 @@ chrono-tz = { workspace = true }
 url = { workspace = true }
 thiserror = { workspace = true }
 serde_json = { workspace = true }
+chrono = { workspace = true }
 
 [dev-dependencies]
 mw-legacy = { path = "../mw-legacy", features = ["fixtures"] }

@@ -94,7 +94,9 @@ impl Server {
             validate_ui_dir(dir)?;
         }
         migrate(&db, None).await?;
-        let core = Core::open(db.clone(), Arc::new(SystemClock), &system_timezone(config)).await?;
+        let core = Core::open(db.clone(), Arc::new(SystemClock), &system_timezone(config))
+            .await?
+            .with_attachments_dir(config.data_dir.clone());
         log_timezone(&core, config.timezone.as_deref());
         let listener =
             TcpListener::bind(config.listen)
@@ -142,6 +144,7 @@ impl Server {
             listener,
             router,
         } = self;
+        let cleanup = spawn_draft_cleanup(core.clone());
         let result = axum::serve(
             listener,
             router.into_make_service_with_connect_info::<SocketAddr>(),
@@ -152,6 +155,7 @@ impl Server {
             context: "ошибка сервера".into(),
             source,
         });
+        cleanup.abort();
         drop(core);
         if let Err(e) = db.close().await {
             tracing::warn!("не удалось закрыть соединения с базой: {e}");
@@ -159,6 +163,29 @@ impl Server {
         tracing::info!("сервер остановлен");
         result
     }
+}
+
+/// Срок жизни черновика приёма с вложениями.
+const DRAFT_TTL_HOURS: i64 = 24;
+/// Как часто убирать просроченные черновики.
+const DRAFT_CLEANUP_EVERY: std::time::Duration = std::time::Duration::from_secs(3600);
+
+/// Фоновая уборка черновиков: сразу при запуске, затем раз в час; ошибки идут в лог.
+pub(crate) fn spawn_draft_cleanup(core: Core) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut tick = tokio::time::interval(DRAFT_CLEANUP_EVERY);
+        loop {
+            tick.tick().await;
+            match core
+                .cleanup_drafts(chrono::Duration::hours(DRAFT_TTL_HOURS))
+                .await
+            {
+                Ok(0) => {}
+                Ok(n) => tracing::info!("убраны просроченные вложения черновиков: {n}"),
+                Err(e) => tracing::warn!("не удалось убрать просроченные черновики: {e}"),
+            }
+        }
+    })
 }
 
 /// Ждёт Ctrl+C или (на unix) SIGTERM.
