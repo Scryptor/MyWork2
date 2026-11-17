@@ -427,4 +427,72 @@ test.describe('on a phone', () => {
 		await expect(toastsOf(page)).toContainText(`№ ${o.id} → Готов`);
 		expect((await fetchOrder(request, o.id)).status_id).toBe(await statusId(request, 'Готов'));
 	});
+	test('bottom navigation and a full-screen panel with «←»', async ({ page, request }) => {
+		const m = uniq('M');
+		const o = await createOrder(request, { model: m });
+		await page.goto(`/orders?q=${encodeURIComponent(m)}`);
+		const bottom = page.getByRole('navigation', { name: 'Основная навигация' });
+		await expect(bottom).toBeVisible();
+		await expect(bottom.getByRole('link', { name: /Заказы/ })).toBeVisible();
+		await expect(bottom.getByRole('button', { name: /Принять/ })).toBeVisible();
+		await expect(bottom.getByRole('button', { name: /Ещё/ })).toBeVisible();
+
+		await page.getByRole('button', { name: new RegExp(`№ ${o.id}(?!\\d)`) }).click();
+		const panel = panelOf(page, o.id);
+		await expect(panel).toBeVisible();
+		await expect.poll(() => panel.boundingBox()).toEqual({ x: 0, y: 0, width: 390, height: 844 });
+		await expect(panel.getByRole('button', { name: 'Назад' })).toBeVisible();
+	});
+
+	test('an issued status from the status list opens «Выдать»', async ({ page, request }) => {
+		const m = uniq('M');
+		const ready = await statusId(request, 'Готов');
+		const o = await createOrder(request, { model: m, status_id: ready });
+		await page.goto(`/orders?q=${encodeURIComponent(m)}&chips=all`);
+		await page.getByRole('button', { name: new RegExp(`№ ${o.id}(?!\\d)`) }).click();
+		const panel = panelOf(page, o.id);
+		const button = panel.getByRole('button', { name: /^Статус/ });
+		await button.click();
+		await page
+			.getByRole('dialog', { name: 'Статус' })
+			.getByRole('button', { name: 'Выдан', exact: true })
+			.click();
+		const dialog = page.getByRole('dialog', { name: `Выдача заказа № ${o.id}` });
+		await expect(dialog).toBeVisible();
+		await page.keyboard.press('Escape');
+		await expect(dialog).toBeHidden();
+		await expect(button).toContainText('Готов');
+		expect((await fetchOrder(request, o.id)).status_id).toBe(ready);
+	});
+
+	test('«⋯» at the top gives an issued order back to work', async ({ page, request }) => {
+		const m = uniq('M');
+		const ready = await statusId(request, 'Готов');
+		const o = await createOrder(request, { model: m, status_id: ready, master: 'Тестов' });
+		const filled = await patchOrder(request, o.id, { work_done: 'Чистка' });
+		const issuedResponse = await request.post(
+			`/api/v1/orders/${o.id}/issue?version=${filled.version}`,
+			{ headers: { 'Content-Type': 'application/json' } }
+		);
+		expect(issuedResponse.ok(), await issuedResponse.text()).toBe(true);
+		const diag = await statusId(request, 'Диагностика');
+
+		await page.goto(`/orders?q=${encodeURIComponent(m)}&chips=all`);
+		await page.getByRole('button', { name: new RegExp(`№ ${o.id}(?!\\d)`) }).click();
+		const panel = panelOf(page, o.id);
+		const button = panel.getByRole('button', { name: /^Статус/ });
+		await expect(button).toContainText('Выдан');
+		await expect(button).toBeDisabled();
+		await panel.getByRole('button', { name: 'Ещё действия' }).click();
+		await page.getByRole('menuitem', { name: 'Вернуть в работу…' }).click();
+		const dialog = page.getByRole('dialog', { name: 'Вернуть в работу' });
+		await dialog.getByRole('combobox', { name: 'Статус' }).click();
+		await page.getByRole('option', { name: 'Диагностика' }).click();
+		await dialog.getByRole('button', { name: /^Вернуть/ }).click();
+		await expect(dialog).toBeHidden();
+		await expect(button).toContainText('Диагностика');
+		await expect(button).toBeEnabled();
+		await expect(toastsOf(page)).toContainText(`№ ${o.id} → Диагностика`);
+		expect((await fetchOrder(request, o.id)).status_id).toBe(diag);
+	});
 });

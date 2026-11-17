@@ -188,6 +188,17 @@ test('typing n in the list filter does not open intake', async ({ page }) => {
 	await expect(page.getByRole('dialog', { name: 'Новый заказ' })).toHaveCount(0);
 });
 
+test('the list filter ignores case and ё: «елкин» finds «ЁЛКИН»', async ({ page, request }) => {
+	const name = uniq('ЁЛКИН').toUpperCase();
+	const o = await createOrder(request, { clientName: name });
+	await openOrders(page);
+	await gridOf(page).focus();
+	await page.keyboard.press('/');
+	await page.keyboard.type(name.toLowerCase().replaceAll('ё', 'е'));
+	await expect(rowsOf(page, name)).toHaveCount(1);
+	await expect(rowsOf(page, name)).toContainText(String(o.id));
+});
+
 test('a row opens its order in the panel and stays marked', async ({ page, request }) => {
 	const m = uniq('M');
 	const first = await createOrder(request, { model: m });
