@@ -22,3 +22,11 @@ export function loginPath(path: string): '/login' | `/login?next=${string}` {
 		? '/login'
 		: `/login?next=${encodeURIComponent(path)}`;
 }
+
+/**
+ * The address is the sign-in page: the session ended (expired, signed out, new password). Guards of
+ * unsaved edits let such a navigation through — without a session nothing can be saved anyway.
+ */
+export function isSignIn(url: URL): boolean {
+	return url.pathname === '/login';
+}

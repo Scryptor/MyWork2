@@ -16,6 +16,7 @@
 	import { getOrder } from '#lib/api/orders.js';
 	import { serverClock } from '#lib/api/server-clock.svelte.js';
 	import { app } from '#lib/app/context.svelte.js';
+	import { isSignIn } from '#lib/app/login.js';
 	import { pushRecent } from '#lib/app/recent.js';
 	import { CARD_COLUMNS_QUERY } from '#lib/design/breakpoints.js';
 	import { formatDate, formatRelative } from '#lib/format/date.js';
@@ -198,11 +199,13 @@
 	}
 
 	// Any other way out (a link, Ctrl K, the browser's «Назад») waits for the save too and then goes on.
-	// Closing or reloading the tab with unsaved changes gets the browser's own question.
+	// Closing or reloading the tab with unsaved changes gets the browser's own question. The sign-in page
+	// (session expired, signed out, new password) is not held: without a session nothing can be saved,
+	// and leaving the card tells what was lost.
 	let resume: (() => void) | null = null;
 	beforeNavigate((nav) => {
 		const ed = editor;
-		if (!ed?.unsaved) return;
+		if (!ed?.unsaved || (nav.to && isSignIn(nav.to.url))) return;
 		nav.cancel();
 		if (nav.willUnload || !nav.to) return;
 		const { url } = nav.to;

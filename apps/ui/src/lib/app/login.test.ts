@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { loginPath, safeNext } from './login.js';
+import { isSignIn, loginPath, safeNext } from './login.js';
 
 const ORIGIN = 'http://127.0.0.1:4174';
 
@@ -32,5 +32,17 @@ describe('loginPath', () => {
 	it('the login page and the root need no next', () => {
 		expect(loginPath('/login?next=%2Forders')).toBe('/login');
 		expect(loginPath('/')).toBe('/login');
+	});
+});
+
+describe('isSignIn', () => {
+	it('is the sign-in page, with or without «next»', () => {
+		const at = (path: string) => new URL(path, 'http://127.0.0.1:4174');
+		expect(isSignIn(at('/login'))).toBe(true);
+		expect(isSignIn(at('/login?next=%2Forders%2F5'))).toBe(true);
+		expect(isSignIn(at(loginPath('/orders/5')))).toBe(true);
+		expect(isSignIn(at('/orders'))).toBe(false);
+		expect(isSignIn(at('/orders/5'))).toBe(false);
+		expect(isSignIn(at('/loginx'))).toBe(false);
 	});
 });

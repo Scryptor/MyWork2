@@ -1,5 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
-import { E2E_ADMIN_LOGIN, E2E_ADMIN_PASSWORD } from './support/api';
+import { expect, test, type Page, type PlaywrightWorkerArgs } from '@playwright/test';
+import { createOrder, E2E_ADMIN_LOGIN, E2E_ADMIN_PASSWORD, uniq } from './support/api';
 
 // The server on 4174 has an administrator: every screen of the program asks to sign in first.
 test.use({ baseURL: 'http://127.0.0.1:4174' });
@@ -73,4 +73,73 @@ test('a link to another site in next is not followed', async ({ page }) => {
 	await page.goto('/login?next=//example.com/');
 	await signIn(page);
 	await expect(page).toHaveURL(/127\.0\.0\.1:4174\/orders$/);
+});
+
+/**
+ * Signs in, makes an order through the API with the same session and opens its card; PATCH of the order
+ * fails, so an edit stays unsaved.
+ */
+async function cardWithUnsavedEdit(
+	page: Page,
+	playwright: PlaywrightWorkerArgs['playwright'],
+	answer: 'abort' | 401
+) {
+	await page.goto('/orders');
+	await signIn(page);
+	await expect(page).toHaveURL(/\/orders$/);
+	const token = await page.evaluate(
+		() => localStorage.getItem('mw.session') ?? sessionStorage.getItem('mw.session')
+	);
+	const api = await playwright.request.newContext({
+		baseURL: 'http://127.0.0.1:4174',
+		extraHTTPHeaders: { Authorization: `Bearer ${token}` }
+	});
+	const o = await createOrder(api, { model: uniq('M') });
+	await api.dispose();
+	await page.goto(`/orders/${o.id}`);
+	const card = page.getByRole('main');
+	const work = card.getByRole('textbox', { name: 'Выполненные работы' });
+	await expect(work).toBeVisible();
+	await page.route(
+		(url) => url.pathname === `/api/v1/orders/${o.id}`,
+		(route) =>
+			route.request().method() !== 'PATCH'
+				? route.continue()
+				: answer === 'abort'
+					? route.abort('internetdisconnected')
+					: route.fulfill({
+							status: 401,
+							json: {
+								code: 'unauthenticated',
+								message: 'Войдите в программу',
+								fields: [],
+								current_version: null,
+								permission: null,
+								retry_after_secs: null
+							}
+						})
+	);
+	await work.fill('Замена кнопки');
+	return o;
+}
+
+test('signing out with an unsaved edit on the order card goes to login', async ({
+	page,
+	playwright
+}) => {
+	await cardWithUnsavedEdit(page, playwright, 'abort');
+	await expect(page.getByRole('main').getByText('Не сохранено')).toBeVisible();
+	await page.getByRole('button', { name: /Администратор/ }).click();
+	await page.getByRole('menuitem', { name: 'Выйти' }).click();
+	await expect(page).toHaveURL(/\/login$/);
+	await expect(page.getByRole('button', { name: 'Войти' })).toBeVisible();
+});
+
+test('an expired session with an unsaved edit on the order card goes to login', async ({
+	page,
+	playwright
+}) => {
+	const o = await cardWithUnsavedEdit(page, playwright, 401);
+	await expect(page).toHaveURL(new RegExp(`/login\\?next=%2Forders%2F${o.id}$`));
+	await expect(page.getByRole('button', { name: 'Войти' })).toBeVisible();
 });
