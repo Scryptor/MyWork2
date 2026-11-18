@@ -21,12 +21,13 @@ export const CLIENT_SORT_FIELD: Record<string, ClientSortField> = {
 type Spec = Omit<Column<ClientListItem>, 'cell' | 'sortable'>;
 
 const SPECS: Record<ClientColumnId, Spec> = {
-	name: { id: 'name', header: 'ФИО', width: 260, minWidth: 140 },
+	// Text columns share the spare width down to their minimum (decision 51).
+	name: { id: 'name', header: 'ФИО', width: 260, minWidth: 140, flex: true },
 	phones: { id: 'phones', header: 'Телефоны', width: 190 },
 	orders: { id: 'orders', header: 'Заказы', width: 96, align: 'end' },
 	last: { id: 'last', header: 'Последний заказ', width: 176 },
-	source: { id: 'source', header: 'Откуда узнали', width: 160 },
-	flags: { id: 'flags', header: 'Отметки', width: 96 }
+	source: { id: 'source', header: 'Откуда узнали', width: 160, minWidth: 110, flex: true },
+	flags: { id: 'flags', header: 'Отметки', width: 100 }
 };
 
 export interface ClientColumnsContext {

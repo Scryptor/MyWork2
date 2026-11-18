@@ -11,7 +11,12 @@
 	import Skeleton from '../Skeleton.svelte';
 	import ColumnsMenu from './ColumnsMenu.svelte';
 	import RowCheck from './RowCheck.svelte';
-	import { clampColumnWidth, loadColumnPrefs, saveColumnPrefs } from './column-prefs.js';
+	import {
+		clampColumnWidth,
+		COLUMN_MIN_WIDTH,
+		loadColumnPrefs,
+		saveColumnPrefs
+	} from './column-prefs.js';
 	import { rangeSelect } from './selection.js';
 	import type { Column, ColumnPrefs, RowId, SortState } from './types.js';
 
@@ -76,20 +81,40 @@
 			return c && !colPrefs.hidden.includes(id) ? [c] : [];
 		})
 	);
+	// The table fills its width: text columns (`flex`) share what is left, down to their minimum; the
+	// others, and every column the user resized, keep their width. Below the sum of those the table
+	// scrolls sideways.
 	let resizing = $state<{ id: string; width: number } | null>(null);
-	function widthOf(c: Column<Row>): number {
-		return resizing?.id === c.id ? resizing.width : (colPrefs.widths[c.id] ?? c.width);
+	interface Track {
+		css: string;
+		/** px at this scale. */
+		min: number;
+		flexible: boolean;
 	}
-	const shownWidths = $derived(visible.map((c) => Math.round(widthOf(c) * scale)));
+	function trackOf(c: Column<Row>): Track {
+		const set = resizing?.id === c.id ? resizing.width : colPrefs.widths[c.id];
+		if (set !== undefined) {
+			const px = Math.round(set * scale);
+			return { css: `${px}px`, min: px, flexible: false };
+		}
+		if (c.flex) {
+			const min = Math.round((c.minWidth ?? COLUMN_MIN_WIDTH) * scale);
+			return { css: `minmax(${min}px, ${c.width}fr)`, min, flexible: true };
+		}
+		const px = Math.round(c.width * scale);
+		return { css: `${px}px`, min: px, flexible: false };
+	}
+	const tracks = $derived(visible.map(trackOf));
 	const template = $derived(
 		[
 			...(selectable ? ['var(--control-lg)'] : []),
-			...shownWidths.map((w) => `${w}px`),
-			'minmax(var(--control-lg), 1fr)'
+			...tracks.map((t) => t.css),
+			// The last cell («Колонки») takes the rest only when no column does.
+			tracks.some((t) => t.flexible) ? 'var(--control-lg)' : 'minmax(var(--control-lg), 1fr)'
 		].join(' ')
 	);
 	const minWidth = $derived(
-		`calc(${shownWidths.reduce((sum, w) => sum + w, 0)}px + ${selectable ? 2 : 1} * var(--control-lg))`
+		`calc(${tracks.reduce((sum, t) => sum + t.min, 0)}px + ${selectable ? 2 : 1} * var(--control-lg))`
 	);
 
 	// Virtual rows. The sticky header is inside the scroller, one row high: rows start below it.
@@ -327,8 +352,11 @@
 			}
 		}
 		const startX = e.clientX;
-		const startWidth = widthOf(c);
 		const k = scale;
+		// From the width it has on screen: a flexible column becomes fixed at it.
+		const cell = e.currentTarget instanceof HTMLElement ? e.currentTarget.parentElement : null;
+		const startWidth =
+			colPrefs.widths[c.id] ?? (cell ? cell.getBoundingClientRect().width / k : c.width);
 		resizing = { id: c.id, width: startWidth };
 		const move = (ev: PointerEvent) => {
 			resizing = {
@@ -350,11 +378,11 @@
 		window.addEventListener('pointerup', end);
 		window.addEventListener('pointercancel', end);
 	}
+	/** Back to the default: a flexible column shares the spare width again. */
 	function resetWidth(c: Column<Row>) {
-		commit({
-			...colPrefs,
-			widths: { ...colPrefs.widths, [c.id]: clampColumnWidth(c.width, c.minWidth) }
-		});
+		const widths = { ...colPrefs.widths };
+		delete widths[c.id];
+		commit({ ...colPrefs, widths });
 	}
 </script>
 
@@ -390,7 +418,7 @@
 					<div class="cell hcell {c.align ?? 'start'}" role="columnheader" aria-sort={order}>
 						{#if c.sortable}
 							<button type="button" class="sort" onclick={() => toggleSort(c)}>
-								<span class="text">{c.header}</span>
+								<span class="text" title={c.header}>{c.header}</span>
 								{#if order === 'descending'}
 									<ArrowDown size={14} aria-hidden="true" />
 								{:else if order === 'ascending'}
@@ -398,7 +426,7 @@
 								{/if}
 							</button>
 						{:else}
-							<span class="text">{c.header}</span>
+							<span class="text" title={c.header}>{c.header}</span>
 						{/if}
 						<!-- Mouse and touch only: widths also reset by double click; the keyboard reorders and
 						     hides columns in «Колонки». -->

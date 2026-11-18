@@ -239,11 +239,12 @@ test.describe('table', () => {
 		await page.getByRole('radio', { name: 'Компактно' }).check({ force: true });
 		await expect.poll(height).toBe(28);
 
+		// «Статус» has a width of its own (150px); «Клиент» shares the spare width and is not compared.
 		await page.getByRole('radio', { name: '100 %' }).check({ force: true });
-		const normal = await widthOf(page, 'Клиент');
+		await expect.poll(() => widthOf(page, 'Статус')).toBe(150);
 		await page.getByRole('radio', { name: '125 %' }).check({ force: true });
 		await expect.poll(height).toBe(35);
-		await expect.poll(() => widthOf(page, 'Клиент')).toBe(Math.round(normal * 1.25));
+		await expect.poll(() => widthOf(page, 'Статус')).toBe(Math.round(150 * 1.25));
 	});
 
 	test('a row changed elsewhere flashes briefly', async ({ page }) => {

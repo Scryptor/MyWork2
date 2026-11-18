@@ -107,3 +107,65 @@ describe('DataTable row height follows the UI scale', () => {
 		expect(rows[9]!.style.transform).toBe('translateY(225px)');
 	});
 });
+
+describe('DataTable columns fill the width', () => {
+	const textCell = createRawSnippet<[unknown]>(() => ({ render: () => '<span></span>' }));
+	const MIXED: Column<unknown>[] = [
+		{ id: 'id', header: '№', width: 80, cell: textCell },
+		{ id: 'client', header: 'Клиент', width: 200, minWidth: 120, flex: true, cell: textCell },
+		{ id: 'device', header: 'Устройство', width: 180, minWidth: 100, flex: true, cell: textCell },
+		{ id: 'status', header: 'Статус', width: 150, cell: textCell }
+	];
+	function renderMixed(selectable = false) {
+		const { container } = render(DataTable, {
+			props: {
+				rows: ROWS,
+				columns: MIXED,
+				rowId: (r: unknown) => (r as Item).id,
+				storageKey: 'test-fill',
+				ariaLabel: 'Тест',
+				selectable
+			}
+		});
+		const table = container.querySelector<HTMLElement>('.mw-table')!;
+		return {
+			cols: () => table.style.getPropertyValue('--cols'),
+			min: () => table.style.getPropertyValue('--table-min')
+		};
+	}
+	afterEach(() => prefs.set({ scale: 'auto' }));
+
+	it('text columns share the spare width down to their minimum; the others keep their px', () => {
+		const { cols, min } = renderMixed();
+		expect(cols()).toBe('80px minmax(120px, 200fr) minmax(100px, 180fr) 150px var(--control-lg)');
+		expect(min()).toBe('calc(450px + 1 * var(--control-lg))');
+	});
+
+	it('the minimums and fixed widths follow the UI scale', () => {
+		prefs.set({ scale: 1.25 });
+		const { cols, min } = renderMixed(true);
+		expect(cols()).toBe(
+			'var(--control-lg) 100px minmax(150px, 200fr) minmax(125px, 180fr) 188px var(--control-lg)'
+		);
+		expect(min()).toBe('calc(563px + 2 * var(--control-lg))');
+	});
+
+	it('a column the user resized is fixed at its width', () => {
+		localStorage.setItem(
+			'mw.table.test-fill',
+			JSON.stringify({ v: 2, order: [], hidden: [], widths: { client: 260 } })
+		);
+		const { cols, min } = renderMixed();
+		expect(cols()).toBe('80px 260px minmax(100px, 180fr) 150px var(--control-lg)');
+		expect(min()).toBe('calc(590px + 1 * var(--control-lg))');
+	});
+
+	it('without a flexible column the last one takes the rest', () => {
+		localStorage.setItem(
+			'mw.table.test-fill',
+			JSON.stringify({ v: 2, order: [], hidden: [], widths: { client: 260, device: 190 } })
+		);
+		const { cols } = renderMixed();
+		expect(cols()).toBe('80px 260px 190px 150px minmax(var(--control-lg), 1fr)');
+	});
+});

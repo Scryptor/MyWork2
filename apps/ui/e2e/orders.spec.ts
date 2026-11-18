@@ -337,11 +337,12 @@ test.describe('on a phone', () => {
 test('a list that finds nothing keeps its message in sight when the columns are wider', async ({
 	page
 }) => {
+	// 900 wide: the columns at their minimum are wider than the table, it scrolls sideways.
+	await page.setViewportSize({ width: 900, height: 720 });
 	await openOrders(page, `?q=${uniq('Пусто')}`);
 	const grid = gridOf(page);
 	const message = grid.getByText('Ничего не нашлось');
 	await expect(message).toBeVisible();
-	// At 1280 with the full menu the columns are wider than the table: it scrolls sideways.
 	expect(await grid.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
 	const seen = await grid.evaluate((el) => {
 		const r = el.getBoundingClientRect();
@@ -350,3 +351,37 @@ test('a list that finds nothing keeps its message in sight when the columns are 
 	const box = await message.boundingBox();
 	expect(Math.abs(box!.x + box!.width / 2 - (seen.left + seen.width / 2))).toBeLessThan(2);
 });
+
+// Decision 51: the text columns share the spare width. 1280×720 with the full menu: every default column
+// fits without scrolling sideways; 4K: the columns reach the right edge of the table.
+for (const [name, width, height] of [
+	['1280×720', 1280, 720],
+	['4K', 3840, 2160]
+] as const) {
+	test.describe(`the table at ${name}`, () => {
+		test.use({ screen: { width, height }, viewport: { width, height: height - 70 } });
+
+		test('fills its width without scrolling sideways', async ({ page, request }) => {
+			const m = uniq('M');
+			await createOrder(request, { model: m });
+			await openOrders(page);
+			await narrow(page, m);
+			const grid = gridOf(page);
+			await expect(rowsOf(page, m)).toHaveCount(1);
+			const fit = await grid.evaluate((el) => {
+				const right = el.getBoundingClientRect().left + el.clientLeft + el.clientWidth;
+				const heads = [...el.querySelectorAll('[role="columnheader"]')];
+				return {
+					sideways: el.scrollWidth - el.clientWidth,
+					gap: Math.round(right - heads.at(-1)!.getBoundingClientRect().right),
+					columns: heads.length
+				};
+			});
+			// The check box, nine columns, «Колонки».
+			expect(fit).toEqual({ sideways: 0, gap: 0, columns: 11 });
+			// Text takes what is left: «Клиент» is wider than its 200px (×1.5 at 4K) only when there is room.
+			const client = await grid.getByRole('columnheader', { name: 'Клиент' }).boundingBox();
+			if (width > 3000) expect(client!.width).toBeGreaterThan(300);
+		});
+	});
+}

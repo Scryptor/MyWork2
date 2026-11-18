@@ -98,15 +98,39 @@
 	}
 
 	const COLUMNS: Column<OrderListItem>[] = [
-		{ id: 'id', header: '№', width: 84, sortable: true, cell: numberCell },
-		{ id: 'received', header: 'Принят', width: 132, sortable: true, cell: receivedCell },
-		{ id: 'client', header: 'Клиент', width: 200, minWidth: 120, sortable: true, cell: clientCell },
-		{ id: 'device', header: 'Устройство', width: 180, sortable: true, cell: deviceCell },
-		{ id: 'malfunction', header: 'Неисправность', width: 200, cell: malfunctionCell },
-		{ id: 'status', header: 'Статус', width: 212, sortable: true, cell: statusCell },
-		{ id: 'master', header: 'Мастер', width: 110, sortable: true, cell: masterCell },
-		{ id: 'sum', header: 'Сумма', width: 140, align: 'end', sortable: true, cell: sumCell },
-		{ id: 'flags', header: 'Отметки', width: 96, cell: flagsCell },
+		// Like «Заказы»: the text columns (flex) share the spare width down to their minimum.
+		{ id: 'id', header: '№', width: 64, sortable: true, cell: numberCell },
+		{ id: 'received', header: 'Принят', width: 120, sortable: true, cell: receivedCell },
+		{
+			id: 'client',
+			header: 'Клиент',
+			width: 200,
+			minWidth: 104,
+			flex: true,
+			sortable: true,
+			cell: clientCell
+		},
+		{
+			id: 'device',
+			header: 'Устройство',
+			width: 180,
+			minWidth: 92,
+			flex: true,
+			sortable: true,
+			cell: deviceCell
+		},
+		{
+			id: 'malfunction',
+			header: 'Неисправность',
+			width: 220,
+			minWidth: 90,
+			flex: true,
+			cell: malfunctionCell
+		},
+		{ id: 'status', header: 'Статус', width: 150, sortable: true, cell: statusCell },
+		{ id: 'master', header: 'Мастер', width: 96, sortable: true, cell: masterCell },
+		{ id: 'sum', header: 'Сумма', width: 132, align: 'end', sortable: true, cell: sumCell },
+		{ id: 'flags', header: 'Отметки', width: 100, cell: flagsCell },
 		{ id: 'phone', header: 'Телефон', width: 150, hiddenByDefault: true, cell: phoneCell },
 		{
 			id: 'type',

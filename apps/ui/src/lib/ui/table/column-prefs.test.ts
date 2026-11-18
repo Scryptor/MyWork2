@@ -17,14 +17,16 @@ const COLUMNS: Column<never>[] = [
 	{ id: 'master', header: 'Мастер', width: 110, cell }
 ];
 
+// No width is stored until the user drags a column edge: the columns keep their default (or flexible) size.
 const DEFAULTS = {
 	order: ['id', 'client', 'phone', 'master'],
 	hidden: ['phone'],
-	widths: { id: 80, client: 200, phone: 150, master: 110 }
+	widths: {}
 };
 
-function store(value: unknown): void {
-	localStorage.setItem(columnPrefsKey('orders'), JSON.stringify(value));
+/** Stored by this version (`v: 2`): widths are only the columns the user resized. */
+function store(value: Record<string, unknown>): void {
+	localStorage.setItem(columnPrefsKey('orders'), JSON.stringify({ v: 2, ...value }));
 }
 
 afterEach(() => {
@@ -39,7 +41,7 @@ describe('columnPrefsKey', () => {
 });
 
 describe('loadColumnPrefs', () => {
-	it('nothing stored: declared order, hiddenByDefault hidden, default widths', () => {
+	it('nothing stored: declared order, hiddenByDefault hidden, no width of its own', () => {
 		expect(loadColumnPrefs('orders', COLUMNS)).toEqual(DEFAULTS);
 	});
 
@@ -52,7 +54,23 @@ describe('loadColumnPrefs', () => {
 		expect(loadColumnPrefs('orders', COLUMNS)).toEqual({
 			order: ['master', 'id', 'client', 'phone'],
 			hidden: ['id'],
-			widths: { id: 80, client: 260, phone: 150, master: 110 }
+			widths: { client: 260 }
+		});
+	});
+
+	it('before 5.3 every width was saved, resized or not: such widths are dropped, the rest is kept', () => {
+		localStorage.setItem(
+			columnPrefsKey('orders'),
+			JSON.stringify({
+				order: ['master', 'id', 'client', 'phone'],
+				hidden: ['id'],
+				widths: { id: 80, client: 260, phone: 150, master: 110 }
+			})
+		);
+		expect(loadColumnPrefs('orders', COLUMNS)).toEqual({
+			order: ['master', 'id', 'client', 'phone'],
+			hidden: ['id'],
+			widths: {}
 		});
 	});
 
@@ -93,10 +111,10 @@ describe('loadColumnPrefs', () => {
 		// JSON reads 1e999 as Infinity.
 		localStorage.setItem(
 			columnPrefsKey('orders'),
-			'{"order":["id","client","phone","master"],"hidden":[],' +
+			'{"v":2,"order":["id","client","phone","master"],"hidden":[],' +
 				'"widths":{"id":"300","client":null,"master":1e999}}'
 		);
-		expect(loadColumnPrefs('orders', COLUMNS).widths).toEqual(DEFAULTS.widths);
+		expect(loadColumnPrefs('orders', COLUMNS).widths).toEqual({});
 	});
 
 	it('garbage in storage gives the defaults', () => {
@@ -124,10 +142,10 @@ describe('saveColumnPrefs', () => {
 		const prefs = {
 			order: ['client', 'id', 'master', 'phone'],
 			hidden: ['master'],
-			widths: { id: 90, client: 240, phone: 150, master: 110 }
+			widths: { id: 90, client: 240 }
 		};
 		saveColumnPrefs('orders', prefs);
-		expect(JSON.parse(localStorage.getItem('mw.table.orders')!)).toEqual(prefs);
+		expect(JSON.parse(localStorage.getItem('mw.table.orders')!)).toEqual({ v: 2, ...prefs });
 		expect(loadColumnPrefs('orders', COLUMNS)).toEqual(prefs);
 	});
 

@@ -3,6 +3,8 @@ import type { Column, ColumnPrefs } from './types.js';
 
 export const COLUMN_MIN_WIDTH = 60;
 export const COLUMN_MAX_WIDTH = 800;
+/** Without `v: 2` the stored widths are ignored: before 5.3 every width was saved, resized or not. */
+export const COLUMN_PREFS_VERSION = 2;
 
 export function columnPrefsKey(storageKey: string): string {
 	return 'mw.table.' + storageKey;
@@ -34,7 +36,8 @@ function knownIds(value: unknown, known: (id: string) => boolean): string[] {
 
 /**
  * Stored preferences merged with the current columns. Never throws: unknown columns are dropped, new
- * ones go to the end with their default visibility, widths are clamped, garbage gives the defaults.
+ * ones go to the end with their default visibility, widths (of the resized columns only) are clamped,
+ * garbage gives the defaults.
  */
 export function loadColumnPrefs(storageKey: string, columns: Column<never>[]): ColumnPrefs {
 	const byId = new Map(columns.map((c) => [c.id, c]));
@@ -53,19 +56,16 @@ export function loadColumnPrefs(storageKey: string, columns: Column<never>[]): C
 	];
 	if (order.every((id) => hidden.includes(id))) hidden = defaultHidden;
 
-	const storedWidths = isRecord(s.widths) ? s.widths : {};
+	const storedWidths = s.v === COLUMN_PREFS_VERSION && isRecord(s.widths) ? s.widths : {};
 	const widths: Record<string, number> = {};
 	for (const c of columns) {
 		const w = storedWidths[c.id];
-		widths[c.id] = clampColumnWidth(
-			typeof w === 'number' && Number.isFinite(w) ? w : c.width,
-			c.minWidth
-		);
+		if (typeof w === 'number' && Number.isFinite(w)) widths[c.id] = clampColumnWidth(w, c.minWidth);
 	}
 	return { order, hidden, widths };
 }
 
 export function saveColumnPrefs(storageKey: string, prefs: ColumnPrefs): void {
 	// storage unavailable: the table keeps working with what it has in memory
-	writeStorage(columnPrefsKey(storageKey), JSON.stringify(prefs));
+	writeStorage(columnPrefsKey(storageKey), JSON.stringify({ v: COLUMN_PREFS_VERSION, ...prefs }));
 }

@@ -42,15 +42,17 @@ export const SORT_FIELD: Record<string, OrderSortField> = {
 type Spec = Omit<Column<OrderListItem>, 'cell' | 'sortable'>;
 
 const SPECS: Record<OrderColumnId, Spec> = {
-	id: { id: 'id', header: '№', width: 84 },
-	received: { id: 'received', header: 'Принят', width: 132 },
-	client: { id: 'client', header: 'Клиент', width: 200, minWidth: 120 },
-	device: { id: 'device', header: 'Устройство', width: 180 },
-	malfunction: { id: 'malfunction', header: 'Неисправность', width: 200 },
-	status: { id: 'status', header: 'Статус', width: 232 },
-	master: { id: 'master', header: 'Мастер', width: 110 },
-	amount: { id: 'amount', header: 'Сумма', width: 140, align: 'end' },
-	flags: { id: 'flags', header: 'Отметки', width: 96 },
+	// Text columns share the spare width; at 1280×720 with the full menu (≈1040px of table, less a
+	// scroll bar) all of them fit at their minimum without scrolling sideways (decision 51).
+	id: { id: 'id', header: '№', width: 64 },
+	received: { id: 'received', header: 'Принят', width: 120 },
+	client: { id: 'client', header: 'Клиент', width: 200, minWidth: 104, flex: true },
+	device: { id: 'device', header: 'Устройство', width: 180, minWidth: 92, flex: true },
+	malfunction: { id: 'malfunction', header: 'Неисправность', width: 220, minWidth: 90, flex: true },
+	status: { id: 'status', header: 'Статус', width: 150 },
+	master: { id: 'master', header: 'Мастер', width: 96 },
+	amount: { id: 'amount', header: 'Сумма', width: 132, align: 'end' },
+	flags: { id: 'flags', header: 'Отметки', width: 100 },
 	phone: { id: 'phone', header: 'Телефон', width: 150, hiddenByDefault: true },
 	type: { id: 'type', header: 'Тип', width: 120, hiddenByDefault: true },
 	serial: { id: 'serial', header: 'Серийный/IMEI', width: 170, hiddenByDefault: true },
