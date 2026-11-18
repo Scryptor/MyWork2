@@ -31,6 +31,8 @@ export const ru = {
 		failed: 'Не сохранено',
 		/** Why: the order was deleted while it was being edited. */
 		deleted: 'заказ удалён',
+		/** Why: the client was deleted (merged into another) while being edited. */
+		clientDeleted: 'клиент удалён',
 		drop: 'Отбросить мои правки'
 	},
 	panel: { prev: 'Предыдущая запись', next: 'Следующая запись' },
@@ -52,6 +54,7 @@ export const ru = {
 	app: {
 		name: 'MyWork',
 		orders: 'Заказы',
+		clients: 'Клиенты',
 		intake: 'Принять',
 		intakeDevice: 'Принять устройство',
 		point: 'Точка обслуживания',
@@ -124,6 +127,63 @@ export const ru = {
 		save: 'Сохранить',
 		viewSaved: (name: string) => `Вид «${name}» сохранён в «Мои виды»`,
 		removeView: 'Удалить вид'
+	},
+	clients: {
+		title: 'Клиенты',
+		forms: ['клиент', 'клиента', 'клиентов'],
+		filter: 'Фильтр списка',
+		filterPlaceholder: 'Фильтр: ФИО или телефон…',
+		chips: 'Быстрые фильтры',
+		all: 'Все',
+		similar: 'Похожие',
+		empty: 'Пока нет клиентов',
+		emptyHint: 'Клиенты появляются при приёме устройства (N)',
+		nothingFound: 'Ничего не нашлось',
+		nothingFoundHint: 'Измените фильтр или сбросьте его',
+		noSimilar: 'Похожих клиентов нет',
+		resetFilter: 'Сбросить фильтр',
+		loadFailed: 'Не удалось загрузить клиентов',
+		noOrders: 'нет заказов',
+		lastOrder: (when: string) => `последний ${when}`
+	},
+	client: {
+		noName: 'Без имени',
+		number: (id: number) => `клиент № ${id}`,
+		loadFailed: 'Не удалось открыть клиента',
+		fullName: 'ФИО',
+		phones: 'Телефоны',
+		phone: 'Телефон',
+		phoneN: (n: number) => `Номер ${n}`,
+		phoneNote: 'Пометка',
+		phoneNoteN: (n: number) => `Пометка ${n}`,
+		phoneGroup: (n: number) => `Номер ${n}`,
+		addPhone: '＋ номер',
+		removePhone: (n: number) => `Убрать номер ${n}`,
+		makePrimary: 'Сделать основным',
+		primary: 'основной',
+		address: 'Адрес',
+		source: 'Откуда узнали',
+		note: 'Заметка',
+		blacklisted: 'Чёрный список',
+		orders: 'Заказы клиента',
+		ordersFailed: 'Заказы не удалось загрузить',
+		noOrders: 'Заказов пока нет',
+		moreOrders: (shown: number, total: number) => `Показаны последние ${shown} из ${total}`,
+		allOrders: 'все',
+		backToClient: '← к клиенту',
+		open: 'открыть',
+		newOrder: 'Новый заказ',
+		similar: (n: number) => `Похожие клиенты: ${n}`,
+		similarHint: 'То же имя или общий телефон',
+		conflictTitle: 'Клиента изменили на другом компьютере',
+		unsaved: (name: string, message: string) =>
+			`Изменения клиента «${name}» не сохранены: ${message}`,
+		phoneErrors: {
+			duplicate: 'Этот номер уже есть в списке',
+			out_of_range: 'Не больше 10 номеров',
+			invalid: 'У пометки нет номера'
+		},
+		nameRequired: 'Укажите ФИО или телефон'
 	},
 	order: {
 		title: (id: number) => `№ ${id}`,

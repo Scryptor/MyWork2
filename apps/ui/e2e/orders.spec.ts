@@ -219,7 +219,7 @@ test('a row opens its order in the panel and stays marked', async ({ page, reque
 	);
 });
 
-test('a client from Ctrl K shows all their orders under a chip', async ({ page, request }) => {
+test('a client in the address shows all their orders under a chip', async ({ page, request }) => {
 	const marker = uniq('a').split('-')[1]!;
 	const mine = await createOrder(request, {
 		clientName: `ТЕСТОВА ${marker.toUpperCase()}`,
@@ -227,12 +227,8 @@ test('a client from Ctrl K shows all their orders under a chip', async ({ page, 
 		status_id: await statusId(request, 'Готов')
 	});
 	await createOrder(request, { model: uniq('M') });
-	await openOrders(page);
-	await page.keyboard.press(`${await mod(page)}+KeyK`);
-	const palette = page.getByRole('dialog', { name: 'Найти или выполнить' });
-	await palette.getByRole('combobox').fill(marker);
-	await palette.getByRole('option', { name: /^Тестова/ }).click();
-	await expect(page).toHaveURL(new RegExp(`client=${mine.client_id}`));
+	// «все» of a client's orders on «Клиенты» leads here.
+	await openOrders(page, `?client=${mine.client_id}&chips=all`);
 	await expect(page.getByText(/^Клиент: Тестова/)).toBeVisible();
 	// Every order of the client, not only those in work.
 	await expect(chip(page, 'Все')).toHaveAttribute('aria-pressed', 'true');

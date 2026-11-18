@@ -29,8 +29,9 @@ export interface Autosave<T extends object> {
 	 */
 	discard(...fields: (keyof T)[]): void;
 	/**
-	 * The fields are left. Until then a text the server saved only trimmed («Замена » → «Замена») stays
-	 * as typed, so the next word does not stick to it; after it the field shows the server's text.
+	 * The fields are left. Until then a value the server kept in its own form (text only trimmed:
+	 * «Замена » → «Замена»; see `keeps`) stays as typed, so the next word does not stick to it; after it
+	 * the field shows the server's value.
 	 */
 	release(): void;
 	dispose(): void;
@@ -45,18 +46,29 @@ function asApiError(e: unknown): ApiError {
 	return e instanceof ApiError ? e : new ApiError(0, 'internal', ru.api.failed, null);
 }
 
+/** By default the server only trims text: «Замена » comes back as «Замена». */
+function trimmedOnly(_field: unknown, typed: unknown, server: unknown): boolean {
+	return typeof typed === 'string' && typeof server === 'string' && typed.trim() === server;
+}
+
 export function createAutosave<T extends object>(opts: {
 	save: (patch: Partial<T>) => Promise<void>;
 	delayMs: number; // 600
 	onstate?: (s: SaveState) => void;
+	/**
+	 * The server kept a value sent in its own form (trimmed text by default; a phone list with its notes
+	 * trimmed): until `release` the field shows it as it was sent.
+	 */
+	keeps?: (field: keyof T, typed: unknown, server: unknown) => boolean;
 }): Autosave<T> {
+	const keeps = opts.keeps ?? trimmedOnly;
 	/** Changes not sent yet. */
 	let waiting: Partial<T> = {};
 	/** The patch of the request in flight. */
 	let sending: Partial<T> | null = null;
 	/** Fields of the request in flight dropped meanwhile: they are not own any more. */
 	let dropped: Partial<Record<keyof T, true>> = {};
-	/** Texts as they were sent, kept for the field in use (see `release`). */
+	/** Values as they were sent, kept for the field in use (see `release`). */
 	let typed: Partial<T> = {};
 	let state: SaveState = 'idle';
 	let error: ApiError | null = null;
@@ -99,8 +111,7 @@ export function createAutosave<T extends object>(opts: {
 		waiting = {};
 		sending = patch;
 		dropped = {};
-		for (const [k, v] of Object.entries(patch))
-			if (typeof v === 'string') typed = { ...typed, [k]: v };
+		typed = { ...typed, ...patch };
 		error = null;
 		refresh();
 		opts.save(patch).then(
@@ -193,10 +204,8 @@ export function createAutosave<T extends object>(opts: {
 			subscribe();
 			if (field in waiting) return waiting[field] as T[typeof field];
 			if (sending && field in sending && !dropped[field]) return sending[field] as T[typeof field];
-			const own = typed[field];
-			if (typeof own === 'string' && typeof server === 'string' && own.trim() === server) {
-				return own as T[typeof field];
-			}
+			if (field in typed && keeps(field, typed[field], server))
+				return typed[field] as T[typeof field];
 			return server;
 		},
 		discard(...fields) {

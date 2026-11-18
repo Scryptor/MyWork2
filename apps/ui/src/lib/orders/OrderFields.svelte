@@ -5,9 +5,12 @@
 	import Eye from '@lucide/svelte/icons/eye';
 	import EyeOff from '@lucide/svelte/icons/eye-off';
 	import { untrack } from 'svelte';
+	import { resolve } from '$app/paths';
 	import type { Client } from '$api/Client';
 	import type { Order } from '$api/Order';
 	import { serverClock } from '#lib/api/server-clock.svelte.js';
+	import { app } from '#lib/app/context.svelte.js';
+	import { clientHref } from '#lib/clients/view.js';
 	import {
 		countLabel,
 		displayName,
@@ -42,7 +45,8 @@
 		flashed = new Set(),
 		onkeep,
 		ontake,
-		onflashend
+		onflashend,
+		onopenclient
 	}: {
 		order: Order;
 		autosave: Autosave<OrderValues>;
@@ -65,7 +69,12 @@
 		onkeep?: (field: OrderField) => void;
 		ontake?: (field: OrderField) => void;
 		onflashend?: (field: OrderField) => void;
+		/** «открыть» at the client: the panel closes before «Клиенты» opens; without it a plain link. */
+		onopenclient?: (e: MouseEvent) => void;
 	} = $props();
+
+	// «открыть»: the client's panel on «Клиенты», for those who may see the list.
+	const canOpenClient = $derived(app.can('clients_view') || app.can('orders_create'));
 
 	const t = ru.order;
 	const LABELS: Partial<Record<OrderField, string>> = {
@@ -204,6 +213,13 @@
 	{/if}
 
 	<Section title={t.client}>
+		{#snippet actions()}
+			{#if canOpenClient}
+				<a class="open-client" href={resolve(clientHref(order.client_id))} onclick={onopenclient}
+					>{ru.client.open}</a
+				>
+			{/if}
+		{/snippet}
 		{#if client}
 			<p class="line">
 				<span class="strong">{displayName(client.full_name)}</span>
@@ -468,6 +484,9 @@
 	a,
 	.link {
 		color: var(--accent);
+	}
+	.open-client {
+		font-size: var(--text-sm);
 	}
 	.link {
 		padding: 0;

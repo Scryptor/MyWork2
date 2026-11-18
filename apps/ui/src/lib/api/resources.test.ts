@@ -1,4 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
+import { listClients, mergeClients, similarClients, updateClient } from './clients.js';
 import { changeStatus, orderValues, listOrders } from './orders.js';
 
 function stubFetch() {
@@ -30,4 +31,33 @@ it('skips the brand when it is not given', async () => {
 	const fn = stubFetch();
 	await orderValues('model', 'ip');
 	expect(call(fn)[0]).toBe('/api/v1/orders/values?field=model&query=ip');
+});
+
+it('edits a client with its version; similar and merge have their own paths', async () => {
+	const fn = stubFetch();
+	await updateClient(7, 4, { phones: [{ phone: '79211234567', note: 'жена' }] });
+	expect(call(fn)[0]).toBe('/api/v1/clients/7?version=4');
+	expect(call(fn)[1].method).toBe('PATCH');
+	expect(call(fn)[1].body).toBe('{"phones":[{"phone":"79211234567","note":"жена"}]}');
+	fn.mockClear();
+	await similarClients(7);
+	expect(call(fn)[0]).toBe('/api/v1/clients/7/similar');
+	fn.mockClear();
+	await mergeClients({
+		target_id: 7,
+		target_version: 4,
+		sources: [{ id: 8, version: 1 }],
+		full_name: 'Тестова Анна',
+		address: '',
+		note: '',
+		source: '',
+		blacklisted: false
+	});
+	expect(call(fn)[0]).toBe('/api/v1/clients/merge');
+	expect(call(fn)[1].method).toBe('POST');
+	fn.mockClear();
+	await listClients({ query: 'ив', sort: 'orders_count', descending: true, limit: 100, offset: 0 });
+	expect(call(fn)[0]).toBe(
+		'/api/v1/clients?query=%D0%B8%D0%B2&sort=orders_count&descending=true&limit=100&offset=0'
+	);
 });

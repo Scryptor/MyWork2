@@ -8,6 +8,7 @@
 	import Moon from '@lucide/svelte/icons/moon';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Sun from '@lucide/svelte/icons/sun';
+	import Users from '@lucide/svelte/icons/users';
 	import Wrench from '@lucide/svelte/icons/wrench';
 	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
@@ -35,6 +36,7 @@
 	import ScanChoiceDialog from '#lib/app/ScanChoiceDialog.svelte';
 	import { ATTENTION_KEYS, summary } from '#lib/app/summary.svelte.js';
 	import { undo } from '#lib/app/undo.svelte.js';
+	import { clientHref } from '#lib/clients/view.js';
 	import { registerHotkey } from '#lib/design/hotkeys.svelte.js';
 	import { layers } from '#lib/design/layers.svelte.js';
 	import { prefs, type ThemePref } from '#lib/design/prefs.svelte.js';
@@ -164,8 +166,8 @@
 			if (!opts.alt) return void orderPanel.open(id);
 			return void goto(resolve(`orders/${id}`));
 		}
-		// A client's orders: all of them, issued too.
-		if (kind === 'client') return void goto(resolve(`orders?client=${value}&chips=all`));
+		// A client: their panel on «Клиенты», with their orders.
+		if (kind === 'client') return void goto(resolve(clientHref(Number(value))));
 		const [command, arg] = value.split(':');
 		if (command === 'intake') intake.open();
 		else if (command === 'theme') prefs.set({ theme: arg as ThemePref });
@@ -236,12 +238,23 @@
 	];
 	let helpOpen = $state(false);
 
-	// Phone (spec 5.6): «Заказы», «＋», «Ещё» with the theme and the user's actions.
+	// Phone (spec 5.6): «Заказы», «Клиенты», «＋», «Ещё» with the theme and the user's actions.
 	let moreOpen = $state(false);
-	const BOTTOM: NavItem[] = [
+	const canSeeClients = $derived(app.can('clients_view') || app.can('orders_create'));
+	const BOTTOM = $derived<NavItem[]>([
 		{ id: 'orders', label: ru.app.orders, icon: Wrench, href: resolve('orders') },
+		...(canSeeClients
+			? [{ id: 'clients', label: ru.app.clients, icon: Users, href: resolve('clients') }]
+			: []),
 		{ id: 'more', label: ru.common.more, icon: Ellipsis }
-	];
+	]);
+	const bottomActive = $derived(
+		page.url.pathname === resolve('orders') || page.url.pathname.startsWith(`${resolve('orders')}/`)
+			? 'orders'
+			: page.url.pathname === resolve('clients')
+				? 'clients'
+				: ''
+	);
 	const THEMES = (['system', 'light', 'dark'] as const).map((value) => ({
 		value,
 		label: ru.app.themes[value]
@@ -273,10 +286,7 @@
 		{#snippet bottomNav()}
 			<BottomNav
 				items={BOTTOM}
-				active={page.url.pathname === resolve('orders') ||
-				page.url.pathname.startsWith(`${resolve('orders')}/`)
-					? 'orders'
-					: ''}
+				active={bottomActive}
 				primary={canIntake
 					? { label: ru.app.intake, icon: Plus, onclick: () => intake.open() }
 					: undefined}

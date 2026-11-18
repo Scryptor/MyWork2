@@ -264,6 +264,30 @@ describe('createAutosave', () => {
 		expect(a.value('malfunction', 'Замена')).toBe('Замена');
 	});
 
+	it('a value the server keeps in its own form stays as sent until release, when told so', async () => {
+		interface Rows {
+			rows: string[];
+		}
+		const sent: Partial<Rows>[] = [];
+		const rows = createAutosave<Rows>({
+			delayMs: 600,
+			save: async (patch) => void sent.push(patch),
+			// The server drops empty rows.
+			keeps: (field, typed, server) =>
+				field === 'rows' &&
+				JSON.stringify((typed as string[]).filter(Boolean)) === JSON.stringify(server)
+		});
+		rows.commit('rows', ['a', '']);
+		await settle();
+		expect(sent).toEqual([{ rows: ['a', ''] }]);
+		expect(rows.value('rows', ['a'])).toEqual(['a', '']);
+		// Another list on the server is not the sent one in its form: the server's.
+		expect(rows.value('rows', ['b'])).toEqual(['b']);
+		rows.release();
+		expect(rows.value('rows', ['a'])).toEqual(['a']);
+		rows.dispose();
+	});
+
 	it('dispose stops the timer', () => {
 		a.edit('malfunction', 'x');
 		a.dispose();

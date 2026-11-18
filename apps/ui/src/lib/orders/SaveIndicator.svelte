@@ -1,11 +1,11 @@
-<!-- «Сохраняю…», «✓ Сохранено» or «Не сохранено · Повторить» of an order's editor (spec 6.2), after the
-     other parts of a meta line: each state starts with its own «·». A save no retry can help (the order
-     deleted, no right to edit) says why and offers «Отбросить мои правки» instead. -->
+<!-- «Сохраняю…», «✓ Сохранено» or «Не сохранено · Повторить» of a record's editor (spec 6.2: an order, a
+     client), after the other parts of a meta line: each state starts with its own «·». A save no retry
+     can help (the record deleted, no right to edit) says why and offers «Отбросить мои правки» instead. -->
 <script lang="ts">
+	import type { SaveStatus } from '#lib/app/entity-editor.svelte.js';
 	import { ru } from '#lib/i18n/ru.js';
-	import type { OrderEditor } from './editor.svelte.js';
 
-	let { editor }: { editor: OrderEditor } = $props();
+	let { editor }: { editor: SaveStatus } = $props();
 
 	const saveState = $derived(editor.saveState);
 	const lost = $derived(editor.lost);

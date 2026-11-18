@@ -17,6 +17,7 @@
 	import { getOrder } from '#lib/api/orders.js';
 	import { serverClock } from '#lib/api/server-clock.svelte.js';
 	import { app } from '#lib/app/context.svelte.js';
+	import { clientHref } from '#lib/clients/view.js';
 	import { PHONE_QUERY } from '#lib/design/breakpoints.js';
 	import { formatRelative } from '#lib/format/date.js';
 	import { dialNumber } from '#lib/format/phone.js';
@@ -202,6 +203,34 @@
 		await goto(resolve(`orders/${id}`));
 	}
 
+	const plainClick = (e: MouseEvent) =>
+		!(e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || e.button !== 0);
+
+	/** «открыть» at the client: the panel saves and closes, then «Клиенты» shows the client. */
+	async function openClient(e: MouseEvent) {
+		if (!plainClick(e)) return;
+		e.preventDefault();
+		const id = order?.client_id;
+		if (id === undefined) return;
+		if (!(await orderPanel.close())) return;
+		await goto(resolve(clientHref(id)));
+	}
+
+	/**
+	 * «← к клиенту» of an order opened from a client's panel: this panel closes, the client's is under it;
+	 * from anywhere else the address leads there.
+	 */
+	async function goBack(e: MouseEvent) {
+		const href = orderPanel.back?.href;
+		if (!href || !plainClick(e)) return;
+		e.preventDefault();
+		if (!(await orderPanel.close())) return;
+		const target = new URL(href, location.href);
+		if (target.pathname + target.search === location.pathname + location.search) return;
+		// eslint-disable-next-line svelte/no-navigation-without-resolve -- resolved by whoever opened the panel
+		await goto(href);
+	}
+
 	// «Выдать»: Ctrl/⌘+Enter from the panel.
 	$effect(() => orderActions.issueShortcut());
 
@@ -245,6 +274,10 @@
 		{/if}
 	{/snippet}
 	{#snippet header()}
+		{#if orderPanel.back}
+			<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- resolved by whoever opened the panel -->
+			<a class="back" href={orderPanel.back.href} onclick={goBack}>{orderPanel.back.label}</a>
+		{/if}
 		{#if order}
 			<p class="meta num">
 				<span>{t.received(formatRelative(order.received_at, serverClock.now()))}</span>
@@ -271,6 +304,7 @@
 					onkeep={(f) => ed.keep(f)}
 					ontake={(f) => ed.take(f)}
 					onflashend={(f) => ed.endFlash(f)}
+					onopenclient={openClient}
 				/>
 				{#if media}<OrderPhotos {media} readonly={!canEdit} />{/if}
 				<OrderHistory orderId={ed.order.id} version={ed.order.version} onall={openCard} />
@@ -344,6 +378,15 @@
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-5);
+	}
+	.back {
+		align-self: flex-start;
+		color: var(--accent);
+		font-size: var(--text-sm);
+		text-decoration: none;
+	}
+	.back:hover {
+		text-decoration: underline;
 	}
 	.loading {
 		display: flex;

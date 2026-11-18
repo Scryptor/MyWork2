@@ -1,7 +1,10 @@
 import { deflateSync } from 'node:zlib';
 import type { APIRequestContext } from '@playwright/test';
 import type { Attachment } from '$api/Attachment';
+import type { Client } from '$api/Client';
+import type { ClientPatch } from '$api/ClientPatch';
 import type { DictionaryKind } from '$api/DictionaryKind';
+import type { NewClient } from '$api/NewClient';
 import type { NewOrder } from '$api/NewOrder';
 import type { Order } from '$api/Order';
 import type { OrderPatch } from '$api/OrderPatch';
@@ -75,6 +78,40 @@ export async function createOrder(
 		...rest
 	};
 	return json<Order>(await request.post('/api/v1/orders', { data: body }));
+}
+
+/** Creates a client through the API; a unique name and phone unless given. */
+export async function createClient(
+	request: APIRequestContext,
+	over: Partial<NewClient> = {}
+): Promise<Client> {
+	const body: NewClient = {
+		full_name: `Тестов ${uniq('К')}`,
+		phones: [{ phone: uniqPhone(), note: '' }],
+		address: '',
+		note: '',
+		source: '',
+		blacklisted: false,
+		...over
+	};
+	return json<Client>(await request.post('/api/v1/clients', { data: body }));
+}
+
+/** Gets a client as the server has it now. */
+export async function fetchClient(request: APIRequestContext, id: number): Promise<Client> {
+	return json<Client>(await request.get(`/api/v1/clients/${id}`));
+}
+
+/** Edits a client with its current version. */
+export async function patchClient(
+	request: APIRequestContext,
+	id: number,
+	patch: ClientPatch
+): Promise<Client> {
+	const current = await fetchClient(request, id);
+	return json<Client>(
+		await request.patch(`/api/v1/clients/${id}?version=${current.version}`, { data: patch })
+	);
 }
 
 export async function statusId(request: APIRequestContext, name: string): Promise<number> {

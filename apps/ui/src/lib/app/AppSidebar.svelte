@@ -1,5 +1,5 @@
-<!-- Sidebar of the program (spec 5.1, 6.1): «Заказы», «Требуют внимания», «Мои виды». Sections
-     that have no screen yet (Клиенты, Склад, Отчёты, Настройки) come with their plans. -->
+<!-- Sidebar of the program (spec 5.1, 6.1): «Заказы», «Клиенты», «Требуют внимания», «Мои виды». Sections
+     that have no screen yet (Склад, Отчёты, Настройки) come with their plans. -->
 <script lang="ts" module>
 	import CalendarClock from '@lucide/svelte/icons/calendar-clock';
 	import Clock from '@lucide/svelte/icons/clock';
@@ -20,6 +20,7 @@
 <script lang="ts">
 	import Bookmark from '@lucide/svelte/icons/bookmark';
 	import CircleCheck from '@lucide/svelte/icons/circle-check';
+	import Users from '@lucide/svelte/icons/users';
 	import Wrench from '@lucide/svelte/icons/wrench';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
@@ -32,6 +33,7 @@
 	import { ATTENTION_KEYS, attentionCounts, inWorkCount, summary } from './summary.svelte.js';
 
 	const ORDERS = resolve('orders');
+	const CLIENTS = resolve('clients');
 
 	// «Мои виды»: views of the orders list saved on this device (the «Фильтры ▾» menu saves them).
 	const views = $derived<NavItem[]>(
@@ -64,6 +66,9 @@
 		href: ORDERS
 	};
 
+	// «Клиенты» needs the right to see the list (the server's rule for `GET /clients`).
+	const canSeeClients = $derived(app.can('clients_view') || app.can('orders_create'));
+
 	const sections = $derived<NavSection[]>([
 		{
 			items: [
@@ -73,7 +78,10 @@
 					icon: Wrench,
 					href: ORDERS,
 					count: inWorkCount(summary.current, app.statuses)
-				}
+				},
+				...(canSeeClients
+					? [{ id: 'clients', label: ru.app.clients, icon: Users, href: CLIENTS }]
+					: [])
 			]
 		},
 		...(counts === null
@@ -88,6 +96,7 @@
 	]);
 
 	const active = $derived.by(() => {
+		if (page.url.pathname === CLIENTS) return 'clients';
 		// The full card of an order belongs to «Заказы».
 		if (page.url.pathname.startsWith(`${ORDERS}/`)) return 'orders';
 		if (page.url.pathname !== ORDERS) return '';
