@@ -5,6 +5,18 @@ interface Entry {
 	close: () => void;
 	/** The element of a modal or panel: what is inside it is on top. */
 	element?: () => Element | null;
+	/** A popup opened over a modal is inside it (nothing else takes input then) and goes with it. */
+	owner?: Entry;
+}
+
+/** The modal a popup opened now belongs to: the topmost layer that is not a popup, if it is a modal. */
+function ownerModal(): Entry | undefined {
+	for (let i = stack.length - 1; i >= 0; i--) {
+		const entry = stack[i]!;
+		if (entry.kind === 'popup') continue;
+		return entry.kind === 'modal' ? entry : undefined;
+	}
+	return undefined;
 }
 
 /**
@@ -40,8 +52,11 @@ export const layers = {
 			listening = true;
 		}
 		const entry: Entry = { kind, close, element };
+		if (kind === 'popup') entry.owner = ownerModal();
 		setStack([...stack, entry]);
-		return () => setStack(stack.filter((x) => x !== entry));
+		// A closed modal takes its popups with it: its content (and their teardown) may stay a frame
+		// longer while it goes, and the page should not wait for that (N right after «Принять»).
+		return () => setStack(stack.filter((x) => x !== entry && x.owner !== entry));
 	},
 	/**
 	 * An open tooltip takes Esc for itself (bits-ui prevents it): the panel under it closes as well, so one Esc

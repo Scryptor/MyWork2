@@ -96,4 +96,44 @@ describe('layers', () => {
 		page.remove();
 		sheet.remove();
 	});
+
+	it('popups of a modal go with it: its content (and the popups) may outlive it by a frame', () => {
+		const offSheet = layers.open('modal', () => {});
+		const offA = layers.open('popup', () => {});
+		const offB = layers.open('popup', () => {});
+		offSheet();
+		// The sheet is closed: N works at once, not when its content is gone.
+		expect(layers.topKind).toBeNull();
+		expect(layers.blocking).toBe(false);
+		// The popups' own teardown comes later and changes nothing.
+		offA();
+		offB();
+		expect(layers.topKind).toBeNull();
+
+		// A popup over a modal over a panel: the panel stays.
+		const offPanel = layers.open('panel', () => {});
+		const offDialog = layers.open('modal', () => {});
+		const offMenu = layers.open('popup', () => {});
+		offDialog();
+		expect(layers.topKind).toBe('panel');
+		offMenu();
+		offPanel();
+	});
+
+	it('a popup on the page or beside a panel, and a panel opened as a modal closes, stay', () => {
+		const offPanel = layers.open('panel', () => {});
+		const offMenu = layers.open('popup', () => {});
+		offPanel();
+		// The page beside a panel takes input: its menu is not the panel's.
+		expect(layers.topKind).toBe('popup');
+		offMenu();
+
+		// Ctrl K → Enter: the palette closes as the order panel opens.
+		const offPalette = layers.open('modal', () => {});
+		const offOrder = layers.open('panel', () => {});
+		offPalette();
+		expect(layers.topKind).toBe('panel');
+		offOrder();
+		expect(layers.topKind).toBeNull();
+	});
 });

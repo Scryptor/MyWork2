@@ -658,6 +658,32 @@ test('a photo chosen in intake goes to the accepted order', async ({ page, reque
 	await expect(photoTilesOf(page)).toHaveCount(0);
 });
 
+test('N right after «Принять» opens the next intake, though suggestions were open in the sheet', async ({
+	page
+}) => {
+	await openIntake(page);
+	await phoneOf(page).fill(uniqPhone());
+	// Filled without a click: the suggestions of the three fields stay open.
+	await fillDevice(page);
+	await malfunctionOf(page).fill(uniq('Разбит экран'));
+	// N at the very moment «Принят № …» appears: the sheet is closed, its content not yet gone.
+	await page.evaluate(() => {
+		const observer = new MutationObserver(() => {
+			if (!/Принят № \d+/.test(document.body.textContent ?? '')) return;
+			observer.disconnect();
+			const target = document.activeElement ?? document.body;
+			target.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', code: 'KeyN', bubbles: true }));
+		});
+		observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+	});
+	await sheetOf(page)
+		.getByRole('button', { name: /^Принять/ })
+		.click();
+	await acceptedNumber(page);
+	await expect(sheetOf(page)).toBeVisible();
+	await expect(malfunctionOf(page)).toHaveValue('');
+});
+
 test('the form cannot be changed while «Принять» waits for its photos: the order has what was sent', async ({
 	page,
 	request
