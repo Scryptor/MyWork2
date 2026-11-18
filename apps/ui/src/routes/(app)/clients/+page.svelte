@@ -7,9 +7,12 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
+	import type { Client } from '$api/Client';
 	import type { ClientListItem } from '$api/ClientListItem';
+	import { app } from '#lib/app/context.svelte.js';
 	import { serverClock } from '#lib/api/server-clock.svelte.js';
 	import ClientPanel from '#lib/clients/ClientPanel.svelte';
+	import MergeDialog from '#lib/clients/MergeDialog.svelte';
 	import { clientColumns, phonesText } from '#lib/clients/columns.js';
 	import { createClientList } from '#lib/clients/list.svelte.js';
 	import {
@@ -142,6 +145,24 @@
 		}
 		clearTimeout(typing);
 		navigate({ ...view, query: text }, id, true);
+	}
+
+	// The merge: the clients are read afresh by the dialog; the panel's own edits are saved before.
+	const MERGE_MAX = 10;
+	let mergeIds = $state.raw<number[]>([]);
+	let mergeOpen = $state(false);
+	const canMerge = $derived(app.can('clients_merge'));
+	async function startMerge(ids: number[]) {
+		if (panel && !(await panel.leave())) return;
+		mergeIds = ids;
+		mergeOpen = true;
+	}
+	function merged(kept: Client) {
+		selected = new Set();
+		list.load(query);
+		toast.show({ message: ru.merge.done, tone: 'success' });
+		if (kept.id === openId) panel?.reload();
+		else void openClient(kept.id);
 	}
 	const orderBack = (id: number) => ({
 		label: ru.client.backToClient,
@@ -296,8 +317,13 @@
 				{empty}
 			/>
 			<div class="selection">
-				<!-- «Объединить» of the selected clients comes with the merge (plan 5.2, task 9). -->
-				<SelectionBar count={selected.size} onclear={() => (selected = new Set())} />
+				<SelectionBar count={selected.size} onclear={() => (selected = new Set())}>
+					{#if canMerge && selected.size >= 2 && selected.size <= MERGE_MAX}
+						<Button size="sm" onclick={() => void startMerge([...selected].map((id) => Number(id)))}
+							>{ru.merge.action}</Button
+						>
+					{/if}
+				</SelectionBar>
 			</div>
 		</div>
 	{/if}
@@ -313,7 +339,10 @@
 	}}
 	onopenclient={(id) => void openClient(id)}
 	onchanged={(c) => list.replace(c)}
+	onmerge={(ids) => void startMerge(ids)}
 />
+
+<MergeDialog bind:open={mergeOpen} ids={mergeIds} onmerged={merged} />
 
 <style>
 	.clients {

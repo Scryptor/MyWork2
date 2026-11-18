@@ -183,7 +183,34 @@ export const ru = {
 			out_of_range: 'Не больше 10 номеров',
 			invalid: 'У пометки нет номера'
 		},
-		nameRequired: 'Укажите ФИО или телефон'
+		nameRequired: 'Укажите ФИО или телефон',
+		mergeWithThis: 'Объединить с этим',
+		mergeWith: 'Объединить с…'
+	},
+	merge: {
+		action: 'Объединить',
+		title: 'Объединение клиентов',
+		hint: 'Выберите, кого оставить и откуда взять каждое значение. Телефоны объединятся, заказы перейдут к оставшемуся клиенту',
+		loadFailed: 'Не удалось загрузить клиентов',
+		keep: 'Оставить этого',
+		keepClient: (id: number) => `Оставить клиента № ${id}`,
+		takeFrom: (field: string, id: number) => `${field}: взять у клиента № ${id}`,
+		stays: 'Останется',
+		noPhones: 'нет телефонов',
+		yes: 'да',
+		no: 'нет',
+		empty: '—',
+		/** Clients in the accusative: «2 клиента», «5 клиентов». */
+		clientsForms: ['клиента', 'клиента', 'клиентов'] as const,
+		confirm: (clients: string) => `Объединить ${clients} в одного? Это нельзя отменить`,
+		confirmLabel: 'Объединить',
+		stale: 'Клиента изменили, пока вы выбирали. Проверьте и объедините снова',
+		done: 'Клиенты объединены',
+		failed: (message: string) => `Клиенты не объединены: ${message}`,
+		pickerTitle: 'Объединить с…',
+		pickerClient: 'Клиент',
+		pickerPlaceholder: 'ФИО или телефон',
+		next: 'Далее'
 	},
 	order: {
 		title: (id: number) => `№ ${id}`,

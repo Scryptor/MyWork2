@@ -1,0 +1,309 @@
+<!-- Merging clients (spec 6.6): a column for every client, who stays, which client every field comes from,
+     the phones joined, and what is left. «Объединить» asks once more: it cannot be undone. A client changed
+     meanwhile is a 409: the dialog says so and reads everyone again, keeping the choices still possible. -->
+<script lang="ts">
+	import { untrack } from 'svelte';
+	import type { Client } from '$api/Client';
+	import { ApiError, errorMessage } from '#lib/api/client.js';
+	import { getClient, mergeClients } from '#lib/api/clients.js';
+	import { listOrders } from '#lib/api/orders.js';
+	import { submitShortcut } from '#lib/design/hotkeys.svelte.js';
+	import { countLabel, displayName, formatPhone, plural } from '#lib/format/index.js';
+	import { ru } from '#lib/i18n/ru.js';
+	import Button from '#lib/ui/Button.svelte';
+	import Callout from '#lib/ui/Callout.svelte';
+	import ConfirmDialog from '#lib/ui/ConfirmDialog.svelte';
+	import Dialog from '#lib/ui/Dialog.svelte';
+	import Skeleton from '#lib/ui/Skeleton.svelte';
+	import { toast } from '#lib/ui/toast/toast.svelte.js';
+	import {
+		defaultChoice,
+		keepChoice,
+		mergedPhones,
+		toMergeRequest,
+		type MergeChoice,
+		type MergeClient,
+		type MergeField
+	} from './merge.js';
+
+	let {
+		open = $bindable(false),
+		ids,
+		onmerged
+	}: {
+		open: boolean;
+		/** The clients to merge (2..=10); the dialog reads them itself: it needs their versions. */
+		ids: number[];
+		/** The kept client, as the server returned them. */
+		onmerged: (c: Client) => void;
+	} = $props();
+
+	const t = ru.merge;
+	const uid = $props.id();
+
+	let clients = $state.raw<MergeClient[] | null>(null);
+	let choice = $state.raw<MergeChoice | null>(null);
+	let loadError = $state<string | null>(null);
+	let stale = $state(false);
+	let confirming = $state(false);
+	let token = 0;
+
+	async function readAll(): Promise<MergeClient[]> {
+		return Promise.all(
+			ids.map(async (id) => {
+				const [c, orders] = await Promise.all([
+					getClient(id),
+					listOrders({ client_id: id, limit: 1 })
+				]);
+				return { ...c, orders_count: orders.total };
+			})
+		);
+	}
+
+	async function load(keep: boolean) {
+		const mine = ++token;
+		loadError = null;
+		try {
+			const read = await readAll();
+			if (mine !== token) return;
+			const previous = choice;
+			clients = read;
+			choice = keep && previous ? keepChoice(previous, read) : defaultChoice(read);
+		} catch (e) {
+			if (mine !== token) return;
+			loadError = errorMessage(e);
+		}
+	}
+
+	$effect(() => {
+		if (!open) return;
+		untrack(() => {
+			clients = null;
+			choice = null;
+			stale = false;
+			confirming = false;
+			void load(false);
+		});
+		return () => {
+			token++;
+		};
+	});
+
+	$effect(() => {
+		if (open && !confirming && clients && choice) return submitShortcut(() => (confirming = true));
+	});
+
+	const FIELD_ROWS: { field: MergeField; label: string }[] = [
+		{ field: 'full_name', label: ru.client.fullName },
+		{ field: 'address', label: ru.client.address },
+		{ field: 'source', label: ru.client.source },
+		{ field: 'note', label: ru.client.note },
+		{ field: 'blacklisted', label: ru.client.blacklisted }
+	];
+
+	const phonesOf = (c: Client): string[] =>
+		c.phones.length === 0
+			? [t.empty]
+			: c.phones.map((p) =>
+					p.note ? `${formatPhone(p.phone)} (${p.note})` : formatPhone(p.phone)
+				);
+	function shown(c: Client, f: MergeField): string {
+		if (f === 'blacklisted') return c.blacklisted ? t.yes : t.no;
+		if (f === 'full_name') return displayName(c.full_name) || t.empty;
+		return c[f] || t.empty;
+	}
+
+	const request = $derived(clients && choice ? toMergeRequest(choice, clients) : null);
+	const summary = $derived.by(() => {
+		if (!clients || !choice || !request) return '';
+		const phones = mergedPhones(clients, choice.targetId);
+		const orders = clients.reduce((sum, c) => sum + c.orders_count, 0);
+		return [
+			`${t.stays}: ${displayName(request.full_name) || ru.client.noName}`,
+			countLabel(orders, ru.orders.forms),
+			phones.length === 0 ? t.noPhones : phones.map((p) => formatPhone(p.phone)).join(', ')
+		].join(' · ');
+	});
+	const confirmText = $derived(
+		t.confirm(
+			`${clients?.length ?? ids.length} ${plural(clients?.length ?? ids.length, t.clientsForms)}`
+		)
+	);
+
+	function pick(f: MergeField, id: number) {
+		if (choice) choice = { ...choice, from: { ...choice.from, [f]: id } };
+	}
+
+	async function merge() {
+		if (!request) return;
+		try {
+			const kept = await mergeClients(request);
+			open = false;
+			onmerged(kept);
+		} catch (e) {
+			if (e instanceof ApiError && e.status === 409) {
+				stale = true;
+				await load(true);
+			} else {
+				toast.show({ message: t.failed(errorMessage(e)), tone: 'danger' });
+			}
+		}
+	}
+</script>
+
+<Dialog bind:open title={t.title} description={t.hint} size="lg">
+	{#if clients && choice}
+		{@const ch = choice}
+		<div class="body">
+			{#if stale}
+				<Callout tone="danger">{t.stale}</Callout>
+			{/if}
+			<div class="scroll">
+				<div class="grid" style:--cols={clients.length}>
+					<span></span>
+					{#each clients as c (c.id)}
+						<label class="head" class:kept={ch.targetId === c.id}>
+							<input
+								type="radio"
+								name="{uid}-target"
+								aria-label={t.keepClient(c.id)}
+								checked={ch.targetId === c.id}
+								onchange={() => (choice = { ...ch, targetId: c.id })}
+							/>
+							<span class="num">{ru.client.number(c.id)}</span>
+							<span class="keep">{t.keep}</span>
+						</label>
+					{/each}
+
+					{#each FIELD_ROWS as row (row.field)}
+						<span class="label">{row.label}</span>
+						{#each clients as c (c.id)}
+							<label class="cell" class:chosen={ch.from[row.field] === c.id}>
+								<input
+									type="radio"
+									name="{uid}-{row.field}"
+									aria-label={t.takeFrom(row.label, c.id)}
+									checked={ch.from[row.field] === c.id}
+									onchange={() => pick(row.field, c.id)}
+								/>
+								<span class="value" class:muted={shown(c, row.field) === t.empty}
+									>{shown(c, row.field)}</span
+								>
+							</label>
+						{/each}
+					{/each}
+
+					<span class="label">{ru.client.phones}</span>
+					{#each clients as c (c.id)}
+						<span class="cell static num">
+							{#each phonesOf(c) as line, i (i)}<span>{line}</span>{/each}
+						</span>
+					{/each}
+					<span class="label">{ru.orders.title}</span>
+					{#each clients as c (c.id)}
+						<span class="cell static num">{c.orders_count}</span>
+					{/each}
+				</div>
+			</div>
+			<p class="summary" aria-live="polite">{summary}</p>
+		</div>
+	{:else if loadError}
+		<Callout tone="danger" title={t.loadFailed}>
+			{loadError}
+			{#snippet actions()}
+				<Button size="sm" onclick={() => void load(false)}>{ru.common.retry}</Button>
+			{/snippet}
+		</Callout>
+	{:else}
+		<div class="loading" aria-busy="true">
+			<Skeleton height="2.5rem" />
+			<Skeleton height="6rem" />
+		</div>
+	{/if}
+
+	{#snippet footer()}
+		<Button onclick={() => (open = false)}>{ru.common.cancel}</Button>
+		<Button variant="primary" disabled={!request} onclick={() => (confirming = true)}
+			>{t.action}</Button
+		>
+	{/snippet}
+</Dialog>
+
+<ConfirmDialog
+	bind:open={confirming}
+	title={t.action}
+	description={confirmText}
+	confirmLabel={t.confirmLabel}
+	tone="primary"
+	onconfirm={merge}
+/>
+
+<style>
+	.body {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-3);
+	}
+	.scroll {
+		overflow-x: auto;
+	}
+	.grid {
+		display: grid;
+		grid-template-columns: 6rem repeat(var(--cols), minmax(10rem, 1fr));
+		gap: var(--space-1);
+		align-items: stretch;
+		font-size: var(--text-sm);
+	}
+	.label {
+		padding-top: var(--space-2);
+		color: var(--text-3);
+	}
+	.head,
+	.cell {
+		display: flex;
+		gap: var(--space-2);
+		align-items: flex-start;
+		box-sizing: border-box;
+		padding: var(--space-2);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-md);
+		cursor: pointer;
+	}
+	.head {
+		flex-wrap: wrap;
+		font-weight: 600;
+	}
+	.keep {
+		flex-basis: 100%;
+		color: var(--text-3);
+		font-weight: 400;
+	}
+	.head.kept,
+	.cell.chosen {
+		border-color: var(--accent);
+		background: var(--accent-soft);
+	}
+	.cell.static {
+		flex-direction: column;
+		gap: 0;
+		cursor: default;
+	}
+	.value {
+		min-width: 0;
+		overflow-wrap: anywhere;
+		white-space: pre-wrap;
+	}
+	.muted {
+		color: var(--text-3);
+	}
+	.summary {
+		margin: 0;
+		color: var(--text);
+		font-weight: 500;
+	}
+	.loading {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-3);
+	}
+</style>

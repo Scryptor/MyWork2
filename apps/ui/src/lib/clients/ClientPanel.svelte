@@ -2,6 +2,7 @@
      orders (each opens the order panel over this one, with «← к клиенту») and «Новый заказ». On a phone it
      fills the screen. Which client is open lives in the address of «Клиенты». -->
 <script lang="ts">
+	import Merge from '@lucide/svelte/icons/merge';
 	import Phone from '@lucide/svelte/icons/phone';
 	import Plus from '@lucide/svelte/icons/plus';
 	import { untrack } from 'svelte';
@@ -36,6 +37,7 @@
 		createClientEditor,
 		type ClientEditor
 	} from './editor.svelte.js';
+	import MergePicker from './MergePicker.svelte';
 	import { openClientId } from './view.js';
 
 	let {
@@ -43,7 +45,8 @@
 		orderBack,
 		onclose,
 		onopenclient,
-		onchanged
+		onchanged,
+		onmerge
 	}: {
 		/** The client open (from the address); null: the panel is closed. */
 		clientId: number | null;
@@ -55,6 +58,8 @@
 		onopenclient: (id: number) => void;
 		/** Every answer of the server about the client: the list catches up. */
 		onchanged?: (c: Client) => void;
+		/** «Объединить с…» / «Объединить с этим»: the clients to merge (this one and the other). */
+		onmerge?: (ids: number[]) => void;
 	} = $props();
 
 	const t = ru.client;
@@ -69,6 +74,8 @@
 	const client = $derived(editor?.client ?? null);
 	const canEdit = $derived(app.can('clients_edit') || app.can('orders_edit'));
 	const canIntake = $derived(app.can('orders_create'));
+	const canMerge = $derived(app.can('clients_merge') && onmerge !== undefined);
+	let picking = $state(false);
 	const errors = $derived(clientFieldErrors(editor?.autosave.error ?? null));
 	const mainPhone = $derived(client?.phones[0]?.phone ?? '');
 	const title = $derived(client ? clientTitle(client) : t.number(clientId ?? 0));
@@ -160,6 +167,13 @@
 		return editor ? saved(editor) : Promise.resolve(true);
 	}
 
+	/** The client was changed by a merge: shown again as the server has it. */
+	export function reload(): void {
+		const id = clientId;
+		swap(null);
+		void load(id);
+	}
+
 	async function close() {
 		if (await leave()) onclose();
 	}
@@ -241,6 +255,11 @@
 												.join(' · ')}</span
 										>
 									</button>
+									{#if canMerge}
+										<Button size="sm" variant="ghost" onclick={() => onmerge?.([client.id, s.id])}
+											>{t.mergeWithThis}</Button
+										>
+									{/if}
 								</li>
 							{/each}
 						</ul>
@@ -281,6 +300,9 @@
 			<Button href="tel:{dialNumber(mainPhone)}" icon={Phone}>{ru.order.call}</Button>
 		{/if}
 		<span class="grow"></span>
+		{#if client && canMerge}
+			<Button icon={Merge} onclick={() => (picking = true)}>{t.mergeWith}</Button>
+		{/if}
 		{#if client && canIntake}
 			<Button variant="primary" icon={Plus} onclick={() => intake.open({ clientId: client.id })}
 				>{t.newOrder}</Button
@@ -288,6 +310,14 @@
 		{/if}
 	{/snippet}
 </SlideOver>
+
+{#if client && canMerge}
+	<MergePicker
+		bind:open={picking}
+		clientId={client.id}
+		onpick={(id) => onmerge?.([client.id, id])}
+	/>
+{/if}
 
 <style>
 	.meta {
@@ -321,6 +351,12 @@
 		margin: 0;
 		padding: 0;
 		list-style: none;
+	}
+	.similar li {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--space-2);
 	}
 	.link {
 		display: inline-flex;
