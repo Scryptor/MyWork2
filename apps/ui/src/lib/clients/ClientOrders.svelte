@@ -96,7 +96,8 @@
 						<span class="when num" title={formatFull(o.received_at)}
 							>{formatRelative(o.received_at, serverClock.now())}</span
 						>
-						<span class="device">{deviceOf(o)}</span>
+						<!-- A long device is cut in the narrow panel: the whole of it on hover. -->
+						<span class="device" title={deviceOf(o)}>{deviceOf(o)}</span>
 						{#if s}<StatusBadge name={s.name} color={s.color} size="sm" />{/if}
 					</button>
 				</li>
