@@ -13,5 +13,7 @@ export interface NavItem {
 
 export interface NavSection {
 	title?: string;
+	/** Pinned to the bottom of the sidebar («Настройки»). */
+	bottom?: boolean;
 	items: NavItem[];
 }

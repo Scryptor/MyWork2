@@ -26,7 +26,7 @@
 
 <nav class="sidebar" class:rail aria-label={ru.shell.nav}>
 	{#each sections as section, i (i)}
-		<div class="section">
+		<div class="section" class:bottom={section.bottom}>
 			{#if section.title && !rail}
 				<div class="label-caps title">{section.title}</div>
 			{:else if i > 0 && rail}
@@ -113,6 +113,9 @@
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-0-5);
+	}
+	.section.bottom {
+		margin-top: auto;
 	}
 	.rail .section {
 		align-items: center;

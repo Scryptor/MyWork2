@@ -64,6 +64,7 @@ export const ru = {
 		darkTheme: 'Тёмная тема',
 		theme: 'Тема',
 		themes: { system: 'Как в системе', light: 'Светлая', dark: 'Тёмная' },
+		settings: 'Настройки',
 		themeCommand: { system: 'Тема: как в системе', light: 'Тема: светлая', dark: 'Тема: тёмная' },
 		userMenu: (name: string) => `Пользователь: ${name}`,
 		changePassword: 'Сменить пароль',
@@ -469,7 +470,25 @@ export const ru = {
 		list: 'Список',
 		filter: 'Фильтр списка',
 		nextRow: 'Следующая строка',
-		openOrder: 'Открыть заказ'
+		openOrder: 'Открыть заказ',
+		display: 'Размер программы',
+		sizeUp: 'Крупнее',
+		sizeDown: 'Мельче',
+		sizeAuto: 'Размер по экрану'
+	},
+	settings: {
+		title: 'Настройки',
+		sections: 'Разделы настроек',
+		appearance: 'Внешний вид',
+		thisComputer: 'Только на этом компьютере',
+		theme: 'Тема',
+		size: 'Размер',
+		sizeAuto: 'Авто',
+		autoHint: (percent: string) => `Подбирается по экрану: сейчас ${percent}`,
+		density: 'Плотность таблиц',
+		densities: { comfortable: 'Обычная', compact: 'Компактная' },
+		sizeToast: (percent: string) => `Размер ${percent}`,
+		sizeAutoToast: (percent: string) => `Размер: авто (${percent})`
 	},
 	media: {
 		photos: 'Фото устройства',

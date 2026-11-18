@@ -6,8 +6,13 @@
 	import LogOut from '@lucide/svelte/icons/log-out';
 	import Monitor from '@lucide/svelte/icons/monitor';
 	import Moon from '@lucide/svelte/icons/moon';
+	import Palette from '@lucide/svelte/icons/palette';
 	import Plus from '@lucide/svelte/icons/plus';
+	import Settings from '@lucide/svelte/icons/settings';
 	import Sun from '@lucide/svelte/icons/sun';
+	import Type from '@lucide/svelte/icons/type';
+	import ZoomIn from '@lucide/svelte/icons/zoom-in';
+	import ZoomOut from '@lucide/svelte/icons/zoom-out';
 	import Users from '@lucide/svelte/icons/users';
 	import Wrench from '@lucide/svelte/icons/wrench';
 	import { untrack } from 'svelte';
@@ -42,6 +47,7 @@
 	import { prefs, type ThemePref } from '#lib/design/prefs.svelte.js';
 	import { installScanner, type ScanResult } from '#lib/design/scanner.js';
 	import { ru } from '#lib/i18n/ru.js';
+	import { autoSize, stepSize } from '#lib/settings/size.js';
 	import { intake } from '#lib/intake/intake.svelte.js';
 	import IntakeSheet from '#lib/intake/IntakeSheet.svelte';
 	import { onOrderChanged } from '#lib/orders/events.js';
@@ -54,7 +60,6 @@
 	import CommandPalette from '#lib/ui/CommandPalette.svelte';
 	import type { CommandItem } from '#lib/ui/commands.js';
 	import Dialog from '#lib/ui/Dialog.svelte';
-	import SegmentedControl from '#lib/ui/SegmentedControl.svelte';
 	import Select from '#lib/ui/Select.svelte';
 	import ShortcutsHelp from '#lib/ui/ShortcutsHelp.svelte';
 	import { toast } from '#lib/ui/toast/toast.svelte.js';
@@ -140,6 +145,11 @@
 			label: ru.app.themeCommand[t],
 			icon: THEME_ICONS[t]
 		})),
+		{ id: 'cmd:settings', label: ru.app.settings, icon: Settings },
+		{ id: 'cmd:appearance', label: ru.settings.appearance, icon: Palette },
+		{ id: 'cmd:sizeUp', label: ru.shortcuts.sizeUp, icon: ZoomIn, shortcut: 'Mod+Plus' },
+		{ id: 'cmd:sizeDown', label: ru.shortcuts.sizeDown, icon: ZoomOut, shortcut: 'Mod+Minus' },
+		{ id: 'cmd:sizeAuto', label: ru.shortcuts.sizeAuto, icon: Type, shortcut: 'Mod+0' },
 		...ATTENTION_KEYS.map((k) => ({
 			id: `cmd:attention:${k}`,
 			label: `${ru.app.attention}: ${ru.app.attentionItems[k].toLowerCase()}`,
@@ -171,6 +181,11 @@
 		const [command, arg] = value.split(':');
 		if (command === 'intake') intake.open();
 		else if (command === 'theme') prefs.set({ theme: arg as ThemePref });
+		else if (command === 'settings') void goto(resolve('settings'));
+		else if (command === 'appearance') void goto(resolve('settings/appearance'));
+		else if (command === 'sizeUp') stepSize(1);
+		else if (command === 'sizeDown') stepSize(-1);
+		else if (command === 'sizeAuto') autoSize();
 		else if (command === 'attention') void goto(resolve(`orders?attention=${arg}`));
 	}
 
@@ -209,6 +224,12 @@
 		if (canIntake) return registerHotkey('N', () => intake.open());
 	});
 	$effect(() => registerHotkey('Mod+Z', () => void undo.run()));
+	// The size of the program replaces the browser zoom (spec decision 49): the keys work in fields and
+	// over dialogs, like the zoom they replace.
+	const SIZE_KEYS = { allowInFields: true, allowWithOverlay: true };
+	$effect(() => registerHotkey('Mod+Plus', () => stepSize(1), SIZE_KEYS));
+	$effect(() => registerHotkey('Mod+Minus', () => stepSize(-1), SIZE_KEYS));
+	$effect(() => registerHotkey('Mod+0', () => autoSize(), SIZE_KEYS));
 	const SHORTCUTS = [
 		{
 			title: ru.shortcuts.general,
@@ -218,6 +239,14 @@
 				{ label: ru.shortcuts.undo, shortcut: 'Mod+Z' },
 				{ label: ru.shortcuts.help, shortcut: '?' },
 				{ label: ru.shortcuts.close, shortcut: 'Escape' }
+			]
+		},
+		{
+			title: ru.shortcuts.display,
+			items: [
+				{ label: ru.shortcuts.sizeUp, shortcut: 'Mod+Plus' },
+				{ label: ru.shortcuts.sizeDown, shortcut: 'Mod+Minus' },
+				{ label: ru.shortcuts.sizeAuto, shortcut: 'Mod+0' }
 			]
 		},
 		{
@@ -238,7 +267,7 @@
 	];
 	let helpOpen = $state(false);
 
-	// Phone (spec 5.6): «Заказы», «Клиенты», «＋», «Ещё» with the theme and the user's actions.
+	// Phone (spec 5.6): «Заказы», «Клиенты», «＋», «Ещё» with the settings and the user's actions.
 	let moreOpen = $state(false);
 	const canSeeClients = $derived(app.can('clients_view') || app.can('orders_create'));
 	const BOTTOM = $derived<NavItem[]>([
@@ -255,10 +284,6 @@
 				? 'clients'
 				: ''
 	);
-	const THEMES = (['system', 'light', 'dark'] as const).map((value) => ({
-		value,
-		label: ru.app.themes[value]
-	}));
 	/** The point of the top bar, on a phone in «Ещё»; 0 stands for «Все точки» (ids start at 1). */
 	const ALL_POINTS = 0;
 	const pointItems = $derived([
@@ -330,11 +355,9 @@
 				}
 			/>
 		{/if}
-		<SegmentedControl
-			label={ru.app.theme}
-			options={THEMES}
-			bind:value={() => prefs.value.theme, (v) => prefs.set({ theme: v })}
-		/>
+		<Button icon={Settings} href={resolve('settings')} onclick={() => (moreOpen = false)}
+			>{ru.app.settings}</Button
+		>
 		{#if !app.me.open_mode}
 			<Button
 				icon={KeyRound}

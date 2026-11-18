@@ -28,6 +28,44 @@ describe('formatShortcut', () => {
 		expect(formatShortcut('Escape', { mac: false })).toBe('Esc');
 		expect(formatShortcut('N', { mac: false })).toBe('N');
 	});
+	it('writes the size keys with + and −', () => {
+		expect(formatShortcut('Mod+Plus', { mac: false })).toBe('Ctrl +');
+		expect(formatShortcut('Mod+Minus', { mac: true })).toBe('⌘−');
+		expect(formatShortcut('Mod+0', { mac: false })).toBe('Ctrl 0');
+	});
+});
+
+describe('size keys', () => {
+	const pc = { mac: false };
+	it('Plus: Equal at any Shift, NumpadAdd, only with the modifier', () => {
+		expect(matchShortcut(ev({ code: 'Equal', key: '=', ctrlKey: true }), 'Mod+Plus', pc)).toBe(
+			true
+		);
+		expect(
+			matchShortcut(ev({ code: 'Equal', key: '+', ctrlKey: true, shiftKey: true }), 'Mod+Plus', pc)
+		).toBe(true);
+		expect(matchShortcut(ev({ code: 'NumpadAdd', key: '+', ctrlKey: true }), 'Mod+Plus', pc)).toBe(
+			true
+		);
+		expect(
+			matchShortcut(ev({ code: 'Equal', key: '=', metaKey: true }), 'Mod+Plus', { mac: true })
+		).toBe(true);
+		expect(matchShortcut(ev({ code: 'Equal', key: '=' }), 'Mod+Plus', pc)).toBe(false);
+	});
+	it('Minus: Minus, NumpadSubtract', () => {
+		expect(matchShortcut(ev({ code: 'Minus', key: '-', ctrlKey: true }), 'Mod+Minus', pc)).toBe(
+			true
+		);
+		expect(
+			matchShortcut(ev({ code: 'NumpadSubtract', key: '-', ctrlKey: true }), 'Mod+Minus', pc)
+		).toBe(true);
+		expect(matchShortcut(ev({ code: 'Minus', key: '-' }), 'Mod+Minus', pc)).toBe(false);
+	});
+	it('0: Digit0, Numpad0', () => {
+		expect(matchShortcut(ev({ code: 'Digit0', key: '0', ctrlKey: true }), 'Mod+0', pc)).toBe(true);
+		expect(matchShortcut(ev({ code: 'Numpad0', key: '0', ctrlKey: true }), 'Mod+0', pc)).toBe(true);
+		expect(matchShortcut(ev({ code: 'Digit0', key: '0' }), 'Mod+0', pc)).toBe(false);
+	});
 });
 
 describe('matchShortcut', () => {

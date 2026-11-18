@@ -31,3 +31,20 @@ it('does not build MediaQuery objects', () => {
 		.map(([p]) => p);
 	expect(bad).toEqual([]);
 });
+
+// A query string with a width or height is a width media query in disguise (the tests are not checked).
+it('does not call matchMedia with a width or height query', () => {
+	const bad = Object.entries(scripts)
+		.filter(([p]) => !/\.test\.ts$/.test(p))
+		.filter(([, src]) => /matchMedia\(\s*[`'"][^`'"]*\b(?:width|height)\b/.test(stripComments(src)))
+		.map(([p]) => p);
+	expect(bad).toEqual([]);
+});
+
+it('the matchMedia check catches what it should', () => {
+	const re = /matchMedia\(\s*[`'"][^`'"]*\b(?:width|height)\b/;
+	expect(re.test("window.matchMedia('(min-width: 600px)')")).toBe(true);
+	expect(re.test('matchMedia(`(max-height: ${h}px)`)')).toBe(true);
+	expect(re.test("matchMedia('(prefers-color-scheme: dark)')")).toBe(false);
+	expect(re.test('matchMedia(`(resolution: ${d}dppx)`)')).toBe(false);
+});

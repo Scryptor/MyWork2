@@ -1,5 +1,5 @@
 <!-- Sidebar of the program (spec 5.1, 6.1): «Заказы», «Клиенты», «Требуют внимания», «Мои виды». Sections
-     that have no screen yet (Склад, Отчёты, Настройки) come with their plans. -->
+     that have no screen yet (Склад, Отчёты) come with their plans. -->
 <script lang="ts" module>
 	import CalendarClock from '@lucide/svelte/icons/calendar-clock';
 	import Clock from '@lucide/svelte/icons/clock';
@@ -20,6 +20,7 @@
 <script lang="ts">
 	import Bookmark from '@lucide/svelte/icons/bookmark';
 	import CircleCheck from '@lucide/svelte/icons/circle-check';
+	import Settings from '@lucide/svelte/icons/settings';
 	import Users from '@lucide/svelte/icons/users';
 	import Wrench from '@lucide/svelte/icons/wrench';
 	import { resolve } from '$app/paths';
@@ -34,6 +35,7 @@
 
 	const ORDERS = resolve('orders');
 	const CLIENTS = resolve('clients');
+	const SETTINGS = resolve('settings');
 
 	// «Мои виды»: views of the orders list saved on this device (the «Фильтры ▾» menu saves them).
 	const views = $derived<NavItem[]>(
@@ -92,11 +94,16 @@
 						items: attentionItems.length > 0 ? attentionItems : [allClear]
 					}
 				]),
-		...(views.length > 0 ? [{ title: ru.app.views, items: views }] : [])
+		...(views.length > 0 ? [{ title: ru.app.views, items: views }] : []),
+		{
+			bottom: true,
+			items: [{ id: 'settings', label: ru.app.settings, icon: Settings, href: SETTINGS }]
+		}
 	]);
 
 	const active = $derived.by(() => {
 		if (page.url.pathname === CLIENTS) return 'clients';
+		if (page.url.pathname.startsWith(SETTINGS)) return 'settings';
 		// The full card of an order belongs to «Заказы».
 		if (page.url.pathname.startsWith(`${ORDERS}/`)) return 'orders';
 		if (page.url.pathname !== ORDERS) return '';
