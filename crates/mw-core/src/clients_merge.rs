@@ -5,7 +5,6 @@ use std::collections::HashSet;
 use mw_db::entity::{client, client_phone, order};
 use mw_domain::permission::Permission;
 use mw_domain::phone::phone_key;
-use mw_domain::search::normalize_search;
 use mw_domain::validation::FieldError;
 use sea_orm::ExprTrait;
 use sea_orm::sea_query::{Expr, Order, Query};
@@ -14,8 +13,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::clients::{
-    ClientListItem, ClientPhone, display_name, find_live, list_items, load_phones, search_text,
-    validate_client, write_phones,
+    ClientFields, ClientListItem, ClientPhone, apply_client_fields, display_name, find_live,
+    list_items, load_phones, validate_client, write_phones,
 };
 use crate::sql::text_sort;
 use crate::{Actor, Client, Core, CoreError, NewAuditEntry, write_audit};
@@ -174,40 +173,21 @@ impl Core {
         let phones = validate_client(&full_name, &merged_phones).map_err(CoreError::Validation)?;
 
         let now = self.now();
-        let main = phones.first().map(|p| p.phone.clone()).unwrap_or_default();
-        let res = client::Entity::update_many()
-            .col_expr(client::Column::FullName, Expr::value(full_name.clone()))
-            .col_expr(client::Column::Phone, Expr::value(main.clone()))
-            .col_expr(client::Column::PhoneKey, Expr::value(phone_key(&main)))
-            .col_expr(client::Column::Address, Expr::value(m.address.trim()))
-            .col_expr(client::Column::Note, Expr::value(m.note.trim()))
-            .col_expr(client::Column::Source, Expr::value(m.source.trim()))
-            .col_expr(client::Column::Blacklisted, Expr::value(m.blacklisted))
-            .col_expr(
-                client::Column::SearchText,
-                Expr::value(search_text(&full_name, &phones)),
-            )
-            .col_expr(
-                client::Column::NameKey,
-                Expr::value(normalize_search(&full_name)),
-            )
-            .col_expr(client::Column::UpdatedAt, Expr::value(now))
-            .col_expr(
-                client::Column::Version,
-                Expr::col(client::Column::Version).add(1),
-            )
-            .filter(client::Column::Id.eq(target.id))
-            .filter(client::Column::Version.eq(m.target_version))
-            .filter(client::Column::DeletedAt.is_null())
-            .exec(&tx)
-            .await?;
-        if res.rows_affected == 0 {
-            return Err(CoreError::Conflict {
-                entity: ENTITY,
-                id: target.id,
-                current_version: target.version,
-            });
-        }
+        apply_client_fields(
+            &tx,
+            target.id,
+            m.target_version,
+            now,
+            ClientFields {
+                full_name: &full_name,
+                phones: &phones,
+                address: m.address.trim(),
+                note: m.note.trim(),
+                source: m.source.trim(),
+                blacklisted: m.blacklisted,
+            },
+        )
+        .await?;
         write_phones(&tx, target.id, &phones).await?;
 
         let moved = order::Entity::update_many()

@@ -411,6 +411,70 @@ pub(crate) async fn find_live(
         .await?)
 }
 
+/// Новые значения полей клиента.
+pub(crate) struct ClientFields<'a> {
+    pub full_name: &'a str,
+    pub phones: &'a [ClientPhone],
+    pub address: &'a str,
+    pub note: &'a str,
+    pub source: &'a str,
+    pub blacklisted: bool,
+}
+
+/// Записывает поля клиента (и производные: основной телефон, `search_text`, `name_key`) с проверкой
+/// версии; версия растёт на 1. Устаревшая версия — `Conflict`, нет клиента — `NotFound`.
+/// Строки `client_phones` не трогает.
+pub(crate) async fn apply_client_fields(
+    conn: &impl ConnectionTrait,
+    id: i64,
+    expected_version: i64,
+    now: NaiveDateTime,
+    f: ClientFields<'_>,
+) -> Result<(), CoreError> {
+    let main = f
+        .phones
+        .first()
+        .map(|p| p.phone.clone())
+        .unwrap_or_default();
+    let res = client::Entity::update_many()
+        .col_expr(client::Column::FullName, Expr::value(f.full_name))
+        .col_expr(client::Column::Phone, Expr::value(main.clone()))
+        .col_expr(client::Column::PhoneKey, Expr::value(phone_key(&main)))
+        .col_expr(client::Column::Address, Expr::value(f.address))
+        .col_expr(client::Column::Note, Expr::value(f.note))
+        .col_expr(client::Column::Source, Expr::value(f.source))
+        .col_expr(client::Column::Blacklisted, Expr::value(f.blacklisted))
+        .col_expr(
+            client::Column::SearchText,
+            Expr::value(search_text(f.full_name, f.phones)),
+        )
+        .col_expr(
+            client::Column::NameKey,
+            Expr::value(normalize_search(f.full_name)),
+        )
+        .col_expr(client::Column::UpdatedAt, Expr::value(now))
+        .col_expr(
+            client::Column::Version,
+            Expr::col(client::Column::Version).add(1),
+        )
+        .filter(client::Column::Id.eq(id))
+        .filter(client::Column::Version.eq(expected_version))
+        .filter(client::Column::DeletedAt.is_null())
+        .exec(conn)
+        .await?;
+    if res.rows_affected == 0 {
+        return Err(match find_live(conn, id).await? {
+            Some(m) => CoreError::Conflict {
+                entity: ENTITY,
+                id,
+                current_version: m.version,
+            },
+            None => CoreError::NotFound { entity: ENTITY, id },
+        });
+    }
+    Ok(())
+}
+
 impl Core {
     pub async fn create_client(&self, actor: &Actor, new: NewClient) -> Result<Client, CoreError> {
         actor.require_any(&[Permission::ClientsCreate, Permission::OrdersCreate])?;
@@ -524,43 +588,21 @@ impl Core {
         );
 
         let now = self.now();
-        let main = phones.first().map(|p| p.phone.clone()).unwrap_or_default();
-        let res = client::Entity::update_many()
-            .col_expr(client::Column::FullName, Expr::value(full_name.clone()))
-            .col_expr(client::Column::Phone, Expr::value(main.clone()))
-            .col_expr(client::Column::PhoneKey, Expr::value(phone_key(&main)))
-            .col_expr(client::Column::Address, Expr::value(address))
-            .col_expr(client::Column::Note, Expr::value(note))
-            .col_expr(client::Column::Source, Expr::value(source))
-            .col_expr(client::Column::Blacklisted, Expr::value(blacklisted))
-            .col_expr(
-                client::Column::SearchText,
-                Expr::value(search_text(&full_name, &phones)),
-            )
-            .col_expr(
-                client::Column::NameKey,
-                Expr::value(normalize_search(&full_name)),
-            )
-            .col_expr(client::Column::UpdatedAt, Expr::value(now))
-            .col_expr(
-                client::Column::Version,
-                Expr::col(client::Column::Version).add(1),
-            )
-            .filter(client::Column::Id.eq(id))
-            .filter(client::Column::Version.eq(expected_version))
-            .filter(client::Column::DeletedAt.is_null())
-            .exec(&tx)
-            .await?;
-        if res.rows_affected == 0 {
-            return Err(match find_live(&tx, id).await? {
-                Some(m) => CoreError::Conflict {
-                    entity: ENTITY,
-                    id,
-                    current_version: m.version,
-                },
-                None => CoreError::NotFound { entity: ENTITY, id },
-            });
-        }
+        apply_client_fields(
+            &tx,
+            id,
+            expected_version,
+            now,
+            ClientFields {
+                full_name: &full_name,
+                phones: &phones,
+                address: &address,
+                note: &note,
+                source: &source,
+                blacklisted,
+            },
+        )
+        .await?;
         write_audit(
             &tx,
             now,
