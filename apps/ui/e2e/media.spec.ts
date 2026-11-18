@@ -13,6 +13,17 @@ test.describe('media', () => {
 
 	test('camera shoots twice in a row', async ({ page, browserName }) => {
 		test.skip(browserName !== 'chromium', 'no fake camera in WebKit');
+		await page.addInitScript(() => {
+			const w = window as unknown as { __gum: number };
+			w.__gum = 0;
+			const md = navigator.mediaDevices;
+			const original = md.getUserMedia.bind(md);
+			md.getUserMedia = (c) => {
+				w.__gum += 1;
+				return original(c);
+			};
+		});
+		await page.reload();
 		const section = page.locator('#media');
 		await section.getByRole('button', { name: 'Открыть камеру' }).click();
 		const dialog = page.getByRole('dialog', { name: 'Камера' });
@@ -22,8 +33,13 @@ test.describe('media', () => {
 			.poll(() => video.evaluate((v: HTMLVideoElement) => v.readyState >= 2 && !v.paused))
 			.toBe(true);
 		await dialog.getByRole('button', { name: 'Снять' }).click();
+		await expect(section.getByText('Снято: 1')).toBeVisible();
+		// Focus off the button, so Space goes through the dialog's own handler.
+		await dialog.evaluate((el) => (el as HTMLElement).focus());
 		await page.keyboard.press('Space');
 		await expect(section.getByText('Снято: 2')).toBeVisible();
+		// One camera, one start per open.
+		expect(await page.evaluate(() => (window as unknown as { __gum: number }).__gum)).toBe(1);
 		await dialog.getByRole('button', { name: 'Готово' }).click();
 		await expect(dialog).toBeHidden();
 	});
@@ -53,9 +69,19 @@ test.describe('media', () => {
 		const caption = viewer.getByRole('textbox', { name: 'Подпись' });
 		await caption.fill('Трещина слева');
 		await caption.press('Enter');
-		await expect(section.getByText('Подпись сохранена: Трещина слева')).toBeVisible();
+		await expect(section.getByText('Подпись сохранена: Трещина слева (1)')).toBeVisible();
 		await page.keyboard.press('Escape');
 		await expect(viewer).toBeHidden();
+	});
+
+	test('a caption typed and closed with Esc is still saved, once', async ({ page }) => {
+		const section = page.locator('#media');
+		await section.getByRole('button', { name: /^Открыть фото: Экран/ }).click();
+		const viewer = page.getByRole('dialog', { name: 'Просмотр фото' });
+		await viewer.getByRole('textbox', { name: 'Подпись' }).fill('Скол в углу');
+		await page.keyboard.press('Escape');
+		await expect(viewer).toBeHidden();
+		await expect(section.getByText('Подпись сохранена: Скол в углу (1)')).toBeVisible();
 	});
 
 	test('file list shows name, size, date and the missing mark', async ({ page }) => {

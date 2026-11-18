@@ -57,10 +57,23 @@
 		});
 	});
 
+	// What was already reported, so blur + Esc (or a slow parent) report a caption once.
+	let sent: { id: number; text: string } | null = null;
 	function save() {
 		if (readonly || !current || caption === current.caption) return;
+		if (sent?.id === current.id && sent.text === caption) return;
+		sent = { id: current.id, text: caption };
 		oncaption?.(current.id, caption);
 	}
+	// Closing by Esc, the close button or the overlay may not blur the field: save on every close path.
+	let wasOpen = false;
+	$effect(() => {
+		if (open) wasOpen = true;
+		else if (wasOpen) {
+			wasOpen = false;
+			untrack(save);
+		}
+	});
 	function remove() {
 		if (!current) return;
 		const id = current.id;

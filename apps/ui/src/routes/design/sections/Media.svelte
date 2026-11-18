@@ -78,6 +78,7 @@
 	let viewerOpen = $state(false);
 	let viewerIndex = $state(0);
 	let savedCaption = $state('');
+	let savedCount = 0;
 	let cameraOpen = $state(false);
 	let shot = $state(0);
 	let downloaded = $state('');
@@ -151,7 +152,7 @@
 	resolveUrl={resolveDemo}
 	oncaption={(id, text) => {
 		attached = attached.map((a) => (a.id === id ? { ...a, caption: text } : a));
-		savedCaption = text;
+		savedCaption = `${text} (${++savedCount})`;
 	}}
 	ondelete={(id) => (attached = attached.filter((a) => a.id !== id))}
 />

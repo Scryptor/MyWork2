@@ -24,8 +24,6 @@
 	let stream = $state.raw<MediaStream | null>(null);
 	let devices = $state.raw<MediaDeviceInfo[]>([]);
 	let deviceId = $state('');
-	// The chooser binds to this; picking a camera restarts the stream through `deviceId`.
-	let chosen = $state<string | null>(null);
 	let error = $state('');
 	let ready = $state(false);
 	let shots = $state(0);
@@ -41,10 +39,7 @@
 		if (!open) return;
 		const wanted = deviceId;
 		let cancelled = false;
-		untrack(() => {
-			error = '';
-			shots = 0;
-		});
+		untrack(() => (error = ''));
 		(async () => {
 			try {
 				if (!navigator.mediaDevices?.getUserMedia) throw new Error('no mediaDevices');
@@ -78,11 +73,14 @@
 		if (video) video.srcObject = stream;
 	});
 
+	// A closed dialog forgets its camera and count: the chosen one may be gone by the next open.
 	$effect(() => {
-		if (chosen && chosen !== deviceId) deviceId = chosen;
-	});
-	$effect(() => {
-		if (!chosen && devices.length > 0) chosen = deviceId || devices[0]!.deviceId;
+		if (open) return;
+		untrack(() => {
+			deviceId = '';
+			devices = [];
+			shots = 0;
+		});
 	});
 
 	const canShoot = $derived(ready && !error && max > 0);
@@ -137,7 +135,13 @@
 		{#if devices.length > 1 && !error}
 			<Select
 				label={ru.camera.choose}
-				bind:value={chosen}
+				bind:value={
+					() => deviceId || devices[0]?.deviceId || null,
+					(v) => {
+						// Only a real choice restarts the stream.
+						if (v && v !== (deviceId || devices[0]?.deviceId)) deviceId = v;
+					}
+				}
 				items={devices.map((d, i) => ({
 					value: d.deviceId,
 					label: d.label || `${ru.camera.choose} ${i + 1}`
