@@ -416,10 +416,13 @@
 		// order takes what the draft has. A list that did not load may have some, so the draft goes then too.
 		const withPhotos = () =>
 			photos !== null && (photos.photos.length > 0 || photos.error !== null || photos.loading);
+		// The form is inert until the answer (`intake.formLocked`): the field it was sent from loses focus.
+		const from = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 		const answer = await intake.submit(
 			(signal) => createOrder(toNewOrder(form, pointId, withPhotos()), signal),
 			{ ready: photos === null ? undefined : () => photos.idle() }
 		);
+		void refocus(from);
 		if (answer === null) return;
 		if (!answer.ok) {
 			refused(answer.error, answer.current, answer.timedOut, form);
@@ -448,6 +451,15 @@
 			tone: 'success',
 			action: { label: t.open, run: () => void orderPanel.open(id) }
 		});
+	}
+
+	/** Focus lost while the form was inert goes back where it was, if the sheet is still open. */
+	async function refocus(el: HTMLElement | null) {
+		await tick();
+		if (!intake.isOpen || el === null || !el.isConnected) return;
+		const now = document.activeElement;
+		if (now === null || now === document.body || now === el.closest('[role="dialog"]'))
+			el.focus({ preventScroll: true });
 	}
 
 	const lowerFirst = (text: string) => text.charAt(0).toLowerCase() + text.slice(1);
@@ -501,7 +513,7 @@
 	onclose={leave}
 >
 	<div class="layout">
-		<div class="form">
+		<div class="form" inert={intake.formLocked}>
 			<ClientStep bind:draft sources={dictionaries.client_source} {errors} onchosen={chosen} />
 
 			<Section title={t.device}>

@@ -34,6 +34,12 @@ class Intake {
 	submitting = $state(false);
 	/** The order waits for its photos to upload («Загружаю фото…»); «Отмена» can still call it off. */
 	uploading = $state(false);
+	/**
+	 * The form of the opening that sent the order takes no edits until the answer: what is typed then
+	 * would not be in the order, and the answer clears the draft. Closed and opened again, the form can
+	 * be changed: the answer then keeps the draft and says it is accepted.
+	 */
+	formLocked = $state(false);
 	/** Openings counted: an answer tells the opening that sent the order from a newer one. */
 	#opening = 0;
 	#callOff: (() => void) | null = null;
@@ -47,6 +53,7 @@ class Intake {
 	close(): void {
 		this.isOpen = false;
 		this.prefill = {};
+		this.formLocked = false;
 	}
 
 	/**
@@ -72,6 +79,7 @@ class Intake {
 		const opening = this.#opening;
 		const current = () => this.isOpen && this.#opening === opening;
 		this.submitting = true;
+		this.formLocked = this.isOpen;
 		if (ready) {
 			this.uploading = true;
 			const off = new Promise<'off'>((resolve) => (this.#callOff = () => resolve('off')));
@@ -84,6 +92,7 @@ class Intake {
 			this.uploading = false;
 			if (outcome === 'off') {
 				this.submitting = false;
+				this.formLocked = false;
 				return null;
 			}
 		}
@@ -103,6 +112,7 @@ class Intake {
 		} finally {
 			clearTimeout(timer);
 			this.submitting = false;
+			this.formLocked = false;
 		}
 	}
 }

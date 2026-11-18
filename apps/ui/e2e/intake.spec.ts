@@ -308,6 +308,8 @@ test('no connection: «Принять» keeps the draft and says why above the b
 	await page.keyboard.press(`${await mod(page)}+Enter`);
 	await expect(sheetOf(page).getByRole('alert')).toContainText('нет связи с сервером');
 	await expect(malfunctionOf(page)).toHaveValue('Не включается');
+	// The form was inert while the order was on its way: the field it was sent from has focus again.
+	await expect(malfunctionOf(page)).toBeFocused();
 	// The message is about what was sent: any edit hides it.
 	await malfunctionOf(page).fill('Не включается совсем');
 	await expect(sheetOf(page).getByRole('alert')).toHaveCount(0);
@@ -654,6 +656,37 @@ test('a photo chosen in intake goes to the accepted order', async ({ page, reque
 	await openIntake(page);
 	await expect(sheetOf(page).getByText('0 из 10')).toBeVisible();
 	await expect(photoTilesOf(page)).toHaveCount(0);
+});
+
+test('the form cannot be changed while «Принять» waits for its photos: the order has what was sent', async ({
+	page,
+	request
+}) => {
+	const marker = uniq('Разбит экран');
+	await openIntake(page);
+	await phoneOf(page).fill(uniqPhone());
+	await fillByHand(page, marker);
+	let release: () => void = () => {};
+	const gate = new Promise<void>((resolve) => (release = resolve));
+	await page.route('**/api/v1/intake-drafts/*/attachments?*', async (route) => {
+		if (route.request().method() !== 'POST') return route.fallback();
+		await gate;
+		await route.fallback();
+	});
+	await photoZoneOf(page)
+		.locator('input[type=file]')
+		.setInputFiles([png('slow.png', 5)]);
+	await sheetOf(page)
+		.getByRole('button', { name: /^Принять/ })
+		.click();
+	await expect(sheetOf(page).getByText('Загружаю фото…')).toBeVisible();
+	// What is typed now would not be in the order: the field does not take it.
+	await malfunctionOf(page).click({ force: true });
+	await page.keyboard.type('xyz');
+	await expect(malfunctionOf(page)).toHaveValue(marker);
+	release();
+	const id = await acceptedNumber(page);
+	expect((await fetchOrder(request, id)).malfunction).toBe(marker);
 });
 
 test('cancel removes draft photos', async ({ page, request }) => {

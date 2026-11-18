@@ -133,6 +133,31 @@ describe('intake', () => {
 		}
 	});
 
+	it('the form of the opening that sent the order is locked until the answer; a new opening is not', async () => {
+		intake.open();
+		const photos = later<void>();
+		const req = later<number>();
+		const pending = intake.submit(() => req.promise, { ready: () => photos.promise });
+		// While the photos upload and while the order is on its way: what is typed would not be in it.
+		expect(intake.formLocked).toBe(true);
+		photos.resolve();
+		await vi.waitFor(() => expect(intake.uploading).toBe(false));
+		expect(intake.formLocked).toBe(true);
+		// Closed and opened again: the answer will say the draft is accepted, the form can be changed.
+		intake.close();
+		expect(intake.formLocked).toBe(false);
+		intake.open();
+		expect(intake.formLocked).toBe(false);
+		req.resolve(1);
+		await pending;
+		expect(intake.formLocked).toBe(false);
+
+		const failing = intake.submit(() => Promise.reject(new Error('нет связи')));
+		expect(intake.formLocked).toBe(true);
+		await failing;
+		expect(intake.formLocked).toBe(false);
+	});
+
 	it('«Отмена» while the photos upload calls the order off: nothing is sent', async () => {
 		intake.open();
 		const photos = later<void>();
@@ -142,6 +167,7 @@ describe('intake', () => {
 		await expect(pending).resolves.toBeNull();
 		expect(intake.submitting).toBe(false);
 		expect(intake.uploading).toBe(false);
+		expect(intake.formLocked).toBe(false);
 		photos.resolve();
 		await Promise.resolve();
 		expect(send).not.toHaveBeenCalled();
