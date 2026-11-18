@@ -203,11 +203,13 @@
 	--row-height: 1.75rem;
 }
 
+/* Touch: at least 44px at any size (2.75rem is 39.6px at 90 %); the narrow menu holds such icons. */
 @media (pointer: coarse) {
 	:root {
-		--control-sm: 2.75rem;
-		--control-md: 2.75rem;
-		--control-lg: 2.75rem;
+		--control-sm: max(2.75rem, 44px);
+		--control-md: max(2.75rem, 44px);
+		--control-lg: max(2.75rem, 44px);
+		--rail-width: max(3rem, calc(var(--control-lg) + var(--space-1)));
 	}
 }
 

@@ -126,8 +126,12 @@ describe('tokens: denser defaults (spec 3.3, 3.4, decision 48)', () => {
 		};
 		for (const [name, value] of Object.entries(want)) expect(get(light, name), name).toBe(value);
 	});
-	it('keeps the coarse-pointer control size', () => {
-		expect(css).toMatch(/pointer: coarse[\s\S]*--control-md: 2\.75rem/);
+	it('keeps the coarse-pointer controls at least 44px, also at 90 %', () => {
+		const coarse = parseVars(blockBody(css, '@media (pointer: coarse)'));
+		for (const name of ['--control-sm', '--control-md', '--control-lg'])
+			expect(get(coarse, name), name).toBe('max(2.75rem, 44px)');
+		// The narrow menu stays wider than its touch-sized icons.
+		expect(get(coarse, '--rail-width')).toBe('max(3rem, calc(var(--control-lg) + var(--space-1)))');
 	});
 	it('ROW_REM matches --row-height of both densities', () => {
 		const compact = parseVars(blockBody(css, ":root[data-density='compact']"));
