@@ -6,13 +6,14 @@
 	import Plus from '@lucide/svelte/icons/plus';
 	import { untrack } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
-	import { beforeNavigate } from '$app/navigation';
+	import { beforeNavigate, goto } from '$app/navigation';
 	import type { Client } from '$api/Client';
 	import type { ClientListItem } from '$api/ClientListItem';
 	import { listDictionary } from '#lib/api/catalogs.js';
 	import { errorMessage } from '#lib/api/client.js';
 	import { getClient, similarClients } from '#lib/api/clients.js';
 	import { app } from '#lib/app/context.svelte.js';
+	import { isSignIn } from '#lib/app/login.js';
 	import { PHONE_QUERY } from '#lib/design/breakpoints.js';
 	import { countLabel, dialNumber, displayName } from '#lib/format/index.js';
 	import { ru } from '#lib/i18n/ru.js';
@@ -23,16 +24,19 @@
 	import Callout from '#lib/ui/Callout.svelte';
 	import Skeleton from '#lib/ui/Skeleton.svelte';
 	import SlideOver from '#lib/ui/SlideOver.svelte';
+	import { toast } from '#lib/ui/toast/toast.svelte.js';
 	import ClientFields from './ClientFields.svelte';
 	import ClientOrders from './ClientOrders.svelte';
 	import { phonesText } from './columns.js';
 	import {
 		clientFieldErrors,
 		clientTitle,
+		clientUnsavedText,
 		closeClientEditor,
 		createClientEditor,
 		type ClientEditor
 	} from './editor.svelte.js';
+	import { openClientId } from './view.js';
 
 	let {
 		clientId,
@@ -143,18 +147,56 @@
 		};
 	});
 
+	/** Own edits saved; a failure is told and the panel stays (its indicator offers «Повторить»). */
+	async function saved(ed: ClientEditor): Promise<boolean> {
+		if (!ed.unsaved) return true;
+		const ok = await ed.flush();
+		if (!ok && editor === ed) toast.show({ message: clientUnsavedText(ed), tone: 'danger' });
+		return ok;
+	}
+
 	/** Before another client is shown or the panel closes: own edits are saved; false keeps the panel. */
 	export function leave(): Promise<boolean> {
-		return editor ? editor.flush() : Promise.resolve(true);
+		return editor ? saved(editor) : Promise.resolve(true);
 	}
 
 	async function close() {
 		if (await leave()) onclose();
 	}
 
-	// Closing or reloading the tab while edits wait or failed gets the browser's own question.
+	// Any way out of this client (a link, the menu, Ctrl K, another `?client=`, the browser's «Назад»)
+	// waits for the save too and then goes on, as the order card does. Closing or reloading the tab with
+	// unsaved changes gets the browser's own question. The sign-in page is not held: without a session
+	// nothing can be saved. The list's own changes (filter, sort) keep this client open: nothing to wait.
+	let resume: (() => void) | null = null;
 	beforeNavigate((nav) => {
-		if (nav.willUnload && editor?.unsaved) nav.cancel();
+		const ed = editor;
+		if (!ed?.unsaved || (nav.to && isSignIn(nav.to.url))) return;
+		const to = nav.to?.url;
+		if (
+			to &&
+			!nav.willUnload &&
+			to.pathname === nav.from?.url.pathname &&
+			openClientId(to.searchParams) === ed.client.id
+		) {
+			return;
+		}
+		nav.cancel();
+		if (nav.willUnload || !nav.to) return;
+		const { url } = nav.to;
+		const delta = nav.type === 'popstate' ? nav.delta : 0;
+		const waiting = resume !== null;
+		resume =
+			delta !== 0
+				? () => history.go(delta)
+				: // eslint-disable-next-line svelte/no-navigation-without-resolve -- where SvelteKit was going
+					() => void goto(url);
+		if (waiting) return;
+		void saved(ed).then((ok) => {
+			const go = resume;
+			resume = null;
+			if (ok && editor === ed) go?.();
+		});
 	});
 	// The screen goes: what is typed is still sent, a failure is told.
 	$effect(

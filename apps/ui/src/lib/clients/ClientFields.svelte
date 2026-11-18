@@ -19,7 +19,8 @@
 	import Textarea from '#lib/ui/Textarea.svelte';
 	import TextInput from '#lib/ui/TextInput.svelte';
 	import type { ClientConflict, ClientField, ClientValues } from './editor.svelte.js';
-	import { asPrimary } from './phones.js';
+	import { sameValue } from '#lib/orders/merge.js';
+	import { asPrimary, typedNumber } from './phones.js';
 
 	let {
 		client,
@@ -67,6 +68,8 @@
 	const phones = $derived(shown('phones'));
 	let draft = $state<ClientPhone | null>(null);
 	const rows = $derived(draft ? [...phones, draft] : phones);
+	/** Disputed phones are only decided by «Оставить моё» / «Взять новое»: typing would settle them. */
+	const phonesLocked = $derived(readonly || conflicts.has('phones'));
 	const numberId = (i: number) => `client-phone-${i}`;
 
 	async function focus(id: string) {
@@ -74,23 +77,19 @@
 		document.getElementById(id)?.focus();
 	}
 
+	/** The row typed in now and its number when typing began (null: it was the row of «＋ номер»). */
+	let typing: { index: number; before: string | null } | null = null;
+
 	/**
-	 * Typing a number. An erased number is not sent: it stays until another one is typed (leaving the
-	 * field shows it again) or the row is taken away.
+	 * Typing a number. A number goes from MIN_PHONE_DIGITS digits on; erasing it with Backspace sends no
+	 * piece of it: below that the row keeps its number from before typing (shown again on leaving the
+	 * field), and only «Убрать номер» takes it away.
 	 */
-	function setNumber(i: number, phone: string) {
-		if (i < phones.length) {
-			if (phone !== '') autosave.edit('phones', phones.with(i, { ...phones[i]!, phone }));
-			return;
-		}
-		if (!draft) return;
-		if (phone === '') {
-			draft = { ...draft, phone };
-			return;
-		}
-		const added = { phone, note: draft.note };
-		draft = null;
-		autosave.edit('phones', [...phones, added]);
+	function setNumber(i: number, digits: string) {
+		if (typing?.index !== i) typing = { index: i, before: phones[i]?.phone ?? null };
+		const next = typedNumber(phones, draft, i, digits, typing.before);
+		draft = next.draft;
+		if (!sameValue(next.phones, phones)) autosave.edit('phones', next.phones);
 	}
 
 	function setNote(i: number, note: string) {
@@ -119,6 +118,7 @@
 	 * window taking focus (Alt-Tab) is not leaving.
 	 */
 	function leave(e: FocusEvent) {
+		typing = null;
 		void autosave.flush().catch(() => {});
 		if (e.relatedTarget === null || !document.hasFocus()) return;
 		autosave.release();
@@ -184,7 +184,7 @@
 					id={numberId(i)}
 					label={i === 0 ? t.phone : t.phoneN(i + 1)}
 					hint={i === 0 && rows.length > 1 ? t.primary : undefined}
-					disabled={readonly}
+					disabled={phonesLocked}
 					bind:value={() => p.phone, (v) => setNumber(i, v)}
 				/>
 				<div class="note">
@@ -192,14 +192,14 @@
 						id="client-phone-note-{i}"
 						label={i === 0 ? t.phoneNote : t.phoneNoteN(i + 1)}
 						autocomplete="off"
-						disabled={readonly}
+						disabled={phonesLocked}
 						bind:value={() => p.note, (v) => setNote(i, v)}
 					/>
-					{#if !readonly}
+					{#if !phonesLocked}
 						<IconButton label={t.removePhone(i + 1)} icon={X} onclick={() => removePhone(i)} />
 					{/if}
 				</div>
-				{#if i > 0 && real && !readonly}
+				{#if i > 0 && real && !phonesLocked}
 					<div class="primary">
 						<Button size="sm" variant="ghost" onclick={() => makePrimary(i)}>{t.makePrimary}</Button
 						>
@@ -208,7 +208,7 @@
 			</div>
 		{/each}
 		{#if errors.phones}<p class="error" role="alert">{errors.phones}</p>{/if}
-		{#if !readonly}
+		{#if !phonesLocked}
 			<div>
 				<Button id="client-add-phone" size="sm" variant="ghost" onclick={addPhone}
 					>{t.addPhone}</Button

@@ -140,6 +140,82 @@ test('«Сделать основным» puts the second number first', async (
 		.toEqual([second.replace(/\D/g, '')]);
 });
 
+test('a number erased with Backspace is not saved in pieces; a new whole number is', async ({
+	page,
+	request
+}) => {
+	const name = clientName();
+	const first = uniqPhone();
+	const second = uniqPhone();
+	const c = await createClient(request, {
+		full_name: name,
+		phones: [
+			{ phone: first, note: '' },
+			{ phone: second, note: 'раб' }
+		]
+	});
+	const sent: string[][] = [];
+	page.on('request', (r) => {
+		if (r.method() === 'PATCH' && r.url().includes(`/api/v1/clients/${c.id}`)) {
+			const body = r.postDataJSON() as { phones?: { phone: string }[] };
+			if (body.phones) sent.push(body.phones.map((p) => p.phone));
+		}
+	});
+	const panel = await openPanel(page, c.id, name);
+	const number = panel.getByRole('textbox', { name: 'Номер 2' });
+	await number.click();
+	// The caret after the last digit (End does not move it in WebKit on macOS), then Backspace to empty.
+	await number.evaluate((el: HTMLInputElement) =>
+		el.setSelectionRange(el.value.length, el.value.length)
+	);
+	for (let i = 0; i < 20; i++) await page.keyboard.press('Backspace');
+	await expect(number).toHaveValue('');
+	// Longer than a save waits: nothing of the erased number reaches the server.
+	await page.waitForTimeout(1000);
+	expect((await fetchClient(request, c.id)).phones.map((p) => p.phone)).toEqual(
+		[first, second].map((p) => p.replace(/\D/g, ''))
+	);
+	await page.keyboard.press('Tab');
+	await expect(number).toHaveValue(
+		`+7 911 ${second.slice(5, 8)}-${second.slice(8, 10)}-${second.slice(10)}`
+	);
+
+	const other = uniqPhone();
+	await number.fill(other);
+	await expect
+		.poll(async () => (await fetchClient(request, c.id)).phones.map((p) => p.phone))
+		.toEqual([first, other].map((p) => p.replace(/\D/g, '')));
+	for (const list of sent) for (const phone of list) expect(phone.length).toBeGreaterThanOrEqual(5);
+});
+
+test('leaving the client by the menu waits for the save; a failed one keeps the client open', async ({
+	page,
+	request
+}) => {
+	const name = clientName();
+	const c = await createClient(request, { full_name: name });
+	const panel = await openPanel(page, c.id, name);
+	const patches = (url: URL) => url.pathname === `/api/v1/clients/${c.id}`;
+	await page.route(patches, (route) =>
+		route.request().method() === 'PATCH' ? route.abort() : route.fallback()
+	);
+	await panel.getByRole('textbox', { name: 'ФИО' }).fill(`${name} Петровна`);
+	const orders = page.getByRole('navigation', { name: 'Разделы' }).getByRole('link', {
+		name: 'Заказы'
+	});
+	await orders.click();
+	await expect(panel.getByText('Не сохранено')).toBeVisible();
+	await expect(page).toHaveURL(new RegExp(`/clients\\?client=${c.id}$`));
+	await expect(toastsOf(page)).toContainText(`Изменения клиента «${name}» не сохранены`);
+
+	await page.unroute(patches);
+	await panel.getByRole('button', { name: 'Повторить' }).click();
+	await expect(panel.getByText('✓ Сохранено')).toBeVisible();
+	await orders.click();
+	await expect(page).toHaveURL(/\/orders$/);
+	expect((await fetchClient(request, c.id)).full_name).toBe(`${name} Петровна`);
+});
+
 test('an order of the client opens its panel with «← к клиенту», and that leads back', async ({
 	page,
 	request
