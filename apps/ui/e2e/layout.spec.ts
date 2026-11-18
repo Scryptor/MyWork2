@@ -182,7 +182,7 @@ async function scene(
 		await page.mouse.move(0, c.viewport.height - 1);
 		await settle(page, pending);
 		await page.screenshot({ path: test.info().outputPath(`layout-${c.name}-${name}.png`) });
-		await expectTidyLayout(page, bars, { rootPx: c.rootPx });
+		await expectTidyLayout(page, bars, { rootPx: c.rootPx, band: c.band });
 	});
 }
 
@@ -206,12 +206,56 @@ const orderRow = (page: Page, id: number) =>
 		.getByRole('grid', { name: 'Заказы' })
 		.getByRole('row')
 		.filter({ has: page.getByRole('gridcell', { name: String(id), exact: true }) });
+/** A phone shows the list as cards: buttons named by the number. */
+const orderCard = (page: Page, id: number) =>
+	page.getByRole('main').getByRole('button', { name: new RegExp(`^№ ${id}(?!\\d)`) });
+const bottomNav = (page: Page) => page.getByRole('navigation', { name: 'Основная навигация' });
 
-async function openOrderPanel(page: Page, seed: Seed, id: number) {
+async function openOrderPanel(page: Page, c: ScreenCase, seed: Seed, id: number) {
 	await page.goto(`/orders?q=${encodeURIComponent(seed.marker)}&chips=all`);
-	await orderRow(page, id).getByRole('gridcell').nth(3).click();
+	if (c.phone) await orderCard(page, id).click();
+	else await orderRow(page, id).getByRole('gridcell').nth(3).click();
 	await expect(orderPanel(page, id).getByRole('textbox', { name: 'Неисправность' })).toBeVisible();
 	return orderPanel(page, id);
+}
+
+/** The intake sheet just opened: the client found by the phone and chosen, then the sheet closed. */
+async function intakeScene(page: Page, c: ScreenCase, seed: Seed, pending: () => number) {
+	const sheet = page.getByRole('dialog', { name: 'Новый заказ' });
+	await expect(sheet.getByRole('textbox', { name: 'Телефон' })).toBeFocused();
+	await page.keyboard.type(seed.client.phones[0]!.phone);
+	await sheet
+		.getByRole('list', { name: 'Найденные клиенты' })
+		.getByRole('listitem')
+		.filter({ hasText: seed.client.full_name })
+		.getByRole('button', { name: 'Это он' })
+		.click();
+	await expect(sheet.getByRole('region', { name: 'Клиент заказа' })).toContainText(
+		seed.client.full_name
+	);
+	await scene(page, c, 'intake', dialogBars(sheet), pending);
+	await page.keyboard.press('Escape');
+	await expect(sheet).toBeHidden();
+}
+
+/** A phone after the list and the panel: «Настройки» (the list, then «Внешний вид») and the intake. */
+async function phoneScenes(page: Page, c: ScreenCase, seed: Seed, pending: () => number) {
+	await page.goto('/settings');
+	const sections = page.getByRole('navigation', { name: 'Разделы настроек' });
+	await expect(sections.getByRole('link', { name: 'Внешний вид' })).toBeVisible();
+	await scene(page, c, 'settings', [banner(page), bottomNav(page)], pending);
+
+	await sections.getByRole('link', { name: 'Внешний вид' }).click();
+	await expect(page.getByRole('heading', { name: 'Внешний вид' })).toBeVisible();
+	await scene(page, c, 'appearance', [banner(page), bottomNav(page)], pending);
+
+	// Intake from «Принять» of the bottom navigation.
+	await page.goto('/orders');
+	await expect(orderCard(page, seed.full)).toBeAttached();
+	await bottomNav(page)
+		.getByRole('button', { name: /Принять/ })
+		.click();
+	await intakeScene(page, c, seed, pending);
 }
 
 for (const c of SCREEN_CASES) {
@@ -232,26 +276,37 @@ for (const c of SCREEN_CASES) {
 			);
 			const pending = watchRequests(page);
 			const grid = page.getByRole('grid', { name: 'Заказы' });
-
-			// «Заказы»: the whole list, more rows than fit.
-			await page.goto('/orders');
-			await expect(grid.getByRole('row').nth(12)).toBeVisible();
 			const filter = page.getByRole('searchbox', { name: 'Фильтр списка' });
+			const listBars = () => [
+				banner(page),
+				page.getByRole('group', { name: 'Быстрые фильтры' }),
+				rowWith(page, filter, page.getByRole('button', { name: 'Фильтры' })),
+				...(c.phone ? [bottomNav(page)] : [])
+			];
+
+			// «Заказы»: the whole list, more rows than fit (on a phone, cards).
+			await page.goto('/orders');
+			if (c.phone)
+				await expect(
+					page.getByRole('main').getByRole('button', { name: /^№ \d/ }).nth(5)
+				).toBeVisible();
+			else await expect(grid.getByRole('row').nth(12)).toBeVisible();
+			await scene(page, c, 'orders', listBars(), pending);
+
+			// The order panel over the list (on a phone, the whole screen).
+			const panel = await openOrderPanel(page, c, seed, seed.full);
 			await scene(
 				page,
 				c,
-				'orders',
-				[
-					banner(page),
-					page.getByRole('group', { name: 'Быстрые фильтры' }),
-					rowWith(page, filter, page.getByRole('button', { name: 'Фильтры' }))
-				],
+				'panel',
+				[...(c.phone ? [] : [banner(page)]), ...panelBars(panel)],
 				pending
 			);
 
-			// The order panel over the list.
-			const panel = await openOrderPanel(page, seed, seed.full);
-			await scene(page, c, 'panel', [banner(page), ...panelBars(panel)], pending);
+			if (c.phone) {
+				await phoneScenes(page, c, seed, pending);
+				return;
+			}
 
 			// The full card.
 			await page.goto(`/orders/${seed.full}`);
@@ -276,21 +331,7 @@ for (const c of SCREEN_CASES) {
 			await page.goto('/orders');
 			await expect(grid).toBeVisible();
 			await page.keyboard.press('n');
-			const sheet = page.getByRole('dialog', { name: 'Новый заказ' });
-			await expect(sheet.getByRole('textbox', { name: 'Телефон' })).toBeFocused();
-			await page.keyboard.type(seed.client.phones[0]!.phone);
-			await sheet
-				.getByRole('list', { name: 'Найденные клиенты' })
-				.getByRole('listitem')
-				.filter({ hasText: seed.client.full_name })
-				.getByRole('button', { name: 'Это он' })
-				.click();
-			await expect(sheet.getByRole('region', { name: 'Клиент заказа' })).toContainText(
-				seed.client.full_name
-			);
-			await scene(page, c, 'intake', dialogBars(sheet), pending);
-			await page.keyboard.press('Escape');
-			await expect(sheet).toBeHidden();
+			await intakeScene(page, c, seed, pending);
 
 			// «Клиенты» with the client's panel.
 			await page.goto(`/clients?client=${seed.client.id}`);
@@ -316,7 +357,7 @@ for (const c of SCREEN_CASES) {
 			await scene(page, c, 'appearance', [banner(page)], pending);
 
 			// «Выдать» over the panel of a ready order.
-			const readyPanel = await openOrderPanel(page, seed, seed.ready);
+			const readyPanel = await openOrderPanel(page, c, seed, seed.ready);
 			await readyPanel.getByRole('button', { name: /^Выдать/ }).click();
 			const issue = page.getByRole('dialog', { name: `Выдача заказа № ${seed.ready}` });
 			await expect(issue.getByRole('textbox', { name: /^Итоговая цена/ })).toBeVisible();
@@ -348,12 +389,15 @@ for (const c of SCREEN_CASES) {
 				const pending = watchRequests(page);
 				await page.goto('/login');
 				await expect(page.getByRole('button', { name: 'Войти' })).toBeVisible();
-				if (c.name === '720p' || c.name === '4k') await scene(page, c, 'login', [], pending);
+				if (c.name === '720p' || c.name === '4k' || c.phone)
+					await scene(page, c, 'login', [], pending);
 
 				await page.getByLabel('Логин').fill(E2E_ADMIN_LOGIN);
 				await page.getByLabel('Пароль').fill(E2E_ADMIN_PASSWORD);
 				await page.getByRole('button', { name: 'Войти' }).click();
-				await expect(page.getByRole('button', { name: /Администратор/ })).toBeVisible();
+				// Signed in: the user's menu in the top bar; a phone keeps it in «Ещё».
+				if (c.phone) await expect(bottomNav(page)).toBeVisible();
+				else await expect(page.getByRole('button', { name: /Администратор/ })).toBeVisible();
 				const token = await page.evaluate(() => localStorage.getItem('mw.session'));
 				const created = await request.post('/api/v1/service-points', {
 					data: { name: `ТЦ «Галерея», 2 этаж, ${uniq('Обход')}` },
@@ -363,8 +407,13 @@ for (const c of SCREEN_CASES) {
 				const point = ((await created.json()) as ServicePoint).id;
 				await page.evaluate((id) => localStorage.setItem('mw.point', String(id)), point);
 				await page.goto('/orders');
-				await expect(page.getByRole('grid', { name: 'Заказы' })).toBeVisible();
-				await expect(page.getByRole('button', { name: /^Точка/ })).toBeVisible();
+				// A phone keeps the point and the user's menu in «Ещё»: its top bar is the same signed in.
+				if (c.phone) {
+					await expect(bottomNav(page).getByRole('button', { name: /Ещё/ })).toBeVisible();
+				} else {
+					await expect(page.getByRole('grid', { name: 'Заказы' })).toBeVisible();
+					await expect(page.getByRole('button', { name: /^Точка/ })).toBeVisible();
+				}
 				await scene(
 					page,
 					c,
@@ -376,7 +425,8 @@ for (const c of SCREEN_CASES) {
 							page,
 							page.getByRole('searchbox', { name: 'Фильтр списка' }),
 							page.getByRole('button', { name: 'Фильтры' })
-						)
+						),
+						...(c.phone ? [bottomNav(page)] : [])
 					],
 					pending
 				);

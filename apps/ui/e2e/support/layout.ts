@@ -10,6 +10,10 @@ export interface ScreenCase {
 	scale?: number;
 	/** `font-size` of <html> the case must end with. */
 	rootPx: number;
+	/** `data-width` of <html>: the band of the window's width divided by the scale. */
+	band: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
+	/** A phone: the list is cards, and only some scenes are gone through. */
+	phone?: boolean;
 }
 
 // The window is the screen without the frame and the task bar: about 70px less in height.
@@ -19,70 +23,80 @@ export const SCREEN_CASES: readonly ScreenCase[] = [
 		screen: { width: 1280, height: 720 },
 		viewport: { width: 1280, height: 650 },
 		dpr: 1,
-		rootPx: 16
+		rootPx: 16,
+		band: 'xl'
 	},
 	{
 		name: '768p',
 		screen: { width: 1366, height: 768 },
 		viewport: { width: 1366, height: 700 },
 		dpr: 1,
-		rootPx: 16
+		rootPx: 16,
+		band: 'xl'
 	},
 	{
 		name: '900p',
 		screen: { width: 1440, height: 900 },
 		viewport: { width: 1440, height: 830 },
 		dpr: 1,
-		rootPx: 16
+		rootPx: 16,
+		band: 'xl'
 	},
 	{
 		name: 'mbp16',
 		screen: { width: 1728, height: 1117 },
 		viewport: { width: 1728, height: 1050 },
 		dpr: 2,
-		rootPx: 16
+		rootPx: 16,
+		band: 'xl'
 	},
 	{
 		name: '1080p',
 		screen: { width: 1920, height: 1080 },
 		viewport: { width: 1920, height: 1010 },
 		dpr: 1,
-		rootPx: 16
+		rootPx: 16,
+		band: 'xl'
 	},
 	{
 		name: '1080p-half',
 		screen: { width: 1920, height: 1080 },
 		viewport: { width: 960, height: 1010 },
 		dpr: 1,
-		rootPx: 16
+		rootPx: 16,
+		band: 'md'
 	},
 	{
 		name: '1440p',
 		screen: { width: 2560, height: 1440 },
 		viewport: { width: 2560, height: 1370 },
 		dpr: 1,
-		rootPx: 17.6
+		rootPx: 17.6,
+		band: 'xl'
 	},
 	{
 		name: '4k',
 		screen: { width: 3840, height: 2160 },
 		viewport: { width: 3840, height: 2090 },
 		dpr: 1,
-		rootPx: 24
+		rootPx: 24,
+		band: 'xl'
 	},
 	{
 		name: 'win125',
 		screen: { width: 1536, height: 864 },
 		viewport: { width: 1536, height: 794 },
 		dpr: 1.25,
-		rootPx: 16
+		rootPx: 16,
+		band: 'xl'
 	},
 	{
 		name: 'win150',
 		screen: { width: 1280, height: 720 },
 		viewport: { width: 1280, height: 650 },
 		dpr: 1.5,
-		rootPx: 16
+		rootPx: 16,
+		band: 'xl'
 	},
 	{
 		name: '768p-150',
@@ -90,7 +104,8 @@ export const SCREEN_CASES: readonly ScreenCase[] = [
 		viewport: { width: 1366, height: 700 },
 		dpr: 1,
 		scale: 1.5,
-		rootPx: 24
+		rootPx: 24,
+		band: 'md'
 	},
 	{
 		name: '720p-90',
@@ -98,7 +113,36 @@ export const SCREEN_CASES: readonly ScreenCase[] = [
 		viewport: { width: 1280, height: 650 },
 		dpr: 1,
 		scale: 0.9,
-		rootPx: 14.4
+		rootPx: 14.4,
+		band: 'xl'
+	},
+	// The bands between the phone and the wide window (spec 5.3, review of 5.3): 1366 at 125 % is 1093
+	// wide (lg, the rail), half of 1366 is 683 (sm), a phone is 390 (xs).
+	{
+		name: '768p-125',
+		screen: { width: 1366, height: 768 },
+		viewport: { width: 1366, height: 700 },
+		dpr: 1,
+		scale: 1.25,
+		rootPx: 20,
+		band: 'lg'
+	},
+	{
+		name: '768p-half',
+		screen: { width: 1366, height: 768 },
+		viewport: { width: 683, height: 700 },
+		dpr: 1,
+		rootPx: 16,
+		band: 'sm'
+	},
+	{
+		name: 'phone',
+		screen: { width: 390, height: 844 },
+		viewport: { width: 390, height: 844 },
+		dpr: 3,
+		rootPx: 16,
+		band: 'xs',
+		phone: true
 	}
 ];
 
@@ -109,13 +153,14 @@ interface CheckArg {
 	bars: Node[][];
 	barNames: string[];
 	rootPx: number;
+	band: string;
 }
 
 /**
  * Runs one check inside the page and returns its offenders as text: role, name, rectangle, why.
  * Self-contained: Playwright sends the source of this function to the page.
  */
-function inPage({ check, bars, barNames, rootPx }: CheckArg): string[] {
+function inPage({ check, bars, barNames, rootPx, band }: CheckArg): string[] {
 	// What the user clicks or types into: buttons, links, fields, tabs, menu items, and the windows.
 	const INTERACTIVE = [
 		'button',
@@ -150,6 +195,8 @@ function inPage({ check, bars, barNames, rootPx }: CheckArg): string[] {
 		'[role="menuitemcheckbox"]',
 		// Ctrl K: its commands and found records are the options of a listbox.
 		'[role="option"]',
+		// The sidebar, the subsections of «Настройки», «открыть» and the other links.
+		'a[href]',
 		'label',
 		'legend'
 	].join(',');
@@ -234,6 +281,8 @@ function inPage({ check, bars, barNames, rootPx }: CheckArg): string[] {
 		el: Element;
 		x: boolean;
 		y: boolean;
+		/** `overflow-x: hidden | clip`: what is beside it is lost, not a scroll away. */
+		cutX: boolean;
 	}
 	/**
 	 * Ancestors whose `overflow` clips the element, nearest first: only those on its containing-block
@@ -252,7 +301,8 @@ function inPage({ check, bars, barNames, rootPx }: CheckArg): string[] {
 			if (a !== document.documentElement && a !== document.body) {
 				const x = s.overflowX !== 'visible';
 				const y = s.overflowY !== 'visible';
-				if (x || y) out.push({ el: a, x, y });
+				const cutX = s.overflowX === 'hidden' || s.overflowX === 'clip';
+				if (x || y) out.push({ el: a, x, y, cutX });
 			}
 			need = needOf(s.position);
 		}
@@ -271,14 +321,18 @@ function inPage({ check, bars, barNames, rootPx }: CheckArg): string[] {
 			(s.overflowX === 'auto' || s.overflowX === 'scroll') && el.scrollWidth > el.clientWidth + 1
 		);
 	}
-	/** A horizontal scroller that holds a table, or sits in one: what is in it may scroll out of sight. */
+	/**
+	 * The table's own horizontal scroller (or one inside the table): what is in it may scroll out of sight.
+	 * Not a box that merely holds a table: `main` scrolls too, and a table must not push it sideways.
+	 */
 	const isTableScroller = (el: Element) =>
-		scrollsSideways(el) && (el.matches(TABLE) || !!el.querySelector(TABLE) || !!el.closest(TABLE));
+		scrollsSideways(el) && (el.matches(TABLE) || !!el.closest(TABLE));
 
 	/**
 	 * What the user sees: not hidden, not transparent, at least 2×2 (the visually hidden 1×1 helpers are
-	 * not), within the height of the window and not entirely outside a clipping ancestor (scrolled out of
-	 * sight).
+	 * not), within the height of the window and not entirely outside a clipping ancestor that scrolls
+	 * (scrolled out of sight). Entirely beside an ancestor that cuts (`overflow-x: hidden | clip`), it is
+	 * lost to the user, not scrolled away: it counts as seen, and check 2 names it.
 	 */
 	function visible(el: Element): boolean {
 		if (el.closest('[aria-hidden="true"], [inert]')) return false;
@@ -295,7 +349,7 @@ function inPage({ check, bars, barNames, rootPx }: CheckArg): string[] {
 		if (r.bottom <= 0 || r.top >= H) return false;
 		for (const c of clipsOf(el)) {
 			const cr = clipRect(c.el);
-			if (c.x && (r.right <= cr.left || r.left >= cr.right)) return false;
+			if (c.x && !c.cutX && (r.right <= cr.left || r.left >= cr.right)) return false;
 			if (c.y && (r.bottom <= cr.top || r.top >= cr.bottom)) return false;
 		}
 		return true;
@@ -327,6 +381,26 @@ function inPage({ check, bars, barNames, rootPx }: CheckArg): string[] {
 				`the page scrolls down: scrollHeight ${page.scrollHeight} > innerHeight ${H}; ` +
 					`sticking out: ${sticking((r) => r.bottom > H + 1)}`
 			);
+		// No box but a table is wider than its content box, `main` included: what sticks out is a sideways
+		// scroll away (auto, scroll) or lost (hidden, clip).
+		for (const el of document.body.querySelectorAll('*')) {
+			if (el.matches(TABLE) || el.closest(TABLE) || !visible(el)) continue;
+			const s = getComputedStyle(el);
+			if (!['auto', 'scroll', 'hidden', 'clip'].includes(s.overflowX)) continue;
+			if (el.scrollWidth <= el.clientWidth + 1) continue;
+			// Exemption: a box of text with an ellipsis is cut on purpose; check 4 judges the labels.
+			if (s.textOverflow === 'ellipsis') continue;
+			const inner = [...el.children]
+				.filter((c) => c.getBoundingClientRect().right > clipRect(el).right + 1)
+				.slice(0, 3)
+				.map((c) => `${tagOf(c)} ${box(c.getBoundingClientRect())}`)
+				.join(', ');
+			out.push(
+				`${tagOf(el)} ${box(el.getBoundingClientRect())} is wider inside ` +
+					`(overflow-x ${s.overflowX}): scrollWidth ${el.scrollWidth} > clientWidth ` +
+					`${el.clientWidth}; sticking out: ${inner || 'its own content'}`
+			);
+		}
 	}
 
 	if (check === 'edges') {
@@ -340,11 +414,14 @@ function inPage({ check, bars, barNames, rootPx }: CheckArg): string[] {
 				continue;
 			}
 			// A table cell clips its own content (the ellipsis of check 4); the table itself is checked.
-			const nearest = clips.find((c) => c.x && !c.el.matches(CELL));
-			if (!nearest) continue;
-			const cr = clipRect(nearest.el);
-			if (r.left < cr.left - 1 || r.right > cr.right + 1)
-				out.push(`${describe(el)} is cut by ${tagOf(nearest.el)} ${box(cr)}`);
+			// The nearest clipping box, and every box farther out that cuts rather than scrolls.
+			const xs = clips.filter((c) => c.x && !c.el.matches(CELL));
+			const by = xs.find((c, i) => {
+				if (i > 0 && !c.cutX) return false;
+				const cr = clipRect(c.el);
+				return r.left < cr.left - 1 || r.right > cr.right + 1;
+			});
+			if (by) out.push(`${describe(el)} is cut by ${tagOf(by.el)} ${box(clipRect(by.el))}`);
 		}
 	}
 
@@ -408,29 +485,32 @@ function inPage({ check, bars, barNames, rootPx }: CheckArg): string[] {
 		const size = parseFloat(getComputedStyle(document.documentElement).fontSize);
 		if (Math.abs(size - rootPx) > 0.01)
 			out.push(`<html> font-size ${size}px, expected ${rootPx}px`);
+		const width = document.documentElement.getAttribute('data-width');
+		if (band && width !== band) out.push(`<html> data-width ${width}, expected ${band}`);
 	}
 
 	return out;
 }
 
 const CHECKS: { check: Check; title: string }[] = [
-	{ check: 'scroll', title: '1. the page scrolls' },
+	{ check: 'scroll', title: '1. the page or a box in it scrolls sideways' },
 	{ check: 'edges', title: '2. controls go beyond the window or their clipping box' },
 	{ check: 'bars', title: '3. controls overlap or stick out of their bar' },
 	{ check: 'labels', title: '4. labels are cut' },
-	{ check: 'root', title: '5. the root font size' }
+	{ check: 'root', title: '5. the root font size and the width band' }
 ];
 
 /**
  * Fails with a list of offenders: overflow, overlaps, cut labels (spec 5.3, the five checks).
  * Soft: the test records the failure and goes on to its next scene, so one run names them all.
  * `bars`: the top bar, the headers and footers of panels, the intake and dialogs, the filter row; every
- * bar must be on the page. `rootPx`: the case's `font-size` of <html> (check 5; skipped without it).
+ * bar must be on the page. `rootPx`, `band`: the case's `font-size` and `data-width` of <html> (check 5;
+ * skipped without `rootPx`).
  */
 export async function expectTidyLayout(
 	page: Page,
 	bars: Locator[],
-	{ rootPx }: { rootPx?: number } = {}
+	{ rootPx, band }: { rootPx?: number; band?: ScreenCase['band'] } = {}
 ): Promise<void> {
 	const handles = await Promise.all(bars.map((b) => b.elementHandles()));
 	try {
@@ -440,7 +520,8 @@ export async function expectTidyLayout(
 				check,
 				bars: handles,
 				barNames: bars.map((b) => b.toString()),
-				rootPx: rootPx ?? 0
+				rootPx: rootPx ?? 0,
+				band: band ?? ''
 			});
 			expect.soft(offenders, `${title} (${page.url()})`).toEqual([]);
 		}
