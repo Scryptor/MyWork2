@@ -1,12 +1,12 @@
 <!-- The main screen «Заказы» (spec 6.1, 6.12): quick filters, the list filter, «Фильтры ▾», the table
      (cards on a phone). The view lives in the address: view.ts reads and writes it. -->
 <script lang="ts">
+	import { display } from '#lib/design/prefs.svelte.js';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import Clock from '@lucide/svelte/icons/clock';
 	import Search from '@lucide/svelte/icons/search';
 	import X from '@lucide/svelte/icons/x';
 	import { tick, untrack } from 'svelte';
-	import { MediaQuery } from 'svelte/reactivity';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
@@ -17,7 +17,6 @@
 	import { serverClock } from '#lib/api/server-clock.svelte.js';
 	import { app } from '#lib/app/context.svelte.js';
 	import { summary } from '#lib/app/summary.svelte.js';
-	import { PHONE_QUERY } from '#lib/design/breakpoints.js';
 	import { registerHotkey } from '#lib/design/hotkeys.svelte.js';
 	import {
 		countLabel,
@@ -75,7 +74,6 @@
 	/** The list filter asks the server once typing pauses for this long. */
 	const FILTER_MS = 250;
 
-	const phone = new MediaQuery(PHONE_QUERY);
 	const view = $derived(viewFromSearch(page.url.searchParams));
 
 	// The list filter: its text is ahead of the address while the user types.
@@ -412,16 +410,16 @@
 
 {#snippet filtersMenu()}
 	<FiltersMenu
-		compact={phone.current}
+		compact={display.phone}
 		filters={view.filters}
 		onapply={(filters) => change((v) => ({ ...v, filters }))}
 		onsaveview={(name, filters) => void saveView(name, filters)}
 	/>
 {/snippet}
 
-<div class="orders" class:phone={phone.current}>
+<div class="orders" class:phone={display.phone}>
 	<h1 class="title">{t.title}</h1>
-	{#if phone.current}
+	{#if display.phone}
 		<div class="toolbar">{@render filterField()}{@render filtersMenu()}</div>
 		{@render quickFilters()}
 	{:else}
@@ -450,7 +448,7 @@
 		</ul>
 	{/if}
 
-	{#if phone.current}
+	{#if display.phone}
 		<InfiniteList
 			items={list.rows}
 			key={orderId}

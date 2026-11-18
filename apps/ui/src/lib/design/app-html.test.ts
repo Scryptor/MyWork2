@@ -86,6 +86,10 @@ describe('app.html inline script', () => {
 			}
 	it('does not throw when localStorage throws', () => {
 		expect(() => run(null, false, true)).not.toThrow();
-		expect(document.documentElement.getAttribute('data-density')).toBe('comfortable');
+		const root = document.documentElement;
+		expect(root.getAttribute('data-theme')).toBe('light');
+		expect(root.getAttribute('data-density')).toBe('comfortable');
+		expect(root.getAttribute('data-width')).toBe('xl');
+		expect(root.style.getPropertyValue('--ui-scale')).toBe('1');
 	});
 });

@@ -2,10 +2,10 @@
      history on the right; narrower than 1024px the two are tabs. Edits save by themselves as in the
      panel; the status, «Выдать» and ⋯ are the panel's too. -->
 <script lang="ts">
+	import { display } from '#lib/design/prefs.svelte.js';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import { untrack } from 'svelte';
-	import { MediaQuery } from 'svelte/reactivity';
 	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
@@ -18,7 +18,6 @@
 	import { app } from '#lib/app/context.svelte.js';
 	import { isSignIn } from '#lib/app/login.js';
 	import { pushRecent } from '#lib/app/recent.js';
-	import { CARD_COLUMNS_QUERY } from '#lib/design/breakpoints.js';
 	import { formatDate, formatRelative } from '#lib/format/date.js';
 	import { countLabel } from '#lib/format/plural.js';
 	import { ru } from '#lib/i18n/ru.js';
@@ -49,7 +48,6 @@
 
 	const t = ru.order;
 	const c = ru.card;
-	const columns = new MediaQuery(CARD_COLUMNS_QUERY);
 
 	const param = $derived(page.params.id ?? '');
 	const id = $derived(/^\d+$/.test(param) ? Number(param) : null);
@@ -372,7 +370,7 @@
 	</header>
 
 	{#if editor}
-		{#if columns.current}
+		{#if display.cardColumns}
 			<div class="columns">
 				<div class="fields">{@render fields(editor)}</div>
 				<aside class="aside" aria-label={c.history}>{@render side(true)}</aside>
@@ -498,9 +496,7 @@
 		flex-direction: column;
 		gap: var(--space-3);
 	}
-	@media (max-width: 599px) {
-		.card {
-			padding: var(--space-3) var(--space-3) var(--space-8);
-		}
+	:global([data-width='xs']) .card {
+		padding: var(--space-3) var(--space-3) var(--space-8);
 	}
 </style>

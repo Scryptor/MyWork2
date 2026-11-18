@@ -335,9 +335,7 @@
 		display: flex;
 		gap: var(--space-2);
 	}
-	@media (max-width: 599px) {
-		.phone {
-			grid-template-columns: minmax(0, 1fr);
-		}
+	:global([data-width='xs']) .phone {
+		grid-template-columns: minmax(0, 1fr);
 	}
 </style>

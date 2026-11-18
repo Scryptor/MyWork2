@@ -2,10 +2,9 @@
      the chosen one filled with its dot colour and outlined. Arrows move focus, Space, Enter or a click
      choose. On a phone: a button with the current status, the list rises from the bottom. -->
 <script lang="ts">
+	import { display } from '#lib/design/prefs.svelte.js';
 	import Check from '@lucide/svelte/icons/check';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
-	import { MediaQuery } from 'svelte/reactivity';
-	import { PHONE_QUERY } from '#lib/design/breakpoints.js';
 	import { statusHue } from '#lib/design/status-colors.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import Dialog from './Dialog.svelte';
@@ -30,7 +29,6 @@
 	} = $props();
 
 	const name = $props.id();
-	const phone = new MediaQuery(PHONE_QUERY);
 	const current = $derived(statuses.find((s) => s.id === value));
 	let listOpen = $state(false);
 	let group = $state<HTMLElement | null>(null);
@@ -89,7 +87,7 @@
 	}
 </script>
 
-{#if phone.current}
+{#if display.phone}
 	<button
 		type="button"
 		class="trigger"

@@ -2,11 +2,11 @@
      orders (each opens the order panel over this one, with «← к клиенту») and «Новый заказ». On a phone it
      fills the screen. Which client is open lives in the address of «Клиенты». -->
 <script lang="ts">
+	import { display } from '#lib/design/prefs.svelte.js';
 	import Merge from '@lucide/svelte/icons/merge';
 	import Phone from '@lucide/svelte/icons/phone';
 	import Plus from '@lucide/svelte/icons/plus';
 	import { untrack } from 'svelte';
-	import { MediaQuery } from 'svelte/reactivity';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import type { Client } from '$api/Client';
 	import type { ClientListItem } from '$api/ClientListItem';
@@ -15,7 +15,6 @@
 	import { getClient, similarClients } from '#lib/api/clients.js';
 	import { app } from '#lib/app/context.svelte.js';
 	import { isSignIn } from '#lib/app/login.js';
-	import { PHONE_QUERY } from '#lib/design/breakpoints.js';
 	import { countLabel, dialNumber, displayName } from '#lib/format/index.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import { intake } from '#lib/intake/intake.svelte.js';
@@ -63,7 +62,6 @@
 	} = $props();
 
 	const t = ru.client;
-	const phone = new MediaQuery(PHONE_QUERY);
 
 	/** The client shown, one editor per client; another client gets a new one. */
 	let editor = $state.raw<ClientEditor | null>(null);
@@ -296,7 +294,7 @@
 	</div>
 
 	{#snippet footer()}
-		{#if phone.current && mainPhone}
+		{#if display.phone && mainPhone}
 			<Button href="tel:{dialNumber(mainPhone)}" icon={Phone}>{ru.order.call}</Button>
 		{/if}
 		<span class="grow"></span>

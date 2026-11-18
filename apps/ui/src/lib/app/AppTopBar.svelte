@@ -8,9 +8,7 @@
 	import Plus from '@lucide/svelte/icons/plus';
 	import Search from '@lucide/svelte/icons/search';
 	import Sun from '@lucide/svelte/icons/sun';
-	import { MediaQuery } from 'svelte/reactivity';
-	import { PHONE_QUERY } from '#lib/design/breakpoints.js';
-	import { prefs } from '#lib/design/prefs.svelte.js';
+	import { display, prefs } from '#lib/design/prefs.svelte.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import Button from '#lib/ui/Button.svelte';
 	import DropdownMenu, { type MenuItem } from '#lib/ui/DropdownMenu.svelte';
@@ -31,7 +29,6 @@
 		onlogout: () => void;
 	} = $props();
 
-	const phone = new MediaQuery(PHONE_QUERY);
 	const dark = $derived(prefs.resolvedTheme === 'dark');
 	const pointName = $derived(app.activePoints.find((p) => p.id === app.point)?.name ?? null);
 
@@ -54,7 +51,7 @@
 		</button>
 	{/snippet}
 	{#snippet actions()}
-		{#if !phone.current}
+		{#if !display.phone}
 			{#if app.activePoints.length > 0}
 				<DropdownMenu items={pointItems} label={ru.app.point}>
 					{#snippet trigger(props)}
@@ -73,7 +70,7 @@
 			icon={dark ? Sun : Moon}
 			onclick={() => prefs.set({ theme: dark ? 'light' : 'dark' })}
 		/>
-		{#if !app.me.open_mode && !phone.current}
+		{#if !app.me.open_mode && !display.phone}
 			<DropdownMenu items={userItems} label={ru.app.userMenu(app.me.name)}>
 				{#snippet trigger(props)}
 					<Button

@@ -602,12 +602,10 @@
 			min-height: 2.75rem;
 		}
 	}
-	@media (max-width: 599px) {
-		.pair,
-		.device,
-		.notes,
-		.money {
-			grid-template-columns: minmax(0, 1fr);
-		}
+	:global([data-width='xs']) .pair,
+	:global([data-width='xs']) .device,
+	:global([data-width='xs']) .notes,
+	:global([data-width='xs']) .money {
+		grid-template-columns: minmax(0, 1fr);
 	}
 </style>

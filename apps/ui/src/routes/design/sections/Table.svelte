@@ -1,9 +1,8 @@
 <script lang="ts">
+	import { display } from '#lib/design/prefs.svelte.js';
 	import Printer from '@lucide/svelte/icons/printer';
 	import { onMount } from 'svelte';
-	import { MediaQuery } from 'svelte/reactivity';
 	import type { OrderListItem } from '$api/OrderListItem';
-	import { PHONE_QUERY } from '#lib/design/breakpoints.js';
 	import { DEMO_NOW, DEMO_POINTS, DEMO_STATUSES, makeOrders, sortOrders } from '#lib/demo/fake.js';
 	import { deviceOf, estimateText } from '#lib/orders/view.js';
 	import {
@@ -39,7 +38,6 @@
 	const pointById = new Map(DEMO_POINTS.map((p) => [p.id, p.name]));
 	// The demo data is made around DEMO_NOW: «сегодня» and «вчера» stay the same days.
 	const now = DEMO_NOW;
-	const phone = new MediaQuery(PHONE_QUERY);
 
 	const orderId = (o: OrderListItem) => o.id;
 	const pointOf = (o: OrderListItem) =>
@@ -66,7 +64,7 @@
 		if (loading || loaded >= ORDERS.length) return;
 		loading = true;
 		timer = setTimeout(() => {
-			loaded = Math.min(ORDERS.length, loaded + (phone.current ? LIST_PAGE : TABLE_PAGE));
+			loaded = Math.min(ORDERS.length, loaded + (display.phone ? LIST_PAGE : TABLE_PAGE));
 			loading = false;
 		}, LATENCY_MS);
 	}
@@ -199,7 +197,7 @@
 	видимость — «Колонки» в углу шапки. На телефоне — карточки.
 </p>
 <div class="row">
-	{#if !phone.current}
+	{#if !display.phone}
 		<Button size="sm" onclick={changeElsewhere}>Изменить на другом компьютере</Button>
 	{/if}
 	<span class="muted" aria-live="polite">
@@ -207,7 +205,7 @@
 	</span>
 </div>
 
-{#if phone.current}
+{#if display.phone}
 	<InfiniteList items={rows} key={orderId} {loading} onendreached={loadMore}>
 		{#snippet item(o)}
 			{@const s = statusById.get(o.status_id)}

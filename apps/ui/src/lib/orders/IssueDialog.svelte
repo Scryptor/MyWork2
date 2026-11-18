@@ -297,9 +297,7 @@
 		color: var(--warning-text);
 		font-size: var(--text-sm);
 	}
-	@media (max-width: 599px) {
-		.pair {
-			grid-template-columns: minmax(0, 1fr);
-		}
+	:global([data-width='xs']) .pair {
+		grid-template-columns: minmax(0, 1fr);
 	}
 </style>

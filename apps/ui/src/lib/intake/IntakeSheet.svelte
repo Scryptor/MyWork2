@@ -687,17 +687,13 @@
 		margin-right: auto;
 		color: var(--text-3);
 	}
-	@media (max-width: 899px) {
-		.layout {
-			grid-template-columns: minmax(0, 1fr);
-		}
-		.grid.three {
-			grid-template-columns: repeat(2, minmax(0, 1fr));
-		}
+	:global(:is([data-width='xs'], [data-width='sm'])) .layout {
+		grid-template-columns: minmax(0, 1fr);
 	}
-	@media (max-width: 599px) {
-		.grid.three {
-			grid-template-columns: minmax(0, 1fr);
-		}
+	:global(:is([data-width='xs'], [data-width='sm'])) .grid.three {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+	:global([data-width='xs']) .grid.three {
+		grid-template-columns: minmax(0, 1fr);
 	}
 </style>

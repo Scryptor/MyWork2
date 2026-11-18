@@ -1,12 +1,11 @@
 <script lang="ts">
+	import { display } from '#lib/design/prefs.svelte.js';
 	import { Portal } from 'bits-ui';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import X from '@lucide/svelte/icons/x';
 	import { tick, untrack, type Snippet } from 'svelte';
-	import { MediaQuery } from 'svelte/reactivity';
-	import { PHONE_QUERY } from '#lib/design/breakpoints.js';
 	import { isEditableTarget, registerHotkey } from '#lib/design/hotkeys.svelte.js';
 	import { layers } from '#lib/design/layers.svelte.js';
 	import { ru } from '#lib/i18n/ru.js';
@@ -41,7 +40,6 @@
 	} = $props();
 
 	const titleId = $props.id();
-	const phone = new MediaQuery(PHONE_QUERY);
 	let panel: HTMLElement | null = null;
 
 	function close() {
@@ -121,7 +119,7 @@
 		<div
 			{@attach lifecycle}
 			class="slide-over"
-			class:phone={phone.current}
+			class:phone={display.phone}
 			role="dialog"
 			aria-labelledby={titleId}
 			tabindex="-1"
@@ -130,7 +128,7 @@
 		>
 			<div class="head">
 				<div class="bar">
-					{#if phone.current}
+					{#if display.phone}
 						<IconButton label={ru.common.back} icon={ArrowLeft} onclick={close} />
 					{/if}
 					<h2 id={titleId}>{title}</h2>
@@ -149,7 +147,7 @@
 						/>
 					{/if}
 					{@render actions?.()}
-					{#if !phone.current}
+					{#if !display.phone}
 						<IconButton label={ru.common.close} icon={X} onclick={close} />
 					{/if}
 				</div>

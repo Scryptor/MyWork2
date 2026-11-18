@@ -1,12 +1,11 @@
 <script lang="ts">
+	import { display } from '#lib/design/prefs.svelte.js';
 	import { Dialog } from 'bits-ui';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import X from '@lucide/svelte/icons/x';
 	import { tick, untrack, type Snippet } from 'svelte';
-	import { MediaQuery } from 'svelte/reactivity';
 	import { afterNavigate } from '$app/navigation';
 	import { navigating } from '$app/state';
-	import { PHONE_QUERY } from '#lib/design/breakpoints.js';
 	import { isEditableTarget } from '#lib/design/editable.js';
 	import { layers } from '#lib/design/layers.svelte.js';
 	import { ru } from '#lib/i18n/ru.js';
@@ -31,9 +30,8 @@
 		onclose?: () => void;
 	} = $props();
 
-	const phone = new MediaQuery(PHONE_QUERY);
 	// Phone: the layer fills the screen and closes with «Назад» (←) at the top left.
-	const CloseIcon = $derived(phone.current ? ArrowLeft : X);
+	const CloseIcon = $derived(display.phone ? ArrowLeft : X);
 
 	const focusReturn = dialogFocus();
 	$effect(() => {
@@ -99,7 +97,7 @@
 			onCloseAutoFocus={focusReturn.closed}
 			onOpenAutoFocus={focusFirstField}
 			bind:ref={content}
-			class="mw-dialog mw-sheet {phone.current ? 'phone' : ''}"
+			class="mw-dialog mw-sheet {display.phone ? 'phone' : ''}"
 			style="--sheet-width: {width}"
 		>
 			<div class="mw-dialog-head">
@@ -112,7 +110,7 @@
 			<button
 				type="button"
 				class="mw-dialog-close"
-				aria-label={phone.current ? ru.common.back : ru.common.close}
+				aria-label={display.phone ? ru.common.back : ru.common.close}
 				onclick={close}
 			>
 				<CloseIcon size={16} aria-hidden="true" />

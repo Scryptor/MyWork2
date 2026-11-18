@@ -172,12 +172,10 @@
 		flex-direction: column;
 		gap: var(--space-2);
 	}
-	@media (max-width: 599px) {
-		.order {
-			grid-template-columns: auto minmax(0, 1fr) auto;
-		}
-		.when {
-			display: none;
-		}
+	:global([data-width='xs']) .order {
+		grid-template-columns: auto minmax(0, 1fr) auto;
+	}
+	:global([data-width='xs']) .when {
+		display: none;
 	}
 </style>

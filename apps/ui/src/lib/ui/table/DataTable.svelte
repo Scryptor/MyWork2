@@ -58,15 +58,10 @@
 
 	const uid = $props.id();
 
-	// Sizes follow the root font size (16px × UI scale): the row height by density in pixels for the
-	// virtualizer, column widths (stored for the normal size) scaled like the text.
-	function rootFontPx(scale: number): number {
-		const px = parseFloat(getComputedStyle(document.documentElement).fontSize);
-		return Number.isFinite(px) && px > 0 ? px : 16 * scale;
-	}
-	const fontPx = $derived(rootFontPx(display.value.scale));
-	const scale = $derived(fontPx / 16);
-	const rowPx = $derived(ROW_REM[prefs.value.density] * fontPx);
+	// Sizes follow the UI scale: whole-pixel row height by density (for the virtualizer and the DOM
+	// alike), column widths (stored for the normal size) scaled like the text.
+	const scale = $derived(display.value.scale);
+	const rowPx = $derived(Math.round(ROW_REM[prefs.value.density] * 16 * scale));
 
 	// Columns: what this device changed, saved at once.
 	let colPrefs = $derived(loadColumnPrefs(storageKey, columns));

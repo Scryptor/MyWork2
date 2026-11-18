@@ -212,9 +212,7 @@
 	.mark.warranty {
 		font-weight: 600;
 	}
-	@media (max-width: 899px) {
-		.aside {
-			position: static;
-		}
+	:global(:is([data-width='xs'], [data-width='sm'])) .aside {
+		position: static;
 	}
 </style>

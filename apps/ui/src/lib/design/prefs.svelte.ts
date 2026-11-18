@@ -110,7 +110,15 @@ function initPrefs(): () => void {
 
 	const currentDark = () => darkMq?.matches ?? false;
 	const refresh = () => {
-		env = readEnv(currentDark());
+		const next = readEnv(currentDark());
+		// An unchanged environment must not make `display.value` a new object.
+		if (
+			next.systemDark !== env.systemDark ||
+			next.screenWidth !== env.screenWidth ||
+			next.screenHeight !== env.screenHeight ||
+			next.windowWidth !== env.windowWidth
+		)
+			env = next;
 		apply();
 	};
 	// Several events in a row become one update per frame.

@@ -2,12 +2,12 @@
      by themselves; moving to another order or closing waits until they are saved. On a phone it fills the
      screen, the status is a button and the bottom bar calls the client. -->
 <script lang="ts">
+	import { display } from '#lib/design/prefs.svelte.js';
 	import Camera from '@lucide/svelte/icons/camera';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import Maximize2 from '@lucide/svelte/icons/maximize-2';
 	import Phone from '@lucide/svelte/icons/phone';
 	import { tick, untrack } from 'svelte';
-	import { MediaQuery } from 'svelte/reactivity';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import type { Client } from '$api/Client';
@@ -18,7 +18,6 @@
 	import { serverClock } from '#lib/api/server-clock.svelte.js';
 	import { app } from '#lib/app/context.svelte.js';
 	import { clientHref } from '#lib/clients/view.js';
-	import { PHONE_QUERY } from '#lib/design/breakpoints.js';
 	import { formatRelative } from '#lib/format/date.js';
 	import { dialNumber } from '#lib/format/phone.js';
 	import { ru } from '#lib/i18n/ru.js';
@@ -42,7 +41,6 @@
 	import { deviceOf } from './view.js';
 
 	const t = ru.order;
-	const phone = new MediaQuery(PHONE_QUERY);
 
 	/** The order shown, one editor per order; another order gets a new one. */
 	let editor = $state.raw<OrderEditor | null>(null);
@@ -75,7 +73,7 @@
 	const title = $derived(
 		order === null
 			? t.title(orderPanel.id ?? 0)
-			: phone.current
+			: display.phone
 				? t.title(order.id)
 				: `${t.title(order.id)} · ${deviceOf(order)}`
 	);
@@ -236,7 +234,7 @@
 
 	const menu = $derived<MenuItem[]>([
 		...orderActions.menuItems,
-		...(!issued && phone.current && canEdit
+		...(!issued && display.phone && canEdit
 			? [{ label: t.issueMenu, onselect: () => orderActions.openIssue() }]
 			: []),
 		{ label: t.openCard, onselect: () => void openCard() }
@@ -267,7 +265,7 @@
 	onnext={orderPanel.hasNext(1) ? () => orderPanel.next(1) : undefined}
 >
 	{#snippet actions()}
-		{#if phone.current}
+		{#if display.phone}
 			{@render moreMenu('ghost')}
 		{:else if order}
 			<IconButton label={t.openCard} icon={Maximize2} onclick={() => void openCard()} />
@@ -284,7 +282,7 @@
 				{#if pointName}<span aria-hidden="true">·</span><span>{pointName}</span>{/if}
 				{#if editor}<SaveIndicator {editor} />{/if}
 			</p>
-			{#if !phone.current}{@render statusPicker()}{/if}
+			{#if !display.phone}{@render statusPicker()}{/if}
 		{/if}
 	{/snippet}
 
@@ -327,7 +325,7 @@
 	</div>
 
 	{#snippet footer()}
-		{#if phone.current}
+		{#if display.phone}
 			{#if mainPhone}
 				<Button href="tel:{dialNumber(mainPhone)}" icon={Phone}>{t.call}</Button>
 			{/if}

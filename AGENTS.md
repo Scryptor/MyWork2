@@ -35,6 +35,7 @@
 - Телефоны клиента — список `client_phones`, первый номер основной. Гарантия заказа — текст и выводимый срок.
 - Интерфейс (`apps/ui`, SvelteKit + Svelte 5):
   - перед коммитом зелёным должно быть `cd apps/ui && npm run verify && npm run test:e2e`;
+  - ширины раскладки — только `display` (`#lib/design/prefs.svelte.js`) и `:global([data-width=…])`; медиазапросы по ширине и `MediaQuery` запрещены (тест `no-width-media`); иконки растут с масштабом через `base.css`;
   - цвета, размеры, тени — только из `src/lib/design/tokens.css`; литералов цвета вне него нет (тест `no-raw-colors`);
   - Svelte 5 только на рунах; обработчики — пропсы `on…`;
   - в SvelteKit 3 нет `$lib`: импорты — `#lib/...` (`imports` в `package.json`) с явными расширениями (`.js` для модулей TS, `.svelte` для компонентов); типы API — только `import type` из `$api/...` (псевдоним tsconfig → `crates/mw-api/bindings/*`), руками не дублировать;

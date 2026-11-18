@@ -2,6 +2,7 @@ import { render, screen, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { createRawSnippet } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { prefs } from '#lib/design/prefs.svelte.js';
 import DataTable from './DataTableHarness.test-helper.svelte';
 import type { Column } from './types.js';
 
@@ -69,5 +70,40 @@ describe('DataTable rows for assistive technology', () => {
 		expect(rows[3]).not.toHaveAttribute('aria-current');
 		expect(rows[1]).toHaveAttribute('aria-current', 'true');
 		expect(rows[1]).toHaveAttribute('aria-selected', 'false');
+	});
+});
+
+describe('DataTable row height follows the UI scale', () => {
+	const MANY: Item[] = Array.from({ length: 30 }, (_, i) => ({
+		id: i + 1,
+		name: `Строка ${i + 1}`
+	}));
+	function renderMany() {
+		render(DataTable, {
+			props: {
+				rows: MANY,
+				columns: COLUMNS,
+				rowId: (r: unknown) => (r as Item).id,
+				storageKey: 'test-many',
+				ariaLabel: 'Тест'
+			}
+		});
+	}
+	afterEach(() => prefs.set({ scale: 'auto', density: 'comfortable' }));
+
+	it('comfortable at 1.1: 35px rows, the 10th row at 9 rows down', async () => {
+		prefs.set({ scale: 1.1, density: 'comfortable' });
+		renderMany();
+		const rows = await bodyRows();
+		expect(rows[0]!.style.height).toBe('35px');
+		expect(rows[9]!.style.transform).toBe('translateY(315px)');
+	});
+
+	it('compact at 0.9: 25px rows, the 10th row at 9 rows down', async () => {
+		prefs.set({ scale: 0.9, density: 'compact' });
+		renderMany();
+		const rows = await bodyRows();
+		expect(rows[0]!.style.height).toBe('25px');
+		expect(rows[9]!.style.transform).toBe('translateY(225px)');
 	});
 });

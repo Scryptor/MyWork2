@@ -1,10 +1,9 @@
 <script lang="ts">
+	import { display } from '#lib/design/prefs.svelte.js';
 	import { AlertDialog } from 'bits-ui';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import X from '@lucide/svelte/icons/x';
 	import { untrack } from 'svelte';
-	import { MediaQuery } from 'svelte/reactivity';
-	import { PHONE_QUERY } from '#lib/design/breakpoints.js';
 	import { layers } from '#lib/design/layers.svelte.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import { dialogFocus } from './dialog.js';
@@ -27,9 +26,8 @@
 		onconfirm: () => void | Promise<void>;
 	} = $props();
 
-	const phone = new MediaQuery(PHONE_QUERY);
 	// Phone: the layer fills the screen and closes with «Назад» (←) at the top left.
-	const CloseIcon = $derived(phone.current ? ArrowLeft : X);
+	const CloseIcon = $derived(display.phone ? ArrowLeft : X);
 	let busy = $state(false);
 	let content = $state<HTMLElement | null>(null);
 
@@ -68,7 +66,7 @@
 		<AlertDialog.Content
 			bind:ref={content}
 			onCloseAutoFocus={focusReturn.closed}
-			class="mw-dialog sm {phone.current ? 'phone' : ''}"
+			class="mw-dialog sm {display.phone ? 'phone' : ''}"
 			escapeKeydownBehavior={busy ? 'ignore' : 'close'}
 		>
 			<div class="mw-dialog-head">
@@ -85,7 +83,7 @@
 			<button
 				type="button"
 				class="mw-dialog-close"
-				aria-label={phone.current ? ru.common.back : ru.common.close}
+				aria-label={display.phone ? ru.common.back : ru.common.close}
 				disabled={busy}
 				onclick={cancel}
 			>

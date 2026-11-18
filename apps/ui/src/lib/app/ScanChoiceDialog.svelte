@@ -105,11 +105,9 @@
 	.muted {
 		color: var(--text-3);
 	}
-	@media (max-width: 599px) {
-		.row {
-			grid-template-columns: 5rem minmax(0, 1fr);
-			padding-block: var(--space-2);
-		}
+	:global([data-width='xs']) .row {
+		grid-template-columns: 5rem minmax(0, 1fr);
+		padding-block: var(--space-2);
 	}
 	@media (pointer: coarse) {
 		.row {

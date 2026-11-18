@@ -1,10 +1,9 @@
 <script lang="ts">
+	import { display } from '#lib/design/prefs.svelte.js';
 	import { Dialog } from 'bits-ui';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import X from '@lucide/svelte/icons/x';
 	import { untrack, type Snippet } from 'svelte';
-	import { MediaQuery } from 'svelte/reactivity';
-	import { PHONE_QUERY } from '#lib/design/breakpoints.js';
 	import { layers } from '#lib/design/layers.svelte.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import { dialogFocus, keepOpenOnToasts } from './dialog.js';
@@ -32,9 +31,8 @@
 		onclose?: () => void;
 	} = $props();
 
-	const phone = new MediaQuery(PHONE_QUERY);
 	// Phone: the layer fills the screen and closes with «Назад» (←) at the top left.
-	const CloseIcon = $derived(phone.current ? ArrowLeft : X);
+	const CloseIcon = $derived(display.phone ? ArrowLeft : X);
 
 	let content = $state<HTMLElement | null>(null);
 	const focusReturn = dialogFocus();
@@ -68,7 +66,7 @@
 			bind:ref={content}
 			onInteractOutside={keepOpenOnToasts}
 			onCloseAutoFocus={focusReturn.closed}
-			class="mw-dialog {size} {position === 'bottom' ? 'bottom' : ''} {phone.current
+			class="mw-dialog {size} {position === 'bottom' ? 'bottom' : ''} {display.phone
 				? 'phone'
 				: ''}"
 		>
@@ -84,7 +82,7 @@
 			<button
 				type="button"
 				class="mw-dialog-close"
-				aria-label={phone.current ? ru.common.back : ru.common.close}
+				aria-label={display.phone ? ru.common.back : ru.common.close}
 				onclick={close}
 			>
 				<CloseIcon size={16} aria-hidden="true" />

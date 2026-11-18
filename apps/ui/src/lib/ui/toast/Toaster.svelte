@@ -1,16 +1,14 @@
 <script lang="ts">
+	import { display } from '#lib/design/prefs.svelte.js';
 	import CircleAlert from '@lucide/svelte/icons/circle-alert';
 	import CircleCheck from '@lucide/svelte/icons/circle-check';
 	import X from '@lucide/svelte/icons/x';
 	import { tick } from 'svelte';
-	import { MediaQuery } from 'svelte/reactivity';
-	import { PHONE_QUERY } from '#lib/design/breakpoints.js';
 	import { registerHotkey } from '#lib/design/hotkeys.svelte.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import IconButton from '../IconButton.svelte';
 	import { toast, type ToastItem } from './toast.svelte.js';
 
-	const phone = new MediaQuery(PHONE_QUERY);
 	let region = $state<HTMLElement | null>(null);
 	let hovered = $state(false);
 	let focused = $state(false);
@@ -57,7 +55,7 @@
 	bind:this={region}
 	data-mw-toaster
 	class="toaster"
-	class:phone={phone.current}
+	class:phone={display.phone}
 	role="status"
 	aria-live="polite"
 	aria-atomic="false"

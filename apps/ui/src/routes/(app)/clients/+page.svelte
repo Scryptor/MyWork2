@@ -1,9 +1,9 @@
 <!-- «Клиенты» (spec 6.6, 6.12): the list filter, «Все» / «Похожие», the table (cards on a phone) and the
      client panel. The view and the client open live in the address: view.ts reads and writes them. -->
 <script lang="ts">
+	import { display } from '#lib/design/prefs.svelte.js';
 	import Search from '@lucide/svelte/icons/search';
 	import { untrack } from 'svelte';
-	import { MediaQuery } from 'svelte/reactivity';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
@@ -25,7 +25,6 @@
 		withChips,
 		type ClientsView
 	} from '#lib/clients/view.js';
-	import { PHONE_QUERY } from '#lib/design/breakpoints.js';
 	import { registerHotkey } from '#lib/design/hotkeys.svelte.js';
 	import { countLabel, displayName, formatFull, formatRelative } from '#lib/format/index.js';
 	import { ru } from '#lib/i18n/ru.js';
@@ -47,7 +46,6 @@
 	/** The list filter asks the server once typing pauses for this long. */
 	const FILTER_MS = 250;
 
-	const phone = new MediaQuery(PHONE_QUERY);
 	const view = $derived(clientsViewFromSearch(page.url.searchParams));
 	const openId = $derived(openClientId(page.url.searchParams));
 
@@ -261,9 +259,9 @@
 
 <svelte:head><title>{t.title}</title></svelte:head>
 
-<div class="clients" class:phone={phone.current}>
+<div class="clients" class:phone={display.phone}>
 	<h1 class="title">{t.title}</h1>
-	{#if phone.current}
+	{#if display.phone}
 		<div class="toolbar">{@render filterField()}</div>
 		{@render chips()}
 	{:else}
@@ -276,7 +274,7 @@
 		</div>
 	{/if}
 
-	{#if phone.current}
+	{#if display.phone}
 		<InfiniteList
 			items={list.rows}
 			key={clientId}

@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_PREFS, parsePrefs, prefs, PREFS_KEY } from './prefs.svelte.js';
-import { layoutForWidth } from './breakpoints.js';
 import { statusHue } from './status-colors.js';
 import { contrastRatio } from './contrast.js';
 
@@ -72,12 +71,6 @@ describe('prefs store', () => {
 });
 
 describe('helpers', () => {
-	it('layoutForWidth', () => {
-		expect(layoutForWidth(599)).toBe('phone');
-		expect(layoutForWidth(600)).toBe('rail');
-		expect(layoutForWidth(1279)).toBe('rail');
-		expect(layoutForWidth(1280)).toBe('full');
-	});
 	it('statusHue', () => {
 		expect(statusHue(' Amber ')).toBe('amber');
 		expect(statusHue('nope')).toBe('gray');

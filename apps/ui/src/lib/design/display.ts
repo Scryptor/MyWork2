@@ -1,4 +1,4 @@
-import { BAND_LIMITS, layoutForWidth, type ShellLayout } from './breakpoints.js';
+import { BAND_LIMITS, type ShellLayout } from './breakpoints.js';
 
 export type ThemePref = 'system' | 'light' | 'dark';
 export type Density = 'compact' | 'comfortable';
@@ -55,6 +55,12 @@ export function bandForWidth(layoutWidth: number): WidthBand {
 	if (layoutWidth < BAND_LIMITS.md) return 'md';
 	if (layoutWidth < BAND_LIMITS.lg) return 'lg';
 	return 'xl';
+}
+
+function layoutForWidth(width: number): ShellLayout {
+	if (width < BAND_LIMITS.xs) return 'phone';
+	if (width < BAND_LIMITS.lg) return 'rail';
+	return 'full';
 }
 
 export function computeDisplay(p: Prefs, env: DisplayEnv): Display {

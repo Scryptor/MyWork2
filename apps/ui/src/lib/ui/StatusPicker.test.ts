@@ -2,25 +2,24 @@ import { render, screen, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEMO_STATUSES } from '#lib/demo/fake.js';
+import { prefs } from '#lib/design/prefs.svelte.js';
 import StatusPicker from './StatusPicker.svelte';
 import Harness from './StatusPickerHarness.test-helper.svelte';
 
-/** jsdom has no matchMedia: pretend to be a computer or a phone. */
+let stop: (() => void) | null = null;
+
+/** The width band comes from the window: pretend to be a computer or a phone. */
 function screenWidth(phone: boolean) {
-	window.matchMedia = vi.fn((media: string) => ({
-		matches: phone && media.includes('max-width'),
-		media,
-		onchange: null,
-		addEventListener() {},
-		removeEventListener() {},
-		addListener() {},
-		removeListener() {},
-		dispatchEvent: () => false
-	}));
+	stop?.();
+	vi.stubGlobal('innerWidth', phone ? 500 : 1280);
+	vi.stubGlobal('screen', { width: 1920, height: 1080 });
+	stop = prefs.init();
 }
 
 afterEach(() => {
-	Reflect.deleteProperty(window, 'matchMedia');
+	stop?.();
+	stop = null;
+	vi.unstubAllGlobals();
 });
 
 describe('StatusPicker', () => {

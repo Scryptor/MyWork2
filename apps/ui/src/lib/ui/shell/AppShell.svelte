@@ -12,8 +12,7 @@
 
 <script lang="ts">
 	import { setContext, type Snippet } from 'svelte';
-	import { MediaQuery } from 'svelte/reactivity';
-	import { PHONE_QUERY, RAIL_QUERY } from '#lib/design/breakpoints.js';
+	import { display } from '#lib/design/prefs.svelte.js';
 
 	let {
 		topbar,
@@ -22,9 +21,7 @@
 		children
 	}: { topbar: Snippet; sidebar: Snippet; bottomNav?: Snippet; children: Snippet } = $props();
 
-	const phone = new MediaQuery(PHONE_QUERY);
-	const rail = new MediaQuery(RAIL_QUERY);
-	const layout = $derived<ShellLayout>(phone.current ? 'phone' : rail.current ? 'rail' : 'full');
+	const layout = $derived<ShellLayout>(display.value.layout);
 
 	setContext(KEY, () => layout);
 </script>
