@@ -381,6 +381,13 @@ export const ru = {
 		captionPlaceholder: 'Подпись к фото',
 		deletePhoto: 'Удалить',
 		photoDeleted: 'Фото удалено',
+		fileDeleted: 'Файл удалён',
+		photoForms: ['фото', 'фото', 'фото'],
+		fileForms: ['файл', 'файла', 'файлов'],
+		/** Uploads that finished after the user left the order. */
+		addedToOrder: (orderId: number, what: string) => `Добавлено к заказу № ${orderId}: ${what}`,
+		/** A message about an order the user has left. */
+		ofOrder: (orderId: number, text: string) => `№ ${orderId}: ${text}`,
 		openPhoto: 'Открыть фото',
 		previous: 'Предыдущее фото',
 		next: 'Следующее фото',

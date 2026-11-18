@@ -148,6 +148,7 @@
 	function swap(next: OrderEditor | null) {
 		const old = editor;
 		editor = next;
+		media?.detach();
 		media = next ? createOrderMedia(next.order.id) : null;
 		// Another order or the screen left: what is typed is still saved.
 		if (old) closeEditor(old);

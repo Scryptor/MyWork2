@@ -144,6 +144,7 @@
 	function swap(next: OrderEditor | null) {
 		const old = editor;
 		editor = next;
+		media?.detach();
 		media = next ? createOrderMedia(next.order.id) : null;
 		// The guard saved it; what was typed while the next order was loading is saved now.
 		if (old) closeEditor(old);

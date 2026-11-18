@@ -162,6 +162,51 @@ describe('createOrderMedia', () => {
 	});
 });
 
+describe('a detached instance', () => {
+	it('reports what it added once, naming the order', async () => {
+		const gate = deferred<Attachment>();
+		const upload = vi
+			.fn()
+			.mockReturnValueOnce(gate.promise)
+			.mockImplementation(async (_id: number, f: File) =>
+				attachment(70, { kind: 'file', name: f.name })
+			);
+		const m = createOrderMedia(7, fakeApi({ upload, list: async () => [] }));
+		await m.reload();
+		const done = m.add([file('a.png'), new File(['x'], 'b.pdf', { type: 'application/pdf' })]);
+		m.detach();
+		gate.resolve(attachment(69, { name: 'a.png' }));
+		await done;
+		expect(messages()).toEqual(['Добавлено к заказу № 7: 1 фото, 1 файл']);
+	});
+
+	it('names the order in a failure toast', async () => {
+		const upload = vi.fn().mockRejectedValue(tooLarge('Файл больше 25 МБ'));
+		const m = createOrderMedia(7, fakeApi({ upload, list: async () => [] }));
+		await m.reload();
+		const done = m.add([file('big.png')]);
+		m.detach();
+		await done;
+		expect(messages()).toEqual(['№ 7: big.png: Файл больше 25 МБ']);
+	});
+
+	it('an attached instance does not report', async () => {
+		const m = createOrderMedia(7, fakeApi({ list: async () => [] }));
+		await m.reload();
+		await m.add([file('a.png')]);
+		expect(messages()).toEqual([]);
+	});
+});
+
+describe('remove of a file', () => {
+	it('says «Файл удалён»', async () => {
+		const m = createOrderMedia(7, fakeApi());
+		await m.reload();
+		await m.remove(2);
+		expect(messages()).toEqual(['Файл удалён']);
+	});
+});
+
 describe('limitPhotos', () => {
 	it('keeps ten and says about the rest', () => {
 		const files = Array.from({ length: MAX_PHOTOS_PER_ADD + 2 }, (_, i) => file(`${i}.png`));

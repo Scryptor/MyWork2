@@ -8,6 +8,7 @@ import {
 	uploadOrderAttachment
 } from '#lib/api/attachments.js';
 import { ApiError, errorMessage } from '#lib/api/client.js';
+import { countLabel } from '#lib/format/plural.js';
 import { ru } from '#lib/i18n/ru.js';
 import { toast } from '#lib/ui/toast/toast.svelte.js';
 
@@ -50,6 +51,9 @@ export function createOrderMedia(orderId: number, api: MediaApi = defaultApi) {
 	/** Uploads wait for each other here. */
 	let tail: Promise<unknown> = Promise.resolve();
 	let seq = 0;
+	/** The order is no longer shown: uploads go on and tell about themselves by toasts. */
+	let detached = false;
+	let added = { photo: 0, file: 0 };
 	/** Uploaded while the list was on its way: the list does not know them yet. */
 	let arrived: Attachment[] = [];
 
@@ -70,10 +74,12 @@ export function createOrderMedia(orderId: number, api: MediaApi = defaultApi) {
 		}
 	}
 
+	const about = (text: string) => (detached ? ru.media.ofOrder(orderId, text) : text);
+
 	function fail(file: File, e: unknown): void {
 		if (e instanceof ApiError && e.code === 'network') {
 			toast.show({
-				message: ru.media.uploadOffline(file.name),
+				message: about(ru.media.uploadOffline(file.name)),
 				tone: 'danger',
 				action: { label: ru.common.retry, run: () => add([file]) }
 			});
@@ -81,7 +87,7 @@ export function createOrderMedia(orderId: number, api: MediaApi = defaultApi) {
 		}
 		const why = e instanceof ApiError ? (e.body?.fields[0]?.message ?? e.message) : '';
 		toast.show({
-			message: ru.media.uploadFailed(file.name, why || ru.api.failed),
+			message: about(ru.media.uploadFailed(file.name, why || ru.api.failed)),
 			tone: 'danger'
 		});
 	}
@@ -93,11 +99,29 @@ export function createOrderMedia(orderId: number, api: MediaApi = defaultApi) {
 			attachments = attachments.some((a) => a.id === saved.id)
 				? attachments
 				: [...attachments, saved];
+			added[saved.kind] += 1;
 		} catch (e) {
 			fail(file, e);
 		} finally {
 			pending = pending.filter((p) => p.id !== tile.id);
+			if (detached && pending.length === 0) report();
 		}
+	}
+
+	/** Once the queue of a detached instance is empty: what was added, in one toast. */
+	function report(): void {
+		const parts = [
+			added.photo > 0 ? countLabel(added.photo, ru.media.photoForms) : '',
+			added.file > 0 ? countLabel(added.file, ru.media.fileForms) : ''
+		].filter((x) => x !== '');
+		added = { photo: 0, file: 0 };
+		if (parts.length > 0) toast.show({ message: ru.media.addedToOrder(orderId, parts.join(', ')) });
+	}
+
+	/** The order is left (another one opened, the panel or card closed). */
+	function detach(): void {
+		detached = true;
+		if (pending.length === 0) added = { photo: 0, file: 0 };
 	}
 
 	/** Uploads the files one by one; resolves when all of them are done or have failed. */
@@ -135,11 +159,13 @@ export function createOrderMedia(orderId: number, api: MediaApi = defaultApi) {
 		attachments = attachments.filter((a) => a.id !== id);
 		try {
 			await api.remove(id);
-			toast.show({ message: ru.media.photoDeleted });
+			toast.show({
+				message: about(before.kind === 'file' ? ru.media.fileDeleted : ru.media.photoDeleted)
+			});
 		} catch (e) {
 			const at = Math.min(index, attachments.length);
 			attachments = [...attachments.slice(0, at), before, ...attachments.slice(at)];
-			toast.show({ message: errorMessage(e), tone: 'danger' });
+			toast.show({ message: about(errorMessage(e)), tone: 'danger' });
 		}
 	}
 
@@ -162,6 +188,7 @@ export function createOrderMedia(orderId: number, api: MediaApi = defaultApi) {
 			return error;
 		},
 		add,
+		detach,
 		caption,
 		remove,
 		reload

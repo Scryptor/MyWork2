@@ -152,3 +152,34 @@ test('the camera adds a photo', async ({ page, request, browserName }) => {
 	await expect(dialog).toBeHidden();
 	await expect(tilesOf(panel)).toHaveCount(1);
 });
+
+test('an upload goes on after moving to the next order and tells which order it was', async ({
+	page,
+	request
+}) => {
+	const m = uniq('Ф');
+	const first = await createOrder(request, { model: m });
+	const second = await createOrder(request, { model: m });
+	// The list is newest first: the second order is above the first.
+	await openPanel(page, m, second.id);
+	let release: () => void = () => {};
+	const gate = new Promise<void>((r) => (release = r));
+	await page.route(`**/api/v1/orders/${second.id}/attachments?*`, async (route) => {
+		if (route.request().method() !== 'POST') return route.fallback();
+		await gate;
+		await route.fallback();
+	});
+	await dropOf(panelOf(page, second.id))
+		.locator('input[type=file]')
+		.setInputFiles(png('slow.png', 9));
+	await expect(panelOf(page, second.id).getByText('Загружаю…').first()).toBeVisible();
+	await page.keyboard.press('Alt+ArrowDown');
+	await expect(panelOf(page, first.id)).toBeVisible();
+	release();
+	await expect(toastsOf(page).getByText(`Добавлено к заказу № ${second.id}: 1 фото`)).toBeVisible();
+	await expect(tilesOf(panelOf(page, first.id))).toHaveCount(0);
+	const list = (await (
+		await request.get(`/api/v1/orders/${second.id}/attachments`)
+	).json()) as Attachment[];
+	expect(list).toHaveLength(1);
+});
