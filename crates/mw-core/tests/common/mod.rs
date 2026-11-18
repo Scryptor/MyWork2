@@ -765,3 +765,42 @@ pub async fn status_changed_at(core: &Core, order_id: i64) -> Option<String> {
         .status_changed_at
         .map(|d| d.to_string())
 }
+
+impl HasId for mw_core::ClientListItem {
+    fn id(&self) -> i64 {
+        self.id
+    }
+}
+
+/// Клиент с этим именем и телефонами.
+pub async fn make_client(t: &TestCore, name: &str, numbers: &[&str]) -> mw_core::Client {
+    t.core
+        .create_client(
+            &admin(),
+            NewClient {
+                full_name: name.into(),
+                phones: phones(numbers),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap()
+}
+
+/// Заказ этого клиента.
+pub async fn make_order_for(t: &TestCore, client_id: i64) -> mw_core::Order {
+    t.core
+        .create_order(
+            &admin(),
+            NewOrder {
+                client: ClientRef::Existing(client_id),
+                device_type: "Телефон".into(),
+                brand: "Samsung".into(),
+                model: "A52".into(),
+                malfunction: "Не включается".into(),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap()
+}

@@ -2,7 +2,7 @@
 
 use axum::extract::State;
 use axum::http::StatusCode;
-use mw_core::{Client, ClientPatch, NewClient};
+use mw_core::{Client, ClientListItem, ClientPatch, MergeClients, NewClient};
 
 use crate::DEFAULT_PAGE_LIMIT;
 use crate::auth::CurrentActor;
@@ -27,9 +27,9 @@ pub(super) async fn list_clients(
 ) -> Result<Json<ClientPage>, ApiError> {
     let page = state
         .core
-        .find_clients(
+        .list_clients(
             &actor,
-            q.query.as_deref().unwrap_or(""),
+            &q.filter(),
             q.limit.unwrap_or(DEFAULT_PAGE_LIMIT),
             q.offset.unwrap_or(0),
         )
@@ -117,4 +117,39 @@ pub(super) async fn update_client(
             .update_client(&actor, id, v.version, patch)
             .await?,
     ))
+}
+
+/// Клиенты, похожие на этого: то же имя или общий телефон (право `clients_view` или `orders_create`).
+#[utoipa::path(
+    get,
+    path = "/api/v1/clients/{id}/similar",
+    tag = "Клиенты",
+    security(("bearer" = [])),
+    params(("id" = i64, Path, description = "Номер клиента")),
+    responses((status = 200, description = "Похожие клиенты", body = Vec<ClientListItem>))
+)]
+pub(super) async fn similar_clients(
+    State(state): State<AppState>,
+    CurrentActor(actor): CurrentActor,
+    Path(id): Path<i64>,
+) -> Result<Json<Vec<ClientListItem>>, ApiError> {
+    Ok(Json(state.core.similar_clients(&actor, id).await?))
+}
+
+/// Объединение клиентов (право `clients_merge`): источники вливаются в цель и удаляются. Любая
+/// устаревшая версия даёт 409 и ничего не меняет.
+#[utoipa::path(
+    post,
+    path = "/api/v1/clients/merge",
+    tag = "Клиенты",
+    security(("bearer" = [])),
+    request_body = MergeClients,
+    responses((status = 200, description = "Клиент после объединения", body = Client))
+)]
+pub(super) async fn merge_clients(
+    State(state): State<AppState>,
+    CurrentActor(actor): CurrentActor,
+    Json(m): Json<MergeClients>,
+) -> Result<Json<Client>, ApiError> {
+    Ok(Json(state.core.merge_clients(&actor, m).await?))
 }

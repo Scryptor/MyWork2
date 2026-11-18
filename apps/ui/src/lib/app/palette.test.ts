@@ -4,7 +4,7 @@ import type { Order } from '$api/Order';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '#lib/api/client.js';
 import type { CommandItem } from '#lib/ui/commands.js';
-import { STATUSES, client, item, order } from './fixtures.test-helper.js';
+import { STATUSES, client, clientListItem, item, order } from './fixtures.test-helper.js';
 import {
 	PALETTE_DELAY_MS,
 	createPaletteSearch,
@@ -38,7 +38,7 @@ describe('paletteGroups', () => {
 			query: '  ',
 			orders: [item(5)],
 			exact: null,
-			clients: [client(7)],
+			clients: [clientListItem(7)],
 			recent: [item(3), item(1)],
 			commands: COMMANDS
 		});
@@ -73,7 +73,10 @@ describe('paletteGroups', () => {
 			orders: [],
 			exact: null,
 			clients: [
-				client(7, { full_name: 'ТЁМКИН ОЛЕГ', phones: [{ phone: '89211234567', note: '' }] })
+				clientListItem(7, {
+					full_name: 'ТЁМКИН ОЛЕГ',
+					phones: [{ phone: '89211234567', note: '' }]
+				})
 			],
 			recent: [item(1)],
 			commands: COMMANDS
@@ -112,7 +115,7 @@ describe('createPaletteSearch', () => {
 				order(id)
 			),
 			listClients: vi.fn<(q: ClientListQuery, signal?: AbortSignal) => Promise<ClientPage>>(
-				async () => ({ items: [client(7)], total: 1 })
+				async () => ({ items: [clientListItem(7)], total: 1 })
 			)
 		};
 		const results: (PaletteResults | null)[] = [];
@@ -137,7 +140,7 @@ describe('createPaletteSearch', () => {
 		expect(deps.getOrder.mock.calls[0]![0]).toBe(104);
 		expect(deps.listClients.mock.calls[0]![0]).toEqual({ query: '104', limit: 5 });
 		expect(results).toEqual([
-			{ query: '104', orders: [item(104)], exact: order(104), clients: [client(7)] }
+			{ query: '104', orders: [item(104)], exact: order(104), clients: [clientListItem(7)] }
 		]);
 	});
 

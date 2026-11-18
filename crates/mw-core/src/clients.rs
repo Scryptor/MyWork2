@@ -1,13 +1,13 @@
 use chrono::NaiveDateTime;
 use std::collections::{HashMap, HashSet};
 
-use mw_db::entity::{client, client_phone};
+use mw_db::entity::{client, client_phone, order};
 use mw_domain::permission::Permission;
 use mw_domain::phone::{normalize_phone, phone_key};
-use mw_domain::search::{like_contains, search_tokens};
+use mw_domain::search::{like_contains, normalize_search, search_tokens};
 use mw_domain::validation::FieldError;
 use sea_orm::ExprTrait;
-use sea_orm::sea_query::{Expr, Query};
+use sea_orm::sea_query::{Expr, Order, Query};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, NotSet, PaginatorTrait,
     QueryFilter, QueryOrder, QuerySelect, Set,
@@ -63,7 +63,7 @@ pub struct Client {
 }
 
 impl Client {
-    fn from_parts(m: client::Model, phones: Vec<ClientPhone>) -> Self {
+    pub(crate) fn from_parts(m: client::Model, phones: Vec<ClientPhone>) -> Self {
         Self {
             id: m.id,
             full_name: m.full_name,
@@ -130,7 +130,7 @@ pub struct ClientPatch {
     pub blacklisted: Option<bool>,
 }
 
-fn search_text(full_name: &str, phones: &[ClientPhone]) -> String {
+pub(crate) fn search_text(full_name: &str, phones: &[ClientPhone]) -> String {
     let numbers: Vec<String> = phones.iter().map(|p| p.phone.clone()).collect();
     client_search_text(full_name, &numbers)
 }
@@ -179,7 +179,7 @@ pub(crate) fn validate_client(
 }
 
 /// Номера клиентов одним запросом, в порядке позиций.
-async fn load_phones(
+pub(crate) async fn load_phones(
     conn: &impl ConnectionTrait,
     ids: &[i64],
 ) -> Result<HashMap<i64, Vec<ClientPhone>>, CoreError> {
@@ -219,7 +219,7 @@ async fn with_phones(
 }
 
 /// Заменяет строки `client_phones` клиента.
-async fn write_phones(
+pub(crate) async fn write_phones(
     conn: &impl ConnectionTrait,
     client_id: i64,
     phones: &[ClientPhone],
@@ -259,6 +259,7 @@ pub(crate) async fn insert_client(
         id: NotSet,
         search_text: Set(search_text(&full_name, &phones)),
         phone_key: Set(phone_key(&main)),
+        name_key: Set(normalize_search(&full_name)),
         full_name: Set(full_name),
         phone: Set(main),
         address: Set(new.address.trim().to_owned()),
@@ -269,13 +270,136 @@ pub(crate) async fn insert_client(
         updated_at: Set(now),
         deleted_at: Set(None),
         version: Set(1),
-        name_key: Set(String::new()),
     }
     .insert(conn)
     .await?;
     write_phones(conn, model.id, &phones).await?;
     Ok(Client::from_parts(model, phones))
 }
+
+/// Поле сортировки списка клиентов.
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum ClientSortField {
+    /// Имя (по нормализованному ключу).
+    Name,
+    /// Дата последнего заказа (по умолчанию); клиенты без заказов в конце.
+    #[default]
+    LastOrder,
+    /// Число заказов.
+    OrdersCount,
+}
+
+/// Порядок списка клиентов.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ClientSort {
+    pub field: ClientSortField,
+    pub descending: bool,
+}
+
+impl Default for ClientSort {
+    fn default() -> Self {
+        Self {
+            field: ClientSortField::LastOrder,
+            descending: true,
+        }
+    }
+}
+
+/// Условия списка клиентов.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ClientFilter {
+    /// Слова поиска по имени и телефонам; пусто — все.
+    pub query: String,
+    /// Только клиенты, у которых есть похожий (порядок тогда по ключу имени).
+    pub duplicates: bool,
+    pub sort: ClientSort,
+}
+
+/// Строка списка клиентов.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
+pub struct ClientListItem {
+    /// Номер клиента.
+    pub id: i64,
+    /// ФИО клиента.
+    pub full_name: String,
+    /// Телефоны; первый — основной.
+    pub phones: Vec<ClientPhone>,
+    /// Откуда клиент узнал о сервисе.
+    pub source: String,
+    /// Клиент в чёрном списке.
+    pub blacklisted: bool,
+    /// Сколько у клиента заказов (удалённые не считаются).
+    pub orders_count: u64,
+    /// Когда принят последний заказ (местное время предприятия); пусто, если заказов нет.
+    #[schema(required = true)]
+    pub last_order_at: Option<NaiveDateTime>,
+}
+
+/// Число заказов и дата последнего у каждого клиента из списка.
+async fn order_stats(
+    conn: &impl ConnectionTrait,
+    ids: &[i64],
+) -> Result<HashMap<i64, (u64, Option<NaiveDateTime>)>, CoreError> {
+    let mut map = HashMap::new();
+    if ids.is_empty() {
+        return Ok(map);
+    }
+    let rows = order::Entity::find()
+        .select_only()
+        .column(order::Column::ClientId)
+        .expr_as(Expr::col(order::Column::Id).count(), "n")
+        .expr_as(Expr::col(order::Column::ReceivedAt).max(), "last")
+        .filter(order::Column::ClientId.is_in(ids.iter().copied()))
+        .filter(order::Column::DeletedAt.is_null())
+        .group_by(order::Column::ClientId)
+        .into_tuple::<(i64, i64, Option<NaiveDateTime>)>()
+        .all(conn)
+        .await?;
+    for (id, n, last) in rows {
+        map.insert(id, (n as u64, last));
+    }
+    Ok(map)
+}
+
+/// Строки списка из моделей; порядок сохраняется.
+pub(crate) async fn list_items(
+    conn: &impl ConnectionTrait,
+    models: Vec<client::Model>,
+) -> Result<Vec<ClientListItem>, CoreError> {
+    let ids: Vec<i64> = models.iter().map(|m| m.id).collect();
+    let mut phones = load_phones(conn, &ids).await?;
+    let stats = order_stats(conn, &ids).await?;
+    Ok(models
+        .into_iter()
+        .map(|m| {
+            let (orders_count, last_order_at) = stats.get(&m.id).copied().unwrap_or((0, None));
+            ClientListItem {
+                id: m.id,
+                phones: phones.remove(&m.id).unwrap_or_default(),
+                full_name: m.full_name,
+                source: m.source,
+                blacklisted: m.blacklisted,
+                orders_count,
+                last_order_at,
+            }
+        })
+        .collect())
+}
+
+/// Подзапросы для сортировки: число заказов и дата последнего заказа клиента.
+const ORDERS_COUNT_SQL: &str =
+    "(SELECT COUNT(*) FROM orders o WHERE o.client_id = clients.id AND o.deleted_at IS NULL)";
+const LAST_ORDER_SQL: &str = "(SELECT MAX(o.received_at) FROM orders o WHERE o.client_id = clients.id AND o.deleted_at IS NULL)";
+
+/// У клиента есть другой живой клиент с тем же непустым ключом имени или общим телефоном
+/// (сравниваются `phone_key` — последние 10 цифр; номера короче 6 цифр не считаются).
+const HAS_SIMILAR_SQL: &str = "EXISTS (SELECT 1 FROM clients c2 WHERE c2.deleted_at IS NULL AND c2.id <> clients.id AND (\
+    (clients.name_key <> '' AND c2.name_key = clients.name_key) \
+    OR EXISTS (SELECT 1 FROM client_phones p1 JOIN client_phones p2 ON p2.phone_key = p1.phone_key \
+        WHERE p1.client_id = clients.id AND p2.client_id = c2.id AND LENGTH(p1.phone_key) >= 6)))";
 
 pub(crate) async fn find_live(
     conn: &impl ConnectionTrait,
@@ -413,6 +537,10 @@ impl Core {
                 client::Column::SearchText,
                 Expr::value(search_text(&full_name, &phones)),
             )
+            .col_expr(
+                client::Column::NameKey,
+                Expr::value(normalize_search(&full_name)),
+            )
             .col_expr(client::Column::UpdatedAt, Expr::value(now))
             .col_expr(
                 client::Column::Version,
@@ -454,35 +582,69 @@ impl Core {
         Ok(Client::from_parts(updated, phones))
     }
 
+    pub async fn list_clients(
+        &self,
+        actor: &Actor,
+        filter: &ClientFilter,
+        limit: u64,
+        offset: u64,
+    ) -> Result<Page<ClientListItem>, CoreError> {
+        actor.require_any(&[Permission::ClientsView, Permission::OrdersCreate])?;
+        validate_page(limit, offset)?;
+        let backend = self.db.get_database_backend();
+        let mut select = client::Entity::find().filter(client::Column::DeletedAt.is_null());
+        for token in search_tokens(&filter.query) {
+            select = select.filter(
+                Expr::col(client::Column::SearchText)
+                    .like(sea_orm::sea_query::LikeExpr::new(like_contains(&token)).escape('\\')),
+            );
+        }
+        if filter.duplicates {
+            select = select.filter(Expr::cust(HAS_SIMILAR_SQL));
+        }
+        let total = select.clone().count(&self.db).await?;
+        let dir = |descending: bool| if descending { Order::Desc } else { Order::Asc };
+        let select = if filter.duplicates {
+            select.order_by_asc(text_sort(backend, client::Column::NameKey.into_expr()))
+        } else {
+            let s = filter.sort;
+            match s.field {
+                ClientSortField::Name => select.order_by(
+                    text_sort(backend, client::Column::NameKey.into_expr()),
+                    dir(s.descending),
+                ),
+                ClientSortField::OrdersCount => {
+                    select.order_by(Expr::cust(ORDERS_COUNT_SQL), dir(s.descending))
+                }
+                ClientSortField::LastOrder => select
+                    .order_by(Expr::cust(format!("{LAST_ORDER_SQL} IS NULL")), Order::Asc)
+                    .order_by(Expr::cust(LAST_ORDER_SQL), dir(s.descending)),
+            }
+        };
+        let models = select
+            .order_by_asc(text_sort(backend, client::Column::SearchText.into_expr()))
+            .order_by_asc(client::Column::Id)
+            .limit(limit)
+            .offset(offset)
+            .all(&self.db)
+            .await?;
+        let items = list_items(&self.db, models).await?;
+        Ok(Page { items, total })
+    }
+
+    /// Поиск клиентов по словам в порядке по умолчанию.
     pub async fn find_clients(
         &self,
         actor: &Actor,
         query: &str,
         limit: u64,
         offset: u64,
-    ) -> Result<Page<Client>, CoreError> {
-        actor.require_any(&[Permission::ClientsView, Permission::OrdersCreate])?;
-        validate_page(limit, offset)?;
-        let mut select = client::Entity::find().filter(client::Column::DeletedAt.is_null());
-        for token in search_tokens(query) {
-            select = select.filter(
-                Expr::col(client::Column::SearchText)
-                    .like(sea_orm::sea_query::LikeExpr::new(like_contains(&token)).escape('\\')),
-            );
-        }
-        let total = select.clone().count(&self.db).await?;
-        let models = select
-            .order_by_asc(text_sort(
-                self.db.get_database_backend(),
-                client::Column::SearchText.into_expr(),
-            ))
-            .order_by_asc(client::Column::Id)
-            .limit(limit)
-            .offset(offset)
-            .all(&self.db)
-            .await?;
-        let items = with_phones(&self.db, models).await?;
-        Ok(Page { items, total })
+    ) -> Result<Page<ClientListItem>, CoreError> {
+        let filter = ClientFilter {
+            query: query.to_owned(),
+            ..Default::default()
+        };
+        self.list_clients(actor, &filter, limit, offset).await
     }
 
     pub async fn find_clients_by_phone(
@@ -514,7 +676,7 @@ impl Core {
     }
 }
 
-fn display_name<'a>(full_name: &'a str, phones: &'a [ClientPhone]) -> &'a str {
+pub(crate) fn display_name<'a>(full_name: &'a str, phones: &'a [ClientPhone]) -> &'a str {
     if full_name.is_empty() {
         phones.first().map_or("", |p| p.phone.as_str())
     } else {

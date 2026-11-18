@@ -63,6 +63,8 @@ pub(crate) fn api_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(catalogs::reorder_service_points))
         .routes(routes!(clients::list_clients, clients::create_client))
         .routes(routes!(clients::clients_by_phone))
+        .routes(routes!(clients::merge_clients))
+        .routes(routes!(clients::similar_clients))
         .routes(routes!(clients::get_client, clients::update_client))
         .routes(routes!(orders::list_orders, orders::create_order))
         .routes(routes!(orders::order_summary))

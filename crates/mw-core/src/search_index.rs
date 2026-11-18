@@ -17,8 +17,9 @@ use crate::settings::put;
 use crate::{Actor, Core, CoreError, NewAuditEntry, write_audit};
 
 /// Версия правил построения индекса: 1 — планы 1–2 (без NFC, один телефон клиента),
-/// 2 — NFC и все телефоны клиента, 3 — ключи сортировки и фильтров заказа.
-pub const SEARCH_INDEX_VERSION: i64 = 3;
+/// 2 — NFC и все телефоны клиента, 3 — ключи сортировки и фильтров заказа,
+/// 4 — ключ имени клиента (`name_key`).
+pub const SEARCH_INDEX_VERSION: i64 = 4;
 
 /// Ключ настройки с версией сохранённого индекса (не входит в `AppSettings`).
 const VERSION_KEY: &str = "search_index_version";
@@ -78,9 +79,11 @@ pub(crate) async fn reindex_all(conn: &impl ConnectionTrait) -> Result<ReindexSt
     for c in client::Entity::find().all(conn).await? {
         let list = phones.get(&c.id).map(Vec::as_slice).unwrap_or(&[]);
         let text = client_search_text(&c.full_name, list);
-        if text != c.search_text {
+        let name_key = normalize_search(&c.full_name);
+        if text != c.search_text || name_key != c.name_key {
             client::Entity::update_many()
                 .col_expr(client::Column::SearchText, Expr::value(text))
+                .col_expr(client::Column::NameKey, Expr::value(name_key))
                 .filter(client::Column::Id.eq(c.id))
                 .exec(conn)
                 .await?;

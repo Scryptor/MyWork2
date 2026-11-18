@@ -452,3 +452,111 @@ async fn phone_input_is_validated_on_update_even_when_cleaned_list_is_unchanged(
     }
     Ok(())
 }
+
+#[tokio::test]
+async fn list_items_carry_order_counts_and_sort_by_last_order() -> Result<(), CoreError> {
+    use chrono::{TimeZone, Utc};
+    use mw_core::{ClientFilter, ClientSort, ClientSortField};
+    for t in cores().await {
+        let a = common::make_client(&t, "Анна", &["8 911 000-00-01"]).await;
+        let b = common::make_client(&t, "Борис", &["8 911 000-00-02"]).await;
+        let c = common::make_client(&t, "Вера", &[]).await;
+        t.clock
+            .set(Utc.with_ymd_and_hms(2026, 11, 5, 9, 0, 0).unwrap());
+        common::make_order_for(&t, a.id).await;
+        t.clock
+            .set(Utc.with_ymd_and_hms(2026, 11, 9, 9, 0, 0).unwrap());
+        common::make_order_for(&t, b.id).await;
+        common::make_order_for(&t, b.id).await;
+        let deleted = common::make_order_for(&t, a.id).await;
+        t.core.delete_order(&admin(), deleted.id, 1).await?;
+
+        let page = t
+            .core
+            .list_clients(&admin(), &ClientFilter::default(), 50, 0)
+            .await?;
+        // по умолчанию: последний заказ, новые сверху, без заказов в конце
+        assert_eq!(
+            ids(page.items.clone()),
+            vec![b.id, a.id, c.id],
+            "{}",
+            t.label
+        );
+        let counts: Vec<u64> = page.items.iter().map(|i| i.orders_count).collect();
+        assert_eq!(counts, vec![2, 1, 0], "{}", t.label);
+        assert!(page.items[0].last_order_at.is_some());
+        assert_eq!(page.items[2].last_order_at, None);
+        assert_eq!(page.items[0].phones, phones(&["89110000002"]));
+
+        let sorted = |field, descending| ClientFilter {
+            sort: ClientSort { field, descending },
+            ..Default::default()
+        };
+        let asc = t
+            .core
+            .list_clients(&admin(), &sorted(ClientSortField::LastOrder, false), 50, 0)
+            .await?;
+        assert_eq!(ids(asc.items), vec![a.id, b.id, c.id], "{}", t.label);
+        let by_count = t
+            .core
+            .list_clients(&admin(), &sorted(ClientSortField::OrdersCount, true), 50, 0)
+            .await?;
+        assert_eq!(ids(by_count.items), vec![b.id, a.id, c.id], "{}", t.label);
+        let by_name = t
+            .core
+            .list_clients(&admin(), &sorted(ClientSortField::Name, true), 50, 0)
+            .await?;
+        assert_eq!(ids(by_name.items), vec![c.id, b.id, a.id], "{}", t.label);
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn duplicates_filter_groups_same_name_and_shared_phone() -> Result<(), CoreError> {
+    use mw_core::ClientFilter;
+    for t in cores().await {
+        let i1 = common::make_client(&t, "ИВАНОВ ИВАН", &["8 900 111-11-11"]).await;
+        let i2 = common::make_client(&t, "Иванов Иван", &["8 900 222-22-22"]).await;
+        let p = common::make_client(&t, "Петров", &["8 921 123-45-67"]).await;
+        let s = common::make_client(&t, "Сидоров", &["+7 921 123-45-67"]).await;
+        let _kim = common::make_client(&t, "Ким", &["12345", "8 900 333-33-33"]).await;
+        let _short = common::make_client(&t, "Короткий", &["12345"]).await;
+        let _empty1 = common::make_client(&t, "", &["8 900 444-44-44"]).await;
+        let _empty2 = common::make_client(&t, "", &["8 900 555-55-55"]).await;
+
+        let page = t
+            .core
+            .list_clients(
+                &admin(),
+                &ClientFilter {
+                    duplicates: true,
+                    ..Default::default()
+                },
+                50,
+                0,
+            )
+            .await?;
+        assert_eq!(page.total, 4, "{}", t.label);
+        let mut got = ids(page.items);
+        got.sort();
+        assert_eq!(got, vec![i1.id, i2.id, p.id, s.id], "{}", t.label);
+        assert_eq!(
+            ids(t.core.similar_clients(&admin(), i1.id).await?),
+            vec![i2.id],
+            "{}",
+            t.label
+        );
+        assert_eq!(
+            ids(t.core.similar_clients(&admin(), p.id).await?),
+            vec![s.id],
+            "{}",
+            t.label
+        );
+        assert!(t.core.similar_clients(&admin(), _kim.id).await?.is_empty());
+        assert!(matches!(
+            t.core.similar_clients(&admin(), 9999).await,
+            Err(CoreError::NotFound { .. })
+        ));
+    }
+    Ok(())
+}

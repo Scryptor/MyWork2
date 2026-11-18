@@ -1,5 +1,6 @@
 // Fictional API records for unit tests of src/lib/app and src/lib/orders.
 import type { Client } from '$api/Client';
+import type { ClientListItem } from '$api/ClientListItem';
 import type { CurrentUser } from '$api/CurrentUser';
 import type { Order } from '$api/Order';
 import type { OrderListItem } from '$api/OrderListItem';
@@ -117,6 +118,20 @@ export function user(over: Partial<CurrentUser> = {}): CurrentUser {
 		name: 'Тестовый',
 		permissions: ['orders_create', 'orders_edit'],
 		open_mode: false,
+		...over
+	};
+}
+
+export function clientListItem(id: number, over: Partial<ClientListItem> = {}): ClientListItem {
+	const c = client(id);
+	return {
+		id: c.id,
+		full_name: c.full_name,
+		phones: c.phones,
+		source: c.source,
+		blacklisted: c.blacklisted,
+		orders_count: 0,
+		last_order_at: null,
 		...over
 	};
 }

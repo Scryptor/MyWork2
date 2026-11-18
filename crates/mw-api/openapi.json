@@ -537,6 +537,33 @@
             }
           },
           {
+            "name": "sort",
+            "in": "query",
+            "description": "Поле сортировки; по умолчанию дата последнего заказа, новые сверху, без заказов в конце.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/ClientSortField"
+            }
+          },
+          {
+            "name": "descending",
+            "in": "query",
+            "description": "Обратный порядок; действует только вместе с `sort`, по умолчанию `false`.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "duplicates",
+            "in": "query",
+            "description": "Только клиенты, у которых есть похожий (порядок по имени); по умолчанию `false`.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "description": "Размер страницы, 1..=500; по умолчанию 50.",
@@ -682,6 +709,52 @@
         ]
       }
     },
+    "/api/v1/clients/merge": {
+      "post": {
+        "tags": [
+          "Клиенты"
+        ],
+        "summary": "Объединение клиентов (право `clients_merge`): источники вливаются в цель и удаляются. Любая\nустаревшая версия даёт 409 и ничего не меняет.",
+        "operationId": "merge_clients",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MergeClients"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Клиент после объединения",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Client"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/clients/{id}": {
       "get": {
         "tags": [
@@ -774,6 +847,57 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Client"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/clients/{id}/similar": {
+      "get": {
+        "tags": [
+          "Клиенты"
+        ],
+        "summary": "Клиенты, похожие на этого: то же имя или общий телефон (право `clients_view` или `orders_create`).",
+        "operationId": "similar_clients",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер клиента",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Похожие клиенты",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ClientListItem"
+                  }
                 }
               }
             }
@@ -3489,6 +3613,59 @@
           }
         }
       },
+      "ClientListItem": {
+        "type": "object",
+        "description": "Строка списка клиентов.",
+        "required": [
+          "id",
+          "full_name",
+          "phones",
+          "source",
+          "blacklisted",
+          "orders_count",
+          "last_order_at"
+        ],
+        "properties": {
+          "blacklisted": {
+            "type": "boolean",
+            "description": "Клиент в чёрном списке."
+          },
+          "full_name": {
+            "type": "string",
+            "description": "ФИО клиента."
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Номер клиента."
+          },
+          "last_order_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Когда принят последний заказ (местное время предприятия); пусто, если заказов нет."
+          },
+          "orders_count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Сколько у клиента заказов (удалённые не считаются).",
+            "minimum": 0
+          },
+          "phones": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClientPhone"
+            },
+            "description": "Телефоны; первый — основной."
+          },
+          "source": {
+            "type": "string",
+            "description": "Откуда клиент узнал о сервисе."
+          }
+        }
+      },
       "ClientPage": {
         "type": "object",
         "description": "Страница клиентов.",
@@ -3500,7 +3677,7 @@
           "items": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Client"
+              "$ref": "#/components/schemas/ClientListItem"
             },
             "description": "Клиенты страницы."
           },
@@ -3596,6 +3773,15 @@
           }
         ],
         "description": "Клиент заказа: существующий или новый (создаётся в той же транзакции)."
+      },
+      "ClientSortField": {
+        "type": "string",
+        "description": "Поле сортировки списка клиентов.",
+        "enum": [
+          "name",
+          "last_order",
+          "orders_count"
+        ]
       },
       "CurrentUser": {
         "type": "object",
@@ -3838,6 +4024,60 @@
             "description": "Пользователь."
           }
         }
+      },
+      "MergeClients": {
+        "type": "object",
+        "description": "Объединение клиентов: все источники вливаются в цель.",
+        "required": [
+          "target_id",
+          "target_version",
+          "sources",
+          "full_name",
+          "address",
+          "note",
+          "source",
+          "blacklisted"
+        ],
+        "properties": {
+          "address": {
+            "type": "string",
+            "description": "Адрес итогового клиента."
+          },
+          "blacklisted": {
+            "type": "boolean",
+            "description": "Итоговый клиент в чёрном списке."
+          },
+          "full_name": {
+            "type": "string",
+            "description": "ФИО итогового клиента."
+          },
+          "note": {
+            "type": "string",
+            "description": "Заметка итогового клиента."
+          },
+          "source": {
+            "type": "string",
+            "description": "Откуда клиент узнал о сервисе."
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VersionedId"
+            },
+            "description": "Клиенты, которые вливаются и удаляются: от 1 до 10, без повторов и без цели."
+          },
+          "target_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Клиент, который остаётся."
+          },
+          "target_version": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Версия клиента, который остаётся."
+          }
+        },
+        "additionalProperties": false
       },
       "Money": {
         "type": "integer",
@@ -5228,6 +5468,27 @@
             "type": "integer",
             "format": "int64",
             "description": "Номер роли."
+          }
+        },
+        "additionalProperties": false
+      },
+      "VersionedId": {
+        "type": "object",
+        "description": "Номер записи и её версия, на которую рассчитывает клиент.",
+        "required": [
+          "id",
+          "version"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Номер записи."
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Версия записи."
           }
         },
         "additionalProperties": false

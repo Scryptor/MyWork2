@@ -1,4 +1,5 @@
 import type { Client } from '$api/Client';
+import type { ClientListItem } from '$api/ClientListItem';
 import type { ClientListQuery } from '$api/ClientListQuery';
 import type { ClientPage } from '$api/ClientPage';
 import type { Order } from '$api/Order';
@@ -33,7 +34,7 @@ function orderCommand(o: OrderLike, statusOf?: (id: number) => Status | undefine
 	};
 }
 
-function clientCommand(c: Client): CommandItem {
+function clientCommand(c: ClientListItem): CommandItem {
 	const phone = c.phones[0]?.phone;
 	return {
 		id: `client:${c.id}`,
@@ -47,7 +48,7 @@ export interface PaletteInput {
 	orders: OrderListItem[];
 	/** The order whose number is the query, if there is one. */
 	exact: Order | null;
-	clients: Client[];
+	clients: ClientListItem[];
 	recent: OrderListItem[];
 	commands: CommandItem[];
 	statusOf?: (id: number) => Status | undefined;
@@ -103,7 +104,7 @@ export interface PaletteResults {
 	query: string;
 	orders: OrderListItem[];
 	exact: Order | null;
-	clients: Client[];
+	clients: ClientListItem[];
 }
 
 export interface PaletteDeps {

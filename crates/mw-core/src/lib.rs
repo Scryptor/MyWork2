@@ -5,6 +5,7 @@ pub mod attachments;
 mod audit;
 mod auth;
 mod clients;
+mod clients_merge;
 mod clock;
 mod core;
 mod dictionaries;
@@ -27,7 +28,11 @@ pub use auth::{
     PasswordScheme, Role, RolePatch, SESSION_IDLE_DAYS, Session, User, UserPatch, hash_password,
     legacy_sha1_hex, verify_password,
 };
-pub use clients::{Client, ClientPatch, ClientPhone, MAX_CLIENT_PHONES, NewClient};
+pub use clients::{
+    Client, ClientFilter, ClientListItem, ClientPatch, ClientPhone, ClientSort, ClientSortField,
+    MAX_CLIENT_PHONES, NewClient,
+};
+pub use clients_merge::{MAX_MERGE_SOURCES, MergeClients, VersionedId};
 pub use clock::{Clock, FixedClock, SystemClock};
 pub use core::Core;
 pub use dictionaries::DictionaryItem;

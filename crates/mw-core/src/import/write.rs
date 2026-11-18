@@ -380,7 +380,7 @@ async fn write_clients(conn: &impl ConnectionTrait, b: &ImportBundle) -> Result<
             deleted_at: Set(None),
             version: Set(1),
             search_text: Set(client_search_text(&c.full_name, &numbers)),
-            name_key: Set(String::new()),
+            name_key: Set(mw_domain::search::normalize_search(&c.full_name)),
         });
         for (i, p) in list.iter().enumerate() {
             phones.push(client_phone::ActiveModel {

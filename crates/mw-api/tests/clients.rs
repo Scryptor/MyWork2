@@ -183,3 +183,100 @@ async fn client_versions_over_http() {
         );
     }
 }
+
+#[tokio::test]
+async fn similar_list_filters_and_merge_endpoints() {
+    for t in apis(Listen::Network).await {
+        let viewer = t
+            .token_with(
+                "kassa",
+                &[Permission::ClientsView, Permission::ClientsCreate],
+            )
+            .await;
+        let merger = t.token_with("boss", &[Permission::ClientsMerge]).await;
+        let mut made = Vec::new();
+        for (name, phone) in [
+            ("Иванов Иван", "89001110001"),
+            ("ИВАНОВ ИВАН", "89001110002"),
+            ("Ким", "89001110003"),
+        ] {
+            let r = t
+                .send(
+                    Method::POST,
+                    "/api/v1/clients",
+                    Some(&viewer),
+                    Some(json!({ "full_name": name, "phones": [{"phone": phone, "note": ""}], "address": "", "note": "", "source": "", "blacklisted": false })),
+                )
+                .await;
+            made.push(r.body);
+        }
+        let (a, b) = (
+            made[0]["id"].as_i64().unwrap(),
+            made[1]["id"].as_i64().unwrap(),
+        );
+        let page = t
+            .get(
+                "/api/v1/clients?duplicates=true&sort=name&descending=true",
+                Some(&viewer),
+            )
+            .await
+            .body;
+        assert_eq!(page["total"], json!(2), "{}", t.label);
+        assert_eq!(page["items"][0]["orders_count"], json!(0));
+        assert_eq!(page["items"][0]["last_order_at"], json!(null));
+        let similar = t
+            .get(&format!("/api/v1/clients/{a}/similar"), Some(&viewer))
+            .await;
+        assert_eq!(
+            (similar.status, &similar.body[0]["id"]),
+            (200, &json!(b)),
+            "{}",
+            t.label
+        );
+        let body = json!({
+            "target_id": a, "target_version": 1,
+            "sources": [{"id": b, "version": 1}],
+            "full_name": "Иванов Иван", "address": "", "note": "", "source": "", "blacklisted": false
+        });
+        let denied = t
+            .send(
+                Method::POST,
+                "/api/v1/clients/merge",
+                Some(&viewer),
+                Some(body.clone()),
+            )
+            .await;
+        assert_eq!(denied.status, 403, "{}", t.label);
+        let stale = json!({ "target_id": a, "target_version": 1, "sources": [{"id": b, "version": 7}],
+            "full_name": "Иванов Иван", "address": "", "note": "", "source": "", "blacklisted": false });
+        let r = t
+            .send(
+                Method::POST,
+                "/api/v1/clients/merge",
+                Some(&merger),
+                Some(stale),
+            )
+            .await;
+        assert_eq!(r.status, 409, "{}", t.label);
+        let r = t
+            .send(
+                Method::POST,
+                "/api/v1/clients/merge",
+                Some(&merger),
+                Some(body),
+            )
+            .await;
+        assert_eq!(
+            (r.status, r.body["phones"].as_array().unwrap().len()),
+            (200, 2),
+            "{}",
+            t.label
+        );
+        assert_eq!(
+            t.get(&format!("/api/v1/clients/{b}"), Some(&viewer))
+                .await
+                .status,
+            404
+        );
+    }
+}

@@ -147,6 +147,7 @@ impl Modify for CommonDoc {
     mw_domain::dictionary::DictionaryKind,
     mw_core::IssuedFilter,
     mw_core::OrderSortField,
+    mw_core::ClientSortField,
     mw_core::OrderValueField
 )))]
 struct ApiDoc;
