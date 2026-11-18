@@ -95,3 +95,12 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium webkit
       - run: npm run test:e2e
+      # Screenshots of the screen sweep (layout-<case>-<scene>.png) and the traces of failed tests: a person looks
+      # at them, they are not compared with a reference.
+      - name: Upload e2e results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-e2e-results
+          path: apps/ui/test-results
+          retention-days: 7
