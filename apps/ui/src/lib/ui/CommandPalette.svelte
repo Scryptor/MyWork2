@@ -83,7 +83,7 @@
 										>
 											{#if Icon}<Icon size={16} aria-hidden="true" />{/if}
 											<span class="label">{item.label}</span>
-											{#if item.hint}<span class="hint">{item.hint}</span>{/if}
+											{#if item.hint}<span class="hint" title={item.hint}>{item.hint}</span>{/if}
 											{#if item.status}
 												<StatusBadge name={item.status.name} color={item.status.color} size="sm" />
 											{/if}
@@ -169,16 +169,23 @@
 		background: var(--accent-soft);
 		color: var(--accent-text);
 	}
+	/* From its own width (not 0): with a long hint beside it the label still keeps its text. */
 	:global(.mw-palette .label) {
-		flex: 1;
+		flex: 1 1 auto;
 		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
+	/* The hint (the device and the client of an order) gives way first: the label («№ 178») stays whole. */
 	:global(.mw-palette .hint) {
+		flex: 0 1000 auto;
+		min-width: 0;
+		overflow: hidden;
 		color: var(--text-3);
 		font-size: var(--text-sm);
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	.note {
 		display: flex;
