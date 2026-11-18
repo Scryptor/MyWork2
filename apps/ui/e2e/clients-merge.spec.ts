@@ -127,3 +127,47 @@ test('from the panel: «Объединить с…» finds a client; «Объе�
 	).toBeVisible();
 	expect(b.id).not.toBe(other.id);
 });
+
+test('the picker finds a client by phone digits,', async ({ page, request }) => {
+	const marker = uniq('f');
+	const { a } = await twins(request, marker);
+	const phone = uniqPhone();
+	const other = await createClient(request, {
+		full_name: `Сидоров ${marker}`,
+		phones: [{ phone, note: '' }]
+	});
+	await page.goto(`/clients?client=${a.id}`);
+	await page.getByRole('button', { name: 'Объединить с…' }).click();
+	const picker = page.getByRole('dialog', { name: 'Объединить с…' });
+	await picker.getByRole('combobox', { name: 'Клиент' }).fill(phone.slice(-7));
+	await page.getByRole('option', { name: new RegExp(`Сидоров ${marker}`) }).click();
+	await picker.getByRole('button', { name: 'Далее' }).click();
+	await expect(
+		mergeOf(page).getByRole('radio', { name: `Оставить клиента № ${other.id}` })
+	).toBeVisible();
+});
+
+test('four clients scroll sideways on a narrow screen and the field labels stay in view', async ({
+	page,
+	request
+}) => {
+	const marker = uniq('w');
+	for (let i = 0; i < 4; i++) {
+		await createClient(request, { full_name: `Четверной ${marker}`, address: `ул. ${i}` });
+	}
+	await page.goto(`/clients?q=${marker}`);
+	await expect(gridOf(page).getByRole('row').filter({ hasText: marker })).toHaveCount(4);
+	await gridOf(page).getByRole('checkbox', { name: 'Выбрать все видимые' }).click();
+	await page.getByRole('button', { name: 'Объединить', exact: true }).click();
+	const dialog = mergeOf(page);
+	await expect(dialog.getByRole('radio', { name: /^Оставить клиента/ })).toHaveCount(4);
+	await page.setViewportSize({ width: 390, height: 800 });
+	const label = dialog.getByText('ФИО', { exact: true });
+	await dialog.locator('.scroll').evaluate((el) => (el.scrollLeft = el.scrollWidth));
+	const box = await label.boundingBox();
+	expect(box).not.toBeNull();
+	expect(box!.x).toBeGreaterThanOrEqual(0);
+	expect(box!.x + box!.width).toBeLessThanOrEqual(390);
+	const last = dialog.getByRole('radio', { name: /^Оставить клиента/ }).last();
+	await expect(last).toBeInViewport();
+});

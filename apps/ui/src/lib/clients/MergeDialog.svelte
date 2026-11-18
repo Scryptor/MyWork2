@@ -160,7 +160,7 @@
 			{/if}
 			<div class="scroll">
 				<div class="grid" style:--cols={clients.length}>
-					<span></span>
+					<span class="label"></span>
 					{#each clients as c (c.id)}
 						<label class="head" class:kept={ch.targetId === c.id}>
 							<input
@@ -249,12 +249,20 @@
 	}
 	.grid {
 		display: grid;
+		/* As wide as the columns need: a sticky label stays inside its grid while the table scrolls. */
+		width: max-content;
+		min-width: 100%;
 		grid-template-columns: 6rem repeat(var(--cols), minmax(10rem, 1fr));
 		gap: var(--space-1);
 		align-items: stretch;
 		font-size: var(--text-sm);
 	}
+	/* The labels stay in view while the clients scroll sideways. */
 	.label {
+		position: sticky;
+		left: 0;
+		z-index: 1;
+		background: var(--surface);
 		padding-top: var(--space-2);
 		color: var(--text-3);
 	}

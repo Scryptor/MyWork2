@@ -15,6 +15,7 @@
 		allowCustom = true,
 		placeholder,
 		emptyText = ru.common.nothingFound,
+		filter = true,
 		onselect,
 		label,
 		hint,
@@ -28,6 +29,8 @@
 		allowCustom?: boolean;
 		placeholder?: string;
 		emptyText?: string;
+		/** false: the items are shown as given (the caller already filtered them, e.g. the server). */
+		filter?: boolean;
 		onselect?: (v: string) => void;
 		label?: string;
 		hint?: string;
@@ -47,6 +50,7 @@
 	});
 
 	const filtered = $derived.by(() => {
+		if (!filter) return items.slice(0, MAX_ITEMS);
 		const q = normalizeSearch(text);
 		return items
 			.filter((i) => q === '' || normalizeSearch(i.value).includes(q))

@@ -27,7 +27,9 @@
 	const t = ru.merge;
 	let text = $state('');
 	let found = $state.raw<{ value: string; hint?: string; id: number }[]>([]);
-	let picked = $state<number | null>(null);
+	/** Every label offered so far and its client: a label typed or picked is known even after a new search. */
+	let known = $state.raw(new Map<string, number>());
+	const picked = $derived(known.get(text) ?? null);
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	let token = 0;
 
@@ -36,7 +38,7 @@
 			untrack(() => {
 				text = '';
 				found = [];
-				picked = null;
+				known = new Map();
 			});
 		}
 		return () => clearTimeout(timer);
@@ -60,6 +62,7 @@
 							value: `${displayName(c.full_name) || ru.client.noName} · ${ru.client.number(c.id)}`,
 							hint: phonesText(c.phones) || undefined
 						}));
+					known = new Map([...known, ...found.map((f) => [f.value, f.id] as const)]);
 				},
 				() => {
 					// No suggestions without an answer.
@@ -68,13 +71,9 @@
 		}, SEARCH_MS);
 	}
 
-	function typed(v: string) {
-		picked = found.find((f) => f.value === v)?.id ?? null;
-		search(v);
-	}
 	$effect(() => {
 		const v = text;
-		untrack(() => typed(v));
+		untrack(() => search(v));
 	});
 
 	function next() {
@@ -92,6 +91,7 @@
 	<Combobox
 		bind:value={text}
 		items={found}
+		filter={false}
 		label={t.pickerClient}
 		placeholder={t.pickerPlaceholder}
 	/>

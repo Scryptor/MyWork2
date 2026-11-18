@@ -65,6 +65,7 @@
 	let combo = $state('');
 	let comboErr = $state('');
 	let comboOff = $state('Apple');
+	let comboAll = $state('');
 	let comboSm = $state('');
 	let date = $state<string | null>(null);
 	let dateErr = $state<string | null>(null);
@@ -126,6 +127,12 @@
 	<Combobox bind:value={combo} items={BRANDS} label="Подсказки" placeholder="Начните вводить" />
 	<Combobox bind:value={comboErr} items={BRANDS} label="Подсказки с ошибкой" error="Нужен бренд" />
 	<Combobox bind:value={comboOff} items={BRANDS} label="Подсказки отключённые" disabled />
+	<Combobox
+		bind:value={comboAll}
+		items={BRANDS}
+		label="Без фильтра (список от сервера)"
+		filter={false}
+	/>
 	<Combobox bind:value={comboSm} items={BRANDS} label="Только из списка" allowCustom={false} />
 	<DateInput bind:value={date} label="Дата" />
 	<DateInput bind:value={dateErr} label="Дата с ошибкой" error="Дата обязательна" />
