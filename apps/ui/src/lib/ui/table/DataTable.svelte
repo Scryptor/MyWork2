@@ -94,6 +94,16 @@
 
 	// Virtual rows. The sticky header is inside the scroller, one row high: rows start below it.
 	let scroller = $state<HTMLDivElement | null>(null);
+	/** The visible width of the table: the empty state is centred in it, not in the whole width. */
+	let viewWidth = $state(0);
+	$effect(() => {
+		const el = scroller;
+		// No ResizeObserver (jsdom): the empty state takes the whole width, as before.
+		if (!el || typeof ResizeObserver === 'undefined') return;
+		const observer = new ResizeObserver(() => (viewWidth = el.clientWidth));
+		observer.observe(el);
+		return () => observer.disconnect();
+	});
 	const skeletons = $derived(loading ? (rows.length === 0 ? 8 : 3) : 0);
 	const virtualizer = createVirtualizer<HTMLDivElement, HTMLDivElement>({
 		count: 0,
@@ -413,7 +423,11 @@
 		>
 			{#if rows.length === 0 && !loading}
 				<div class="empty" role="row" aria-rowindex={2}>
-					<div role="gridcell">
+					<div
+						class="empty-cell"
+						role="gridcell"
+						style:width={viewWidth ? `${viewWidth}px` : undefined}
+					>
 						{#if empty}{@render empty()}{:else}<EmptyState title={ru.table.empty} />{/if}
 					</div>
 				</div>
@@ -673,5 +687,11 @@
 	}
 	.empty {
 		min-width: var(--table-min);
+	}
+	/* A table wider than its window scrolls sideways: the message stays in the part that is seen. */
+	.empty-cell {
+		position: sticky;
+		left: 0;
+		box-sizing: border-box;
 	}
 </style>

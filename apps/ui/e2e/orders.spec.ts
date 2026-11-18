@@ -333,3 +333,20 @@ test.describe('on a phone', () => {
 		await expect(panelOf(page, o.id)).toBeVisible();
 	});
 });
+
+test('a list that finds nothing keeps its message in sight when the columns are wider', async ({
+	page
+}) => {
+	await openOrders(page, `?q=${uniq('Пусто')}`);
+	const grid = gridOf(page);
+	const message = grid.getByText('Ничего не нашлось');
+	await expect(message).toBeVisible();
+	// At 1280 with the full menu the columns are wider than the table: it scrolls sideways.
+	expect(await grid.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+	const seen = await grid.evaluate((el) => {
+		const r = el.getBoundingClientRect();
+		return { left: r.left + el.clientLeft, width: el.clientWidth };
+	});
+	const box = await message.boundingBox();
+	expect(Math.abs(box!.x + box!.width / 2 - (seen.left + seen.width / 2))).toBeLessThan(2);
+});
