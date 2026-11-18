@@ -62,7 +62,6 @@ export const ru = {
 		pointButton: (name: string | null) => `Точка: ${name ?? 'все'}`,
 		lightTheme: 'Светлая тема',
 		darkTheme: 'Тёмная тема',
-		theme: 'Тема',
 		themes: { system: 'Как в системе', light: 'Светлая', dark: 'Тёмная' },
 		settings: 'Настройки',
 		themeCommand: { system: 'Тема: как в системе', light: 'Тема: светлая', dark: 'Тема: тёмная' },
