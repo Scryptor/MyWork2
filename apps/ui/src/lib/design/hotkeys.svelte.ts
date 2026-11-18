@@ -54,12 +54,12 @@ export function matchShortcut(e: KeyboardEvent, spec: string, opts?: { mac?: boo
 	if (!!e.metaKey !== wantMeta || !!e.ctrlKey !== wantCtrl || !!e.altKey !== s.alt) return false;
 
 	if (s.key === '?') return e.key === '?'; // Shift is part of the character
-	// Size keys: «+» sits on Shift+Equal on many layouts, so Shift does not matter.
+	// Size keys: «+» sits on Shift+Equal on many layouts, so Shift does not matter; «−» is the same.
 	if (s.key === 'Plus') return e.code === 'Equal' || e.code === 'NumpadAdd';
+	if (s.key === 'Minus') return e.code === 'Minus' || e.code === 'NumpadSubtract';
 	if (!!e.shiftKey !== s.shift) return false;
 	if (s.key === '/') return e.key === '/' || e.code === 'Slash';
 	if (/^[A-Za-z]$/.test(s.key)) return e.code === `Key${s.key.toUpperCase()}`;
-	if (s.key === 'Minus') return e.code === 'Minus' || e.code === 'NumpadSubtract';
 	if (/^\d$/.test(s.key)) return e.code === `Digit${s.key}` || e.code === `Numpad${s.key}`;
 	return e.key === s.key;
 }

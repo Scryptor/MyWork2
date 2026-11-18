@@ -52,6 +52,18 @@ describe('size keys', () => {
 		).toBe(true);
 		expect(matchShortcut(ev({ code: 'Equal', key: '=' }), 'Mod+Plus', pc)).toBe(false);
 	});
+	it('Minus: Minus at any Shift, like Plus', () => {
+		expect(
+			matchShortcut(ev({ code: 'Minus', key: '_', ctrlKey: true, shiftKey: true }), 'Mod+Minus', pc)
+		).toBe(true);
+		expect(
+			matchShortcut(
+				ev({ code: 'NumpadSubtract', key: '-', metaKey: true, shiftKey: true }),
+				'Mod+Minus',
+				{ mac: true }
+			)
+		).toBe(true);
+	});
 	it('Minus: Minus, NumpadSubtract', () => {
 		expect(matchShortcut(ev({ code: 'Minus', key: '-', ctrlKey: true }), 'Mod+Minus', pc)).toBe(
 			true

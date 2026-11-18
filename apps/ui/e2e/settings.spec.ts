@@ -83,6 +83,43 @@ test('size keys work in a field, stop at the end, and 0 returns to auto', async 
 	await expect(html(page)).toHaveCSS('font-size', '20px');
 });
 
+test('size keys work over the open intake, in its phone field; Shift does not matter', async ({
+	page
+}) => {
+	await page.goto('/orders');
+	await expect(page.getByRole('grid', { name: 'Заказы' })).toBeVisible();
+	await page.keyboard.press('n');
+	const sheet = page.getByRole('dialog', { name: 'Новый заказ' });
+	const phone = sheet.getByRole('textbox', { name: 'Телефон' });
+	await expect(phone).toBeFocused();
+	const m = await mod(page);
+	await page.keyboard.press(`${m}+Equal`);
+	await expect(html(page)).toHaveCSS('font-size', '17.6px');
+	await expect(toastsOf(page).getByText('Размер 110 %')).toBeVisible();
+	await page.keyboard.press(`${m}+Shift+Minus`);
+	await expect(html(page)).toHaveCSS('font-size', '16px');
+	// The new size toast replaces the old one.
+	await expect(toastsOf(page).getByText('Размер 100 %')).toBeVisible();
+	await expect(toastsOf(page).getByText('Размер 110 %')).toHaveCount(0);
+	await expect(sheet).toBeVisible();
+	await expect(phone).toBeFocused();
+	await expect(phone).toHaveValue('');
+});
+
+test.describe('4K', () => {
+	test.use({ screen: { width: 3840, height: 2160 }, viewport: { width: 1920, height: 1010 } });
+
+	test('at the largest size «Авто» stays «Авто»', async ({ page }) => {
+		await openAppearance(page);
+		await expect(page.getByText('Подбирается по экрану: сейчас 150 %')).toBeVisible();
+		await expect(html(page)).toHaveCSS('font-size', '24px');
+		await page.keyboard.press(`${await mod(page)}+Equal`);
+		await expect(toastsOf(page).getByText('Размер: авто (150 %)')).toBeVisible();
+		await expect(html(page)).toHaveCSS('font-size', '24px');
+		await expect(page.getByRole('radio', { name: 'Авто' })).toBeChecked();
+	});
+});
+
 test('compact density makes table rows 28px', async ({ page, request }) => {
 	const label = uniq('Плот');
 	await createOrder(request, { clientName: label });
