@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { applyPrefs, DEFAULT_PREFS, parsePrefs, prefs, PREFS_KEY } from './prefs.svelte.js';
+import { DEFAULT_PREFS, parsePrefs, prefs, PREFS_KEY } from './prefs.svelte.js';
 import { layoutForWidth } from './breakpoints.js';
 import { statusHue } from './status-colors.js';
 import { contrastRatio } from './contrast.js';
@@ -15,26 +15,28 @@ describe('parsePrefs', () => {
 		expect(parsePrefs('{bad')).toEqual(DEFAULT_PREFS);
 		expect(parsePrefs('[]')).toEqual(DEFAULT_PREFS);
 	});
-	it('replaces invalid fields only', () => {
-		expect(parsePrefs('{"theme":"dark","scale":3,"density":"x"}')).toEqual({
+	it('ignores scale without v: 2', () => {
+		expect(parsePrefs('{"theme":"dark","scale":1}')).toEqual({
 			theme: 'dark',
-			scale: 1,
+			scale: 'auto',
 			density: 'comfortable'
 		});
 	});
-});
-
-describe('applyPrefs', () => {
-	it('resolves the theme and sets attributes', () => {
-		const root = document.createElement('html');
-		applyPrefs({ ...DEFAULT_PREFS, theme: 'system' }, root, true);
-		expect(root.dataset.theme).toBe('dark');
-		applyPrefs({ ...DEFAULT_PREFS, theme: 'light' }, root, true);
-		expect(root.dataset.theme).toBe('light');
-		applyPrefs({ theme: 'system', scale: 1.125, density: 'compact' }, root, false);
-		expect(root.style.getPropertyValue('--ui-scale')).toBe('1.125');
-		expect(root.dataset.density).toBe('compact');
-		expect(root.dataset.theme).toBe('light');
+	it('reads v: 2 scale', () => {
+		expect(parsePrefs('{"v":2,"scale":1.25}').scale).toBe(1.25);
+		expect(parsePrefs('{"v":2,"scale":0.9375}').scale).toBe('auto');
+		expect(parsePrefs('{"v":2,"scale":"auto","density":"compact"}')).toEqual({
+			theme: 'system',
+			scale: 'auto',
+			density: 'compact'
+		});
+	});
+	it('replaces invalid fields only', () => {
+		expect(parsePrefs('{"v":2,"theme":"dark","scale":3,"density":"x"}')).toEqual({
+			theme: 'dark',
+			scale: 'auto',
+			density: 'comfortable'
+		});
 	});
 });
 
@@ -44,6 +46,11 @@ describe('prefs store', () => {
 		expect(JSON.parse(localStorage.getItem(PREFS_KEY)!)).toMatchObject({ theme: 'dark' });
 		expect(prefs.value.theme).toBe('dark');
 		prefs.set({ theme: 'system' });
+	});
+	it('stores a versioned object', () => {
+		prefs.set({ scale: 1.1 });
+		expect(JSON.parse(localStorage.getItem(PREFS_KEY)!)).toMatchObject({ v: 2, scale: 1.1 });
+		prefs.set({ scale: 'auto' });
 	});
 	it('survives a throwing storage', () => {
 		vi.stubGlobal('localStorage', {

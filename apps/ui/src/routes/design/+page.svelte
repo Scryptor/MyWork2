@@ -16,10 +16,12 @@
 		{ value: 'dark', label: 'Тёмная' }
 	] as const;
 	const SCALES = [
-		{ value: 0.9375, label: 'Мельче' },
-		{ value: 1, label: 'Обычный' },
-		{ value: 1.125, label: 'Крупнее' },
-		{ value: 1.25, label: 'Крупный' }
+		{ value: 'auto', label: 'Авто' },
+		{ value: 0.9, label: '90 %' },
+		{ value: 1, label: '100 %' },
+		{ value: 1.1, label: '110 %' },
+		{ value: 1.25, label: '125 %' },
+		{ value: 1.5, label: '150 %' }
 	] as const;
 	const DENSITIES = [
 		{ value: 'compact', label: 'Компактно' },

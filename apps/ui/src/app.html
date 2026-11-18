@@ -17,15 +17,33 @@
 						if (parsed && typeof parsed === 'object') o = parsed;
 					} catch (e) {}
 					var theme = ['system', 'light', 'dark'].indexOf(o.theme) >= 0 ? o.theme : 'system';
-					var scale = [0.9375, 1, 1.125, 1.25].indexOf(o.scale) >= 0 ? o.scale : 1;
+					var pref = 'auto';
+					if (o.v === 2 && [0.9, 1, 1.1, 1.25, 1.5].indexOf(o.scale) >= 0) pref = o.scale;
 					var density = o.density === 'compact' ? 'compact' : 'comfortable';
 					var dark = false;
 					try {
 						dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
 					} catch (e) {}
+					var sw = 0;
+					var sh = 0;
+					try {
+						sw = window.screen.width;
+						sh = window.screen.height;
+					} catch (e) {}
+					var scale = pref;
+					if (pref === 'auto') {
+						scale = 1;
+						if (sw > 0 && sh > 0) {
+							var e2 = Math.min(sw, (sh * 16) / 9);
+							scale = e2 < 2200 ? 1 : e2 < 2880 ? 1.1 : e2 < 3400 ? 1.25 : 1.5;
+						}
+					}
+					var w = window.innerWidth / scale;
+					var band = w < 600 ? 'xs' : w < 900 ? 'sm' : w < 1024 ? 'md' : w < 1280 ? 'lg' : 'xl';
 					var root = document.documentElement;
 					root.setAttribute('data-theme', theme === 'system' ? (dark ? 'dark' : 'light') : theme);
 					root.setAttribute('data-density', density);
+					root.setAttribute('data-width', band);
 					root.style.setProperty('--ui-scale', String(scale));
 				} catch (e) {}
 			})();

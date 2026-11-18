@@ -4,7 +4,7 @@
 	import { createVirtualizer } from '@tanstack/svelte-virtual';
 	import { untrack, type Snippet } from 'svelte';
 	import { SvelteMap } from 'svelte/reactivity';
-	import { prefs, type Density } from '#lib/design/prefs.svelte.js';
+	import { display, prefs, type Density } from '#lib/design/prefs.svelte.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import EmptyState from '../EmptyState.svelte';
 	import Skeleton from '../Skeleton.svelte';
@@ -64,7 +64,7 @@
 		const px = parseFloat(getComputedStyle(document.documentElement).fontSize);
 		return Number.isFinite(px) && px > 0 ? px : 16 * scale;
 	}
-	const fontPx = $derived(rootFontPx(prefs.value.scale));
+	const fontPx = $derived(rootFontPx(display.value.scale));
 	const scale = $derived(fontPx / 16);
 	const rowPx = $derived(ROW_REM[prefs.value.density] * fontPx);
 

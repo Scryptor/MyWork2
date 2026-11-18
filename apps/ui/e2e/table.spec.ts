@@ -239,8 +239,9 @@ test.describe('table', () => {
 		await page.getByRole('radio', { name: 'Компактно' }).check({ force: true });
 		await expect.poll(height).toBe(32);
 
+		await page.getByRole('radio', { name: '100 %' }).check({ force: true });
 		const normal = await widthOf(page, 'Клиент');
-		await page.getByRole('radio', { name: 'Крупный' }).check({ force: true });
+		await page.getByRole('radio', { name: '125 %' }).check({ force: true });
 		await expect.poll(height).toBe(40);
 		await expect.poll(() => widthOf(page, 'Клиент')).toBe(Math.round(normal * 1.25));
 	});
