@@ -16,7 +16,7 @@
 	let {
 		open = $bindable(false),
 		title,
-		width = 'min(70rem, 100vw - 4rem)',
+		width = 'min(64rem, 100vw - 4rem)',
 		header,
 		children,
 		footer,

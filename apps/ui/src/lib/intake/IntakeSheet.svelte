@@ -656,12 +656,12 @@
 		display: grid;
 		grid-template-columns: minmax(0, 1fr) minmax(14rem, 18rem);
 		align-items: start;
-		gap: var(--space-6);
+		gap: var(--space-5);
 	}
 	.form {
 		display: flex;
 		flex-direction: column;
-		gap: var(--space-6);
+		gap: var(--space-5);
 		min-width: 0;
 	}
 	.grid {

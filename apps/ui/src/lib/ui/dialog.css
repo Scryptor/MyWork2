@@ -70,11 +70,11 @@
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-1);
-	padding: var(--space-4) var(--space-5) var(--space-3);
+	padding: var(--space-3) var(--space-4) var(--space-3);
 	padding-right: calc(var(--space-3) + var(--control-md) + var(--space-2));
 }
 .mw-dialog.phone .mw-dialog-head {
-	padding-right: var(--space-5);
+	padding-right: var(--space-4);
 	padding-left: calc(var(--space-3) + var(--control-md) + var(--space-2));
 }
 .mw-dialog-title {
@@ -91,7 +91,7 @@
 	flex: 1 1 auto;
 	min-height: 0;
 	overflow-y: auto;
-	padding: var(--space-2) var(--space-5) var(--space-4);
+	padding: var(--space-2) var(--space-4) var(--space-3);
 }
 .mw-dialog-foot {
 	flex: none;
@@ -100,7 +100,7 @@
 	align-items: center;
 	justify-content: flex-end;
 	gap: var(--space-2);
-	padding: var(--space-3) var(--space-5);
+	padding: var(--space-3) var(--space-4);
 	border-top: 1px solid var(--border);
 }
 /* Last in the DOM, so the first field (not the close button) takes focus on open.

@@ -121,8 +121,8 @@ test('N opens intake, a new client order appears in the list', async ({ page, re
 	const phone = uniqPhone();
 	const chip = uniq('Чехол');
 	await openIntake(page);
-	// min(70rem, 100vw − 4rem) at 1280px: 70rem.
-	await expect.poll(async () => (await sheetOf(page).boundingBox())?.width).toBe(1120);
+	// min(64rem, 100vw − 4rem) at 1280px: 64rem.
+	await expect.poll(async () => (await sheetOf(page).boundingBox())?.width).toBe(1024);
 	await phoneOf(page).fill(phone);
 	await nameOf(page).fill(name);
 	await fillDevice(page);

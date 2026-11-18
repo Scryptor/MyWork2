@@ -72,12 +72,12 @@
 	--st-on-dot: #000000;
 	--font-sans: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 	--font-mono: ui-monospace, 'SF Mono', Consolas, monospace;
-	--text-xs: 0.75rem;
-	--text-sm: 0.8125rem;
-	--text-md: 0.875rem;
-	--text-lg: 1rem;
-	--text-xl: 1.25rem;
-	--text-2xl: 1.5rem;
+	--text-xs: 0.6875rem;
+	--text-sm: 0.75rem;
+	--text-md: 0.8125rem;
+	--text-lg: 0.9375rem;
+	--text-xl: 1.125rem;
+	--text-2xl: 1.375rem;
 	--leading-tight: 1.25;
 	--leading-normal: 1.45;
 	--space-0-5: 0.125rem;
@@ -91,13 +91,13 @@
 	--space-8: 2rem;
 	--space-10: 2.5rem;
 	--space-12: 3rem;
-	--control-sm: 1.75rem;
-	--control-md: 2.125rem;
-	--control-lg: 2.5rem;
-	--row-height: 2.5rem;
-	--topbar-height: 3rem;
-	--sidebar-width: 14.5rem;
-	--rail-width: 3.5rem;
+	--control-sm: 1.5rem;
+	--control-md: 1.875rem;
+	--control-lg: 2.25rem;
+	--row-height: 2rem;
+	--topbar-height: 2.75rem;
+	--sidebar-width: 13rem;
+	--rail-width: 3rem;
 	--bottom-nav-height: 3.5rem;
 	--card-min-height: 3rem;
 	--radius-xs: 4px;
@@ -200,7 +200,7 @@
 }
 
 :root[data-density='compact'] {
-	--row-height: 2rem;
+	--row-height: 1.75rem;
 }
 
 @media (pointer: coarse) {

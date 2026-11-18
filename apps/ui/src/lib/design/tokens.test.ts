@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import css from './tokens.css?raw';
 import { contrastRatio } from './contrast.js';
 import { STATUS_HUES } from './status-colors.js';
+import { ROW_REM } from '../ui/table/sizes.js';
 
 function blockBody(source: string, selector: string): string {
 	const start = source.indexOf(selector + ' {');
@@ -103,5 +104,34 @@ describe('tokens: values match the spec', () => {
 	});
 	it('reduced motion zeroes durations', () => {
 		expect(css).toMatch(/prefers-reduced-motion: reduce[\s\S]*--duration-fast: 0\.01ms/);
+	});
+});
+
+describe('tokens: denser defaults (spec 3.3, 3.4, decision 48)', () => {
+	it('has the new sizes', () => {
+		const want: Record<string, string> = {
+			'--text-xs': '0.6875rem',
+			'--text-sm': '0.75rem',
+			'--text-md': '0.8125rem',
+			'--text-lg': '0.9375rem',
+			'--text-xl': '1.125rem',
+			'--text-2xl': '1.375rem',
+			'--control-sm': '1.5rem',
+			'--control-md': '1.875rem',
+			'--control-lg': '2.25rem',
+			'--row-height': '2rem',
+			'--topbar-height': '2.75rem',
+			'--sidebar-width': '13rem',
+			'--rail-width': '3rem'
+		};
+		for (const [name, value] of Object.entries(want)) expect(get(light, name), name).toBe(value);
+	});
+	it('keeps the coarse-pointer control size', () => {
+		expect(css).toMatch(/pointer: coarse[\s\S]*--control-md: 2\.75rem/);
+	});
+	it('ROW_REM matches --row-height of both densities', () => {
+		const compact = parseVars(blockBody(css, ":root[data-density='compact']"));
+		expect(`${ROW_REM.comfortable}rem`).toBe(get(light, '--row-height'));
+		expect(`${ROW_REM.compact}rem`).toBe(get(compact, '--row-height'));
 	});
 });

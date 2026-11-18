@@ -4,7 +4,8 @@
 	import { createVirtualizer } from '@tanstack/svelte-virtual';
 	import { untrack, type Snippet } from 'svelte';
 	import { SvelteMap } from 'svelte/reactivity';
-	import { display, prefs, type Density } from '#lib/design/prefs.svelte.js';
+	import { display, prefs } from '#lib/design/prefs.svelte.js';
+	import { ROW_REM } from './sizes.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import EmptyState from '../EmptyState.svelte';
 	import Skeleton from '../Skeleton.svelte';
@@ -59,7 +60,6 @@
 
 	// Sizes follow the root font size (16px × UI scale): the row height by density in pixels for the
 	// virtualizer, column widths (stored for the normal size) scaled like the text.
-	const ROW_REM: Record<Density, number> = { compact: 2, comfortable: 2.5 };
 	function rootFontPx(scale: number): number {
 		const px = parseFloat(getComputedStyle(document.documentElement).fontSize);
 		return Number.isFinite(px) && px > 0 ? px : 16 * scale;

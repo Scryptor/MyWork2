@@ -25,7 +25,7 @@ test.describe('navigation', () => {
 		const nav = page.locator('#navigation').getByRole('navigation', { name: 'Разделы' });
 		await expect(nav.getByText('Клиенты')).toBeVisible();
 		await expect(nav.getByText('Требуют внимания')).toBeVisible();
-		await expect.poll(async () => (await nav.boundingBox())?.width).toBe(232);
+		await expect.poll(async () => (await nav.boundingBox())?.width).toBe(208);
 	});
 
 	test('1440: a saved view has «✕» that removes it', async ({ page }) => {
@@ -43,7 +43,7 @@ test.describe('navigation', () => {
 		const nav = page.locator('#navigation').getByRole('navigation', { name: 'Разделы' });
 		const link = nav.getByRole('link', { name: 'Клиенты' });
 		await expect(link).toBeVisible();
-		await expect.poll(async () => (await nav.boundingBox())?.width).toBe(56);
+		await expect.poll(async () => (await nav.boundingBox())?.width).toBe(48);
 		await expect(nav.getByText('Клиенты')).toBeHidden();
 		await link.hover();
 		await expect(page.getByRole('tooltip', { name: 'Клиенты' })).toBeVisible();
