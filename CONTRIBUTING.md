@@ -20,4 +20,4 @@ npm run dev                              # http://localhost:5173 (витрина
 Vite проксирует `/api` на `MW_API_URL` (по умолчанию http://127.0.0.1:8080).
 
 - `npm run verify` — svelte-check, Prettier, ESLint, Vitest, сборка и проверка лицензий;
-- `npm run test:e2e` — сквозные тесты Playwright (Chromium и WebKit) на настоящем `mw-server`: собирает интерфейс и запускает два сервера через `e2e/support/server.mjs` (нужен Rust).
+- `npm run test:e2e` — сквозные тесты Playwright (Chromium и WebKit) на настоящем `mw-server`: собирает интерфейс и запускает два сервера через `e2e/support/server.mjs` (нужен Rust). Проект chromium запускается с флагами поддельной камеры (`--use-fake-device-for-media-stream`, `--use-fake-ui-for-media-stream`), поэтому снимок с камеры проверяется только в нём; в WebKit проверяется запасной путь.
