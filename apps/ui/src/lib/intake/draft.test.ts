@@ -517,6 +517,16 @@ describe('lateAnswer', () => {
 		}
 	});
 
+	it('a repeat after no answer comes late: changed since the first attempt, it is marked, not closed', () => {
+		const first = filled({ comment: '' });
+		// «Принять» pressed again after an edit, then Esc: the repeat's answer comes to a closed sheet.
+		const repeat = { ...first, comment: 'Позвонить вечером', attempt: attemptOf(first) };
+		expect(lateAnswer(structuredClone(repeat), repeat)).toBe('mark');
+		// Nothing changed since the first attempt: it goes.
+		const same = { ...first, attempt: attemptOf(first) };
+		expect(lateAnswer(structuredClone(same), same)).toBe('close');
+	});
+
 	it('a draft begun after it (another key) is left alone', () => {
 		expect(lateAnswer({ ...sent, key: newDraftKey() }, sent)).toBe('other');
 	});
@@ -553,17 +563,36 @@ describe('an earlier «Принять» of the draft that may have made the orde
 	});
 
 	it('another client than the one it was sent for starts another order', () => {
+		const client = (id: number, ...phones: string[]) => ({
+			id,
+			phones: phones.map((phone) => ({ phone, note: '' }))
+		});
 		const fresh = filled();
-		expect(startsAnotherOrder(fresh, 5)).toBe(false);
+		expect(startsAnotherOrder(fresh, client(5))).toBe(false);
 		const existing = filled({ clientId: 5 });
 		const timedOut = { ...existing, attempt: attemptOf(existing) };
-		expect(startsAnotherOrder(timedOut, 5)).toBe(false);
-		expect(startsAnotherOrder(timedOut, 6)).toBe(true);
-		// A new client was sent: any client found is another one.
-		expect(startsAnotherOrder({ ...fresh, attempt: attemptOf(fresh) }, 5)).toBe(true);
+		expect(startsAnotherOrder(timedOut, client(5))).toBe(false);
+		expect(startsAnotherOrder(timedOut, client(6))).toBe(true);
 		// Accepted: the client of that order is known.
 		const marked = { ...fresh, attempt: attemptOf(fresh), acceptedAs: mark(fresh, 5) };
-		expect(startsAnotherOrder(marked, 5)).toBe(false);
-		expect(startsAnotherOrder(marked, 6)).toBe(true);
+		expect(startsAnotherOrder(marked, client(5))).toBe(false);
+		expect(startsAnotherOrder(marked, client(6))).toBe(true);
+	});
+
+	it('the client a new-client attempt may have made is the same client: one with its phone', () => {
+		const client = (id: number, ...phones: string[]) => ({
+			id,
+			phones: phones.map((phone) => ({ phone, note: '' }))
+		});
+		const fresh = filled({ phones: [{ phone: '89211234567', note: '' }] });
+		const timedOut = { ...fresh, attempt: attemptOf(fresh) };
+		// Found by that phone after Esc and N: as the server keeps it, among others or not first.
+		expect(startsAnotherOrder(timedOut, client(5, '79211234567'))).toBe(false);
+		expect(startsAnotherOrder(timedOut, client(5, '74950000000', '9211234567'))).toBe(false);
+		expect(startsAnotherOrder(timedOut, client(6, '79210000001'))).toBe(true);
+		expect(startsAnotherOrder(timedOut, client(7))).toBe(true);
+		// Sent with a name only: a client found by a phone typed later is another one.
+		const named = filled({ phones: [{ phone: '', note: '' }], fullName: 'Тестов' });
+		expect(startsAnotherOrder({ ...named, attempt: attemptOf(named) }, client(5, '1'))).toBe(true);
 	});
 });

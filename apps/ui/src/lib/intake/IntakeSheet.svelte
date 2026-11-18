@@ -3,6 +3,7 @@
      the intake is cancelled. -->
 <script lang="ts">
 	import { tick, untrack } from 'svelte';
+	import type { Client } from '$api/Client';
 	import type { DictionaryKind } from '$api/DictionaryKind';
 	import type { Order } from '$api/Order';
 	import type { OrderValueField } from '$api/OrderValueField';
@@ -300,8 +301,8 @@
 	}
 
 	/** Another client than the one an earlier «Принять» was for: a new order of the same form. */
-	function chosen(clientId: number) {
-		if (startsAnotherOrder(draft, clientId)) renew();
+	function chosen(client: Client) {
+		if (startsAnotherOrder(draft, client)) renew();
 		void focusField('deviceType');
 	}
 	function openOrder(id: number) {

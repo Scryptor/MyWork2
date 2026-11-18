@@ -574,6 +574,38 @@ test('«Принять» again after no answer and an edit: the order is that of
 	await expect(panelOf(page, id)).toBeVisible();
 });
 
+test('no answer for a new client, Esc, N: the client that attempt made is found, «Это он» keeps it one order', async ({
+	page,
+	request
+}) => {
+	const marker = uniq('Не включается');
+	const name = `Тестов ${uniq('Н')}`;
+	await page.clock.install();
+	await openIntake(page);
+	await phoneOf(page).fill(uniqPhone());
+	await nameOf(page).fill(name);
+	await fillByHand(page, marker);
+	const late = await answerLate(page);
+	await page.keyboard.press(`${await mod(page)}+Enter`);
+	await expect.poll(() => ordersWith(request, marker)).toBe(1);
+	await page.clock.fastForward(30_000);
+	await expect(sheetOf(page).getByRole('alert')).toContainText('нет ответа от сервера');
+	// Esc, a look at the list, N: the phone finds the client the first attempt made.
+	await page.keyboard.press('Escape');
+	await expect(sheetOf(page)).toBeHidden();
+	late.letGo();
+	await openIntake(page);
+	const card = sheetOf(page)
+		.getByRole('list', { name: 'Найденные клиенты' })
+		.getByRole('listitem')
+		.filter({ hasText: name });
+	await card.getByRole('button', { name: 'Это он' }).click();
+	await page.keyboard.press(`${await mod(page)}+Enter`);
+	// The same attempt: the order of the first one, not a second order.
+	await expect(acceptedNote(page).or(toastsOf(page).getByText(/^Принят № \d+$/))).toBeVisible();
+	expect(await ordersWith(request, marker)).toBe(1);
+});
+
 test('the order of the attempt was deleted meanwhile: «Принять» says so, the next one is a new order', async ({
 	page,
 	request

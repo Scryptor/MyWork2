@@ -2,6 +2,15 @@ export function phoneDigits(input: string): string {
 	return input.replace(/\D/g, '');
 }
 
+/**
+ * The key one number is matched by, as the server does it (`mw_domain::phone::phone_key`): the last 10
+ * digits, so +7…, 8… and a number without the code are one; a shorter number whole.
+ */
+export function phoneKey(input: string): string {
+	const digits = phoneDigits(input);
+	return digits.length >= 10 ? digits.slice(-10) : digits;
+}
+
 export function formatPhone(digits: string): string {
 	let d = digits;
 	if (d.length === 11 && (d.startsWith('7') || d.startsWith('8'))) d = d.slice(1);

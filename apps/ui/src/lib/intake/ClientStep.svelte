@@ -35,8 +35,8 @@
 		/** «Откуда узнали» of the dictionary. */
 		sources: string[];
 		errors: { contact?: string; phones?: string; client?: string };
-		/** A client was chosen (their number): the form goes on to the device. */
-		onchosen?: (clientId: number) => void;
+		/** A client was chosen: the form goes on to the device. */
+		onchosen?: (client: Client) => void;
 	} = $props();
 
 	const NAME_ID = 'intake-name';
@@ -131,7 +131,7 @@
 		chosenError = null;
 		draft.clientId = c.id;
 		draft.newClient = false;
-		onchosen?.(c.id);
+		onchosen?.(c);
 	}
 
 	/** «+7 921 123-45-67 · жена · основной». */

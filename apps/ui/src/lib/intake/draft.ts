@@ -1,13 +1,15 @@
 // The intake form without the view (spec 6.5): the draft kept on this device, what is required, the new
 // order it becomes, and the checks of the right column.
 import type { AppSettings } from '$api/AppSettings';
+import type { Client } from '$api/Client';
+import type { ClientRef } from '$api/ClientRef';
 import type { ClientPhone } from '$api/ClientPhone';
 import type { NewOrder } from '$api/NewOrder';
 import type { OrderListItem } from '$api/OrderListItem';
 import type { Status } from '$api/Status';
 import type { WarrantyTerm } from '$api/WarrantyTerm';
 import { parseLocalDateTime, type LocalDateTime } from '#lib/format/date.js';
-import { phoneDigits } from '#lib/format/phone.js';
+import { phoneDigits, phoneKey } from '#lib/format/phone.js';
 import { normalizeSearch } from '#lib/format/search.js';
 import type { IntakePrefill } from './intake.svelte.js';
 
@@ -244,7 +246,10 @@ export function parseDraft(
  * edited since then, whatever was edited — it stays, marked as accepted. `other`: a draft begun after it.
  */
 export function lateAnswer(now: IntakeDraft, sent: IntakeDraft): 'close' | 'mark' | 'other' {
-	if (JSON.stringify(now) === JSON.stringify(sent)) return 'close';
+	// A repeat of «Принять» after no answer, of a draft changed since the first attempt: the order is
+	// that of the first one, without the changes — marked, not closed.
+	if (JSON.stringify(now) === JSON.stringify(sent))
+		return acceptedAnswer(now) === 'keep' ? 'mark' : 'close';
 	return now.key === sent.key ? 'mark' : 'other';
 }
 
@@ -271,11 +276,10 @@ export function acceptedAnswer(d: IntakeDraft): 'close' | 'keep' {
 	return d.attempt !== null && d.attempt !== attemptOf(d) ? 'keep' : 'close';
 }
 
-/** The existing client an attempt was sent for; null — a new one. */
-function attemptClient(attempt: string): number | null {
+/** The client an attempt was sent for: an existing one or the fields of a new one. */
+function attemptClient(attempt: string): ClientRef | null {
 	try {
-		const client = (JSON.parse(attempt) as NewOrder).client;
-		return 'existing' in client ? client.existing : null;
+		return (JSON.parse(attempt) as NewOrder).client;
 	} catch {
 		return null;
 	}
@@ -283,11 +287,17 @@ function attemptClient(attempt: string): number | null {
 
 /**
  * The client chosen is not the one an earlier attempt of the draft was for: this is another order, with
- * a key of its own. Nothing sent yet — the same draft.
+ * a key of its own. Nothing sent yet — the same draft. A new client sent may have been made by the
+ * server: a client with one of its phones (found by it after Esc and N) is that client.
  */
-export function startsAnotherOrder(d: IntakeDraft, clientId: number): boolean {
-	if (d.acceptedAs !== null) return d.acceptedAs.clientId !== clientId;
-	return d.attempt !== null && attemptClient(d.attempt) !== clientId;
+export function startsAnotherOrder(d: IntakeDraft, client: Pick<Client, 'id' | 'phones'>): boolean {
+	if (d.acceptedAs !== null) return d.acceptedAs.clientId !== client.id;
+	if (d.attempt === null) return false;
+	const sent = attemptClient(d.attempt);
+	if (sent === null) return true;
+	if ('existing' in sent) return sent.existing !== client.id;
+	const keys = sent.new.phones.map((p) => phoneKey(p.phone)).filter((k) => k !== '');
+	return !client.phones.some((p) => keys.includes(phoneKey(p.phone)));
 }
 
 /**
