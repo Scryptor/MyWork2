@@ -3,7 +3,7 @@ import type { ClientPage } from '$api/ClientPage';
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '#lib/api/client.js';
 import { client, clientListItem } from '#lib/app/fixtures.test-helper.js';
-import { CLIENTS_PAGE_SIZE, createClientList } from './list.svelte.js';
+import { PAGE_SIZE, createClientList } from './list.svelte.js';
 
 interface Call {
 	q: ClientListQuery;
@@ -33,7 +33,7 @@ const flush = () => new Promise((r) => setTimeout(r, 0));
 
 describe('createClientList', () => {
 	it('pages of 100; a new load aborts the previous one; a page more is a new array', async () => {
-		expect(CLIENTS_PAGE_SIZE).toBe(100);
+		expect(PAGE_SIZE).toBe(100);
 		const { calls, fetchPage } = fakeServer();
 		const list = createClientList(fetchPage);
 		list.load({ query: 'старый' });
