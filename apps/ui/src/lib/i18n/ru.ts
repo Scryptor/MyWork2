@@ -276,6 +276,8 @@ export const ru = {
 	card: {
 		order: 'Заказ',
 		history: 'История',
+		files: 'Файлы',
+		photos: 'Фото',
 		sections: 'Разделы карточки',
 		statuses: 'Статусы и сроки',
 		warrantyCases: 'Гарантийные случаи',
@@ -385,7 +387,18 @@ export const ru = {
 		missing: 'Файл не найден',
 		download: 'Скачать',
 		deleteFile: 'Удалить файл',
-		noFiles: 'Файлов нет'
+		noFiles: 'Файлов нет',
+		photoSection: 'Фото',
+		photoZone: 'Область для фото',
+		uploading: 'Загружаю…',
+		takeWithCamera: 'Снять камерой',
+		addFile: 'Добавить файл',
+		/** Over the limit of one adding. */
+		tooManyPhotos: 'Можно добавить не больше 10 фото за раз',
+		uploadOffline: (name: string) => `Не удалось загрузить ${name}: нет связи с сервером`,
+		uploadFailed: (name: string, why: string) => `${name}: ${why}`,
+		loadFailed: 'Не удалось загрузить фото и файлы',
+		photoButton: 'Фото'
 	},
 	camera: {
 		title: 'Камера',

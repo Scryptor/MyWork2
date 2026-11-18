@@ -11,11 +11,17 @@
 	let {
 		accept = 'image/*',
 		multiple = true,
+		label = ru.media.files,
+		showChoose = true,
 		onfiles,
 		children
 	}: {
 		accept?: string;
 		multiple?: boolean;
+		/** Accessible name of the zone. */
+		label?: string;
+		/** The «Выбрать файлы» button of the zone itself; off when the parent calls `open()`. */
+		showChoose?: boolean;
 		onfiles: (files: File[]) => void;
 		children?: Snippet;
 	} = $props();
@@ -78,7 +84,7 @@
 	class:over={depth > 0}
 	data-over={depth > 0 ? '' : undefined}
 	role="group"
-	aria-label={ru.media.files}
+	aria-label={label}
 	{ondragenter}
 	{ondragover}
 	{ondragleave}
@@ -89,9 +95,11 @@
 	{:else}
 		<p class="hint">{ru.media.dropHint} <Kbd shortcut="Mod+V" /></p>
 	{/if}
-	<div class="actions">
-		<Button size="sm" icon={Upload} onclick={open}>{ru.media.chooseFiles}</Button>
-	</div>
+	{#if showChoose}
+		<div class="actions">
+			<Button size="sm" icon={Upload} onclick={open}>{ru.media.chooseFiles}</Button>
+		</div>
+	{/if}
 	<input
 		bind:this={input}
 		type="file"

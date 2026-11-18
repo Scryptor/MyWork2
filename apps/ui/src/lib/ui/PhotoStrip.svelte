@@ -2,19 +2,32 @@
 <script lang="ts">
 	import Plus from '@lucide/svelte/icons/plus';
 	import X from '@lucide/svelte/icons/x';
+	import type { Snippet } from 'svelte';
 	import { ru } from '#lib/i18n/ru.js';
+	import DropdownMenu, { type MenuItem } from './DropdownMenu.svelte';
+	import Spinner from './Spinner.svelte';
 
 	let {
 		photos,
 		max = 10,
 		label = ru.media.photos,
+		pending = [],
+		image,
+		addItems,
 		onadd,
 		onremove,
 		onopen
 	}: {
 		photos: { id: string; src: string; alt: string }[];
-		max?: number;
+		/** The most photos; `null`: no limit and no counter. */
+		max?: number | null;
 		label?: string;
+		/** Tiles of pictures still on their way up. */
+		pending?: { id: string; name: string }[];
+		/** Draws a picture itself (e.g. one that needs loading) in place of `<img src>`. */
+		image?: Snippet<[{ id: string; src: string; alt: string }]>;
+		/** «＋» opens this menu instead of calling `onadd`. */
+		addItems?: MenuItem[];
 		onadd?: () => void;
 		onremove?: (id: string) => void;
 		onopen?: (id: string) => void;
@@ -26,17 +39,24 @@
 <div class="strip" role="group" aria-labelledby={labelId}>
 	<div class="head">
 		<span class="label-caps" id={labelId}>{label}</span>
-		<span class="count num">{photos.length} {ru.media.of} {max}</span>
+		{#if max !== null}<span class="count num">{photos.length} {ru.media.of} {max}</span>{/if}
 	</div>
 	<ul class="tiles">
 		{#each photos as photo (photo.id)}
 			<li class="tile">
 				{#if onopen}
-					<button type="button" class="thumb" onclick={() => onopen(photo.id)}>
-						<img src={photo.src} alt={photo.alt} />
+					<button
+						type="button"
+						class="thumb"
+						aria-label={image ? `${ru.media.openPhoto}: ${photo.alt}` : undefined}
+						onclick={() => onopen(photo.id)}
+					>
+						{#if image}{@render image(photo)}{:else}<img src={photo.src} alt={photo.alt} />{/if}
 					</button>
 				{:else}
-					<img class="thumb" src={photo.src} alt={photo.alt} />
+					<span class="thumb">
+						{#if image}{@render image(photo)}{:else}<img src={photo.src} alt={photo.alt} />{/if}
+					</span>
 				{/if}
 				{#if onremove}
 					<button
@@ -50,11 +70,29 @@
 				{/if}
 			</li>
 		{/each}
-		{#if onadd && photos.length < max}
+		{#each pending as p (p.id)}
+			<li class="tile" title={p.name}>
+				<span class="thumb wait">
+					<Spinner size="sm" label={ru.media.uploading} />
+					<span class="wait-text">{ru.media.uploading}</span>
+				</span>
+			</li>
+		{/each}
+		{#if (onadd || addItems) && (max === null || photos.length < max)}
 			<li class="tile">
-				<button type="button" class="add" aria-label={ru.media.addPhoto} onclick={onadd}>
-					<Plus size={20} aria-hidden="true" />
-				</button>
+				{#if addItems}
+					<DropdownMenu items={addItems} label={ru.media.addPhoto}>
+						{#snippet trigger(props)}
+							<button {...props} type="button" class="add" aria-label={ru.media.addPhoto}>
+								<Plus size={20} aria-hidden="true" />
+							</button>
+						{/snippet}
+					</DropdownMenu>
+				{:else}
+					<button type="button" class="add" aria-label={ru.media.addPhoto} onclick={onadd}>
+						<Plus size={20} aria-hidden="true" />
+					</button>
+				{/if}
 			</li>
 		{/if}
 	</ul>
@@ -104,12 +142,23 @@
 	button.thumb {
 		cursor: zoom-in;
 	}
-	img.thumb,
-	.thumb img {
+	.thumb :global(img),
+	.thumb :global(.note) {
 		display: block;
 		width: 100%;
 		height: 100%;
 		object-fit: cover;
+	}
+	.wait {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: var(--space-1);
+	}
+	.wait-text {
+		color: var(--text-3);
+		font-size: var(--text-xs);
 	}
 	.remove {
 		position: absolute;

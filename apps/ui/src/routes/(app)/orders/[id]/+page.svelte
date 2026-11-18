@@ -29,7 +29,10 @@
 	import { historyItems, statusTimeline, warrantyCases } from '#lib/orders/history.js';
 	import OrderDialogs from '#lib/orders/OrderDialogs.svelte';
 	import OrderFields from '#lib/orders/OrderFields.svelte';
+	import OrderFiles from '#lib/orders/OrderFiles.svelte';
+	import OrderPhotos from '#lib/orders/OrderPhotos.svelte';
 	import { orderPanel } from '#lib/orders/panel.svelte.js';
+	import { createOrderMedia, type OrderMedia } from '#lib/orders/photos.svelte.js';
 	import SaveIndicator from '#lib/orders/SaveIndicator.svelte';
 	import { deviceOf } from '#lib/orders/view.js';
 	import Button from '#lib/ui/Button.svelte';
@@ -53,6 +56,8 @@
 
 	let editor = $state.raw<OrderEditor | null>(null);
 	let client = $state.raw<Client | null>(null);
+	/** The photos and files of the order shown. */
+	let media = $state.raw<OrderMedia | null>(null);
 	let loadError = $state<string | null>(null);
 	let notFound = $state(false);
 	let dictionaries = $state.raw<{
@@ -143,6 +148,7 @@
 	function swap(next: OrderEditor | null) {
 		const old = editor;
 		editor = next;
+		media = next ? createOrderMedia(next.order.id) : null;
 		// Another order or the screen left: what is typed is still saved.
 		if (old) closeEditor(old);
 	}
@@ -235,7 +241,8 @@
 	let tab = $state('order');
 	const TABS = [
 		{ value: 'order', label: c.order },
-		{ value: 'history', label: c.history }
+		{ value: 'history', label: c.history },
+		{ value: 'files', label: c.files }
 	];
 	const docTitle = $derived(order ? `${t.title(order.id)} · ${deviceOf(order)}` : t.title(id ?? 0));
 </script>
@@ -267,7 +274,18 @@
 	{/if}
 {/snippet}
 
-{#snippet side()}
+{#snippet photos()}
+	{#if media}
+		<Section title={c.photos} region>
+			<OrderPhotos {media} readonly={!canEdit} />
+		</Section>
+		<Section title={c.files} region>
+			<OrderFiles {media} readonly={!canEdit} />
+		</Section>
+	{/if}
+{/snippet}
+
+{#snippet side(withMedia: boolean)}
 	<div class="side">
 		<Section title={c.statuses} region>
 			{#if journal.failed}
@@ -277,6 +295,7 @@
 				{@render cut()}
 			{/if}
 		</Section>
+		{#if withMedia}{@render photos()}{/if}
 		<Section title={c.warrantyCases} region>
 			{#if cases.length === 0}
 				<p class="muted">{c.noWarrantyCases}</p>
@@ -355,13 +374,19 @@
 		{#if columns.current}
 			<div class="columns">
 				<div class="fields">{@render fields(editor)}</div>
-				<aside class="aside" aria-label={c.history}>{@render side()}</aside>
+				<aside class="aside" aria-label={c.history}>{@render side(true)}</aside>
 			</div>
 		{:else}
 			{@const ed = editor}
 			<Tabs bind:value={tab} items={TABS}>
 				{#snippet content(v)}
-					{#if v === 'order'}{@render fields(ed)}{:else}{@render side()}{/if}
+					{#if v === 'order'}
+						{@render fields(ed)}
+					{:else if v === 'files'}
+						<div class="side">{@render photos()}</div>
+					{:else}
+						{@render side(false)}
+					{/if}
 				{/snippet}
 			</Tabs>
 		{/if}

@@ -16,7 +16,6 @@
 	import IconButton from './IconButton.svelte';
 	import TextInput from './TextInput.svelte';
 	import VisuallyHidden from './VisuallyHidden.svelte';
-	import { toast } from './toast/toast.svelte.js';
 	import './dialog.css';
 
 	let {
@@ -78,7 +77,6 @@
 		if (!current) return;
 		const id = current.id;
 		ondelete?.(id);
-		toast.show({ message: ru.media.photoDeleted });
 	}
 	function go(step: number) {
 		const next = index + step;

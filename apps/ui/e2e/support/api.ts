@@ -1,4 +1,6 @@
+import { deflateSync } from 'node:zlib';
 import type { APIRequestContext } from '@playwright/test';
+import type { Attachment } from '$api/Attachment';
 import type { DictionaryKind } from '$api/DictionaryKind';
 import type { NewOrder } from '$api/NewOrder';
 import type { Order } from '$api/Order';
@@ -130,4 +132,57 @@ export async function deleteOrder(request: APIRequestContext, id: number): Promi
 	});
 	if (!response.ok())
 		throw new Error(`${response.status()} ${response.url()}: ${await response.text()}`);
+}
+
+/** A valid 2x2 PNG (fictional); `seed` changes the colour, so every picture has its own bytes. */
+export function tinyPng(seed = 0): Buffer {
+	const crcTable = Array.from({ length: 256 }, (_, n) => {
+		let c = n;
+		for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+		return c >>> 0;
+	});
+	const crc = (buf: Buffer) => {
+		let c = 0xffffffff;
+		for (const b of buf) c = crcTable[(c ^ b) & 0xff]! ^ (c >>> 8);
+		return (c ^ 0xffffffff) >>> 0;
+	};
+	const chunk = (type: string, data: Buffer) => {
+		const body = Buffer.concat([Buffer.from(type, 'ascii'), data]);
+		const out = Buffer.alloc(body.length + 8);
+		out.writeUInt32BE(data.length, 0);
+		body.copy(out, 4);
+		out.writeUInt32BE(crc(body), body.length + 4);
+		return out;
+	};
+	const header = Buffer.alloc(13);
+	header.writeUInt32BE(2, 0);
+	header.writeUInt32BE(2, 4);
+	header[8] = 8; // bit depth
+	header[9] = 2; // RGB
+	const row = Buffer.from([0, seed & 255, 80, 160, 200, (seed >> 8) & 255, 40]);
+	const raw = Buffer.concat([row, row]);
+	return Buffer.concat([
+		Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+		chunk('IHDR', header),
+		chunk('IDAT', deflateSync(raw)),
+		chunk('IEND', Buffer.alloc(0))
+	]);
+}
+
+/** A minimal PDF (fictional) for file uploads. */
+export const TINY_PDF = Buffer.from('%PDF-1.4\n%%EOF');
+
+/** Uploads a picture or a file to an order the way the program does (an octet-stream body). */
+export async function uploadPhoto(
+	request: APIRequestContext,
+	orderId: number,
+	bytes: Buffer,
+	name = 'photo.png'
+): Promise<Attachment> {
+	return json<Attachment>(
+		await request.post(`/api/v1/orders/${orderId}/attachments?name=${encodeURIComponent(name)}`, {
+			data: bytes,
+			headers: { 'Content-Type': 'application/octet-stream' }
+		})
+	);
 }

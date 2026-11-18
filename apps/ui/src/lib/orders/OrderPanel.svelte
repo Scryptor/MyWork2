@@ -2,6 +2,7 @@
      by themselves; moving to another order or closing waits until they are saved. On a phone it fills the
      screen, the status is a button and the bottom bar calls the client. -->
 <script lang="ts">
+	import Camera from '@lucide/svelte/icons/camera';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import Maximize2 from '@lucide/svelte/icons/maximize-2';
 	import Phone from '@lucide/svelte/icons/phone';
@@ -33,7 +34,9 @@
 	import OrderDialogs from './OrderDialogs.svelte';
 	import OrderFields from './OrderFields.svelte';
 	import OrderHistory from './OrderHistory.svelte';
+	import OrderPhotos from './OrderPhotos.svelte';
 	import { orderPanel } from './panel.svelte.js';
+	import { createOrderMedia, limitPhotos, type OrderMedia } from './photos.svelte.js';
 	import SaveIndicator from './SaveIndicator.svelte';
 	import { deviceOf } from './view.js';
 
@@ -43,6 +46,9 @@
 	/** The order shown, one editor per order; another order gets a new one. */
 	let editor = $state.raw<OrderEditor | null>(null);
 	let client = $state.raw<Client | null>(null);
+	/** The photos and files of the order shown, one set per order. */
+	let media = $state.raw<OrderMedia | null>(null);
+	let cameraInput = $state<HTMLInputElement | null>(null);
 	let loadError = $state<string | null>(null);
 	let dictionaries = $state.raw<{ master: string[]; warranty: string[] }>({
 		master: [],
@@ -138,6 +144,7 @@
 	function swap(next: OrderEditor | null) {
 		const old = editor;
 		editor = next;
+		media = next ? createOrderMedia(next.order.id) : null;
 		// The guard saved it; what was typed while the next order was loading is saved now.
 		if (old) closeEditor(old);
 	}
@@ -264,6 +271,7 @@
 					ontake={(f) => ed.take(f)}
 					onflashend={(f) => ed.endFlash(f)}
 				/>
+				{#if media}<OrderPhotos {media} readonly={!canEdit} />{/if}
 				<OrderHistory orderId={ed.order.id} version={ed.order.version} onall={openCard} />
 			{/key}
 		{:else if loadError}
@@ -287,6 +295,20 @@
 		{#if phone.current}
 			{#if mainPhone}
 				<Button href="tel:{dialNumber(mainPhone)}" icon={Phone}>{t.call}</Button>
+			{/if}
+			{#if media && canEdit}
+				<Button icon={Camera} onclick={() => cameraInput?.click()}>{ru.media.photoButton}</Button>
+				<input
+					bind:this={cameraInput}
+					type="file"
+					hidden
+					accept="image/*"
+					capture="environment"
+					onchange={(e) => {
+						if (media) void media.add(limitPhotos(Array.from(e.currentTarget.files ?? [])));
+						e.currentTarget.value = '';
+					}}
+				/>
 			{/if}
 			<span class="grow"></span>
 			{@render statusPicker()}
