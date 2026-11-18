@@ -104,10 +104,11 @@
 		background: var(--surface-2);
 		overflow-y: auto;
 	}
+	/* The icons are centred: no side padding, or a 2.25rem icon and two paddings exceed the 3rem rail. */
 	.sidebar.rail {
 		width: var(--rail-width);
 		align-items: center;
-		padding-inline: var(--space-2);
+		padding-inline: 0;
 	}
 	.section {
 		display: flex;

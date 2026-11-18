@@ -35,7 +35,8 @@
 		<span class="number">{number}</span>
 		{#if status}<StatusBadge name={status.name} color={status.color} size="sm" />{/if}
 	</span>
-	<span class="title">{title}</span>
+	<!-- Cut to one line like a table cell; the whole text is in the hint. -->
+	<span class="title" {title}>{title}</span>
 	{#if line || hasFlags}
 		<span class="bottom">
 			<span class="meta">{line}</span>

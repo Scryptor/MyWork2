@@ -71,7 +71,10 @@
 		min-height: 0;
 		overflow-y: auto;
 	}
+	/* Positioned: the containing block of what is absolutely positioned inside (the visually hidden words
+	   of list cards), so it scrolls with the content instead of making the whole page scroll. */
 	.main {
+		position: relative;
 		grid-area: main;
 		min-width: 0;
 		min-height: 0;
