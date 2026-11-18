@@ -5,3 +5,4 @@ export * from './name.js';
 export * from './phone.js';
 export * from './plural.js';
 export * from './search.js';
+export * from './bytes.js';

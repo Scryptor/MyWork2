@@ -19,7 +19,15 @@ export default defineConfig({
 	use: { baseURL: 'http://127.0.0.1:4173' },
 	webServer: [server(4173), server(4174, ' --admin')],
 	projects: [
-		{ name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+		{
+			name: 'chromium',
+			use: {
+				...devices['Desktop Chrome'],
+				launchOptions: {
+					args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream']
+				}
+			}
+		},
 		{ name: 'webkit', use: { ...devices['Desktop Safari'] } }
 	]
 });

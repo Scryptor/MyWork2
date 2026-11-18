@@ -1,9 +1,19 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { SvelteMap } from 'svelte/reactivity';
 	import type { StatusHue } from '#lib/design/status-colors.js';
 	import { DEMO_STATUSES } from '#lib/demo/fake.js';
 	import { demoPhoto } from '#lib/demo/photos.js';
-	import { FileDrop, PhotoStrip, StatusPicker } from '#lib/ui/index.js';
+	import type { Attachment } from '$api/Attachment';
+	import {
+		Button,
+		CameraDialog,
+		FileDrop,
+		FileList,
+		PhotoStrip,
+		PhotoViewer,
+		StatusPicker
+	} from '#lib/ui/index.js';
 
 	interface Photo {
 		id: string;
@@ -26,6 +36,51 @@
 	let change = $state('');
 	let drop = $state<ReturnType<typeof FileDrop>>();
 	let seq = 0;
+
+	// Attachments without a server: demo pictures answer for the viewer.
+	const attachment = (id: number, name: string, over: Partial<Attachment> = {}): Attachment => ({
+		id,
+		order_id: 1,
+		kind: 'photo',
+		name,
+		caption: '',
+		content_type: 'image/png',
+		size: 120_000,
+		width: 160,
+		height: 160,
+		legacy: false,
+		missing: false,
+		created_at: '2026-03-07 10:30:00',
+		...over
+	});
+	let attached = $state.raw<Attachment[]>([
+		attachment(1, 'ekran.png', { caption: 'Экран' }),
+		attachment(2, 'kryshka.png', { caption: 'Задняя крышка' }),
+		attachment(3, 'razyom.png', { caption: 'Разъём зарядки' })
+	]);
+	const demoFiles: Attachment[] = [
+		attachment(11, 'Акт.pdf', { kind: 'file', content_type: 'application/pdf', size: 1_234_567 }),
+		attachment(12, 'Квитанция.pdf', {
+			kind: 'file',
+			content_type: 'application/pdf',
+			missing: true
+		})
+	];
+	const demoUrls = new SvelteMap<number, string>();
+	async function resolveDemo(id: number): Promise<string> {
+		let url = demoUrls.get(id);
+		if (!url) {
+			url = demoPhoto(SAMPLES[(id - 1) % SAMPLES.length]![1], 640);
+			demoUrls.set(id, url);
+		}
+		return url;
+	}
+	let viewerOpen = $state(false);
+	let viewerIndex = $state(0);
+	let savedCaption = $state('');
+	let cameraOpen = $state(false);
+	let shot = $state(0);
+	let downloaded = $state('');
 	// Pictures chosen here live as object URLs until they are removed or the page goes.
 	let urls: string[] = [];
 
@@ -68,6 +123,50 @@
 </FileDrop>
 <p class="muted">Открыто: {opened || 'ничего'}</p>
 
+<h3>Просмотр фото</h3>
+<p class="muted">
+	Стрелки ← → листают, Esc закрывает, подпись сохраняется при уходе из поля и по Enter.
+</p>
+<div class="stack">
+	<ul class="openers">
+		{#each attached as a, i (a.id)}
+			<li>
+				<Button
+					onclick={() => {
+						viewerIndex = i;
+						viewerOpen = true;
+					}}
+				>
+					Открыть фото: {a.caption}
+				</Button>
+			</li>
+		{/each}
+	</ul>
+	<p class="muted">Подпись сохранена: {savedCaption || 'ещё нет'}</p>
+</div>
+<PhotoViewer
+	photos={attached}
+	bind:index={viewerIndex}
+	bind:open={viewerOpen}
+	resolveUrl={resolveDemo}
+	oncaption={(id, text) => {
+		attached = attached.map((a) => (a.id === id ? { ...a, caption: text } : a));
+		savedCaption = text;
+	}}
+	ondelete={(id) => (attached = attached.filter((a) => a.id !== id))}
+/>
+
+<h3>Камера</h3>
+<div class="stack">
+	<div><Button onclick={() => (cameraOpen = true)}>Открыть камеру</Button></div>
+	<p class="muted">Снято: {shot}. Пробел тоже снимает; снимков можно сделать несколько подряд.</p>
+</div>
+<CameraDialog bind:open={cameraOpen} max={MAX - shot} oncapture={() => (shot += 1)} />
+
+<h3>Список файлов</h3>
+<FileList files={demoFiles} ondownload={(f) => (downloaded = f.name)} ondelete={() => {}} />
+<p class="muted">Скачано: {downloaded || 'ничего'}</p>
+
 <h3>Файлы</h3>
 <FileDrop accept=".pdf,image/*" onfiles={(chosen) => (files = chosen.map((f) => f.name))} />
 <p class="muted">Выбрано: {files.length > 0 ? files.join(', ') : 'ничего'}</p>
@@ -95,6 +194,14 @@
 	}
 	p.muted {
 		max-width: 48rem;
+	}
+	.openers {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-2);
+		margin: 0;
+		padding: 0;
+		list-style: none;
 	}
 	.stack {
 		display: flex;
