@@ -5,6 +5,7 @@
 	import { scaleLabel } from '#lib/settings/size.js';
 	import Card from '#lib/ui/Card.svelte';
 	import SegmentedControl from '#lib/ui/SegmentedControl.svelte';
+	import Select from '#lib/ui/Select.svelte';
 	import { UI_SCALES } from '#lib/design/display.js';
 
 	const t = ru.settings;
@@ -20,6 +21,9 @@
 		value,
 		label: t.densities[value]
 	}));
+	const autoHint = $derived(
+		prefs.value.scale === 'auto' ? t.autoHint(scaleLabel(display.value.scale)) : undefined
+	);
 </script>
 
 <h1 class="title">{t.appearance}</h1>
@@ -35,17 +39,28 @@
 				bind:value={() => prefs.value.theme, (v) => prefs.set({ theme: v })}
 			/>
 		</div>
-		<div class="field">
-			<span class="label">{t.size}</span>
-			<SegmentedControl
-				label={t.size}
-				options={SIZES}
-				bind:value={() => prefs.value.scale, (v) => prefs.set({ scale: v })}
-			/>
-			{#if prefs.value.scale === 'auto'}
-				<p class="note">{t.autoHint(scaleLabel(display.value.scale))}</p>
-			{/if}
-		</div>
+		{#if display.phone}
+			<!-- Six sizes do not fit a phone in a row: a list instead. Only on a phone: in a wider window
+			     150 % may make it narrow, and the control must not change under the pointer (it wraps). -->
+			<div class="field wide">
+				<Select
+					label={t.size}
+					items={SIZES}
+					hint={autoHint}
+					bind:value={() => prefs.value.scale, (v) => v !== null && prefs.set({ scale: v })}
+				/>
+			</div>
+		{:else}
+			<div class="field">
+				<span class="label">{t.size}</span>
+				<SegmentedControl
+					label={t.size}
+					options={SIZES}
+					bind:value={() => prefs.value.scale, (v) => prefs.set({ scale: v })}
+				/>
+				{#if autoHint}<p class="note">{autoHint}</p>{/if}
+			</div>
+		{/if}
 		<div class="field">
 			<span class="label">{t.density}</span>
 			<SegmentedControl
@@ -73,6 +88,10 @@
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-1);
+		max-width: 100%;
+	}
+	.field.wide {
+		align-self: stretch;
 	}
 	.label {
 		font-size: var(--text-sm);

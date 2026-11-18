@@ -116,4 +116,16 @@ test.describe('phone', () => {
 		await page.getByRole('link', { name: 'Настройки' }).click();
 		await expect(page).toHaveURL(/\/settings$/);
 	});
+
+	test('«Размер» is a list: six sizes do not fit a phone in a row', async ({ page }) => {
+		await page.goto('/settings/appearance');
+		const size = page.getByRole('combobox', { name: 'Размер' });
+		await expect(size).toContainText('Авто');
+		await expect(page.getByText('Подбирается по экрану: сейчас 100 %')).toBeVisible();
+		await size.click();
+		await page.getByRole('option', { name: '110 %' }).click();
+		await expect(html(page)).toHaveCSS('font-size', '17.6px');
+		await expect(size).toContainText('110 %');
+		await expect(page.getByText('Подбирается по экрану')).toHaveCount(0);
+	});
 });

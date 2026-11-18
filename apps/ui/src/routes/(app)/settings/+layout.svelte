@@ -1,5 +1,6 @@
-<!-- «Настройки» (spec 6.8): subsections on the left, the fields of the open one on the right. On a phone
-     first the list, then the subsection with «←». -->
+<!-- «Настройки» (spec 6.8): subsections on the left, the fields of the open one on the right. In a narrow
+     window the subsections are a row above the fields; on a phone first the list, then the subsection
+     with «←». -->
 <script lang="ts">
 	/* eslint-disable svelte/no-navigation-without-resolve -- hrefs are resolved below */
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
@@ -21,7 +22,7 @@
 
 <svelte:head><title>{current?.label ?? ru.settings.title}</title></svelte:head>
 
-<div class="settings" class:phone={display.phone}>
+<div class="settings" class:narrow={display.narrow} class:phone={display.phone}>
 	{#if showList}
 		<nav class="sections" aria-label={ru.settings.sections}>
 			{#if display.phone}<h1 class="heading">{ru.settings.title}</h1>{/if}
@@ -58,18 +59,24 @@
 		display: grid;
 		grid-template-columns: 14rem minmax(0, 1fr);
 		align-items: start;
+		align-content: start;
 		gap: var(--space-4);
 		min-height: 100%;
 		padding: var(--space-4);
 	}
-	.settings.phone {
+	.settings.narrow {
 		grid-template-columns: minmax(0, 1fr);
+	}
+	.settings.phone {
 		padding: var(--space-3);
 	}
 	.sections {
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-0-5);
+	}
+	.narrow:not(.phone) .sections {
+		flex-flow: row wrap;
 	}
 	.heading {
 		margin: 0 0 var(--space-2);

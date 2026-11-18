@@ -34,8 +34,12 @@
 </div>
 
 <style>
+	/* Wraps rather than stick out of a narrow box (six sizes in «Внешний вид» on a phone). */
 	.seg {
 		display: inline-flex;
+		flex-wrap: wrap;
+		box-sizing: border-box;
+		max-width: 100%;
 		padding: 2px;
 		gap: 2px;
 		border: 1px solid var(--border-strong);
