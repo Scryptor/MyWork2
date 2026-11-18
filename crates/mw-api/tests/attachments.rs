@@ -261,14 +261,44 @@ async fn draft_flow_and_idempotent_intake() {
         assert_eq!(l.body.as_array().unwrap().len(), 2);
         // Выброшенный черновик.
         let other = "11111111-d9cb-469f-a165-70867728950e";
-        upload(
-            &t,
-            &format!("/api/v1/intake-drafts/{other}/attachments?name=a.png"),
-            &token,
-            OCTET,
-            png(),
-        )
-        .await;
+        for n in ["a.png", "b.png"] {
+            upload(
+                &t,
+                &format!("/api/v1/intake-drafts/{other}/attachments?name={n}"),
+                &token,
+                OCTET,
+                png(),
+            )
+            .await;
+        }
+        // Приёмщик без права правки заказов подписывает и убирает фото своего приёма.
+        let first = t
+            .get(
+                &format!("/api/v1/intake-drafts/{other}/attachments"),
+                Some(&token),
+            )
+            .await
+            .body[0]["id"]
+            .as_i64()
+            .unwrap();
+        let c = t
+            .send(
+                axum::http::Method::PATCH,
+                &format!("/api/v1/attachments/{first}"),
+                Some(&token),
+                Some(json!({ "caption": "Скол" })),
+            )
+            .await;
+        assert_eq!((c.status, &c.body["caption"]), (200, &json!("Скол")));
+        let d = t
+            .send(
+                axum::http::Method::DELETE,
+                &format!("/api/v1/attachments/{first}"),
+                Some(&token),
+                None,
+            )
+            .await;
+        assert_eq!(d.status, 204, "{}", t.label);
         let d = t
             .send(
                 axum::http::Method::DELETE,
@@ -301,5 +331,60 @@ async fn draft_flow_and_idempotent_intake() {
         assert_eq!(in_order.body.as_array().unwrap().len(), 2, "{}", t.label);
         let again = create_order(&t, &token, body).await;
         assert_eq!(again["id"], o["id"]);
+    }
+}
+
+/// Встроенно отдаются только растровые фото; SVG (может нести скрипт) — только скачиванием.
+/// Файлы не встраиваются чужими сайтами (`Cross-Origin-Resource-Policy`).
+#[tokio::test]
+async fn only_raster_images_are_inline_and_files_stay_same_origin() {
+    for t in apis(Listen::Network).await {
+        let token = t.admin_token().await;
+        let o = create_order(&t, &token, new_order("Иван", "", "A", "B")).await;
+        let id = o["id"].as_i64().unwrap();
+        let svg = br#"<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>"#;
+        let r = upload(
+            &t,
+            &format!("/api/v1/orders/{id}/attachments?name=pic.svg"),
+            &token,
+            OCTET,
+            svg.to_vec(),
+        )
+        .await;
+        assert_eq!(r.status, 201, "{}: {}", t.label, r.body);
+        assert_eq!(r.body["kind"], "file");
+        assert_eq!(r.body["content_type"], "image/svg+xml");
+        let aid = r.body["id"].as_i64().unwrap();
+        let f = t
+            .get_raw(&format!("/api/v1/attachments/{aid}/file"), &token)
+            .await;
+        assert_eq!(f.0, 200);
+        assert_eq!(
+            f.1["content-disposition"],
+            "attachment; filename*=UTF-8''pic.svg"
+        );
+        assert_eq!(f.1["cross-origin-resource-policy"], "same-origin");
+
+        let p = upload(
+            &t,
+            &format!("/api/v1/orders/{id}/attachments?name=photo.png"),
+            &token,
+            OCTET,
+            png(),
+        )
+        .await;
+        let pid = p.body["id"].as_i64().unwrap();
+        for (variant, name) in [("file", "photo.jpg"), ("thumb", "photo.thumb.jpg")] {
+            let r = t
+                .get_raw(&format!("/api/v1/attachments/{pid}/{variant}"), &token)
+                .await;
+            assert_eq!(r.0, 200);
+            assert_eq!(
+                r.1["content-disposition"],
+                format!("inline; filename*=UTF-8''{name}").as_str(),
+                "{variant}"
+            );
+            assert_eq!(r.1["cross-origin-resource-policy"], "same-origin");
+        }
     }
 }

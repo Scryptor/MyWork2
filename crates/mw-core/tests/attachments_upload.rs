@@ -351,3 +351,318 @@ async fn failed_draft_move_leaves_every_attachment_readable() -> Result<(), Core
     }
     Ok(())
 }
+
+/// Заказ из черновика `half`, перенос которого в папку заказа прервался на втором файле:
+/// первое вложение уже в папке заказа, второе — ещё в `attachments/drafts/half`, но тоже
+/// принадлежит заказу. Возвращает номер заказа и пути файлов второго вложения.
+async fn half_moved_draft(
+    core: &Core,
+    dir: &std::path::Path,
+) -> Result<(i64, Vec<std::path::PathBuf>), CoreError> {
+    let first = core.create_order(&admin(), sample_new_order()).await?;
+    core.add_draft_attachment(&creator(), "half", "a.jpg", jpeg_bytes(20, 20))
+        .await?;
+    let b = core
+        .add_draft_attachment(&creator(), "half", "b.jpg", jpeg_bytes(20, 20))
+        .await?;
+    let b_path = core
+        .attachment_file(&admin(), b.id, mw_core::AttachmentVariant::Full)
+        .await?
+        .path;
+    // В папке следующего заказа имя второго файла занято непустой папкой: он не перенесётся.
+    let taken = dir
+        .join(format!("attachments/orders/{}", first.id + 1))
+        .join(b_path.file_name().unwrap())
+        .join("inner");
+    std::fs::create_dir_all(&taken).unwrap();
+    let o = core
+        .create_order(
+            &admin(),
+            NewOrder {
+                attachment_draft: Some("half".into()),
+                ..sample_new_order()
+            },
+        )
+        .await?;
+    assert_eq!(o.id, first.id + 1);
+    let paths = vec![
+        b_path.clone(),
+        std::path::PathBuf::from(format!("{}.thumb.jpg", b_path.display())),
+    ];
+    for p in &paths {
+        assert!(p.starts_with(dir.join("attachments/drafts/half")), "{p:?}");
+        assert!(p.exists(), "{p:?}");
+    }
+    let moved = core.list_order_attachments(&admin(), o.id).await?;
+    assert_eq!(moved.len(), 2);
+    Ok((o.id, paths))
+}
+
+/// Все вложения заказа на месте: основной файл и миниатюра.
+async fn assert_order_files_kept(core: &Core, order_id: i64, left_in_draft: &[std::path::PathBuf]) {
+    for p in left_in_draft {
+        assert!(p.exists(), "{p:?}");
+    }
+    for a in core
+        .list_order_attachments(&admin(), order_id)
+        .await
+        .unwrap()
+    {
+        assert!(!a.missing, "{}", a.name);
+    }
+}
+
+#[tokio::test]
+async fn discarding_a_half_moved_draft_keeps_the_files_of_the_order() -> Result<(), CoreError> {
+    for t in cores().await {
+        let dir = tempfile::tempdir().unwrap();
+        let core = with_dir(&t, dir.path()).await;
+        let (order_id, kept) = half_moved_draft(&core, dir.path()).await?;
+        // «Отмена» после «Принять» без ответа: ключ тот же; фото, добавленное под ним после заказа.
+        let c = core
+            .add_draft_attachment(&creator(), "half", "c.jpg", jpeg_bytes(20, 20))
+            .await?;
+        let c_path = core
+            .attachment_file(&admin(), c.id, mw_core::AttachmentVariant::Full)
+            .await?
+            .path;
+        core.discard_draft(&creator(), "half").await?;
+        assert!(!c_path.exists(), "{}", t.label);
+        assert!(
+            !std::path::PathBuf::from(format!("{}.thumb.jpg", c_path.display())).exists(),
+            "{}",
+            t.label
+        );
+        assert_order_files_kept(&core, order_id, &kept).await;
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn cleaning_a_half_moved_draft_keeps_the_files_of_the_order() -> Result<(), CoreError> {
+    for t in cores().await {
+        let dir = tempfile::tempdir().unwrap();
+        let core = with_dir(&t, dir.path()).await;
+        let (order_id, kept) = half_moved_draft(&core, dir.path()).await?;
+        let c = core
+            .add_draft_attachment(&creator(), "half", "c.jpg", jpeg_bytes(20, 20))
+            .await?;
+        let c_path = core
+            .attachment_file(&admin(), c.id, mw_core::AttachmentVariant::Full)
+            .await?
+            .path;
+        t.clock.advance(chrono::Duration::hours(25));
+        assert_eq!(core.cleanup_drafts(chrono::Duration::hours(24)).await?, 1);
+        assert!(!c_path.exists(), "{}", t.label);
+        assert_order_files_kept(&core, order_id, &kept).await;
+    }
+    Ok(())
+}
+
+/// Приёмщик без права правки заказов подписывает и убирает фото своего приёма, но не фото
+/// заказов; у черновика хватает любого из двух прав.
+#[tokio::test]
+async fn draft_photos_are_edited_with_either_right_order_photos_with_orders_edit()
+-> Result<(), CoreError> {
+    for t in cores().await {
+        let dir = tempfile::tempdir().unwrap();
+        let core = with_dir(&t, dir.path()).await;
+        let clerk = actor_with(&[Permission::OrdersCreate]);
+        let editor = actor_with(&[Permission::OrdersEdit]);
+        let nobody = actor_with(&[Permission::ClientsView]);
+        let forbidden = |r: Result<_, CoreError>| matches!(r, Err(CoreError::Forbidden(_)));
+
+        let d = core
+            .add_draft_attachment(&clerk, "own", "p.jpg", jpeg_bytes(20, 20))
+            .await?;
+        let captioned = core
+            .update_attachment_caption(&clerk, d.id, "Скол".into())
+            .await?;
+        assert_eq!(captioned.caption, "Скол", "{}", t.label);
+        let by_editor = core
+            .update_attachment_caption(&editor, d.id, "Скол в углу".into())
+            .await?;
+        assert_eq!(by_editor.caption, "Скол в углу", "{}", t.label);
+        assert!(forbidden(
+            core.update_attachment_caption(&nobody, d.id, "x".into())
+                .await
+                .map(|_| ())
+        ));
+        assert!(forbidden(core.delete_attachment(&nobody, d.id).await));
+        core.delete_attachment(&clerk, d.id).await?;
+        let e = core
+            .add_draft_attachment(&clerk, "own", "p.jpg", jpeg_bytes(20, 20))
+            .await?;
+        core.delete_attachment(&editor, e.id).await?;
+        assert!(core.list_draft_attachments(&clerk, "own").await?.is_empty());
+
+        let o = core.create_order(&admin(), sample_new_order()).await?;
+        let p = core
+            .add_order_attachment(&creator(), o.id, "p.jpg", jpeg_bytes(20, 20))
+            .await?;
+        assert!(forbidden(
+            core.update_attachment_caption(&clerk, p.id, "x".into())
+                .await
+                .map(|_| ())
+        ));
+        assert!(forbidden(core.delete_attachment(&clerk, p.id).await));
+        core.update_attachment_caption(&editor, p.id, "x".into())
+            .await?;
+        core.delete_attachment(&editor, p.id).await?;
+    }
+    Ok(())
+}
+
+/// Узнанное по сигнатуре, но не из пяти форматов фото, и не картинки вовсе сохраняются файлом;
+/// отказ — только HEIC и нечитаемые байты под именем картинки.
+#[tokio::test]
+async fn only_the_five_photo_formats_become_photos_the_rest_are_files() -> Result<(), CoreError> {
+    let mut tiff = b"II*\0\x08\0\0\0".to_vec();
+    tiff.extend_from_slice(&[0; 32]);
+    let avif = b"\0\0\0\x1cftypavif\0\0\0\0avifmif1miaf".to_vec();
+    let avif_mif1 = b"\0\0\0\x1cftypmif1\0\0\0\0mif1avifmiaf".to_vec();
+    let files: [(&str, Vec<u8>, &str); 5] = [
+        ("scan.tif", tiff.clone(), "image/tiff"),
+        (
+            "BMW.txt",
+            "BMW X5, 2019, стекло заказано".as_bytes().to_vec(),
+            "text/plain",
+        ),
+        ("parts.csv", b"P1,P2,P3\n1,2,3\n".to_vec(), "text/csv"),
+        ("a.avif", avif, "image/avif"),
+        ("b.avif", avif_mif1, "image/avif"),
+    ];
+    for t in cores().await {
+        let dir = tempfile::tempdir().unwrap();
+        let core = with_dir(&t, dir.path()).await;
+        let o = core.create_order(&admin(), sample_new_order()).await?;
+        for (name, bytes, content_type) in &files {
+            let a = core
+                .add_order_attachment(&creator(), o.id, name, bytes.clone())
+                .await
+                .unwrap_or_else(|e| panic!("{}: {name}: {e:?}", t.label));
+            assert_eq!(a.kind, AttachmentKind::File, "{name}");
+            assert_eq!(a.name, *name);
+            assert_eq!(a.content_type, *content_type, "{name}");
+            assert_eq!(a.size, i64::try_from(bytes.len()).unwrap(), "{name}");
+        }
+        // Под именем картинки нечитаемое — отказ, а не файл.
+        assert_validation(
+            core.add_order_attachment(&creator(), o.id, "scan.jpg", tiff.clone())
+                .await,
+            &[("file", "broken")],
+        );
+        assert_validation(
+            core.add_order_attachment(&creator(), o.id, "BMW.bmp", b"BMW X5".to_vec())
+                .await,
+            &[("file", "broken")],
+        );
+        assert_validation(
+            core.add_order_attachment(
+                &creator(),
+                o.id,
+                "photo.bin",
+                b"\0\0\0\x18ftypheix\0\0\0\0".to_vec(),
+            )
+            .await,
+            &[("file", "unsupported")],
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn heic_is_told_apart_from_avif() {
+    for brand in [b"heic", b"heix", b"hevc", b"heim", b"heis"] {
+        let mut bytes = b"\0\0\0\x18ftyp".to_vec();
+        bytes.extend_from_slice(brand);
+        bytes.extend_from_slice(&[0; 8]);
+        assert_eq!(
+            process_photo(&bytes),
+            Err(PhotoError::Unsupported {
+                format: Some("heic".into())
+            }),
+            "{}",
+            String::from_utf8_lossy(brand)
+        );
+    }
+    for brand in [b"mif1", b"msf1", b"avif"] {
+        let mut bytes = b"\0\0\0\x18ftyp".to_vec();
+        bytes.extend_from_slice(brand);
+        bytes.extend_from_slice(&[0; 8]);
+        assert_ne!(
+            process_photo(&bytes),
+            Err(PhotoError::Unsupported {
+                format: Some("heic".into())
+            }),
+            "{}",
+            String::from_utf8_lossy(brand)
+        );
+    }
+}
+
+/// Обработанное фото — JPEG, и имя его говорит так же.
+#[tokio::test]
+async fn processed_photo_names_end_in_jpg() -> Result<(), CoreError> {
+    for t in cores().await {
+        let dir = tempfile::tempdir().unwrap();
+        let core = with_dir(&t, dir.path()).await;
+        for (sent, kept) in [
+            ("IMG 1.PNG", "IMG 1.jpg"),
+            ("photo", "photo.jpg"),
+            ("a.b.webp", "a.b.jpg"),
+            ("снимок.jpeg", "снимок.jpg"),
+        ] {
+            let a = core
+                .add_draft_attachment(&creator(), "names", sent, jpeg_bytes(10, 10))
+                .await?;
+            assert_eq!(a.kind, AttachmentKind::Photo);
+            assert_eq!(a.name, kept, "{}", t.label);
+        }
+    }
+    Ok(())
+}
+
+/// Срок черновика — сутки настоящего времени, а не по местным часам: в ночь перевода часов
+/// местные сутки на час длиннее или короче.
+#[tokio::test]
+async fn draft_age_is_measured_in_real_hours_across_a_clock_change() -> Result<(), CoreError> {
+    use chrono::TimeZone;
+    for (label, db) in mw_db::testing::all_backends().await {
+        // 2026-10-25 в 01:00 UTC Берлин переводит часы с 03:00 на 02:00.
+        let clock = std::sync::Arc::new(mw_core::FixedClock::new(
+            chrono::Utc
+                .with_ymd_and_hms(2026, 10, 24, 12, 0, 0)
+                .unwrap(),
+        ));
+        let dir = tempfile::tempdir().unwrap();
+        let core = Core::open(db, clock.clone(), "Europe/Berlin")
+            .await?
+            .with_attachments_dir(dir.path().to_path_buf());
+        core.add_draft_attachment(&creator(), "dst", "p.jpg", jpeg_bytes(10, 10))
+            .await?;
+        // 23,5 часа спустя по местным часам прошло 22,5 часа: черновик ещё живой.
+        clock.set(
+            chrono::Utc
+                .with_ymd_and_hms(2026, 10, 25, 11, 30, 0)
+                .unwrap(),
+        );
+        assert_eq!(
+            core.cleanup_drafts(chrono::Duration::hours(24)).await?,
+            0,
+            "{label}"
+        );
+        // 24,5 часа спустя по местным часам прошло 23,5 часа: срок вышел.
+        clock.set(
+            chrono::Utc
+                .with_ymd_and_hms(2026, 10, 25, 12, 30, 0)
+                .unwrap(),
+        );
+        assert_eq!(
+            core.cleanup_drafts(chrono::Duration::hours(24)).await?,
+            1,
+            "{label}"
+        );
+    }
+    Ok(())
+}

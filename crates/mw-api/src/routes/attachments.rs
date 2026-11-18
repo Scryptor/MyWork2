@@ -3,7 +3,7 @@
 use axum::body::{Body, Bytes};
 use axum::extract::State;
 use axum::extract::rejection::BytesRejection;
-use axum::http::{HeaderValue, StatusCode, header};
+use axum::http::{HeaderName, HeaderValue, StatusCode, header};
 use axum::response::Response;
 use mw_core::{Attachment, AttachmentFile, AttachmentVariant, Core};
 use tokio_util::io::ReaderStream;
@@ -141,7 +141,7 @@ pub(super) async fn discard_draft(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Подпись вложения (право `orders_edit`).
+/// Подпись вложения (право `orders_edit`; у фото черновика приёма — `orders_create` или `orders_edit`).
 #[utoipa::path(
     patch,
     path = "/api/v1/attachments/{id}",
@@ -165,7 +165,7 @@ pub(super) async fn update_attachment(
     ))
 }
 
-/// Удаление вложения (право `orders_edit`).
+/// Удаление вложения (право `orders_edit`; у фото черновика приёма — `orders_create` или `orders_edit`).
 #[utoipa::path(
     delete,
     path = "/api/v1/attachments/{id}",
@@ -250,11 +250,26 @@ async fn serve(
         header::CONTENT_SECURITY_POLICY,
         HeaderValue::from_static("sandbox; default-src 'none'; frame-ancestors 'none'"),
     );
+    // Чужой сайт не встроит файл к себе (в открытом режиме вход не нужен).
+    headers.insert(
+        HeaderName::from_static("cross-origin-resource-policy"),
+        HeaderValue::from_static("same-origin"),
+    );
     Ok(response)
 }
 
+/// Типы, которые браузер показывает сам: растровые фото. Остальное (в том числе SVG, который
+/// может нести скрипт) — только скачиванием.
+const INLINE_TYPES: [&str; 5] = [
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/gif",
+    "image/bmp",
+];
+
 fn content_disposition(file: &AttachmentFile) -> String {
-    let kind = if file.content_type.starts_with("image/") {
+    let kind = if INLINE_TYPES.contains(&file.content_type.as_str()) {
         "inline"
     } else {
         "attachment"

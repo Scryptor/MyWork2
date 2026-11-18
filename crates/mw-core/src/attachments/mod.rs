@@ -110,6 +110,16 @@ fn to_api(m: attachment::Model, missing: bool) -> Attachment {
     }
 }
 
+/// Право на подпись и удаление вложения: фото приёма (черновика) — у того, кто принимает или
+/// правит заказы; вложение заказа — только у того, кто правит заказы.
+fn require_edit(actor: &Actor, m: &attachment::Model) -> Result<(), CoreError> {
+    if m.order_id.is_none() && m.draft_key.is_some() {
+        actor.require_any(&[Permission::OrdersEdit, Permission::OrdersCreate])
+    } else {
+        actor.require(Permission::OrdersEdit)
+    }
+}
+
 impl Core {
     fn data_dir(&self) -> Result<&std::path::Path, CoreError> {
         self.data_dir
@@ -221,14 +231,14 @@ impl Core {
         })
     }
 
-    /// Меняет подпись; без изменений ничего не пишет.
+    /// Меняет подпись; без изменений ничего не пишет. Права — как у `require_edit`.
     pub async fn update_attachment_caption(
         &self,
         actor: &Actor,
         id: i64,
         caption: String,
     ) -> Result<Attachment, CoreError> {
-        actor.require(Permission::OrdersEdit)?;
+        actor.require_any(&[Permission::OrdersEdit, Permission::OrdersCreate])?;
         let data_dir = self.data_dir()?;
         let caption = caption.trim().to_owned();
         if caption.chars().count() > MAX_CAPTION_CHARS {
@@ -241,6 +251,7 @@ impl Core {
             .one(&tx)
             .await?
             .ok_or(CoreError::NotFound { entity: ENTITY, id })?;
+        require_edit(actor, &current)?;
         if current.caption == caption {
             tx.rollback().await.ok();
             let missing = self.is_missing(data_dir, &current);
@@ -275,15 +286,17 @@ impl Core {
         Ok(to_api(updated, missing))
     }
 
-    /// Удаляет вложение; файлы убираются с диска после фиксации записи.
+    /// Удаляет вложение; файлы убираются с диска после фиксации записи. Права — как у
+    /// `require_edit`.
     pub async fn delete_attachment(&self, actor: &Actor, id: i64) -> Result<(), CoreError> {
-        actor.require(Permission::OrdersEdit)?;
+        actor.require_any(&[Permission::OrdersEdit, Permission::OrdersCreate])?;
         let data_dir = self.data_dir()?.to_path_buf();
         let tx = self.begin_write().await?;
         let current = attachment::Entity::find_by_id(id)
             .one(&tx)
             .await?
             .ok_or(CoreError::NotFound { entity: ENTITY, id })?;
+        require_edit(actor, &current)?;
         attachment::Entity::delete_by_id(id).exec(&tx).await?;
         write_audit(
             &tx,

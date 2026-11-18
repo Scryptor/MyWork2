@@ -53,8 +53,13 @@ impl Core {
 
     /// Местное время предприятия, до секунд. Единственный источник «сейчас» в приложении.
     pub fn now(&self) -> NaiveDateTime {
+        self.local_time(self.clock.now_utc())
+    }
+
+    /// Момент UTC по местным часам предприятия, до секунд: так же, как записывает `now()`.
+    pub(crate) fn local_time(&self, at: chrono::DateTime<chrono::Utc>) -> NaiveDateTime {
         let tz = settings::parse_timezone(&self.settings().timezone);
-        tz.from_utc_datetime(&self.clock.now_utc().naive_utc())
+        tz.from_utc_datetime(&at.naive_utc())
             .naive_local()
             .trunc_subsecs(0)
     }

@@ -15,7 +15,7 @@
         "tags": [
           "Вложения"
         ],
-        "summary": "Удаление вложения (право `orders_edit`).",
+        "summary": "Удаление вложения (право `orders_edit`; у фото черновика приёма — `orders_create` или `orders_edit`).",
         "operationId": "delete_attachment",
         "parameters": [
           {
@@ -54,7 +54,7 @@
         "tags": [
           "Вложения"
         ],
-        "summary": "Подпись вложения (право `orders_edit`).",
+        "summary": "Подпись вложения (право `orders_edit`; у фото черновика приёма — `orders_create` или `orders_edit`).",
         "operationId": "update_attachment",
         "parameters": [
           {

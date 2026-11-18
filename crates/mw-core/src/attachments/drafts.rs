@@ -128,27 +128,40 @@ impl Core {
             .collect())
     }
 
-    /// Выбрасывает черновик: записи и файлы. Неизвестный ключ — не ошибка.
+    /// Выбрасывает черновик: записи и их файлы. Неизвестный ключ — не ошибка.
+    ///
+    /// Удаляются только файлы удалённых записей: в папке черновика могут лежать файлы заказа,
+    /// перенос которых в папку заказа не удался.
     pub async fn discard_draft(&self, actor: &Actor, draft_key: &str) -> Result<(), CoreError> {
         actor.require(Permission::OrdersCreate)?;
         checked_key("draft_key", draft_key)?;
         let data_dir = self.data_dir()?.to_path_buf();
         let tx = self.begin_write().await?;
-        attachment::Entity::delete_many()
+        let rows = attachment::Entity::find()
             .filter(draft_condition(draft_key))
-            .exec(&tx)
+            .all(&tx)
             .await?;
-        tx.commit().await?;
-        remove_draft_dir(&data_dir, draft_key);
+        if rows.is_empty() {
+            tx.rollback().await.ok();
+        } else {
+            attachment::Entity::delete_many()
+                .filter(attachment::Column::Id.is_in(rows.iter().map(|m| m.id)))
+                .exec(&tx)
+                .await?;
+            tx.commit().await?;
+        }
+        remove_rows_files(&data_dir, &rows);
         Ok(())
     }
 
-    /// Удаляет черновики старше срока: записи и папки. Возвращает число удалённых вложений.
+    /// Удаляет вложения черновиков старше срока: записи и их файлы. Возвращает их число.
     pub async fn cleanup_drafts(&self, older_than: Duration) -> Result<u64, CoreError> {
         let Some(data_dir) = self.data_dir.clone() else {
             return Ok(0);
         };
-        let cutoff = self.now() - older_than;
+        // Срок — настоящие часы (`now_utc`), а `created_at` записан по местным: граница
+        // переводится в местное время так же, как `now()`.
+        let cutoff = self.local_time(self.now_utc() - older_than);
         let tx = self.begin_write().await?;
         let expired = attachment::Entity::find()
             .filter(attachment::Column::DraftKey.is_not_null())
@@ -160,40 +173,30 @@ impl Core {
             tx.rollback().await.ok();
             return Ok(0);
         }
-        let ids: Vec<i64> = expired.iter().map(|m| m.id).collect();
         attachment::Entity::delete_many()
-            .filter(attachment::Column::Id.is_in(ids))
+            .filter(attachment::Column::Id.is_in(expired.iter().map(|m| m.id)))
             .exec(&tx)
             .await?;
-        let mut keys: Vec<String> = expired.iter().filter_map(|m| m.draft_key.clone()).collect();
-        keys.sort();
-        keys.dedup();
-        let mut folders = Vec::new();
-        for key in keys {
-            let left = attachment::Entity::find()
-                .filter(draft_condition(&key))
-                .count(&tx)
-                .await?;
-            if left == 0 {
-                folders.push(key);
-            }
-        }
         tx.commit().await?;
-        let files: Vec<PathBuf> = expired
-            .iter()
-            .flat_map(|m| paths_of(&data_dir, m))
-            .collect();
-        store::remove_files(&files);
-        for key in folders {
-            remove_draft_dir(&data_dir, &key);
-        }
+        remove_rows_files(&data_dir, &expired);
         Ok(expired.len() as u64)
     }
 
     /// После фиксации заказа: переносит файлы вложений из черновика в папку заказа.
     /// Неудача не отменяет заказ: вложение остаётся по старому пути, а частично сделанный
     /// перенос откатывается, чтобы путь в базе и файл на диске не расходились.
+    ///
+    /// Перенос и запись путей идут отдельной задачей: оборванный запрос (клиент ушёл, сервер
+    /// бросил обработчик) не остановит их на полпути, когда файлы уже перенесены, а пути — нет.
     pub(crate) async fn move_draft_files(&self, order_id: i64, rows: Vec<attachment::Model>) {
+        let core = self.clone();
+        let task = tokio::spawn(async move { core.move_draft_files_now(order_id, rows).await });
+        if let Err(e) = task.await {
+            tracing::warn!(order_id, error = %e, "перенос вложений черновика прерван");
+        }
+    }
+
+    async fn move_draft_files_now(&self, order_id: i64, rows: Vec<attachment::Model>) {
         let Some(data_dir) = self.data_dir.clone() else {
             return;
         };
@@ -207,9 +210,11 @@ impl Core {
         if moved.is_empty() {
             return;
         }
+        #[cfg(test)]
+        tests::pause_before_paths(draft_key.as_deref()).await;
         let result = async {
             #[cfg(test)]
-            if tests::FAIL_PATH_UPDATE.swap(false, std::sync::atomic::Ordering::SeqCst) {
+            if tests::take_hook(&tests::FAIL_PATH_UPDATE, draft_key.as_deref()) {
                 return Err(CoreError::Internal("тестовый сбой записи путей".into()));
             }
             let tx = self.begin_write().await?;
@@ -332,24 +337,67 @@ pub(crate) fn move_files(
     out
 }
 
-fn remove_draft_dir(data_dir: &std::path::Path, key: &str) {
-    let dir = data_dir.join("attachments/drafts").join(key);
-    match std::fs::remove_dir_all(&dir) {
-        Ok(()) => {}
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-        Err(e) => tracing::warn!(path = %dir.display(), error = %e, "папка черновика не удалена"),
+/// Удаляет файлы этих записей черновиков, затем их опустевшие папки. Папка, где остались
+/// другие файлы (например, файлы заказа, не перенесённые из черновика), остаётся.
+fn remove_rows_files(data_dir: &std::path::Path, rows: &[attachment::Model]) {
+    let files: Vec<PathBuf> = rows.iter().flat_map(|m| paths_of(data_dir, m)).collect();
+    store::remove_files(&files);
+    let mut keys: Vec<&str> = rows.iter().filter_map(|m| m.draft_key.as_deref()).collect();
+    keys.sort_unstable();
+    keys.dedup();
+    for key in keys {
+        if valid_key(key) {
+            std::fs::remove_dir(data_dir.join("attachments/drafts").join(key)).ok();
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used)]
-    use std::sync::atomic::AtomicBool;
+    use std::sync::{Arc, Mutex};
+
+    use tokio::sync::Notify;
 
     use super::*;
 
-    /// Заставляет следующую запись путей после переноса файлов завершиться ошибкой.
-    pub(super) static FAIL_PATH_UPDATE: AtomicBool = AtomicBool::new(false);
+    /// Запись путей после переноса файлов черновика с этим ключом завершится ошибкой (один раз).
+    pub(super) static FAIL_PATH_UPDATE: Mutex<Option<String>> = Mutex::new(None);
+
+    /// Перенос черновика с этим ключом остановится перед записью путей: сообщит `reached` и
+    /// подождёт `release` (один раз).
+    struct Pause {
+        key: String,
+        reached: Arc<Notify>,
+        release: Arc<Notify>,
+    }
+    static PAUSE_BEFORE_PATHS: Mutex<Option<Pause>> = Mutex::new(None);
+
+    /// Снимает метку, если она для этого ключа.
+    pub(super) fn take_hook(hook: &Mutex<Option<String>>, key: Option<&str>) -> bool {
+        let mut guard = hook.lock().unwrap();
+        if key.is_some() && guard.as_deref() == key {
+            *guard = None;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub(super) async fn pause_before_paths(key: Option<&str>) {
+        let pause = {
+            let mut guard = PAUSE_BEFORE_PATHS.lock().unwrap();
+            if key.is_some() && guard.as_ref().map(|p| p.key.as_str()) == key {
+                guard.take()
+            } else {
+                None
+            }
+        };
+        if let Some(p) = pause {
+            p.reached.notify_one();
+            p.release.notified().await;
+        }
+    }
 
     fn row(id: i64, path: &str, thumb: Option<&str>) -> attachment::Model {
         attachment::Model {
@@ -437,8 +485,6 @@ mod tests {
 
     #[tokio::test]
     async fn failed_path_update_moves_files_back_even_if_the_draft_folder_is_gone() {
-        use std::sync::Arc;
-
         use crate::{Actor, ClientRef, Core, FixedClock, NewClient, NewOrder};
 
         for (label, db) in mw_db::testing::all_backends().await {
@@ -459,7 +505,7 @@ mod tests {
                     .await
                     .unwrap();
             }
-            FAIL_PATH_UPDATE.store(true, std::sync::atomic::Ordering::SeqCst);
+            *FAIL_PATH_UPDATE.lock().unwrap() = Some("fail".into());
             let order = core
                 .create_order(
                     &actor,
@@ -478,7 +524,7 @@ mod tests {
                 )
                 .await
                 .unwrap();
-            assert!(!FAIL_PATH_UPDATE.load(std::sync::atomic::Ordering::SeqCst));
+            assert!(FAIL_PATH_UPDATE.lock().unwrap().is_none());
             let list = core.list_order_attachments(&actor, order.id).await.unwrap();
             assert_eq!(list.len(), 2, "{label}");
             for a in &list {
@@ -487,6 +533,78 @@ mod tests {
                     .await
                     .unwrap();
             }
+        }
+    }
+
+    /// Запрос «Принять» оборван (клиент ушёл, сервер бросил обработчик) после фиксации заказа,
+    /// пока файлы переносятся: перенос и запись путей всё равно доходят до конца.
+    #[tokio::test]
+    async fn dropped_request_does_not_stop_the_move_halfway() {
+        use crate::{Actor, AttachmentVariant, ClientRef, Core, FixedClock, NewClient, NewOrder};
+
+        for (label, db) in mw_db::testing::all_backends().await {
+            let clock = Arc::new(FixedClock::new(chrono::Utc::now()));
+            let dir = tempfile::tempdir().unwrap();
+            let core = Core::open(db, clock, "UTC")
+                .await
+                .unwrap()
+                .with_attachments_dir(dir.path().to_path_buf());
+            let actor = Actor::unrestricted("Тест");
+            let img = image::RgbImage::from_pixel(20, 20, image::Rgb([9, 9, 9]));
+            let mut png = std::io::Cursor::new(Vec::new());
+            image::DynamicImage::ImageRgb8(img)
+                .write_to(&mut png, image::ImageFormat::Png)
+                .unwrap();
+            let a = core
+                .add_draft_attachment(&actor, "drop", "p.png", png.into_inner())
+                .await
+                .unwrap();
+            let reached = Arc::new(Notify::new());
+            let release = Arc::new(Notify::new());
+            *PAUSE_BEFORE_PATHS.lock().unwrap() = Some(Pause {
+                key: "drop".into(),
+                reached: reached.clone(),
+                release: release.clone(),
+            });
+            let request = {
+                let core = core.clone();
+                let actor = actor.clone();
+                tokio::spawn(async move {
+                    core.create_order(
+                        &actor,
+                        NewOrder {
+                            client: ClientRef::New(NewClient {
+                                full_name: "Ким".into(),
+                                ..Default::default()
+                            }),
+                            device_type: "Телефон".into(),
+                            brand: "А".into(),
+                            model: "Б".into(),
+                            malfunction: "Не включается".into(),
+                            attachment_draft: Some("drop".into()),
+                            ..Default::default()
+                        },
+                    )
+                    .await
+                })
+            };
+            reached.notified().await;
+            request.abort();
+            assert!(request.await.unwrap_err().is_cancelled(), "{label}");
+            release.notify_one();
+            let mut readable = false;
+            for _ in 0..100 {
+                if let Ok(f) = core
+                    .attachment_file(&actor, a.id, AttachmentVariant::Full)
+                    .await
+                    && f.path.starts_with(dir.path().join("attachments/orders"))
+                {
+                    readable = true;
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+            assert!(readable, "{label}: путь вложения не записан после переноса");
         }
     }
 }
