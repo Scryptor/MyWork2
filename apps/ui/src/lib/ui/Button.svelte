@@ -49,7 +49,7 @@
 {#snippet content()}
 	<span class="inner" class:hidden={busy}>
 		{#if Icon}<Icon size={16} aria-hidden="true" />{/if}
-		{#if children}<span>{@render children()}</span>{/if}
+		{#if children}<span class="text">{@render children()}</span>{/if}
 		{#if IconEnd}<IconEnd size={16} aria-hidden="true" />{/if}
 		{#if shortcut}<Kbd {shortcut} />{/if}
 	</span>
@@ -96,6 +96,17 @@
 		display: inline-flex;
 		align-items: center;
 		gap: var(--space-2);
+		min-width: 0;
+	}
+	/* A button held narrower than its text (a `max-width` of the caller) cuts the text, not the icons. */
+	.text {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.inner > :global(svg),
+	.inner > :global(kbd) {
+		flex: none;
 	}
 	.inner.hidden {
 		visibility: hidden;
