@@ -2,9 +2,9 @@
      window the subsections are a row above the fields; on a phone first the list, then the subsection
      with «←». -->
 <script lang="ts">
-	/* eslint-disable svelte/no-navigation-without-resolve -- hrefs are resolved below */
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import type { Snippet } from 'svelte';
+	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { display } from '#lib/design/prefs.svelte.js';
@@ -18,6 +18,13 @@
 	const showList = $derived(!display.phone || atRoot);
 	const showContent = $derived(!display.phone || !atRoot);
 	const current = $derived(SETTINGS_SECTIONS.find((s) => page.url.pathname === resolve(s.href)));
+
+	// «Настройки» itself is the list of subsections on a phone; elsewhere it opens the first one, also
+	// when a phone's window is widened while the list is shown.
+	$effect(() => {
+		const first = SETTINGS_SECTIONS[0];
+		if (!display.phone && atRoot && first) void goto(resolve(first.href), { replaceState: true });
+	});
 </script>
 
 <svelte:head><title>{current?.label ?? ru.settings.title}</title></svelte:head>

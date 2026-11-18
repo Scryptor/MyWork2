@@ -22,6 +22,18 @@ async function openAppearance(page: Page) {
 	await expect(page).toHaveURL(/\/settings\/appearance$/);
 }
 
+test('«Настройки» opened by its address goes on to «Внешний вид»', async ({ page }) => {
+	await page.goto('/settings');
+	await expect(page).toHaveURL(/\/settings\/appearance$/);
+	await expect(page.getByRole('heading', { name: 'Внешний вид' })).toBeVisible();
+	// Replaced, not pushed: «Назад» does not return to the address that only redirects.
+	await page.goto('/orders');
+	await page.goto('/settings');
+	await expect(page).toHaveURL(/\/settings\/appearance$/);
+	await page.goBack();
+	await expect(page).toHaveURL(/\/orders$/);
+});
+
 test('«Настройки» in the menu opens «Внешний вид»', async ({ page }) => {
 	await openAppearance(page);
 	await expect(page.getByRole('heading', { name: 'Внешний вид' })).toBeVisible();
@@ -115,6 +127,19 @@ test.describe('phone', () => {
 		await expect(html(page)).toHaveAttribute('data-theme', 'dark');
 		await page.getByRole('link', { name: 'Настройки' }).click();
 		await expect(page).toHaveURL(/\/settings$/);
+	});
+
+	test('a phone widened on «Настройки» lands on «Внешний вид»', async ({ page }) => {
+		await page.goto('/settings');
+		await expect(
+			page.getByRole('navigation', { name: 'Разделы настроек' }).getByRole('link', {
+				name: 'Внешний вид'
+			})
+		).toBeVisible();
+		await expect(page).toHaveURL(/\/settings$/);
+		await page.setViewportSize({ width: 1280, height: 720 });
+		await expect(page).toHaveURL(/\/settings\/appearance$/);
+		await expect(page.getByRole('heading', { name: 'Внешний вид' })).toBeVisible();
 	});
 
 	test('«Размер» is a list: six sizes do not fit a phone in a row', async ({ page }) => {

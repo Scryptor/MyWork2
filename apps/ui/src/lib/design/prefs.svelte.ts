@@ -44,13 +44,15 @@ export function parsePrefs(raw: string | null): Prefs {
 	};
 }
 
-let value = $state<Prefs>({ ...DEFAULT_PREFS });
-let env = $state<DisplayEnv>({
-	systemDark: false,
-	screenWidth: 0,
-	screenHeight: 0,
-	windowWidth: 1280
-});
+// In the browser the store starts from the stored prefs and the real window, so the first render is
+// already right (the root layout's effect that calls init() runs after its children have rendered).
+const inBrowser = typeof window !== 'undefined';
+let value = $state<Prefs>(inBrowser ? parsePrefs(readStorage(PREFS_KEY)) : { ...DEFAULT_PREFS });
+let env = $state<DisplayEnv>(
+	inBrowser
+		? readEnv(systemDarkNow())
+		: { systemDark: false, screenWidth: 0, screenHeight: 0, windowWidth: 1280 }
+);
 const current = $derived<Display>(computeDisplay(value, env));
 
 function apply(): void {
@@ -98,6 +100,14 @@ function readEnv(systemDark: boolean): DisplayEnv {
 		screenHeight: window.screen?.height ?? 0,
 		windowWidth: window.innerWidth
 	};
+}
+
+function systemDarkNow(): boolean {
+	try {
+		return window.matchMedia('(prefers-color-scheme: dark)').matches;
+	} catch {
+		return false;
+	}
 }
 
 function initPrefs(): () => void {
