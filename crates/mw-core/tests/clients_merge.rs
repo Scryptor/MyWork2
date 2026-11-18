@@ -201,3 +201,19 @@ async fn merge_needs_clients_merge_permission() -> Result<(), CoreError> {
     }
     Ok(())
 }
+
+#[tokio::test]
+async fn similar_clients_are_at_most_twenty_by_name() -> Result<(), CoreError> {
+    for t in cores().await {
+        let subject = make_client(&t, "Кот", &["8 900 777-77-77"]).await;
+        // Добавлены в обратном порядке имён: порядок ответа — по имени, а не по номеру.
+        for i in (1..=25).rev() {
+            make_client(&t, &format!("Клиент {i:02}"), &["+7 900 777-77-77"]).await;
+        }
+        let similar = t.core.similar_clients(&admin(), subject.id).await?;
+        let names: Vec<String> = similar.iter().map(|c| c.full_name.clone()).collect();
+        let expected: Vec<String> = (1..=20).map(|i| format!("Клиент {i:02}")).collect();
+        assert_eq!(names, expected, "{}", t.label);
+    }
+    Ok(())
+}

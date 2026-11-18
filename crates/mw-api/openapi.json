@@ -874,7 +874,7 @@
         "tags": [
           "Клиенты"
         ],
-        "summary": "Клиенты, похожие на этого: то же имя или общий телефон (право `clients_view` или `orders_create`).",
+        "summary": "Клиенты, похожие на этого: то же имя или общий телефон; не больше 20, по имени (право `clients_view` или `orders_create`).",
         "operationId": "similar_clients",
         "parameters": [
           {

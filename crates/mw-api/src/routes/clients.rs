@@ -119,7 +119,7 @@ pub(super) async fn update_client(
     ))
 }
 
-/// Клиенты, похожие на этого: то же имя или общий телефон (право `clients_view` или `orders_create`).
+/// Клиенты, похожие на этого: то же имя или общий телефон; не больше 20, по имени (право `clients_view` или `orders_create`).
 #[utoipa::path(
     get,
     path = "/api/v1/clients/{id}/similar",

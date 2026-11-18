@@ -560,3 +560,113 @@ async fn duplicates_filter_groups_same_name_and_shared_phone() -> Result<(), Cor
     }
     Ok(())
 }
+
+/// 20 000 выдуманных клиентов прямо в базу: каждый 97-й делит имя со следующим, каждый 89-й —
+/// телефон с предыдущим. Возвращает, сколько из них похожи на кого-то.
+#[allow(clippy::unwrap_used)]
+async fn seed_many_clients(t: &common::TestCore, n: usize) -> u64 {
+    use std::collections::HashMap;
+
+    use mw_db::entity::{client, client_phone};
+    use mw_domain::phone::phone_key;
+    use mw_domain::search::normalize_search;
+    use sea_orm::{EntityTrait, Set};
+
+    let at = chrono::NaiveDate::from_ymd_opt(2026, 1, 1)
+        .unwrap()
+        .and_hms_opt(9, 0, 0)
+        .unwrap();
+    let name_of = |i: usize| format!("Клиент {}", if i.is_multiple_of(97) { i + 1 } else { i });
+    let phone_of = |i: usize| {
+        let j = if i % 89 == 5 { i - 1 } else { i };
+        format!("8 9{:09}", j * 7)
+    };
+    let mut by_name: HashMap<String, Vec<usize>> = HashMap::new();
+    let mut by_phone: HashMap<String, Vec<usize>> = HashMap::new();
+    for i in 0..n {
+        by_name
+            .entry(normalize_search(&name_of(i)))
+            .or_default()
+            .push(i);
+        by_phone.entry(phone_key(&phone_of(i))).or_default().push(i);
+    }
+    let similar = (0..n)
+        .filter(|&i| {
+            by_name[&normalize_search(&name_of(i))].len() > 1
+                || by_phone[&phone_key(&phone_of(i))].len() > 1
+        })
+        .count();
+
+    let db = t.core.db();
+    for chunk in (0..n).collect::<Vec<_>>().chunks(500) {
+        let clients = chunk.iter().map(|&i| {
+            let name = name_of(i);
+            let phone = phone_of(i);
+            client::ActiveModel {
+                id: Set(i64::try_from(i).unwrap() + 1),
+                full_name: Set(name.clone()),
+                phone: Set(phone.clone()),
+                phone_key: Set(phone_key(&phone)),
+                address: Set(String::new()),
+                note: Set(String::new()),
+                source: Set(String::new()),
+                blacklisted: Set(false),
+                created_at: Set(at),
+                updated_at: Set(at),
+                deleted_at: Set(None),
+                version: Set(1),
+                search_text: Set(normalize_search(&name)),
+                name_key: Set(normalize_search(&name)),
+            }
+        });
+        client::Entity::insert_many(clients).exec(db).await.unwrap();
+        let phones = chunk.iter().map(|&i| {
+            let phone = phone_of(i);
+            client_phone::ActiveModel {
+                id: Set(i64::try_from(i).unwrap() + 1),
+                client_id: Set(i64::try_from(i).unwrap() + 1),
+                position: Set(0),
+                phone_key: Set(phone_key(&phone)),
+                phone: Set(phone),
+                note: Set(String::new()),
+            }
+        });
+        client_phone::Entity::insert_many(phones)
+            .exec(db)
+            .await
+            .unwrap();
+    }
+    u64::try_from(similar).unwrap()
+}
+
+/// Фильтр «Похожие» на базе в 20 000 клиентов отвечает быстрее секунды (был квадратичным).
+#[tokio::test]
+#[ignore = "объёмная проверка: cargo test -p mw-core --test clients -- --ignored"]
+async fn duplicates_filter_is_fast_on_many_clients() -> Result<(), CoreError> {
+    use mw_core::ClientFilter;
+    for t in cores().await {
+        let expected = seed_many_clients(&t, 20_000).await;
+        assert!(expected > 400, "{expected}");
+        let filter = ClientFilter {
+            duplicates: true,
+            ..Default::default()
+        };
+        let started = std::time::Instant::now();
+        let page = tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            t.core.list_clients(&admin(), &filter, 50, 0),
+        )
+        .await
+        .unwrap_or_else(|_| panic!("{}: страница «Похожие» дольше секунды", t.label))?;
+        let elapsed = started.elapsed();
+        eprintln!("{}: {elapsed:?}", t.label);
+        assert_eq!(page.total, expected, "{}", t.label);
+        assert_eq!(page.items.len(), 50, "{}", t.label);
+        assert!(
+            elapsed < std::time::Duration::from_secs(1),
+            "{}: {elapsed:?}",
+            t.label
+        );
+    }
+    Ok(())
+}

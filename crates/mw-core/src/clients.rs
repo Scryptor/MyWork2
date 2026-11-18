@@ -396,10 +396,14 @@ const LAST_ORDER_SQL: &str = "(SELECT MAX(o.received_at) FROM orders o WHERE o.c
 
 /// У клиента есть другой живой клиент с тем же непустым ключом имени или общим телефоном
 /// (сравниваются `phone_key` — последние 10 цифр; номера короче 6 цифр не считаются).
-const HAS_SIMILAR_SQL: &str = "EXISTS (SELECT 1 FROM clients c2 WHERE c2.deleted_at IS NULL AND c2.id <> clients.id AND (\
-    (clients.name_key <> '' AND c2.name_key = clients.name_key) \
-    OR EXISTS (SELECT 1 FROM client_phones p1 JOIN client_phones p2 ON p2.phone_key = p1.phone_key \
-        WHERE p1.client_id = clients.id AND p2.client_id = c2.id AND LENGTH(p1.phone_key) >= 6)))";
+/// Два отдельных `EXISTS`, каждый по своему индексу (`name_key`, `phone_key`): общий подзапрос
+/// по всем клиентам делал фильтр квадратичным.
+const HAS_SIMILAR_SQL: &str = "((clients.name_key <> '' AND EXISTS (SELECT 1 FROM clients c2 \
+        WHERE c2.name_key = clients.name_key AND c2.id <> clients.id AND c2.deleted_at IS NULL)) \
+    OR EXISTS (SELECT 1 FROM client_phones p1 \
+        JOIN client_phones p2 ON p2.phone_key = p1.phone_key AND p2.client_id <> p1.client_id \
+        JOIN clients c2 ON c2.id = p2.client_id AND c2.deleted_at IS NULL \
+        WHERE p1.client_id = clients.id AND LENGTH(p1.phone_key) >= 6))";
 
 pub(crate) async fn find_live(
     conn: &impl ConnectionTrait,
@@ -723,5 +727,51 @@ pub(crate) fn display_name<'a>(full_name: &'a str, phones: &'a [ClientPhone]) ->
         phones.first().map_or("", |p| p.phone.as_str())
     } else {
         full_name
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+    use sea_orm::{ConnectionTrait, DbBackend, Statement};
+
+    use super::HAS_SIMILAR_SQL;
+
+    /// План SQLite для фильтра «Похожие»: строки `detail` из `EXPLAIN QUERY PLAN`.
+    async fn sqlite_plan(sql: &str) -> Vec<String> {
+        let db = mw_db::testing::sqlite_memory().await;
+        db.query_all_raw(Statement::from_string(
+            DbBackend::Sqlite,
+            format!("EXPLAIN QUERY PLAN {sql}"),
+        ))
+        .await
+        .unwrap()
+        .iter()
+        .map(|row| row.try_get_by_index::<String>(3).unwrap())
+        .collect()
+    }
+
+    /// Каждый клиент ищет похожих по индексам, а не перебором всех клиентов: перебор внутри
+    /// `EXISTS` делал фильтр квадратичным (секунды на тысячах клиентов).
+    #[tokio::test]
+    async fn similar_filter_uses_indexes_inside_exists() {
+        let plan = sqlite_plan(&format!(
+            "SELECT clients.id FROM clients WHERE clients.deleted_at IS NULL AND {HAS_SIMILAR_SQL}"
+        ))
+        .await;
+        let text = plan.join("\n");
+        let scans: Vec<&String> = plan
+            .iter()
+            .filter(|d| d.starts_with("SCAN") && !d.starts_with("SCAN clients"))
+            .collect();
+        assert!(scans.is_empty(), "перебор в подзапросе:\n{text}");
+        assert_eq!(
+            plan.iter()
+                .filter(|d| d.starts_with("SCAN clients"))
+                .count(),
+            1,
+            "клиенты перебираются один раз, снаружи:\n{text}"
+        );
+        assert!(!text.contains("SCAN c2"), "{text}");
     }
 }

@@ -8,7 +8,7 @@ use mw_domain::phone::phone_key;
 use mw_domain::validation::FieldError;
 use sea_orm::ExprTrait;
 use sea_orm::sea_query::{Expr, Order, Query};
-use sea_orm::{ColumnTrait, Condition, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::{ColumnTrait, Condition, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -23,6 +23,9 @@ const ENTITY: &str = "клиент";
 
 /// Сколько клиентов можно влить в один за раз.
 pub const MAX_MERGE_SOURCES: usize = 10;
+
+/// Больше похожих клиентов не показывается: первые по имени.
+pub const MAX_SIMILAR_CLIENTS: u64 = 20;
 
 /// Номер записи и её версия, на которую рассчитывает клиент.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
@@ -57,7 +60,8 @@ pub struct MergeClients {
 }
 
 impl Core {
-    /// Клиенты, похожие на этого: то же непустое имя (без учёта регистра и ё) или общий телефон.
+    /// Клиенты, похожие на этого: то же непустое имя (без учёта регистра и ё) или общий телефон;
+    /// не больше [`MAX_SIMILAR_CLIENTS`], по имени.
     pub async fn similar_clients(
         &self,
         actor: &Actor,
@@ -102,6 +106,7 @@ impl Core {
                 Order::Asc,
             )
             .order_by_asc(client::Column::Id)
+            .limit(MAX_SIMILAR_CLIENTS)
             .all(&self.db)
             .await?;
         list_items(&self.db, models).await
