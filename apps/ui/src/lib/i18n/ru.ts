@@ -7,7 +7,8 @@ export const ru = {
 		more: 'Ещё',
 		loading: 'Загрузка…',
 		nothingFound: 'Ничего не найдено',
-		back: 'Назад'
+		back: 'Назад',
+		understood: 'Понятно'
 	},
 	api: { offline: 'Нет связи с сервером', failed: 'Не удалось выполнить запрос' },
 	flags: { needCall: 'Позвонить', needParts: 'Заказать запчасть', blacklisted: 'Чёрный список' },
@@ -235,6 +236,13 @@ export const ru = {
 		condition: 'Внешнее состояние',
 		malfunction: 'Неисправность',
 		frequent: 'Частые неисправности',
+		photos: 'Фото',
+		takeWithPhone: 'Снять телефоном',
+		/** Until the host mode: the phone reaches the computer only through the network. */
+		phoneHowTo:
+			'Телефон подключается к компьютеру по сети. Включите режим хоста в настройках «Сеть» — он появится в следующих версиях',
+		/** The server keeps no more in a draft. */
+		photoLimit: 'При приёме можно добавить не больше 10 фото',
 		work: 'Работа и деньги',
 		master: 'Мастер',
 		status: 'Статус',
@@ -264,11 +272,15 @@ export const ru = {
 		receiver: (name: string) => `Приёмщик: ${name}`,
 		accepted: (id: number) => `Принят № ${id}`,
 		accepting: 'Принимаю…',
+		/** «Принять» again is the same attempt (its key): the server does not make a second order. */
 		noAnswer:
-			'Не удалось принять: нет ответа от сервера. Проверьте список заказов, прежде чем принимать ещё раз.',
-		/** The order sent before Esc was accepted while the sheet, opened again, still shows its text. */
+			'Не удалось принять: нет ответа от сервера. Введённое сохранено — нажмите «Принять» ещё раз, второго заказа не будет',
+		/**
+		 * The order sent before Esc was accepted while the sheet, opened again, was changed. «Принять» of
+		 * the same draft gets the same order: the changes are not in it.
+		 */
 		acceptedMeanwhile: (id: number) =>
-			`Принят № ${id}. Форма не очищена: «Отмена» очистит её, «Принять» создаст ещё один заказ`,
+			`Принят № ${id}. Правки после отправки в заказ не вошли — внесите их в заказе; «Отмена» очистит форму`,
 		open: 'Открыть',
 		failed: (message: string) =>
 			`Заказ не принят: ${message}. Введённое сохранено — нажмите «Принять» ещё раз`

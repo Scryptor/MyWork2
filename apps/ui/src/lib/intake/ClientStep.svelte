@@ -35,8 +35,8 @@
 		/** «Откуда узнали» of the dictionary. */
 		sources: string[];
 		errors: { contact?: string; phones?: string; client?: string };
-		/** A client was chosen: the form goes on to the device. */
-		onchosen?: () => void;
+		/** A client was chosen (their number): the form goes on to the device. */
+		onchosen?: (clientId: number) => void;
 	} = $props();
 
 	const NAME_ID = 'intake-name';
@@ -55,16 +55,18 @@
 	let addressOpen = $state(untrack(() => draft.address !== ''));
 
 	// The clients with this phone, a moment after the last digit; a newer number aborts the older lookup.
-	// While a client is chosen nothing is asked, and «Другой клиент» shows the cards again at once.
+	// The cards of the old number go at once: they are not about the number typed. While a client is
+	// chosen nothing is asked, and «Другой клиент» shows the cards again at once.
 	const query = $derived(phoneQuery(draft));
 	const choosing = $derived(draft.clientId === null);
+	let foundFor: string | null = null;
 	$effect(() => {
 		const q = query;
-		if (q === null) {
+		if (q !== foundFor) {
+			foundFor = q;
 			found = [];
-			return;
 		}
-		if (!choosing) return;
+		if (q === null || !choosing) return;
 		const controller = new AbortController();
 		const timer = setTimeout(() => void lookUp(q, controller.signal), LOOKUP_MS);
 		return () => {
@@ -129,7 +131,7 @@
 		chosenError = null;
 		draft.clientId = c.id;
 		draft.newClient = false;
-		onchosen?.();
+		onchosen?.(c.id);
 	}
 
 	/** «+7 921 123-45-67 · жена · основной». */

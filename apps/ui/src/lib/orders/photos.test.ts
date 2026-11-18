@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '#lib/api/client.js';
 import { toast } from '#lib/ui/toast/toast.svelte.js';
 import {
+	createDraftMedia,
 	createOrderMedia,
 	limitPhotos,
 	MAX_PHOTOS_PER_ADD,
@@ -216,5 +217,55 @@ describe('limitPhotos', () => {
 	it('stays quiet within the limit', () => {
 		expect(limitPhotos([file('a.png')])).toHaveLength(1);
 		expect(messages()).toEqual([]);
+	});
+	it('keeps as many as there is room for, with the text of that place', () => {
+		const files = [file('a.png'), file('b.png'), file('c.png')];
+		expect(limitPhotos(files, 2, 'Не больше 10').map((f) => f.name)).toEqual(['a.png', 'b.png']);
+		expect(limitPhotos(files, 0, 'Не больше 10')).toEqual([]);
+		expect(messages()).toEqual(['Не больше 10', 'Не больше 10']);
+	});
+});
+
+describe('createDraftMedia', () => {
+	function draftApi(over: Partial<MediaApi<string>> = {}): MediaApi<string> {
+		let next = 200;
+		return {
+			list: vi.fn(async () => [attachment(1, { order_id: null })]),
+			upload: vi.fn(async (_key: string, f: File) =>
+				attachment(next++, { order_id: null, name: f.name })
+			),
+			caption: vi.fn(async (id: number, caption: string) => attachment(id, { caption })),
+			remove: vi.fn(async () => undefined),
+			...over
+		};
+	}
+
+	it('lists and uploads by the key of the draft, through the same queue as an order', async () => {
+		const api = draftApi();
+		const m = createDraftMedia('k-1', api);
+		await m.reload();
+		expect(api.list).toHaveBeenCalledWith('k-1');
+		expect(m.photos.map((a) => a.id)).toEqual([1]);
+		await m.add([file('a.png')]);
+		expect(api.upload).toHaveBeenCalledWith('k-1', expect.any(File));
+		expect(m.photos.map((a) => a.name)).toEqual(['p1.png', 'a.png']);
+		await m.remove(1);
+		expect(api.remove).toHaveBeenCalledWith(1);
+		expect(messages()).toEqual(['Фото удалено']);
+	});
+
+	it('idle waits for the uploads already queued', async () => {
+		const gate = deferred<Attachment>();
+		const m = createDraftMedia('k-1', draftApi({ upload: vi.fn(() => gate.promise) }));
+		await m.reload();
+		void m.add([file('a.png')]);
+		let idle = false;
+		const waiting = m.idle().then(() => (idle = true));
+		await Promise.resolve();
+		expect(idle).toBe(false);
+		gate.resolve(attachment(5, { order_id: null }));
+		await waiting;
+		expect(m.photos.map((a) => a.id)).toEqual([1, 5]);
+		expect(m.pending).toEqual([]);
 	});
 });

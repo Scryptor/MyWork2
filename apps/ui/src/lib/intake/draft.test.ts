@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AppSettings } from '$api/AppSettings';
 import type { Status } from '$api/Status';
 import { item, STATUSES } from '#lib/app/fixtures.test-helper.js';
@@ -6,12 +6,13 @@ import {
 	emptyDraft,
 	intakeStatuses,
 	joinChips,
+	lateAnswer,
 	mergeSuggestions,
 	missingRequired,
+	newDraftKey,
 	parseDraft,
 	phoneQuery,
 	REQUIRED_LABELS,
-	sameOrder,
 	serialHits,
 	serialQuery,
 	splitChips,
@@ -67,6 +68,12 @@ const filled = (over: Partial<IntakeDraft> = {}): IntakeDraft => ({
 	malfunction: 'не заряжается',
 	...over
 });
+/** A draft key: a UUID, as `crypto.randomUUID` makes it. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+/** Every new draft has a key of its own: compare the rest. */
+const sansKey = (d: IntakeDraft) => ({ ...d, key: '' });
+
+afterEach(() => vi.unstubAllGlobals());
 
 describe('emptyDraft', () => {
 	it('empty draft takes master, warranty and the first diagnostics status', () => {
@@ -79,6 +86,22 @@ describe('emptyDraft', () => {
 		expect(d.phones).toEqual([{ phone: '', note: '' }]);
 		expect(d.completeness).toEqual([]);
 		expect(d.prepayment).toBeNull();
+		expect(d.acceptedAs).toBeNull();
+	});
+
+	it('every draft gets a key of its own', () => {
+		const [a, b] = [empty(), empty()];
+		expect(a.key).toMatch(UUID);
+		expect(b.key).toMatch(UUID);
+		expect(a.key).not.toBe(b.key);
+	});
+
+	it('the key is made without randomUUID too (a page not on a secure address)', () => {
+		const getRandomValues = crypto.getRandomValues.bind(crypto);
+		vi.stubGlobal('crypto', { getRandomValues });
+		const [a, b] = [newDraftKey(), newDraftKey()];
+		expect(a).toMatch(UUID);
+		expect(a).not.toBe(b);
 	});
 
 	it('without a diagnostics status the server picks the status', () => {
@@ -121,35 +144,33 @@ describe('toNewOrder', () => {
 	});
 
 	it('takes every field of the form', () => {
-		const order = toNewOrder(
-			filled({
-				fullName: 'ПЕТРОВ ПЁТР',
-				phones: [
-					{ phone: '89211234567', note: ' ' },
-					{ phone: '', note: '' },
-					{ phone: '+7 (921) 000-00-01', note: ' жена ' }
-				],
-				source: ' Авито ',
-				address: ' ул. Тестовая, 1 ',
-				brand: ' Тест ',
-				model: 'Модель 5 ',
-				color: 'Чёрный',
-				serial: ' 356000000000001 ',
-				password: ' 12 34 ',
-				completeness: ['Чехол', 'Зарядка'],
-				condition: ['Царапины'],
-				malfunctionChips: ['Не включается', 'Залит'],
-				malfunction: ' после падения ',
-				master: ' АНТОН ',
-				statusId: 6,
-				estimateFrom: 500_000,
-				estimateTo: 700_000,
-				prepayment: null,
-				warranty: ' 90 дней ',
-				comment: ' позвонить вечером '
-			}),
-			2
-		);
+		const draft = filled({
+			fullName: 'ПЕТРОВ ПЁТР',
+			phones: [
+				{ phone: '89211234567', note: ' ' },
+				{ phone: '', note: '' },
+				{ phone: '+7 (921) 000-00-01', note: ' жена ' }
+			],
+			source: ' Авито ',
+			address: ' ул. Тестовая, 1 ',
+			brand: ' Тест ',
+			model: 'Модель 5 ',
+			color: 'Чёрный',
+			serial: ' 356000000000001 ',
+			password: ' 12 34 ',
+			completeness: ['Чехол', 'Зарядка'],
+			condition: ['Царапины'],
+			malfunctionChips: ['Не включается', 'Залит'],
+			malfunction: ' после падения ',
+			master: ' АНТОН ',
+			statusId: 6,
+			estimateFrom: 500_000,
+			estimateTo: 700_000,
+			prepayment: null,
+			warranty: ' 90 дней ',
+			comment: ' позвонить вечером '
+		});
+		const order = toNewOrder(draft, 2);
 		expect(order).toEqual({
 			client: {
 				new: {
@@ -185,7 +206,20 @@ describe('toNewOrder', () => {
 			need_call: false,
 			need_parts: false,
 			attachment_draft: null,
-			request_key: null
+			request_key: draft.key
+		});
+	});
+
+	it('the key of the draft is the key of the attempt, and of its photos when there are any', () => {
+		const d = filled();
+		expect(toNewOrder(d, null, true)).toMatchObject({
+			attachment_draft: d.key,
+			request_key: d.key
+		});
+		// Without photos the server has no draft to look at.
+		expect(toNewOrder(d, null, false)).toMatchObject({
+			attachment_draft: null,
+			request_key: d.key
 		});
 	});
 });
@@ -240,7 +274,9 @@ describe('missingRequired', () => {
 describe('parseDraft', () => {
 	it('garbage in storage gives an empty draft', () => {
 		for (const raw of [null, '', '{', '[]', 'null', '42', '"x"']) {
-			expect(parseDraft(raw, SETTINGS, STATUS_LIST), String(raw)).toEqual(empty());
+			const d = parseDraft(raw, SETTINGS, STATUS_LIST);
+			expect(sansKey(d), String(raw)).toEqual(sansKey(empty()));
+			expect(d.key).toMatch(UUID);
 		}
 	});
 
@@ -264,19 +300,44 @@ describe('parseDraft', () => {
 			estimateTo: 2,
 			prepayment: 100_000,
 			warranty: '',
-			comment: 'тест',
-			acceptedAs: 12
+			comment: 'тест'
 		});
+		d.acceptedAs = { id: 12, key: d.key, clientId: 7 };
 		expect(parseDraft(JSON.stringify(d), SETTINGS, STATUS_LIST)).toEqual(d);
 	});
 
-	it('a mark of an order already accepted from the draft is a number or nothing', () => {
-		for (const acceptedAs of ['12', 0, -3, 1.5, null]) {
-			const raw = JSON.stringify({ malfunction: 'Не включается', acceptedAs });
-			expect(parseDraft(raw, SETTINGS, STATUS_LIST).acceptedAs, String(acceptedAs)).toBeNull();
+	it('a draft of the old kind (without a key) gets a new one', () => {
+		const raw = JSON.stringify({ malfunction: 'Не включается' });
+		const [a, b] = [parseDraft(raw, SETTINGS, STATUS_LIST), parseDraft(raw, SETTINGS, STATUS_LIST)];
+		expect(a.malfunction).toBe('Не включается');
+		expect(a.key).toMatch(UUID);
+		expect(a.key).not.toBe(b.key);
+		// The server takes 1–64 letters, digits and dashes: anything else is no key either.
+		for (const key of ['', 'с пробелом', 'x'.repeat(65), 42]) {
+			const d = parseDraft(JSON.stringify({ key }), SETTINGS, STATUS_LIST);
+			expect(d.key, String(key)).toMatch(UUID);
 		}
-		expect(parseDraft('{"acceptedAs":7}', SETTINGS, STATUS_LIST).acceptedAs).toBe(7);
-		expect(empty().acceptedAs).toBeNull();
+		expect(parseDraft('{"key":"Ab-1"}', SETTINGS, STATUS_LIST).key).toBe('Ab-1');
+	});
+
+	it('the mark of an order accepted from the draft belongs to its key', () => {
+		const key = 'k-1';
+		const read = (acceptedAs: unknown) =>
+			parseDraft(JSON.stringify({ key, acceptedAs }), SETTINGS, STATUS_LIST).acceptedAs;
+		expect(read({ id: 7, key, clientId: 3 })).toEqual({ id: 7, key, clientId: 3 });
+		for (const acceptedAs of [
+			// A mark of 5.1 (a number) has no key to belong to.
+			7,
+			'12',
+			null,
+			{ id: 7, key: 'k-2', clientId: 3 },
+			{ id: 0, key, clientId: 3 },
+			{ id: 1.5, key, clientId: 3 },
+			{ id: 7, clientId: 3 },
+			{ id: 7, key, clientId: -1 }
+		]) {
+			expect(read(acceptedAs), JSON.stringify(acceptedAs)).toBeNull();
+		}
 	});
 
 	it('keeps valid fields and drops invalid ones', () => {
@@ -299,6 +360,7 @@ describe('parseDraft', () => {
 		);
 		expect(d).toEqual({
 			...empty(),
+			key: d.key,
 			phones: [{ phone: '79211234567', note: 'раб' }],
 			deviceType: 'Телефон',
 			completeness: ['Чехол', 'Зарядка'],
@@ -321,14 +383,22 @@ describe('withPrefill', () => {
 	it('intake for a client keeps the draft of that client and replaces any other', () => {
 		const mine = filled({ clientId: 5, malfunction: 'своё' });
 		expect(withPrefill(mine, { clientId: 5 }, SETTINGS, STATUS_LIST)).toEqual(mine);
-		expect(withPrefill(filled({ clientId: 6 }), { clientId: 5 }, SETTINGS, STATUS_LIST)).toEqual({
-			...empty(),
-			clientId: 5
-		});
-		expect(withPrefill(filled(), { clientId: 5 }, SETTINGS, STATUS_LIST)).toEqual({
-			...empty(),
-			clientId: 5
-		});
+		for (const other of [filled({ clientId: 6 }), filled()]) {
+			const d = withPrefill(other, { clientId: 5 }, SETTINGS, STATUS_LIST);
+			expect(sansKey(d)).toEqual(sansKey({ ...empty(), clientId: 5 }));
+			// A new draft: its photos and its attempt are not those of the one replaced.
+			expect(d.key).not.toBe(other.key);
+		}
+	});
+
+	it('a draft already accepted is replaced by intake for any client', () => {
+		for (const clientId of [5, 6, null]) {
+			const accepted = filled({ clientId });
+			accepted.acceptedAs = { id: 9, key: accepted.key, clientId: 5 };
+			const d = withPrefill(accepted, { clientId: 5 }, SETTINGS, STATUS_LIST);
+			expect(sansKey(d), String(clientId)).toEqual(sansKey({ ...empty(), clientId: 5 }));
+			expect(d.key).not.toBe(accepted.key);
+		}
 	});
 
 	it('without a prefill the draft stays', () => {
@@ -419,23 +489,26 @@ describe('warranty of a past order', () => {
 	});
 });
 
-describe('sameOrder', () => {
-	it('the same client and device are the same order whatever else changed', () => {
-		const sent = filled({ brand: 'Тест', model: 'М1', serial: '356789' });
-		expect(sameOrder(sent, { ...sent, comment: 'Позвонить вечером', prepayment: 50_000 })).toBe(
-			true
-		);
-		expect(sameOrder(sent, { ...sent, model: ' М1 ' })).toBe(true);
-		for (const other of [
-			{ ...sent, clientId: 4 },
-			{ ...sent, fullName: 'Другой Клиент' },
+describe('lateAnswer', () => {
+	const sent = filled({ fullName: 'Тестов', brand: 'Тест', model: 'М1', serial: '356789' });
+
+	it('the very draft that was sent goes', () => {
+		expect(lateAnswer(structuredClone(sent), sent)).toBe('close');
+	});
+
+	it('the draft changed since then is marked as accepted, whatever was changed', () => {
+		// Its key is the key of the attempt: the name, the phone or the device edited is still it.
+		for (const now of [
+			{ ...sent, fullName: 'Тестов Пётр' },
 			{ ...sent, phones: [{ phone: '89210000001', note: '' }] },
-			{ ...sent, deviceType: 'Ноутбук' },
-			{ ...sent, brand: 'Другой' },
-			{ ...sent, model: 'М2' },
-			{ ...sent, serial: '356780' }
+			{ ...sent, deviceType: 'Ноутбук', model: 'М2', serial: '356780' },
+			{ ...sent, comment: 'Позвонить вечером', prepayment: 50_000 }
 		]) {
-			expect(sameOrder(sent, other)).toBe(false);
+			expect(lateAnswer(now, sent), JSON.stringify(now)).toBe('mark');
 		}
+	});
+
+	it('a draft begun after it (another key) is left alone', () => {
+		expect(lateAnswer({ ...sent, key: newDraftKey() }, sent)).toBe('other');
 	});
 });

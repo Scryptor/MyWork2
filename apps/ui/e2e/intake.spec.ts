@@ -3,10 +3,12 @@ import type { DictionaryItem } from '$api/DictionaryItem';
 import type { OrderPage } from '$api/OrderPage';
 import {
 	createOrder,
+	deleteOrder,
 	fetchOrder,
 	patchOrder,
 	setStatus,
 	statusId,
+	tinyPng,
 	uniq,
 	uniqPhone
 } from './support/api';
@@ -29,6 +31,16 @@ const malfunctionOf = (page: Page) =>
 const prepaymentOf = (page: Page) => sheetOf(page).getByRole('textbox', { name: 'Предоплата' });
 const summaryOf = (page: Page) => sheetOf(page).getByRole('complementary', { name: 'Сводка' });
 const toastsOf = (page: Page) => page.getByRole('status', { name: 'Уведомления' });
+const photoZoneOf = (page: Page) => sheetOf(page).getByRole('group', { name: 'Область для фото' });
+const photoTilesOf = (page: Page) =>
+	sheetOf(page)
+		.getByRole('group', { name: 'Фото устройства' })
+		.getByRole('button', { name: /^Открыть фото/ });
+const png = (name: string, seed: number) => ({
+	name,
+	mimeType: 'image/png',
+	buffer: tinyPng(seed)
+});
 const panelOf = (page: Page, id: number) =>
 	page.getByRole('dialog', { name: new RegExp(`^№ ${id}(?!\\d)`) });
 const rowOf = (page: Page, id: number) =>
@@ -282,6 +294,9 @@ test('no connection: «Принять» keeps the draft and says why above the b
 	await page.keyboard.press(`${await mod(page)}+Enter`);
 	await expect(sheetOf(page).getByRole('alert')).toContainText('нет связи с сервером');
 	await expect(malfunctionOf(page)).toHaveValue('Не включается');
+	// The message is about what was sent: any edit hides it.
+	await malfunctionOf(page).fill('Не включается совсем');
+	await expect(sheetOf(page).getByRole('alert')).toHaveCount(0);
 
 	await page.unroute('**/api/v1/orders');
 	await page.keyboard.press(`${await mod(page)}+Enter`);
@@ -395,6 +410,8 @@ test('an edit after N, then Esc before the answer: the next N says the draft is 
 }) => {
 	const marker = uniq('Не включается');
 	const held = await acceptEscReopen(page, marker);
+	// The name edited (5.1 lost the mark then): still the same attempt, the mark holds.
+	await nameOf(page).fill('Тестов Пётр');
 	await commentOf(page).fill('Позвонить вечером');
 	await page.keyboard.press('Escape');
 	await expect(sheetOf(page)).toBeHidden();
@@ -403,8 +420,17 @@ test('an edit after N, then Esc before the answer: the next N says the draft is 
 	await openIntake(page);
 	await expect(acceptedNote(page, id)).toBeVisible();
 	await expect(malfunctionOf(page)).toHaveValue(marker);
+	await expect(nameOf(page)).toHaveValue('Тестов Пётр');
 	await expect(commentOf(page)).toHaveValue('Позвонить вечером');
 	expect(await ordersWith(request, marker)).toBe(1);
+
+	// «Принять» of this draft is the same attempt: the same order, not a second one.
+	await page.keyboard.press(`${await mod(page)}+Enter`);
+	await expect(sheetOf(page)).toBeHidden();
+	expect(await ordersWith(request, marker)).toBe(1);
+	await openIntake(page);
+	await expect(malfunctionOf(page)).toHaveValue('');
+	await expect(acceptedNote(page)).toHaveCount(0);
 });
 
 test('Esc while «Принять» is on its way: the accepted draft is not offered again', async ({
@@ -440,12 +466,169 @@ test('no answer to «Принять» in 30 s: the sheet says so and can be used
 	await expect(sheetOf(page).getByRole('button', { name: 'Отмена' })).toBeDisabled();
 	await page.clock.fastForward(30_000);
 	await expect(sheetOf(page).getByRole('alert')).toHaveText(
-		'Не удалось принять: нет ответа от сервера. Проверьте список заказов, прежде чем принимать ещё раз.'
+		'Не удалось принять: нет ответа от сервера. Введённое сохранено — нажмите «Принять» ещё раз, второго заказа не будет'
 	);
 	await expect(sheetOf(page).getByText('Принимаю…')).toHaveCount(0);
 	await expect(sheetOf(page).getByRole('button', { name: 'Отмена' })).toBeEnabled();
 	await expect(malfunctionOf(page)).toHaveValue(marker);
 	held.letGo();
+});
+
+/**
+ * The first POST of a new order reaches the server, which makes the order, but its answer comes only
+ * after the page has stopped waiting; the next ones go as usual. The count of those sent.
+ */
+async function answerLate(page: Page) {
+	let letGo: () => void = () => {};
+	const held = new Promise<void>((resolve) => (letGo = resolve));
+	let posts = 0;
+	await page.route('**/api/v1/orders', async (route) => {
+		if (route.request().method() !== 'POST') return route.fallback();
+		posts += 1;
+		if (posts > 1) return route.fallback();
+		const response = await route.fetch();
+		await held;
+		// The page has called it off meanwhile.
+		await route.fulfill({ response }).catch(() => {});
+	});
+	return { letGo, posts: () => posts };
+}
+
+/** A filled sheet whose «Принять» got no answer in 30 s, although the server made the order. */
+async function acceptWithoutAnswer(page: Page, request: APIRequestContext, marker: string) {
+	await page.clock.install();
+	await openIntake(page);
+	await phoneOf(page).fill(uniqPhone());
+	await fillByHand(page, marker);
+	const late = await answerLate(page);
+	await page.keyboard.press(`${await mod(page)}+Enter`);
+	await expect.poll(() => ordersWith(request, marker)).toBe(1);
+	await page.clock.fastForward(30_000);
+	await expect(sheetOf(page).getByRole('alert')).toContainText('нет ответа от сервера');
+	return late;
+}
+
+test('«Принять» again after no answer gets the order the server made, not a second one', async ({
+	page,
+	request
+}) => {
+	const marker = uniq('Не включается');
+	const late = await acceptWithoutAnswer(page, request, marker);
+	await page.keyboard.press(`${await mod(page)}+Enter`);
+	await expect(sheetOf(page)).toBeHidden();
+	const id = await acceptedNumber(page);
+	late.letGo();
+	expect(late.posts()).toBe(2);
+	expect(await ordersWith(request, marker)).toBe(1);
+	expect((await fetchOrder(request, id)).malfunction).toBe(marker);
+});
+
+test('the order of the attempt was deleted meanwhile: «Принять» says so, the next one is a new order', async ({
+	page,
+	request
+}) => {
+	const marker = uniq('Не включается');
+	const late = await acceptWithoutAnswer(page, request, marker);
+	const made = (
+		(await (
+			await request.get(`/api/v1/orders?query=${encodeURIComponent(marker)}`)
+		).json()) as OrderPage
+	).items[0]!.id;
+	await deleteOrder(request, made);
+
+	await page.keyboard.press(`${await mod(page)}+Enter`);
+	await expect(sheetOf(page).getByRole('alert')).toContainText(
+		'этот приём уже был удалён — начните новый'
+	);
+	await expect(malfunctionOf(page)).toHaveValue(marker);
+	await page.keyboard.press(`${await mod(page)}+Enter`);
+	await expect(sheetOf(page)).toBeHidden();
+	const id = await acceptedNumber(page);
+	late.letGo();
+	expect(id).not.toBe(made);
+	expect((await fetchOrder(request, id)).malfunction).toBe(marker);
+});
+
+test('a photo chosen in intake goes to the accepted order', async ({ page, request }) => {
+	await openIntake(page);
+	await phoneOf(page).fill(uniqPhone());
+	await fillDevice(page);
+	await malfunctionOf(page).fill('Разбит экран');
+	await photoZoneOf(page)
+		.locator('input[type=file]')
+		.setInputFiles([png('a.png', 1)]);
+	await expect(photoTilesOf(page)).toHaveCount(1);
+	await expect(sheetOf(page).getByText('1 из 10')).toBeVisible();
+	await sheetOf(page)
+		.getByRole('button', { name: /^Принять/ })
+		.click();
+	const id = await acceptedNumber(page);
+	const photos = (await (await request.get(`/api/v1/orders/${id}/attachments`)).json()) as {
+		kind: string;
+	}[];
+	expect(photos.map((p) => p.kind)).toEqual(['photo']);
+	// The next intake is a new draft: no photos.
+	await openIntake(page);
+	await expect(sheetOf(page).getByText('0 из 10')).toBeVisible();
+	await expect(photoTilesOf(page)).toHaveCount(0);
+});
+
+test('cancel removes draft photos', async ({ page, request }) => {
+	await openIntake(page);
+	await photoZoneOf(page)
+		.locator('input[type=file]')
+		.setInputFiles([png('b.png', 2)]);
+	await expect(photoTilesOf(page)).toHaveCount(1);
+	const key = await page.evaluate(
+		() =>
+			(JSON.parse(localStorage.getItem('mw.intake.draft') ?? '{}') as { key?: string }).key ?? ''
+	);
+	expect(key).not.toBe('');
+	const onServer = async () =>
+		((await (await request.get(`/api/v1/intake-drafts/${key}/attachments`)).json()) as unknown[])
+			.length;
+	expect(await onServer()).toBe(1);
+	// Esc and N: the photos wait with the draft.
+	await page.keyboard.press('Escape');
+	await expect(sheetOf(page)).toBeHidden();
+	await openIntake(page);
+	await expect(photoTilesOf(page)).toHaveCount(1);
+
+	await sheetOf(page).getByRole('button', { name: 'Отмена' }).click();
+	await expect(sheetOf(page)).toBeHidden();
+	await expect.poll(onServer).toBe(0);
+	await openIntake(page);
+	await expect(photoTilesOf(page)).toHaveCount(0);
+});
+
+test('«Снять телефоном» explains how to turn on the host mode', async ({ page }) => {
+	await openIntake(page);
+	await sheetOf(page).getByRole('button', { name: 'Снять телефоном' }).click();
+	const hint = page.getByRole('dialog', { name: 'Снять телефоном' });
+	await expect(hint).toContainText(
+		'Телефон подключается к компьютеру по сети. Включите режим хоста в настройках «Сеть» — он появится в следующих версиях'
+	);
+	await hint.getByRole('button', { name: 'Понятно' }).click();
+	await expect(hint).toBeHidden();
+	await expect(sheetOf(page)).toBeVisible();
+});
+
+test('the found clients go as soon as the phone is changed', async ({ page, request }) => {
+	const phone = uniqPhone();
+	await createOrder(request, { phone, model: uniq('M') });
+	await openIntake(page);
+	await phoneOf(page).fill(phone);
+	const found = sheetOf(page).getByRole('list', { name: 'Найденные клиенты' });
+	await expect(found.getByRole('listitem')).toHaveCount(1);
+	// The lookup of the new number does not answer: the cards of the old one must not stay meanwhile.
+	await page.route(
+		(url) => url.pathname === '/api/v1/clients/by-phone',
+		() => {}
+	);
+	await phoneOf(page).fill(uniqPhone());
+	await expect(found).toHaveCount(0);
+	await expect(nameOf(page)).toBeVisible();
+	await page.unrouteAll({ behavior: 'ignoreErrors' });
 });
 
 test('«Этот IMEI уже был» marks a past order under warranty', async ({ page, request }) => {

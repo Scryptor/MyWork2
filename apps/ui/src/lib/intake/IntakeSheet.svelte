@@ -1,10 +1,12 @@
 <!-- The intake (spec 6.5): a wide sheet with the form and a summary on the right. What is typed waits on
-     this device until the order is accepted or the intake is cancelled. -->
+     this device, and the photos on the server under the key of the draft, until the order is accepted or
+     the intake is cancelled. -->
 <script lang="ts">
 	import { tick, untrack } from 'svelte';
 	import type { DictionaryKind } from '$api/DictionaryKind';
 	import type { Order } from '$api/Order';
 	import type { OrderValueField } from '$api/OrderValueField';
+	import { discardDraft } from '#lib/api/attachments.js';
 	import { addDictionaryItem, listDictionary } from '#lib/api/catalogs.js';
 	import { ApiError, errorMessage } from '#lib/api/client.js';
 	import { createOrder, orderValues } from '#lib/api/orders.js';
@@ -14,6 +16,7 @@
 	import { ru } from '#lib/i18n/ru.js';
 	import { emitOrderChanged } from '#lib/orders/events.js';
 	import { orderPanel } from '#lib/orders/panel.svelte.js';
+	import { createDraftMedia, type Media } from '#lib/orders/photos.svelte.js';
 	import Button from '#lib/ui/Button.svelte';
 	import ChipGroup from '#lib/ui/ChipGroup.svelte';
 	import Combobox from '#lib/ui/Combobox.svelte';
@@ -29,16 +32,18 @@
 		emptyDraft,
 		INTAKE_DRAFT_KEY,
 		intakeStatuses,
+		lateAnswer,
 		mergeSuggestions,
 		missingRequired,
+		newDraftKey,
 		parseDraft,
-		sameOrder,
 		toNewOrder,
 		withPrefill,
 		type IntakeDraft,
 		type RequiredKey
 	} from './draft.js';
 	import IntakeAside from './IntakeAside.svelte';
+	import IntakePhotos from './IntakePhotos.svelte';
 	import { intake } from './intake.svelte.js';
 
 	const t = ru.intake;
@@ -104,6 +109,14 @@
 	let dictionaries = $state.raw(noDictionaries());
 	let attempted = $state(false);
 	let submitError = $state<string | null>(null);
+	/** The draft as it was when `submitError` was shown: any edit since then hides it. */
+	let errorFor = '';
+	/**
+	 * The photos of the draft. Kept while the sheet is closed: uploads on their way go on and show again
+	 * at the next opening of the same draft.
+	 */
+	let media = $state.raw<Media | null>(null);
+	let mediaKey = '';
 	let serverErrors = $state.raw<Partial<Record<FieldKey, string>>>({});
 	/** Money fields holding text that is not an amount: the order is not accepted until they are fixed. */
 	let wrongMoney = $state<Record<MoneyKey, boolean>>({
@@ -128,19 +141,46 @@
 	});
 
 	function begin() {
-		const stored = readStorage(INTAKE_DRAFT_KEY);
-		draft = withPrefill(
-			parseDraft(stored, app.settings, app.statuses),
-			intake.prefill,
-			app.settings,
-			app.statuses
-		);
-		written = JSON.stringify(draft);
+		const stored = parseDraft(readStorage(INTAKE_DRAFT_KEY), app.settings, app.statuses);
+		const next = withPrefill(stored, intake.prefill, app.settings, app.statuses);
+		written = JSON.stringify(next);
+		// A draft already accepted is replaced at once, not at the first key: it is not offered again.
+		if (next !== stored && stored.acceptedAs !== null) writeStorage(INTAKE_DRAFT_KEY, written);
+		draft = next;
 		attempted = false;
 		submitError = null;
 		serverErrors = {};
 		wrongMoney = { estimateFrom: false, estimateTo: false, prepayment: false };
 		loadDictionaries();
+		photosOf(draft.key);
+	}
+
+	/** The photos of the draft with this key, read again from the server. */
+	function photosOf(key: string) {
+		if (media !== null && mediaKey === key) {
+			void media.reload();
+			return;
+		}
+		media = createDraftMedia(key);
+		mediaKey = key;
+	}
+
+	/** The draft becomes another one (another client, an attempt the server refuses): a new key. */
+	function renew() {
+		draft.key = newDraftKey();
+		draft.acceptedAs = null;
+		photosOf(draft.key);
+	}
+
+	/** Photos are on their way: the draft that holds their key is written at once. */
+	function keep() {
+		unsaved = JSON.stringify(draft);
+		flush();
+	}
+
+	function showError(message: string) {
+		submitError = message;
+		errorFor = JSON.stringify(draft);
 	}
 
 	let dictionarySeq = 0;
@@ -161,6 +201,7 @@
 		untrack(() => {
 			// An error of the server is about the old value: editing hides it.
 			if (Object.keys(serverErrors).length > 0) serverErrors = {};
+			if (submitError !== null && json !== errorFor) submitError = null;
 			if (json === written) return;
 			unsaved = json;
 			clearTimeout(saveTimer);
@@ -183,23 +224,29 @@
 	}
 	/**
 	 * The answer to an order sent before Esc came when the sheet was closed, or closed and opened again.
-	 * The very draft that was accepted goes, and the sheet with it. One changed since then (the same
-	 * client and device) stays, marked as accepted: the sheet says so at every opening until «Отмена» or
-	 * «Принять». Another order typed meanwhile is left alone.
+	 * The very draft that was accepted goes, and the sheet with it. The same draft (its key) changed since
+	 * then stays, marked as accepted: the sheet says so at every opening until «Отмена», «Принять» or
+	 * another client. A draft begun meanwhile is left alone.
 	 */
-	function settleLate(sent: string, id: number) {
+	function settleLate(sent: string, order: Order) {
 		const open = intake.isOpen;
 		const json = open ? JSON.stringify(draft) : readStorage(INTAKE_DRAFT_KEY);
 		if (json === null) return;
 		const now = parseDraft(json, app.settings, app.statuses);
 		const before = parseDraft(sent, app.settings, app.statuses);
-		if (JSON.stringify(now) === JSON.stringify(before)) {
+		const answer = lateAnswer(now, before);
+		if (answer === 'close') {
 			discard();
 			if (open) intake.close();
-		} else if (sameOrder(now, before)) {
-			if (open) draft.acceptedAs = id;
-			else writeStorage(INTAKE_DRAFT_KEY, JSON.stringify({ ...now, acceptedAs: id }));
+			return;
 		}
+		if (answer === 'other') return;
+		const mark = { id: order.id, key: before.key, clientId: order.client_id };
+		if (open) {
+			draft.acceptedAs = mark;
+			// Its photos are the order's now.
+			void media?.reload();
+		} else writeStorage(INTAKE_DRAFT_KEY, JSON.stringify({ ...now, acceptedAs: mark }));
 	}
 	$effect(() => {
 		window.addEventListener('pagehide', flush);
@@ -215,9 +262,22 @@
 		flush();
 		intake.close();
 	}
+	/**
+	 * The draft goes, and its photos on the server once the uploads on their way are done. Without a
+	 * connection the server removes them itself a day later.
+	 */
 	function cancel() {
+		const key = draft.key;
+		const photos = media;
+		void (photos?.idle() ?? Promise.resolve()).then(() => discardDraft(key)).catch(() => {});
 		discard();
 		intake.close();
+	}
+
+	/** Another client than the one the draft was accepted for: a new draft of the same form. */
+	function chosen(clientId: number) {
+		if (draft.acceptedAs !== null && draft.acceptedAs.clientId !== clientId) renew();
+		void focusField('deviceType');
 	}
 	function openOrder(id: number) {
 		leave();
@@ -323,7 +383,16 @@
 		// What is sent is what this device keeps: Esc right now leaves the same draft.
 		flush();
 		const sent = JSON.stringify(draft);
-		const answer = await intake.submit((signal) => createOrder(toNewOrder(draft, point), signal));
+		const form = $state.snapshot(draft);
+		const pointId = point;
+		const photos = media;
+		const answer = await intake.submit(async (signal) => {
+			// Photos still on their way go first: the order takes what the draft has. A list that did
+			// not load may still have some, so the draft goes with the order then too.
+			await photos?.idle();
+			const withPhotos = photos !== null && (photos.photos.length > 0 || photos.error !== null);
+			return createOrder(toNewOrder(form, pointId, withPhotos), signal);
+		});
 		if (answer === null) return;
 		if (!answer.ok) {
 			refused(answer.error, answer.current, answer.timedOut);
@@ -334,7 +403,7 @@
 			discard();
 			intake.close();
 		} else {
-			settleLate(sent, order.id);
+			settleLate(sent, order);
 		}
 		emitOrderChanged(order, 'created');
 		// Toasts cannot be used under a modal: this one waits for the sheet to go; a sheet opened again
@@ -359,11 +428,13 @@
 		if (timedOut || !current) {
 			const message = timedOut ? t.noAnswer : t.failed(lowerFirst(errorMessage(e)));
 			// Closed while it was on its way: the draft waits, the toast says why.
-			if (intake.isOpen) submitError = message;
+			if (intake.isOpen) showError(message);
 			else toast.show({ message, tone: 'danger' });
 			return;
 		}
 		const fields = e instanceof ApiError && e.code === 'validation' ? (e.body?.fields ?? []) : [];
+		// The key of this attempt belongs to an order deleted since: the next «Принять» is a new attempt.
+		if (fields.some((f) => f.field === 'request_key')) renew();
 		const found: Partial<Record<FieldKey, string>> = {};
 		const other: string[] = [];
 		for (const f of fields) {
@@ -376,7 +447,7 @@
 		if (first) void focusField(first);
 		if (other.length > 0 || fields.length === 0) {
 			const message = other.length > 0 ? other.join('; ') : errorMessage(e);
-			submitError = t.failed(lowerFirst(message));
+			showError(t.failed(lowerFirst(message)));
 		}
 	}
 
@@ -397,12 +468,7 @@
 >
 	<div class="layout">
 		<div class="form">
-			<ClientStep
-				bind:draft
-				sources={dictionaries.client_source}
-				{errors}
-				onchosen={() => void focusField('deviceType')}
-			/>
+			<ClientStep bind:draft sources={dictionaries.client_source} {errors} onchosen={chosen} />
 
 			<Section title={t.device}>
 				<div class="grid three">
@@ -469,6 +535,10 @@
 				{/if}
 			</Section>
 
+			{#if media}
+				<IntakePhotos {media} locked={intake.submitting} onadd={keep} />
+			{/if}
+
 			<Section title={t.work}>
 				<div class="grid three">
 					<Combobox label={t.master} items={masterItems} bind:value={draft.master} />
@@ -506,7 +576,7 @@
 	{#snippet footer()}
 		{#if submitError}<p class="failed" role="alert">{submitError}</p>{/if}
 		{#if draft.acceptedAs !== null}
-			<p class="note" role="status">{t.acceptedMeanwhile(draft.acceptedAs)}</p>
+			<p class="note" role="status">{t.acceptedMeanwhile(draft.acceptedAs.id)}</p>
 		{/if}
 		{#if !app.me.open_mode}<span class="receiver">{t.receiver(app.me.name)}</span>{/if}
 		{#if intake.submitting}<span class="sending" role="status">{t.accepting}</span>{/if}

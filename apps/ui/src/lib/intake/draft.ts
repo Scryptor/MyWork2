@@ -11,8 +11,26 @@ import { phoneDigits } from '#lib/format/phone.js';
 import { normalizeSearch } from '#lib/format/search.js';
 import type { IntakePrefill } from './intake.svelte.js';
 
+/**
+ * The order already accepted from a draft: its answer came while the sheet, opened again, was being
+ * changed, so the draft stayed. It belongs to the key it was sent with.
+ */
+export interface AcceptedMark {
+	/** The number of the order. */
+	id: number;
+	/** The key of the draft (and of the attempt) it was accepted with. */
+	key: string;
+	/** The client of that order: choosing another one makes a new draft of the form. */
+	clientId: number;
+}
+
 /** The form of a new order as typed so far; money in kopecks. */
 export interface IntakeDraft {
+	/**
+	 * Made with the draft and kept with it: the photos wait on the server under it, and it is the key of
+	 * the attempt (`request_key`), so «Принять» sent again gets the same order. A new draft, a new key.
+	 */
+	key: string;
 	/** The client chosen among the found ones; null — a new client from the fields below. */
 	clientId: number | null;
 	/** «Новый клиент» was pressed although clients with this phone were found. */
@@ -40,10 +58,10 @@ export interface IntakeDraft {
 	warranty: string;
 	comment: string;
 	/**
-	 * The order already accepted from this draft: its answer came while the sheet, opened again, was
-	 * being changed, so the draft stayed. The sheet says so until «Отмена» or the next «Принять».
+	 * The order already accepted from this draft. Edits keep it; the sheet says so until «Отмена»,
+	 * «Принять» or another client is chosen.
 	 */
-	acceptedAs: number | null;
+	acceptedAs: AcceptedMark | null;
 }
 
 /** Kept in localStorage of this device until the order is accepted or the intake cancelled. */
@@ -63,9 +81,26 @@ export function intakeStatuses(statuses: readonly Status[]): Status[] {
 
 const blankPhone = (): ClientPhone => ({ phone: '', note: '' });
 
+/** What the server takes as a draft and attempt key. */
+const KEY_PATTERN = /^[A-Za-z0-9-]{1,64}$/;
+
+/**
+ * A UUID. `crypto.randomUUID` exists only on a secure address (https or this computer): a page opened by
+ * the address of the network makes it from `getRandomValues`, which is there always.
+ */
+export function newDraftKey(): string {
+	if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+	const b = crypto.getRandomValues(new Uint8Array(16));
+	b[6] = (b[6]! & 0x0f) | 0x40;
+	b[8] = (b[8]! & 0x3f) | 0x80;
+	const hex = Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+	return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 /** Master and warranty from the settings, the status is the first of kind «Диагностика». */
 export function emptyDraft(settings: AppSettings, statuses: readonly Status[]): IntakeDraft {
 	return {
+		key: newDraftKey(),
 		clientId: null,
 		newClient: false,
 		fullName: '',
@@ -129,6 +164,18 @@ export function readRecord(raw: string | null): Stored | null {
 	return typeof obj === 'object' && obj !== null && !Array.isArray(obj) ? (obj as Stored) : null;
 }
 
+const positiveId = (v: unknown) =>
+	Number.isSafeInteger(v) && (v as number) > 0 ? (v as number) : null;
+
+/** A mark of the draft's own key, or none: a mark of 5.1 (a bare number) has no key to belong to. */
+function readMark(v: unknown, key: string): AcceptedMark | null {
+	if (typeof v !== 'object' || v === null) return null;
+	const o = v as Stored;
+	const id = positiveId(o.id);
+	const clientId = positiveId(o.clientId);
+	return id !== null && clientId !== null && o.key === key ? { id, key, clientId } : null;
+}
+
 function readPhones(o: Stored): ClientPhone[] {
 	const v = o.phones;
 	const phones = (Array.isArray(v) ? v : []).flatMap((p: unknown) => {
@@ -150,10 +197,12 @@ export function parseDraft(
 	const base = emptyDraft(settings, statuses);
 	const o = readRecord(raw);
 	if (o === null) return base;
-	const id = (v: unknown) => (Number.isSafeInteger(v) && (v as number) > 0 ? (v as number) : null);
-	const statusId = id(o.statusId);
+	const statusId = positiveId(o.statusId);
+	// A draft of 5.1 has no key: it gets the new one.
+	const key = typeof o.key === 'string' && KEY_PATTERN.test(o.key) ? o.key : base.key;
 	return {
-		clientId: id(o.clientId),
+		key,
+		clientId: positiveId(o.clientId),
 		newClient: o.newClient === true,
 		fullName: readText(o, 'fullName'),
 		phones: readPhones(o),
@@ -176,26 +225,24 @@ export function parseDraft(
 		prepayment: readMoney(o, 'prepayment'),
 		warranty: readText(o, 'warranty', base.warranty),
 		comment: readText(o, 'comment'),
-		acceptedAs: id(o.acceptedAs)
+		acceptedAs: readMark(o.acceptedAs, key)
 	};
 }
 
 /**
- * Two drafts of one order: the same client and the same device. Other changes (the comment, the money)
- * do not make another order of it.
+ * The answer to an order sent before the sheet was closed (or closed and opened again), about the draft
+ * there is now. `close`: it is the very draft that was sent, it goes. `mark`: the same draft (its key)
+ * edited since then, whatever was edited — it stays, marked as accepted. `other`: a draft begun after it.
  */
-export function sameOrder(a: IntakeDraft, b: IntakeDraft): boolean {
-	const key = (d: IntakeDraft) =>
-		JSON.stringify([
-			d.clientId,
-			d.fullName.trim(),
-			d.phones.map((p) => p.phone),
-			...[d.deviceType, d.brand, d.model, d.serial].map((v) => v.trim())
-		]);
-	return key(a) === key(b);
+export function lateAnswer(now: IntakeDraft, sent: IntakeDraft): 'close' | 'mark' | 'other' {
+	if (JSON.stringify(now) === JSON.stringify(sent)) return 'close';
+	return now.key === sent.key ? 'mark' : 'other';
 }
 
-/** Intake for a client (from the client's card): their draft stays, a draft of anyone else is replaced. */
+/**
+ * Intake for a client (from the client's card): their draft stays, a draft of anyone else is replaced,
+ * and so is a draft already accepted.
+ */
 export function withPrefill(
 	d: IntakeDraft,
 	prefill: IntakePrefill,
@@ -203,7 +250,7 @@ export function withPrefill(
 	statuses: readonly Status[]
 ): IntakeDraft {
 	const id = prefill.clientId;
-	if (id === undefined || d.clientId === id) return d;
+	if (id === undefined || (d.clientId === id && d.acceptedAs === null)) return d;
 	return { ...emptyDraft(settings, statuses), clientId: id };
 }
 
@@ -252,8 +299,11 @@ export function missingRequired(d: IntakeDraft, strict = false): RequiredKey[] {
 	return missing;
 }
 
-/** The order the draft becomes; text trimmed (except the password), money in kopecks. */
-export function toNewOrder(d: IntakeDraft, pointId: number | null): NewOrder {
+/**
+ * The order the draft becomes; text trimmed (except the password), money in kopecks. The key of the
+ * draft is the key of the attempt, and the photos of the draft go with it when it has any.
+ */
+export function toNewOrder(d: IntakeDraft, pointId: number | null, photos = false): NewOrder {
 	const phones = d.phones
 		.map((p) => ({ phone: phoneDigits(p.phone), note: p.note.trim() }))
 		.filter((p) => p.phone !== '' || p.note !== '');
@@ -290,8 +340,8 @@ export function toNewOrder(d: IntakeDraft, pointId: number | null): NewOrder {
 		warranty: d.warranty.trim(),
 		need_call: false,
 		need_parts: false,
-		attachment_draft: null,
-		request_key: null
+		attachment_draft: photos ? d.key : null,
+		request_key: d.key
 	};
 }
 
