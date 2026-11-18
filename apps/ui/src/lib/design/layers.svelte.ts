@@ -3,6 +3,8 @@ export type LayerKind = 'popup' | 'modal' | 'panel';
 interface Entry {
 	kind: LayerKind;
 	close: () => void;
+	/** The element of a modal or panel: what is inside it is on top. */
+	element?: () => Element | null;
 }
 
 /**
@@ -31,12 +33,13 @@ function onKeydown(e: KeyboardEvent) {
 
 /** Stack of open overlays: tells hotkeys to stand down and closes the top panel on Esc. */
 export const layers = {
-	open(kind: LayerKind, close: () => void): () => void {
+	/** `element`: of a modal or a panel, read when needed (it may render after the layer opens). */
+	open(kind: LayerKind, close: () => void, element?: () => Element | null): () => void {
 		if (!listening) {
 			window.addEventListener('keydown', onKeydown);
 			listening = true;
 		}
-		const entry: Entry = { kind, close };
+		const entry: Entry = { kind, close, element };
 		setStack([...stack, entry]);
 		return () => setStack(stack.filter((x) => x !== entry));
 	},
@@ -48,6 +51,19 @@ export const layers = {
 		if (e.isComposing) return;
 		const top = stack[stack.length - 1];
 		if (top?.kind === 'panel') top.close();
+	},
+	/**
+	 * Whether input of the whole page (a paste, a drop) belongs to `node`: it is inside the topmost modal
+	 * or panel, or none is open. Popups float over their layer and do not count; a modal or panel that
+	 * does not tell its element keeps the input from everything under it.
+	 */
+	takesInput(node: Node): boolean {
+		for (let i = stack.length - 1; i >= 0; i--) {
+			const entry = stack[i]!;
+			if (entry.kind === 'popup') continue;
+			return entry.element?.()?.contains(node) ?? false;
+		}
+		return true;
 	},
 	get topKind(): LayerKind | null {
 		void changed;

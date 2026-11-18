@@ -68,4 +68,32 @@ describe('layers', () => {
 		offModal();
 		offPanel();
 	});
+
+	it('a paste or a drop belongs to the topmost modal or panel; popups above them do not count', () => {
+		const page = document.createElement('div');
+		const sheet = document.createElement('div');
+		const inSheet = document.createElement('span');
+		sheet.append(inSheet);
+		document.body.append(page, sheet);
+		// No layer: the page takes it.
+		expect(layers.takesInput(page)).toBe(true);
+		const offSheet = layers.open(
+			'modal',
+			() => {},
+			() => sheet
+		);
+		expect(layers.takesInput(page)).toBe(false);
+		expect(layers.takesInput(inSheet)).toBe(true);
+		const offPopup = layers.open('popup', () => {});
+		expect(layers.takesInput(inSheet)).toBe(true);
+		// A modal that does not tell its element keeps the input from everything under it.
+		const offDialog = layers.open('modal', () => {});
+		expect(layers.takesInput(inSheet)).toBe(false);
+		offDialog();
+		offPopup();
+		offSheet();
+		expect(layers.takesInput(page)).toBe(true);
+		page.remove();
+		sheet.remove();
+	});
 });

@@ -41,6 +41,20 @@ const png = (name: string, seed: number) => ({
 	mimeType: 'image/png',
 	buffer: tinyPng(seed)
 });
+
+/** Ctrl/⌘+V of a picture: the paste event the browser sends, with the file in its clipboard data. */
+async function pastePicture(page: Page, seed: number) {
+	await page.evaluate(
+		(bytes) => {
+			const data = new DataTransfer();
+			data.items.add(new File([new Uint8Array(bytes)], 'pasted.png', { type: 'image/png' }));
+			(document.activeElement ?? document.body).dispatchEvent(
+				new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true })
+			);
+		},
+		[...tinyPng(seed)]
+	);
+}
 const panelOf = (page: Page, id: number) =>
 	page.getByRole('dialog', { name: new RegExp(`^№ ${id}(?!\\d)`) });
 const rowOf = (page: Page, id: number) =>
@@ -352,7 +366,9 @@ async function ordersWith(request: APIRequestContext, marker: string): Promise<n
 const commentOf = (page: Page) =>
 	sheetOf(page).getByRole('textbox', { name: 'Комментарий (только для сервиса)' });
 const acceptedNote = (page: Page, id?: number) =>
-	sheetOf(page).getByText(id === undefined ? /^Принят № \d+\./ : new RegExp(`^Принят № ${id}\\.`));
+	sheetOf(page).getByText(
+		id === undefined ? /^Заказ № \d+ уже принят\./ : new RegExp(`^Заказ № ${id} уже принят\\.`)
+	);
 
 test('Esc and N while «Принять» is on its way, nothing changed: the answer closes the sheet, one order', async ({
 	page,
@@ -424,10 +440,14 @@ test('an edit after N, then Esc before the answer: the next N says the draft is 
 	await expect(commentOf(page)).toHaveValue('Позвонить вечером');
 	expect(await ordersWith(request, marker)).toBe(1);
 
-	// «Принять» of this draft is the same attempt: the same order, not a second one.
+	// «Принять» of this draft is the same attempt: the same order, not a second one, and the sheet keeps
+	// the changes it does not have.
 	await page.keyboard.press(`${await mod(page)}+Enter`);
-	await expect(sheetOf(page)).toBeHidden();
+	await expect(sheetOf(page).getByText('Принимаю…')).toHaveCount(0);
+	await expect(acceptedNote(page, id)).toBeVisible();
+	await expect(nameOf(page)).toHaveValue('Тестов Пётр');
 	expect(await ordersWith(request, marker)).toBe(1);
+	await sheetOf(page).getByRole('button', { name: 'Отмена' }).click();
 	await openIntake(page);
 	await expect(malfunctionOf(page)).toHaveValue('');
 	await expect(acceptedNote(page)).toHaveCount(0);
@@ -514,6 +534,14 @@ test('«Принять» again after no answer gets the order the server made, n
 }) => {
 	const marker = uniq('Не включается');
 	const late = await acceptWithoutAnswer(page, request, marker);
+	// Until it is known whether the order is there, photos would not go to it: none are taken.
+	await expect(sheetOf(page).getByText(/^Пока неясно, принят ли заказ/)).toBeVisible();
+	await expect(sheetOf(page).getByRole('button', { name: 'Снять камерой' })).toBeDisabled();
+	await expect(sheetOf(page).getByRole('button', { name: 'Выбрать файлы' })).toBeDisabled();
+	await pastePicture(page, 7);
+	await expect(sheetOf(page).getByText('0 из 10')).toBeVisible();
+	await expect(sheetOf(page).getByText('Загружаю…')).toHaveCount(0);
+
 	await page.keyboard.press(`${await mod(page)}+Enter`);
 	await expect(sheetOf(page)).toBeHidden();
 	const id = await acceptedNumber(page);
@@ -521,6 +549,29 @@ test('«Принять» again after no answer gets the order the server made, n
 	expect(late.posts()).toBe(2);
 	expect(await ordersWith(request, marker)).toBe(1);
 	expect((await fetchOrder(request, id)).malfunction).toBe(marker);
+});
+
+test('«Принять» again after no answer and an edit: the order is that of the first attempt, the sheet says so', async ({
+	page,
+	request
+}) => {
+	const marker = uniq('Не включается');
+	const late = await acceptWithoutAnswer(page, request, marker);
+	await commentOf(page).fill('Позвонить вечером');
+	await page.keyboard.press(`${await mod(page)}+Enter`);
+	const note = acceptedNote(page);
+	await expect(note).toHaveText(
+		/^Заказ № \d+ уже принят\. Изменения после первой попытки в него не попали — откройте заказ и внесите их там/
+	);
+	await expect(commentOf(page)).toHaveValue('Позвонить вечером');
+	late.letGo();
+	expect(await ordersWith(request, marker)).toBe(1);
+	const id = Number((await note.textContent())?.match(/№ (\d+)/)?.[1]);
+	expect((await fetchOrder(request, id)).internal_comment).toBe('');
+	// «Открыть»: the order, where the changes go.
+	await sheetOf(page).getByRole('button', { name: 'Открыть' }).click();
+	await expect(sheetOf(page)).toBeHidden();
+	await expect(panelOf(page, id)).toBeVisible();
 });
 
 test('the order of the attempt was deleted meanwhile: «Принять» says so, the next one is a new order', async ({
@@ -599,6 +650,23 @@ test('cancel removes draft photos', async ({ page, request }) => {
 	await expect.poll(onServer).toBe(0);
 	await openIntake(page);
 	await expect(photoTilesOf(page)).toHaveCount(0);
+});
+
+test('a picture pasted into the intake over an order card goes to the intake, not to the card', async ({
+	page,
+	request
+}) => {
+	const order = await createOrder(request, { model: uniq('M') });
+	await page.goto(`/orders/${order.id}`);
+	await expect(page.getByRole('heading', { name: `№ ${order.id}`, level: 1 })).toBeVisible();
+	await expect(page.getByRole('group', { name: 'Область для фото' })).toBeVisible();
+	await openIntake(page);
+	await pastePicture(page, 11);
+	await expect(photoTilesOf(page)).toHaveCount(1);
+	const onCard = (await (
+		await request.get(`/api/v1/orders/${order.id}/attachments`)
+	).json()) as unknown[];
+	expect(onCard).toHaveLength(0);
 });
 
 test('«Снять телефоном» explains how to turn on the host mode', async ({ page }) => {

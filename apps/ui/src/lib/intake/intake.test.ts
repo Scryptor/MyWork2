@@ -109,4 +109,47 @@ describe('intake', () => {
 			vi.useRealTimers();
 		}
 	});
+
+	it('photos on their way go first: «Загружаю фото…», and the 30 s start once they are done', async () => {
+		vi.useFakeTimers();
+		try {
+			intake.open();
+			const photos = later<void>();
+			const send = vi.fn(() => new Promise<number>(() => {}));
+			const pending = intake.submit(send, { ready: () => photos.promise });
+			expect(intake.submitting).toBe(true);
+			expect(intake.uploading).toBe(true);
+			// Slow uploads are not «no answer».
+			vi.advanceTimersByTime(SUBMIT_TIMEOUT_MS * 3);
+			expect(send).not.toHaveBeenCalled();
+			photos.resolve();
+			await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+			expect(intake.uploading).toBe(false);
+			expect(intake.submitting).toBe(true);
+			vi.advanceTimersByTime(SUBMIT_TIMEOUT_MS);
+			await expect(pending).resolves.toMatchObject({ ok: false, timedOut: true });
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('«Отмена» while the photos upload calls the order off: nothing is sent', async () => {
+		intake.open();
+		const photos = later<void>();
+		const send = vi.fn(() => Promise.resolve(1));
+		const pending = intake.submit(send, { ready: () => photos.promise });
+		expect(intake.callOff()).toBe(true);
+		await expect(pending).resolves.toBeNull();
+		expect(intake.submitting).toBe(false);
+		expect(intake.uploading).toBe(false);
+		photos.resolve();
+		await Promise.resolve();
+		expect(send).not.toHaveBeenCalled();
+		// Once the order is on its way it cannot be called back.
+		const req = later<number>();
+		const sent = intake.submit(() => req.promise);
+		expect(intake.callOff()).toBe(false);
+		req.resolve(2);
+		await expect(sent).resolves.toMatchObject({ ok: true, value: 2 });
+	});
 });

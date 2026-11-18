@@ -31,13 +31,18 @@
 	// Phone: the layer fills the screen and closes with «Назад» (←) at the top left.
 	const CloseIcon = $derived(phone.current ? ArrowLeft : X);
 	let busy = $state(false);
+	let content = $state<HTMLElement | null>(null);
 
 	const focusReturn = dialogFocus();
 	$effect(() => {
 		if (!open) return;
 		return untrack(() => {
 			focusReturn.opened();
-			return layers.open('modal', () => (open = false));
+			return layers.open(
+				'modal',
+				() => (open = false),
+				() => content
+			);
 		});
 	});
 
@@ -61,6 +66,7 @@
 	<AlertDialog.Portal>
 		<AlertDialog.Overlay class="mw-scrim" />
 		<AlertDialog.Content
+			bind:ref={content}
 			onCloseAutoFocus={focusReturn.closed}
 			class="mw-dialog sm {phone.current ? 'phone' : ''}"
 			escapeKeydownBehavior={busy ? 'ignore' : 'close'}

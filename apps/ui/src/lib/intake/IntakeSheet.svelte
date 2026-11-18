@@ -29,6 +29,8 @@
 	import { toast } from '#lib/ui/toast/toast.svelte.js';
 	import ClientStep, { PHONE_ID } from './ClientStep.svelte';
 	import {
+		acceptedAnswer,
+		attemptOf,
 		emptyDraft,
 		INTAKE_DRAFT_KEY,
 		intakeStatuses,
@@ -37,6 +39,8 @@
 		missingRequired,
 		newDraftKey,
 		parseDraft,
+		photoLock,
+		startsAnotherOrder,
 		toNewOrder,
 		withPrefill,
 		type IntakeDraft,
@@ -168,8 +172,25 @@
 	/** The draft becomes another one (another client, an attempt the server refuses): a new key. */
 	function renew() {
 		draft.key = newDraftKey();
+		draft.attempt = null;
 		draft.acceptedAs = null;
 		photosOf(draft.key);
+	}
+
+	/**
+	 * «Принять» of `form` got no answer in time: the server may have made the order. The draft remembers
+	 * what that first attempt asked for, here or in the storage when the sheet is closed.
+	 */
+	function unanswered(form: IntakeDraft) {
+		const attempt = attemptOf(form);
+		if (intake.isOpen) {
+			if (draft.key === form.key) draft.attempt ??= attempt;
+			return;
+		}
+		const json = readStorage(INTAKE_DRAFT_KEY);
+		const stored = json === null ? null : parseDraft(json, app.settings, app.statuses);
+		if (stored?.key === form.key && stored.attempt === null)
+			writeStorage(INTAKE_DRAFT_KEY, JSON.stringify({ ...stored, attempt }));
 	}
 
 	/** Photos are on their way: the draft that holds their key is written at once. */
@@ -242,11 +263,13 @@
 		}
 		if (answer === 'other') return;
 		const mark = { id: order.id, key: before.key, clientId: order.client_id };
+		const attempt = now.attempt ?? attemptOf(before);
 		if (open) {
+			draft.attempt = attempt;
 			draft.acceptedAs = mark;
 			// Its photos are the order's now.
 			void media?.reload();
-		} else writeStorage(INTAKE_DRAFT_KEY, JSON.stringify({ ...now, acceptedAs: mark }));
+		} else writeStorage(INTAKE_DRAFT_KEY, JSON.stringify({ ...now, attempt, acceptedAs: mark }));
 	}
 	$effect(() => {
 		window.addEventListener('pagehide', flush);
@@ -267,6 +290,8 @@
 	 * connection the server removes them itself a day later.
 	 */
 	function cancel() {
+		// Still waiting for its photos: the order is not sent.
+		intake.callOff();
 		const key = draft.key;
 		const photos = media;
 		void (photos?.idle() ?? Promise.resolve()).then(() => discardDraft(key)).catch(() => {});
@@ -274,9 +299,9 @@
 		intake.close();
 	}
 
-	/** Another client than the one the draft was accepted for: a new draft of the same form. */
+	/** Another client than the one an earlier «Принять» was for: a new order of the same form. */
 	function chosen(clientId: number) {
-		if (draft.acceptedAs !== null && draft.acceptedAs.clientId !== clientId) renew();
+		if (startsAnotherOrder(draft, clientId)) renew();
 		void focusField('deviceType');
 	}
 	function openOrder(id: number) {
@@ -386,26 +411,33 @@
 		const form = $state.snapshot(draft);
 		const pointId = point;
 		const photos = media;
-		const answer = await intake.submit(async (signal) => {
-			// Photos still on their way go first: the order takes what the draft has. A list that did
-			// not load may still have some, so the draft goes with the order then too.
-			await photos?.idle();
-			const withPhotos = photos !== null && (photos.photos.length > 0 || photos.error !== null);
-			return createOrder(toNewOrder(form, pointId, withPhotos), signal);
-		});
+		// The photos still on their way and the list of the draft come first («Загружаю фото…»): the
+		// order takes what the draft has. A list that did not load may have some, so the draft goes then too.
+		const withPhotos = () =>
+			photos !== null && (photos.photos.length > 0 || photos.error !== null || photos.loading);
+		const answer = await intake.submit(
+			(signal) => createOrder(toNewOrder(form, pointId, withPhotos()), signal),
+			{ ready: photos === null ? undefined : () => photos.idle() }
+		);
 		if (answer === null) return;
 		if (!answer.ok) {
-			refused(answer.error, answer.current, answer.timedOut);
+			refused(answer.error, answer.current, answer.timedOut, form);
 			return;
 		}
 		const order: Order = answer.value;
-		if (answer.current) {
+		emitOrderChanged(order, 'created');
+		if (!answer.current) {
+			settleLate(sent, order);
+		} else if (draft.key !== form.key) {
+			// Another order is typed meanwhile (another client): it stays, the toast tells about this one.
+		} else if (acceptedAnswer(draft) === 'keep') {
+			// The order an earlier attempt made: the changes since are not in it, the sheet says so.
+			draft.acceptedAs = { id: order.id, key: form.key, clientId: order.client_id };
+			return;
+		} else {
 			discard();
 			intake.close();
-		} else {
-			settleLate(sent, order);
 		}
-		emitOrderChanged(order, 'created');
 		// Toasts cannot be used under a modal: this one waits for the sheet to go; a sheet opened again
 		// and changed meanwhile says it above «Принять».
 		await tick();
@@ -423,8 +455,9 @@
 	 * Errors of the fields go to the fields; anything else (no connection) above «Принять». An answer
 	 * about an earlier opening only says why, above «Принять» or in a toast once the sheet is closed.
 	 */
-	function refused(e: unknown, current: boolean, timedOut: boolean) {
+	function refused(e: unknown, current: boolean, timedOut: boolean, form: IntakeDraft) {
 		// No answer in time: the server may have made the order all the same.
+		if (timedOut) unanswered(form);
 		if (timedOut || !current) {
 			const message = timedOut ? t.noAnswer : t.failed(lowerFirst(errorMessage(e)));
 			// Closed while it was on its way: the draft waits, the toast says why.
@@ -536,7 +569,12 @@
 			</Section>
 
 			{#if media}
-				<IntakePhotos {media} locked={intake.submitting} onadd={keep} />
+				<IntakePhotos
+					{media}
+					locked={intake.submitting || photoLock(draft) !== null}
+					reason={photoLock(draft)}
+					onadd={keep}
+				/>
 			{/if}
 
 			<Section title={t.work}>
@@ -576,12 +614,21 @@
 	{#snippet footer()}
 		{#if submitError}<p class="failed" role="alert">{submitError}</p>{/if}
 		{#if draft.acceptedAs !== null}
-			<p class="note" role="status">{t.acceptedMeanwhile(draft.acceptedAs.id)}</p>
+			{@const id = draft.acceptedAs.id}
+			<p class="note" role="status">
+				{t.acceptedMeanwhile(id)}
+				<Button size="sm" variant="ghost" onclick={() => openOrder(id)}>{t.open}</Button>
+			</p>
 		{/if}
 		{#if !app.me.open_mode}<span class="receiver">{t.receiver(app.me.name)}</span>{/if}
-		{#if intake.submitting}<span class="sending" role="status">{t.accepting}</span>{/if}
-		<!-- The order on its way cannot be called back: «Отмена» waits for its answer. -->
-		<Button disabled={intake.submitting} onclick={cancel}>{t.cancel}</Button>
+		{#if intake.uploading}
+			<span class="sending" role="status">{t.uploadingPhotos}</span>
+		{:else if intake.submitting}
+			<span class="sending" role="status">{t.accepting}</span>
+		{/if}
+		<!-- The order on its way cannot be called back: «Отмена» waits for its answer. While it waits for
+		     its photos it has not gone yet. -->
+		<Button disabled={intake.submitting && !intake.uploading} onclick={cancel}>{t.cancel}</Button>
 		<Button
 			variant="primary"
 			shortcut="Mod+Enter"

@@ -24,12 +24,17 @@
 	let {
 		media,
 		locked = false,
+		reason = null,
 		onadd
 	}: {
 		/** The photos of the draft (`createDraftMedia`). */
 		media: Media;
-		/** The order is on its way: its photos are what the draft has now, nothing is added or removed. */
+		/**
+		 * Nothing is added or removed: the order is on its way, or may already be there — then its photos
+		 * are what the draft had, and `reason` says why.
+		 */
 		locked?: boolean;
+		reason?: 'accepted' | 'unanswered' | null;
 		/** Photos are on their way to the draft: it is worth keeping now. */
 		onadd?: () => void;
 	} = $props();
@@ -78,6 +83,7 @@
 		accept="image/*"
 		label={ru.media.photoZone}
 		showChoose={false}
+		disabled={locked}
 		onfiles={add}
 	>
 		<PhotoStrip
@@ -108,7 +114,13 @@
 			<Button size="sm" variant="ghost" icon={Smartphone} onclick={() => (phoneOpen = true)}
 				>{t.takeWithPhone}</Button
 			>
-			<span class="hint">{ru.media.dropHint} <Kbd shortcut="Mod+V" /></span>
+			{#if reason === 'accepted'}
+				<span class="hint" role="status">{t.photosAccepted}</span>
+			{:else if reason === 'unanswered'}
+				<span class="hint" role="status">{t.photosUnanswered}</span>
+			{:else if !locked}
+				<span class="hint">{ru.media.dropHint} <Kbd shortcut="Mod+V" /></span>
+			{/if}
 		</div>
 	</FileDrop>
 	{#if media.error}

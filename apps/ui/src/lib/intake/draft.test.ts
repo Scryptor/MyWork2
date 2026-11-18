@@ -3,6 +3,8 @@ import type { AppSettings } from '$api/AppSettings';
 import type { Status } from '$api/Status';
 import { item, STATUSES } from '#lib/app/fixtures.test-helper.js';
 import {
+	acceptedAnswer,
+	attemptOf,
 	emptyDraft,
 	intakeStatuses,
 	joinChips,
@@ -12,8 +14,10 @@ import {
 	newDraftKey,
 	parseDraft,
 	phoneQuery,
+	photoLock,
 	REQUIRED_LABELS,
 	serialHits,
+	startsAnotherOrder,
 	serialQuery,
 	splitChips,
 	toNewOrder,
@@ -303,7 +307,12 @@ describe('parseDraft', () => {
 			comment: 'тест'
 		});
 		d.acceptedAs = { id: 12, key: d.key, clientId: 7 };
+		d.attempt = attemptOf(d);
 		expect(parseDraft(JSON.stringify(d), SETTINGS, STATUS_LIST)).toEqual(d);
+		for (const attempt of [42, null, ['x']]) {
+			const raw = JSON.stringify({ attempt });
+			expect(parseDraft(raw, SETTINGS, STATUS_LIST).attempt, String(attempt)).toBeNull();
+		}
 	});
 
 	it('a draft of the old kind (without a key) gets a new one', () => {
@@ -510,5 +519,51 @@ describe('lateAnswer', () => {
 
 	it('a draft begun after it (another key) is left alone', () => {
 		expect(lateAnswer({ ...sent, key: newDraftKey() }, sent)).toBe('other');
+	});
+});
+
+describe('an earlier «Принять» of the draft that may have made the order', () => {
+	const mark = (d: IntakeDraft, clientId: number) => ({ id: 9, key: d.key, clientId });
+
+	it('locks the photos: they would not go to that order', () => {
+		const d = filled();
+		expect(empty().attempt).toBeNull();
+		expect(photoLock(d)).toBeNull();
+		// No answer in time: whether the order is there is not known yet.
+		expect(photoLock({ ...d, attempt: attemptOf(d) })).toBe('unanswered');
+		expect(photoLock({ ...d, attempt: attemptOf(d), acceptedAs: mark(d, 1) })).toBe('accepted');
+	});
+
+	it('the order it made closes the sheet, unless the draft was changed since', () => {
+		const d = filled({ fullName: 'Тестов', model: 'М1' });
+		// No earlier attempt: whatever came is this draft's order.
+		expect(acceptedAnswer(d)).toBe('close');
+		const sent = { ...d, attempt: attemptOf(d) };
+		expect(acceptedAnswer(sent)).toBe('close');
+		// Only what goes to the server counts: spaces around a value are no change.
+		expect(acceptedAnswer({ ...sent, model: ' М1 ' })).toBe('close');
+		for (const changed of [
+			{ ...sent, comment: 'Позвонить вечером' },
+			{ ...sent, fullName: 'Тестов Пётр' },
+			{ ...sent, model: 'М2' },
+			{ ...sent, prepayment: 100_000 }
+		]) {
+			expect(acceptedAnswer(changed), JSON.stringify(changed)).toBe('keep');
+		}
+	});
+
+	it('another client than the one it was sent for starts another order', () => {
+		const fresh = filled();
+		expect(startsAnotherOrder(fresh, 5)).toBe(false);
+		const existing = filled({ clientId: 5 });
+		const timedOut = { ...existing, attempt: attemptOf(existing) };
+		expect(startsAnotherOrder(timedOut, 5)).toBe(false);
+		expect(startsAnotherOrder(timedOut, 6)).toBe(true);
+		// A new client was sent: any client found is another one.
+		expect(startsAnotherOrder({ ...fresh, attempt: attemptOf(fresh) }, 5)).toBe(true);
+		// Accepted: the client of that order is known.
+		const marked = { ...fresh, attempt: attemptOf(fresh), acceptedAs: mark(fresh, 5) };
+		expect(startsAnotherOrder(marked, 5)).toBe(false);
+		expect(startsAnotherOrder(marked, 6)).toBe(true);
 	});
 });

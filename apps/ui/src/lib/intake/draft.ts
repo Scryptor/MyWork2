@@ -58,6 +58,13 @@ export interface IntakeDraft {
 	warranty: string;
 	comment: string;
 	/**
+	 * What an earlier «Принять» of this key asked for (`attemptOf`) when it may have made the order: no
+	 * answer came in time, or the answer came late. Until «Отмена» or another client, photos stay as they
+	 * are (they would not go to that order), and an order that comes back for the key closes the sheet
+	 * only if the draft is still what was asked.
+	 */
+	attempt: string | null;
+	/**
 	 * The order already accepted from this draft. Edits keep it; the sheet says so until «Отмена»,
 	 * «Принять» or another client is chosen.
 	 */
@@ -124,6 +131,7 @@ export function emptyDraft(settings: AppSettings, statuses: readonly Status[]): 
 		prepayment: null,
 		warranty: settings.default_warranty,
 		comment: '',
+		attempt: null,
 		acceptedAs: null
 	};
 }
@@ -225,6 +233,7 @@ export function parseDraft(
 		prepayment: readMoney(o, 'prepayment'),
 		warranty: readText(o, 'warranty', base.warranty),
 		comment: readText(o, 'comment'),
+		attempt: typeof o.attempt === 'string' ? o.attempt : null,
 		acceptedAs: readMark(o.acceptedAs, key)
 	};
 }
@@ -237,6 +246,48 @@ export function parseDraft(
 export function lateAnswer(now: IntakeDraft, sent: IntakeDraft): 'close' | 'mark' | 'other' {
 	if (JSON.stringify(now) === JSON.stringify(sent)) return 'close';
 	return now.key === sent.key ? 'mark' : 'other';
+}
+
+/** What a «Принять» of the draft asks the server for, as text: the order without its point and photos. */
+export function attemptOf(d: IntakeDraft): string {
+	return JSON.stringify(toNewOrder(d, null));
+}
+
+/**
+ * Why photos cannot be added or removed now: the order is accepted (`accepted`), or an earlier «Принять»
+ * got no answer and may have made it (`unanswered`); null — they can.
+ */
+export function photoLock(d: IntakeDraft): 'accepted' | 'unanswered' | null {
+	if (d.acceptedAs !== null) return 'accepted';
+	return d.attempt !== null ? 'unanswered' : null;
+}
+
+/**
+ * «Принять» got its order back. `close`: the order is the draft as it is. `keep`: the order was made by
+ * an earlier attempt of this key and the draft was changed since, so the changes are not in it — the
+ * sheet stays and says so.
+ */
+export function acceptedAnswer(d: IntakeDraft): 'close' | 'keep' {
+	return d.attempt !== null && d.attempt !== attemptOf(d) ? 'keep' : 'close';
+}
+
+/** The existing client an attempt was sent for; null — a new one. */
+function attemptClient(attempt: string): number | null {
+	try {
+		const client = (JSON.parse(attempt) as NewOrder).client;
+		return 'existing' in client ? client.existing : null;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * The client chosen is not the one an earlier attempt of the draft was for: this is another order, with
+ * a key of its own. Nothing sent yet — the same draft.
+ */
+export function startsAnotherOrder(d: IntakeDraft, clientId: number): boolean {
+	if (d.acceptedAs !== null) return d.acceptedAs.clientId !== clientId;
+	return d.attempt !== null && attemptClient(d.attempt) !== clientId;
 }
 
 /**

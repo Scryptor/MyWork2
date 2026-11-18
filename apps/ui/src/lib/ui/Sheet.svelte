@@ -40,7 +40,11 @@
 		if (!open) return;
 		return untrack(() => {
 			focusReturn.opened();
-			return layers.open('modal', () => (open = false));
+			return layers.open(
+				'modal',
+				() => (open = false),
+				() => content
+			);
 		});
 	});
 

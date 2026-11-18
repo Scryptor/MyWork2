@@ -77,6 +77,8 @@ function createMedia<K>(owner: K, api: MediaApi<K>, left?: Detached) {
 	let error = $state<string | null>(null);
 	/** Uploads wait for each other here. */
 	let tail: Promise<unknown> = Promise.resolve();
+	/** The list on its way: until it comes, the owner may have more than is shown. */
+	let listing: Promise<void> = Promise.resolve();
 	let seq = 0;
 	/** The owner is no longer shown: uploads go on and tell about themselves by toasts. */
 	let detached = false;
@@ -87,18 +89,24 @@ function createMedia<K>(owner: K, api: MediaApi<K>, left?: Detached) {
 	const photos = $derived(attachments.filter((a) => a.kind === 'photo'));
 	const files = $derived(attachments.filter((a) => a.kind === 'file'));
 
-	async function reload(): Promise<void> {
+	let listSeq = 0;
+	function reload(): Promise<void> {
+		const mine = ++listSeq;
 		loading = true;
 		arrived = [];
-		try {
-			const list = await api.list(owner);
-			attachments = [...list, ...arrived.filter((a) => !list.some((l) => l.id === a.id))];
-			error = null;
-		} catch (e) {
-			error = errorMessage(e);
-		} finally {
-			loading = false;
-		}
+		const run = (async () => {
+			try {
+				const list = await api.list(owner);
+				attachments = [...list, ...arrived.filter((a) => !list.some((l) => l.id === a.id))];
+				error = null;
+			} catch (e) {
+				error = errorMessage(e);
+			} finally {
+				if (mine === listSeq) loading = false;
+			}
+		})();
+		listing = run;
+		return run;
 	}
 
 	const about = (text: string) => (detached && left ? left.about(text) : text);
@@ -151,9 +159,9 @@ function createMedia<K>(owner: K, api: MediaApi<K>, left?: Detached) {
 		if (pending.length === 0) added = { photo: 0, file: 0 };
 	}
 
-	/** Resolves once the uploads queued so far are done or have failed. */
+	/** Resolves once the list and the uploads queued so far are done or have failed. */
 	function idle(): Promise<void> {
-		return tail.then(() => {});
+		return Promise.all([listing, tail]).then(() => {});
 	}
 
 	/** Uploads the files one by one; resolves when all of them are done or have failed. */

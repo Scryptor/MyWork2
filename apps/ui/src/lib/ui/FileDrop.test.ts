@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { flushSync } from 'svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { layers } from '#lib/design/layers.svelte.js';
 import FileDrop from './FileDrop.svelte';
 
 const image = new File(['x'], 'photo.png', { type: 'image/png' });
@@ -101,5 +102,44 @@ describe('FileDrop', () => {
 		fire(zone, 'drop', { dataTransfer: transfer([pdf, image]) });
 		expect(onfiles).toHaveBeenCalledWith([pdf]);
 		expect(container.querySelector('input[type="file"]')).not.toHaveAttribute('multiple');
+	});
+
+	it('a zone under another layer leaves the paste to that layer', () => {
+		const onfiles = vi.fn();
+		const { container } = render(FileDrop, { onfiles });
+		const sheet = document.createElement('div');
+		document.body.append(sheet);
+		const off = layers.open(
+			'modal',
+			() => {},
+			() => sheet
+		);
+		const paste = fire(sheet, 'paste', { clipboardData: transfer([image]) });
+		expect(onfiles).not.toHaveBeenCalled();
+		expect(paste.defaultPrevented).toBe(false);
+		off();
+
+		// The zone inside the topmost layer takes it.
+		const inside = layers.open(
+			'modal',
+			() => {},
+			() => container
+		);
+		fire(document.body, 'paste', { clipboardData: transfer([image]) });
+		expect(onfiles).toHaveBeenCalledWith([image]);
+		inside();
+	});
+
+	it('a disabled zone takes nothing, and a drop on it does not open the file', () => {
+		const onfiles = vi.fn();
+		const { container } = render(FileDrop, { onfiles, disabled: true });
+		const zone = container.firstElementChild!;
+		fire(zone, 'dragenter', { dataTransfer: transfer([image]) });
+		expect(zone).not.toHaveAttribute('data-over');
+		const drop = fire(zone, 'drop', { dataTransfer: transfer([image]) });
+		expect(drop.defaultPrevented).toBe(true);
+		const paste = fire(document.body, 'paste', { clipboardData: transfer([image]) });
+		expect(paste.defaultPrevented).toBe(false);
+		expect(onfiles).not.toHaveBeenCalled();
 	});
 });

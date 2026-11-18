@@ -53,7 +53,7 @@
 	function lifecycle(node: HTMLElement) {
 		return untrack(() => {
 			const previous = document.activeElement;
-			const off = layers.open('panel', close);
+			const off = layers.open('panel', close, () => node);
 			panel = node;
 			node.focus({ preventScroll: true });
 			return () => {

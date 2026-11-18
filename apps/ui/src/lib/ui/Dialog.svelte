@@ -36,12 +36,17 @@
 	// Phone: the layer fills the screen and closes with «Назад» (←) at the top left.
 	const CloseIcon = $derived(phone.current ? ArrowLeft : X);
 
+	let content = $state<HTMLElement | null>(null);
 	const focusReturn = dialogFocus();
 	$effect(() => {
 		if (!open) return;
 		return untrack(() => {
 			focusReturn.opened();
-			return layers.open('modal', () => (open = false));
+			return layers.open(
+				'modal',
+				() => (open = false),
+				() => content
+			);
 		});
 	});
 
@@ -60,6 +65,7 @@
 	<Dialog.Portal>
 		<Dialog.Overlay class="mw-scrim" />
 		<Dialog.Content
+			bind:ref={content}
 			onInteractOutside={keepOpenOnToasts}
 			onCloseAutoFocus={focusReturn.closed}
 			class="mw-dialog {size} {position === 'bottom' ? 'bottom' : ''} {phone.current

@@ -254,6 +254,19 @@ describe('createDraftMedia', () => {
 		expect(messages()).toEqual(['Фото удалено']);
 	});
 
+	it('idle waits for the list too: until it comes, the draft may have photos', async () => {
+		const list = deferred<Attachment[]>();
+		const m = createDraftMedia('k-1', draftApi({ list: vi.fn(() => list.promise) }));
+		let idle = false;
+		const waiting = m.idle().then(() => (idle = true));
+		await Promise.resolve();
+		expect(m.loading).toBe(true);
+		expect(idle).toBe(false);
+		list.resolve([attachment(3, { order_id: null })]);
+		await waiting;
+		expect(m.photos.map((a) => a.id)).toEqual([3]);
+	});
+
 	it('idle waits for the uploads already queued', async () => {
 		const gate = deferred<Attachment>();
 		const m = createDraftMedia('k-1', draftApi({ upload: vi.fn(() => gate.promise) }));

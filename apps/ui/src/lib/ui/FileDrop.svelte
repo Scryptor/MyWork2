@@ -3,6 +3,7 @@
 	import Upload from '@lucide/svelte/icons/upload';
 	import type { Snippet } from 'svelte';
 	import { isEditableTarget } from '#lib/design/hotkeys.svelte.js';
+	import { layers } from '#lib/design/layers.svelte.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import { acceptsFile } from './accept.js';
 	import Button from './Button.svelte';
@@ -13,6 +14,7 @@
 		multiple = true,
 		label = ru.media.files,
 		showChoose = true,
+		disabled = false,
 		onfiles,
 		children
 	}: {
@@ -22,17 +24,20 @@
 		label?: string;
 		/** The «Выбрать файлы» button of the zone itself; off when the parent calls `open()`. */
 		showChoose?: boolean;
+		/** Takes no files: no drop, no paste, the button is off. */
+		disabled?: boolean;
 		onfiles: (files: File[]) => void;
 		children?: Snippet;
 	} = $props();
 
 	let input = $state<HTMLInputElement | null>(null);
+	let zone = $state<HTMLElement | null>(null);
 	/** dragenter and dragleave also come from the zone's children: count them. */
 	let depth = $state(0);
 
 	/** Opens the file chooser, e.g. from a «＋» tile inside the zone. */
 	export function open(): void {
-		input?.click();
+		if (!disabled) input?.click();
 	}
 
 	/** Reports the files that fit `accept` (only the first one without `multiple`); false if none did. */
@@ -45,16 +50,19 @@
 	}
 
 	const carriesFiles = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('Files');
+	/** A zone under a sheet or a dialog leaves paste and drop to the layer on top. */
+	const takes = () => !disabled && zone !== null && layers.takesInput(zone);
 
+	// A drop that is not taken is still prevented: the browser would open the file in place of the page.
 	function ondragenter(e: DragEvent) {
 		if (!carriesFiles(e)) return;
 		e.preventDefault();
-		depth++;
+		if (takes()) depth++;
 	}
 	function ondragover(e: DragEvent) {
 		if (!carriesFiles(e)) return;
 		e.preventDefault();
-		if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+		if (e.dataTransfer) e.dataTransfer.dropEffect = takes() ? 'copy' : 'none';
 	}
 	function ondragleave(e: DragEvent) {
 		if (carriesFiles(e)) depth = Math.max(0, depth - 1);
@@ -62,7 +70,7 @@
 	function ondrop(e: DragEvent) {
 		e.preventDefault();
 		depth = 0;
-		take(e.dataTransfer?.files);
+		if (takes()) take(e.dataTransfer?.files);
 	}
 
 	// A paste anywhere on the page takes images from the clipboard; a paste with text into a field
@@ -70,7 +78,7 @@
 	$effect(() => {
 		function onpaste(e: ClipboardEvent) {
 			const data = e.clipboardData;
-			if (e.defaultPrevented || !data || data.files.length === 0) return;
+			if (e.defaultPrevented || !data || data.files.length === 0 || !takes()) return;
 			if (isEditableTarget(e.target) && Array.from(data.types).includes('text/plain')) return;
 			if (take(data.files)) e.preventDefault();
 		}
@@ -80,6 +88,7 @@
 </script>
 
 <div
+	bind:this={zone}
 	class="drop"
 	class:over={depth > 0}
 	data-over={depth > 0 ? '' : undefined}
@@ -97,7 +106,7 @@
 	{/if}
 	{#if showChoose}
 		<div class="actions">
-			<Button size="sm" icon={Upload} onclick={open}>{ru.media.chooseFiles}</Button>
+			<Button size="sm" icon={Upload} {disabled} onclick={open}>{ru.media.chooseFiles}</Button>
 		</div>
 	{/if}
 	<input

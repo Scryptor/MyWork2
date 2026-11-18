@@ -243,6 +243,8 @@ export const ru = {
 			'Телефон подключается к компьютеру по сети. Включите режим хоста в настройках «Сеть» — он появится в следующих версиях',
 		/** The server keeps no more in a draft. */
 		photoLimit: 'При приёме можно добавить не больше 10 фото',
+		photosAccepted: 'Заказ уже принят — фото добавьте в нём',
+		photosUnanswered: 'Пока неясно, принят ли заказ, фото не добавить — нажмите «Принять» ещё раз',
 		work: 'Работа и деньги',
 		master: 'Мастер',
 		status: 'Статус',
@@ -272,15 +274,17 @@ export const ru = {
 		receiver: (name: string) => `Приёмщик: ${name}`,
 		accepted: (id: number) => `Принят № ${id}`,
 		accepting: 'Принимаю…',
+		/** «Принять» waits for the photos still on their way. */
+		uploadingPhotos: 'Загружаю фото…',
 		/** «Принять» again is the same attempt (its key): the server does not make a second order. */
 		noAnswer:
 			'Не удалось принять: нет ответа от сервера. Введённое сохранено — нажмите «Принять» ещё раз, второго заказа не будет',
 		/**
-		 * The order sent before Esc was accepted while the sheet, opened again, was changed. «Принять» of
-		 * the same draft gets the same order: the changes are not in it.
+		 * The order of an earlier «Принять» of this draft (its answer came late, or a repeat got it back)
+		 * while the draft was changed since: the changes are not in it.
 		 */
 		acceptedMeanwhile: (id: number) =>
-			`Принят № ${id}. Правки после отправки в заказ не вошли — внесите их в заказе; «Отмена» очистит форму`,
+			`Заказ № ${id} уже принят. Изменения после первой попытки в него не попали — откройте заказ и внесите их там`,
 		open: 'Открыть',
 		failed: (message: string) =>
 			`Заказ не принят: ${message}. Введённое сохранено — нажмите «Принять» ещё раз`
