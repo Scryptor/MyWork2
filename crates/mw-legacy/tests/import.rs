@@ -322,7 +322,7 @@ async fn nothing_is_written_into_the_old_folder() -> Res {
         let src = fixture_dir(V32).await;
         let before = hash_tree(src.path());
         let mut o = options(src.path(), src.path(), false);
-        o.attachments_dir = src.path().join("new/attachments");
+        o.attachments_dir = src.path().join("new").join("attachments");
         let r = import_folder(&t.core, &admin(), &o).await;
         assert!(
             matches!(r, Err(LegacyError::InsideSource(_))),
@@ -331,7 +331,7 @@ async fn nothing_is_written_into_the_old_folder() -> Res {
         );
         let data = tempfile::tempdir()?;
         let mut o = options(src.path(), data.path(), false);
-        o.backups_dir = src.path().join("ClientFiles/backups");
+        o.backups_dir = src.path().join("ClientFiles").join("backups");
         let r = import_folder(&t.core, &admin(), &o).await;
         assert!(
             matches!(r, Err(LegacyError::InsideSource(_))),

@@ -337,7 +337,7 @@ async fn files_not_placed_gives_the_error_and_the_import_number() {
 #[tokio::test]
 async fn check_names_an_occupied_attachments_folder_unless_replacing() {
     for t in apis(Listen::Loopback).await {
-        let occupied = t.core.data_dir_path().unwrap().join("attachments/stock");
+        let occupied = t.core.data_dir_path().unwrap().join("attachments").join("stock");
         std::fs::create_dir_all(occupied.join("1")).unwrap();
         std::fs::write(occupied.join("1/user.jpg"), b"user").unwrap();
         let src = fixture(0).await;
