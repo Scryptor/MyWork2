@@ -3,7 +3,7 @@ import type { ServerInfo } from '$api/ServerInfo';
 import { serverInfo, me } from '#lib/api/auth.js';
 import { ApiError } from '#lib/api/client.js';
 import { serverClock } from '#lib/api/server-clock.svelte.js';
-import { clearToken, getToken, noteUser } from '#lib/api/session.js';
+import { expireToken, getToken, noteUser } from '#lib/api/session.js';
 import { app, readCatalogs, type AppData } from '#lib/app/context.svelte.js';
 import { failLoad } from '#lib/app/load-error.js';
 import { loginPath } from '#lib/app/login.js';
@@ -32,7 +32,7 @@ export const load: LayoutLoad = async ({ url }): Promise<AppData> => {
 		return data;
 	} catch (e) {
 		if (e instanceof ApiError && e.status === 401) {
-			clearToken();
+			expireToken();
 			redirect(307, loginPath(url.pathname + url.search));
 		}
 		failLoad(e);

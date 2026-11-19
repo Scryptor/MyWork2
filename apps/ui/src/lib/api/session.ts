@@ -4,8 +4,14 @@
 // When another tab changes the stored session:
 // - a new token of the same user (signed in again): this page takes it up, nothing else changes;
 // - another user, or no session at all (signed out): this page's session is over (`setSessionLostHandler`);
+//   (an expiry is told from it: the tab where the session expired leaves a mark `{ expired, user_id }`);
+// - a tab of its own (signed in without «remember», sessionStorage) is reset too when another user signs
+//   in to the shared storage: a shared computer must not keep the earlier employee open;
 // - a page without a session (the login page) takes a session that appears (`setSessionFoundHandler`).
 const KEY = 'mw.session';
+
+/** Why a page's session is over: it expired (in another tab), or another tab signed out / in as someone else. */
+export type LostReason = 'expired' | 'changed';
 
 /** What the storage keeps: the token and the user it belongs to (null: not known yet). */
 export interface StoredSession {
@@ -34,6 +40,8 @@ function parse(raw: string | null): StoredSession | null {
 	if (raw === null || raw === '') return null;
 	try {
 		const v: unknown = JSON.parse(raw);
+		if (typeof v === 'object' && v !== null && (v as { expired?: unknown }).expired === true)
+			return null;
 		if (
 			typeof v === 'object' &&
 			v !== null &&
@@ -48,6 +56,22 @@ function parse(raw: string | null): StoredSession | null {
 	return { token: raw, userId: null };
 }
 
+/** The user of the expiry mark in the shared storage; undefined: there is no mark. */
+function expiryMark(): { userId: number | null } | undefined {
+	const raw = read(() => localStorage);
+	if (raw === null) return undefined;
+	try {
+		const v: unknown = JSON.parse(raw);
+		if (typeof v === 'object' && v !== null && (v as { expired?: unknown }).expired === true) {
+			const { user_id } = v as { user_id?: unknown };
+			return { userId: typeof user_id === 'number' ? user_id : null };
+		}
+	} catch {
+		// not a mark
+	}
+	return undefined;
+}
+
 const STORAGES = [() => sessionStorage, () => localStorage];
 
 /** What the storage of this tab holds now: its own (sessionStorage) first, then the shared one. */
@@ -58,7 +82,7 @@ function stored(): StoredSession | null {
 let held: StoredSession | null = typeof window === 'undefined' ? null : stored();
 /** The session is in the storage (false: the storage would not take it, it lives in memory only). */
 let kept = held !== null;
-let onLost: () => void = () => {};
+let onLost: (reason: LostReason, token: string) => void = () => {};
 let onFound: () => void = () => {};
 
 /** The token of this page's session; null: nobody is signed in here. */
@@ -109,11 +133,39 @@ export function clearToken(): void {
 }
 
 /**
+ * This page's session expired (the server said 401): like `clearToken`, and the shared storage keeps a
+ * mark of whose session it was, so that the other tabs say «expired», not «another user».
+ */
+export function expireToken(): void {
+	const mine = held;
+	// Only a session of the shared storage has other tabs to tell.
+	if (mine !== null && parse(read(() => localStorage))?.token === mine.token) {
+		// One write, not a removal and then a mark: a tab that heard the removal alone would say «changed».
+		try {
+			localStorage.setItem(KEY, JSON.stringify({ expired: true, user_id: mine.userId }));
+		} catch {
+			// storage is unavailable: the others will say «changed»
+		}
+	}
+	clearToken();
+}
+
+/**
  * Follows what another tab did to the stored session; true when this page's session is over (another
  * user, or none). A new token of the same user is taken up here.
  */
 export function followStorage(): boolean {
 	if (held === null || !kept) return false;
+	if (parse(read(() => sessionStorage))?.token === held.token) {
+		// A tab of its own: only a known other user in the shared storage ends it.
+		const shared = parse(read(() => localStorage));
+		return (
+			shared !== null &&
+			shared.userId !== null &&
+			held.userId !== null &&
+			shared.userId !== held.userId
+		);
+	}
 	const now = stored();
 	if (now?.token === held.token) {
 		if (held.userId === null && now.userId !== null) held = { ...held, userId: now.userId };
@@ -132,8 +184,16 @@ export function followStorage(): boolean {
  */
 export function loseSession(): void {
 	if (held === null) return;
+	const { token, userId } = held;
+	let reason: LostReason = 'changed';
+	if (stored() === null) {
+		const mark = expiryMark();
+		if (mark !== undefined && mark.userId === userId) reason = 'expired';
+	}
+	// A tab's own copy would be taken up again by the login page; the shared one is another tab's.
+	if (parse(read(() => sessionStorage))?.token === token) remove(() => sessionStorage);
 	held = null;
-	onLost();
+	onLost(reason, token);
 }
 
 /**
@@ -150,7 +210,7 @@ export function adoptStored(): StoredSession | null {
 }
 
 /** What the program does when another tab ended the session (the `(app)` layout sets it). */
-export function setSessionLostHandler(fn: () => void): void {
+export function setSessionLostHandler(fn: (reason: LostReason, token: string) => void): void {
 	onLost = fn;
 }
 

@@ -64,7 +64,9 @@ async function readBody(response: Response): Promise<unknown> {
  * same user is taken up; when that tab ended the session (signed out, or in as another user) nothing is
  * sent and the session ends here too.
  */
-function authHeaders(): Headers {
+function authHeaders(explicit?: string): Headers {
+	// A request with a token of its own (revoking a lost session) is not this page's session.
+	if (explicit !== undefined) return new Headers({ Authorization: `Bearer ${explicit}` });
 	if (followStorage()) {
 		loseSession();
 		throw new ApiError(401, 'unauthenticated', ru.auth.sessionChanged, null);
@@ -124,6 +126,8 @@ export interface RequestOptions {
 	 * import: the base it has just written has users of its own, and the screen asks one of them to sign in.
 	 */
 	quietUnauthenticated?: boolean;
+	/** Sent with this token instead of the page's session (the token of a session the page lost). */
+	token?: string;
 }
 
 /** Like `request`, with the answer's headers. */
@@ -132,7 +136,7 @@ export async function requestWithHeaders<T>(
 	path: string,
 	opts: RequestOptions = {}
 ): Promise<{ data: T; headers: Headers }> {
-	const headers = authHeaders();
+	const headers = authHeaders(opts.token);
 	let body: string | undefined;
 	// The server takes changing requests only as JSON, an empty one too (a page of another site cannot
 	// send that without CORS).

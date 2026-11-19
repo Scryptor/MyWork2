@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, apiUrl, errorMessage, request, setUnauthenticatedHandler } from './client.js';
+import { revokeToken } from './auth.js';
 import { clearToken, getToken, setSessionLostHandler, setToken } from './session.js';
 
 function stubFetch(status: number, body: unknown) {
@@ -16,6 +17,31 @@ afterEach(() => {
 	localStorage.clear();
 	setUnauthenticatedHandler(() => {});
 	setSessionLostHandler(() => {});
+});
+
+describe('a request with an explicit token', () => {
+	it('goes with that token, keepalive, and does not follow the storage', async () => {
+		const fn = stubFetch(204, undefined);
+		const lost = vi.fn();
+		setSessionLostHandler(lost);
+		setToken('new', true, 8);
+		await request('POST', '/auth/logout', { token: 'old', keepalive: true });
+		const init = (fn.mock.calls as unknown as [string, RequestInit][])[0]![1];
+		expect(new Headers(init.headers).get('Authorization')).toBe('Bearer old');
+		expect(init.keepalive).toBe(true);
+		expect(lost).not.toHaveBeenCalled();
+		expect(getToken()).toBe('new');
+	});
+
+	it('revokeToken ignores a failure', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => {
+				throw new TypeError('offline');
+			})
+		);
+		await expect(revokeToken('old')).resolves.toBeUndefined();
+	});
 });
 
 describe('a session another tab changed', () => {

@@ -20,11 +20,16 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import type { OrderListItem } from '$api/OrderListItem';
-	import { logout } from '#lib/api/auth.js';
+	import { logout, revokeToken } from '#lib/api/auth.js';
 	import { ApiError, errorMessage, setUnauthenticatedHandler } from '#lib/api/client.js';
 	import { getClient, listClients } from '#lib/api/clients.js';
 	import { getOrder, listOrders, ordersByBarcode } from '#lib/api/orders.js';
-	import { clearToken, setSessionLostHandler } from '#lib/api/session.js';
+	import {
+		clearToken,
+		expireToken,
+		setSessionLostHandler,
+		type LostReason
+	} from '#lib/api/session.js';
 	import AppSidebar, { ATTENTION_ICONS } from '#lib/app/AppSidebar.svelte';
 	import AppTopBar from '#lib/app/AppTopBar.svelte';
 	import ChangePasswordDialog from '#lib/app/ChangePasswordDialog.svelte';
@@ -77,7 +82,7 @@
 	// A session that ends while the program is open (expired, closed elsewhere): sign in again here.
 	$effect(() => {
 		setUnauthenticatedHandler(() => {
-			clearToken();
+			expireToken();
 			if (page.url.pathname !== '/login') void goto(resolve(loginPath(here())));
 		});
 		return () => setUnauthenticatedHandler(() => {});
@@ -86,14 +91,18 @@
 	// Another tab signed out, or in as someone else: this tab's session is over. Its edits are given up
 	// (the token they belong to is closed, and the next one is not this user's), its screens go.
 	$effect(() => {
-		setSessionLostHandler(() => void sessionEnded());
+		setSessionLostHandler((reason, token) => void sessionEnded(reason, token));
 		return () => setSessionLostHandler(() => {});
 	});
-	async function sessionEnded() {
+	async function sessionEnded(reason: LostReason, token: string) {
+		// The token this tab had is closed on the server (nobody else uses it); an expired one is dead.
+		if (reason === 'changed') void revokeToken(token);
 		discardQueues();
 		await goto(resolve(loginPath(here())));
 		resetSession();
-		toast.show({ message: ru.auth.sessionChanged });
+		toast.show({
+			message: reason === 'expired' ? ru.auth.sessionExpired : ru.auth.sessionChanged
+		});
 	}
 
 	// Signing out (spec 6.11): the edits still on their way go first, under this user's token; what cannot

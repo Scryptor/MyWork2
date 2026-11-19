@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
 	adoptStored,
 	clearToken,
+	expireToken,
 	followStorage,
 	getToken,
 	noteUser,
@@ -116,13 +117,64 @@ describe('another tab', () => {
 		expect(getToken()).toBe('a');
 	});
 
-	it('a tab of its own (sessionStorage) is not touched by the shared storage', () => {
+	it('a tab of its own (sessionStorage) keeps its session when the same user, or one not known, signs in', () => {
+		const lost = vi.fn();
+		setSessionLostHandler(lost);
+		setToken('a', false, 7);
+		otherTab(value('b', 7));
+		otherTab('bare-token');
+		otherTab(null);
+		expect(lost).not.toHaveBeenCalled();
+		expect(getToken()).toBe('a');
+	});
+
+	it('a tab of its own is reset when another user signs in (a shared computer), and revoked', () => {
 		const lost = vi.fn();
 		setSessionLostHandler(lost);
 		setToken('a', false, 7);
 		otherTab(value('b', 8));
-		expect(lost).not.toHaveBeenCalled();
-		expect(getToken()).toBe('a');
+		expect(lost).toHaveBeenCalledExactlyOnceWith('changed', 'a');
+		expect(getToken()).toBeNull();
+		// Its own copy goes, so that the login page does not take it up again; the other tab's stays.
+		expect(sessionStorage.getItem(KEY)).toBeNull();
+		expect(localStorage.getItem(KEY)).toBe(value('b', 8));
+	});
+
+	it('a session that expired in another tab: the mark says so, not another user', () => {
+		const lost = vi.fn();
+		setSessionLostHandler(lost);
+		setToken('a', true, 7);
+		otherTab(JSON.stringify({ expired: true, user_id: 7 }));
+		expect(lost).toHaveBeenCalledExactlyOnceWith('expired', 'a');
+		expect(getToken()).toBeNull();
+	});
+
+	it('a mark of another user, or a plain sign-out, is a change, not an expiry', () => {
+		const lost = vi.fn();
+		setSessionLostHandler(lost);
+		setToken('a', true, 7);
+		otherTab(JSON.stringify({ expired: true, user_id: 8 }));
+		expect(lost).toHaveBeenLastCalledWith('changed', 'a');
+		setToken('c', true, 7);
+		otherTab(null);
+		expect(lost).toHaveBeenLastCalledWith('changed', 'c');
+	});
+
+	it('expireToken leaves the mark of the user in the shared storage; a page without a session ignores it', () => {
+		const found = vi.fn();
+		setSessionFoundHandler(found);
+		setToken('a', true, 7);
+		expireToken();
+		expect(getToken()).toBeNull();
+		expect(JSON.parse(localStorage.getItem(KEY)!)).toEqual({ expired: true, user_id: 7 });
+		window.dispatchEvent(new StorageEvent('storage', { key: KEY }));
+		expect(found).not.toHaveBeenCalled();
+		expect(adoptStored()).toBeNull();
+		// A session another tab put there meanwhile is not covered by the mark.
+		setToken('b', true, 8);
+		localStorage.setItem(KEY, value('c', 9));
+		expireToken();
+		expect(localStorage.getItem(KEY)).toBe(value('c', 9));
 	});
 
 	it('a page without a session hears of a session stored there, and takes it up', () => {

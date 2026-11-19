@@ -16,3 +16,16 @@ export const logout = () => request<void>('POST', '/auth/logout');
 
 export const changePassword = (req: ChangePasswordRequest) =>
 	request<void>('POST', '/auth/password', { body: req });
+
+/** Closes a session on the server by its token, for a tab that lost it; a failure changes nothing. */
+export async function revokeToken(token: string): Promise<void> {
+	try {
+		await request<void>('POST', '/auth/logout', {
+			token,
+			keepalive: true,
+			quietUnauthenticated: true
+		});
+	} catch {
+		// the token is dead already, or there is no connection: it expires by itself
+	}
+}

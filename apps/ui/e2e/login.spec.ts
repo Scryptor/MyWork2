@@ -409,3 +409,110 @@ test('signing in again as the same user in one tab keeps the other tab, and its 
 	expect(history[0]?.user_name).toBe('Администратор');
 	await other.close();
 });
+
+/** The status of `GET /auth/me` with `token`: 200 while the session lives, 401 once it is closed. */
+async function meStatus(
+	playwright: PlaywrightWorkerArgs['playwright'],
+	token: string
+): Promise<number> {
+	const api = await playwright.request.newContext({
+		baseURL: 'http://127.0.0.1:4174',
+		extraHTTPHeaders: { Authorization: `Bearer ${token}` }
+	});
+	try {
+		return (await api.get('/api/v1/auth/me')).status();
+	} finally {
+		await api.dispose();
+	}
+}
+
+test('a session that expired in one tab: the other tab says it expired, not that another user signed in', async ({
+	page,
+	context,
+	playwright
+}) => {
+	await page.goto('/orders');
+	await signIn(page);
+	await expect(page).toHaveURL(/\/orders$/);
+	const token = (await sessionToken(page)) as string;
+	const other = await context.newPage();
+	await other.goto('/orders');
+	await expect(other.getByRole('navigation', { name: 'Разделы' })).toContainText('Заказы');
+
+	// The server closes the session (as its expiry would); this tab finds out at its next load.
+	const api = await playwright.request.newContext({
+		baseURL: 'http://127.0.0.1:4174',
+		extraHTTPHeaders: { Authorization: `Bearer ${token}` }
+	});
+	expect((await api.post('/api/v1/auth/logout', { data: {} })).status()).toBe(204);
+	await api.dispose();
+	await page.reload();
+	await expect(page).toHaveURL(/\/login\?next=/);
+
+	await expect(other).toHaveURL(/\/login/);
+	await expect(other.getByRole('status', { name: 'Уведомления' })).toContainText(
+		'Сеанс истёк — войдите снова'
+	);
+	await expect(other.getByRole('status', { name: 'Уведомления' })).not.toContainText(
+		'В другой вкладке'
+	);
+	await other.close();
+});
+
+test('a tab signed in without «Запомнить» is reset when another user signs in elsewhere; its token is revoked', async ({
+	page,
+	context,
+	playwright
+}) => {
+	await page.goto('/login');
+	await page.getByLabel('Запомнить на этом устройстве').uncheck();
+	await signIn(page);
+	await expect(page).toHaveURL(/\/orders$/);
+	const token = (await sessionToken(page)) as string;
+	expect(await page.evaluate(() => sessionStorage.getItem('mw.session'))).not.toBeNull();
+	expect(await page.evaluate(() => localStorage.getItem('mw.session'))).toBeNull();
+	const second = await makeSecondUser(playwright, token);
+
+	// Another tab: another user signs in with «Запомнить» (the shared storage).
+	const other = await context.newPage();
+	await other.goto('/login');
+	await other.getByLabel('Логин').fill(second.login);
+	await other.getByLabel('Пароль').fill(SECOND_PASSWORD);
+	await other.getByRole('button', { name: 'Войти' }).click();
+	await expect(other).toHaveURL(/\/orders$/);
+
+	// The first tab is on the login page, with nothing of the administrator.
+	await expect(page).toHaveURL(/\/login/);
+	await expect(page.getByText('Администратор')).toHaveCount(0);
+	await expect(page.getByRole('status', { name: 'Уведомления' })).toContainText(
+		'В другой вкладке выполнен выход или вход другим пользователем'
+	);
+	expect(await page.evaluate(() => sessionStorage.getItem('mw.session'))).toBeNull();
+	// The administrator's token is closed on the server.
+	await expect.poll(() => meStatus(playwright, token)).toBe(401);
+	await other.close();
+});
+
+test('a tab signed in without «Запомнить» is not touched when the same user signs in elsewhere', async ({
+	page,
+	context
+}) => {
+	await page.goto('/login');
+	await page.getByLabel('Запомнить на этом устройстве').uncheck();
+	await signIn(page);
+	await expect(page).toHaveURL(/\/orders$/);
+	const token = (await sessionToken(page)) as string;
+
+	const other = await context.newPage();
+	await other.goto('/login');
+	await signIn(other);
+	await expect(other).toHaveURL(/\/orders$/);
+
+	await page.waitForTimeout(500);
+	await expect(page).toHaveURL(/\/orders$/);
+	expect(await sessionToken(page)).toBe(token);
+	await expect(page.getByRole('status', { name: 'Уведомления' })).not.toContainText(
+		'В другой вкладке'
+	);
+	await other.close();
+});
