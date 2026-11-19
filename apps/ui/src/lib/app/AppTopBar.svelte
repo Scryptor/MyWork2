@@ -20,6 +20,9 @@
 	import TopBar from '#lib/ui/shell/TopBar.svelte';
 	import { app } from './context.svelte.js';
 
+	/** The name of a point or of the user: at most this wide, the rest is cut (Button cuts the text). */
+	const NAMED = 'max-width: var(--topbar-named-max)';
+
 	let {
 		onsearch,
 		onintake,
@@ -64,7 +67,7 @@
 						{#if iconsOnly}
 							<IconButton {...props} label={pointLabel} icon={MapPin} variant="secondary" />
 						{:else}
-							<Button {...props} class="named" title={pointLabel} iconEnd={ChevronDown}
+							<Button {...props} style={NAMED} title={pointLabel} iconEnd={ChevronDown}
 								>{pointLabel}</Button
 							>
 						{/if}
@@ -90,7 +93,7 @@
 					{:else}
 						<Button
 							{...props}
-							class="named"
+							style={NAMED}
 							variant="ghost"
 							icon={CircleUser}
 							iconEnd={ChevronDown}
@@ -130,11 +133,7 @@
 	}
 	@media (pointer: coarse) {
 		.find {
-			min-height: 2.75rem;
+			min-height: var(--control-md);
 		}
-	}
-	/* The name of a point or of the user: at most this wide, the rest is cut (Button cuts the text). */
-	:global(.btn.named) {
-		max-width: 14rem;
 	}
 </style>

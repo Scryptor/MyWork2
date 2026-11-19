@@ -21,7 +21,7 @@
 	}
 </script>
 
-<div class="chips" role="group" aria-label={label}>
+<div class="chips" data-scroll-x role="group" aria-label={label}>
 	{#each items as item (item.id)}
 		<button
 			type="button"
@@ -86,7 +86,7 @@
 	}
 	@media (pointer: coarse) {
 		.chip {
-			min-height: 2.75rem;
+			min-height: var(--control-md);
 		}
 		/* Phone: one row, scrolls sideways. */
 		.chips {

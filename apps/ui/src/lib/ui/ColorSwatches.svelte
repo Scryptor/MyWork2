@@ -116,8 +116,8 @@
 	}
 	@media (pointer: coarse) {
 		.dot {
-			width: 2.75rem;
-			height: 2.75rem;
+			width: var(--control-md);
+			height: var(--control-md);
 		}
 	}
 	input {

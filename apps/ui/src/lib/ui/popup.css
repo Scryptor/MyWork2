@@ -45,6 +45,6 @@
 }
 @media (pointer: coarse) {
 	.mw-option {
-		min-height: 2.75rem;
+		min-height: var(--control-md);
 	}
 }

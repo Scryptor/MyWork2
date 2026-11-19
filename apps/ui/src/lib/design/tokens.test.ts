@@ -122,14 +122,18 @@ describe('tokens: denser defaults (spec 3.3, 3.4, decision 48)', () => {
 			'--row-height': '2rem',
 			'--topbar-height': '2.75rem',
 			'--sidebar-width': '13rem',
-			'--rail-width': '3rem'
+			'--rail-width': '3rem',
+			'--topbar-named-max': '14rem',
+			'--panel-width': '28rem',
+			'--sheet-width': '64rem'
 		};
 		for (const [name, value] of Object.entries(want)) expect(get(light, name), name).toBe(value);
 	});
 	it('keeps the coarse-pointer controls at least 44px, also at 90 %', () => {
 		const coarse = parseVars(blockBody(css, '@media (pointer: coarse)'));
 		for (const name of ['--control-sm', '--control-md', '--control-lg'])
-			expect(get(coarse, name), name).toBe('max(2.75rem, 44px)');
+			expect(get(coarse, name), name).toBe('var(--touch-target)');
+		expect(get(light, '--touch-target')).toBe('max(2.75rem, 44px)');
 		// The narrow menu stays wider than its touch-sized icons.
 		expect(get(coarse, '--rail-width')).toBe('max(3rem, calc(var(--control-lg) + var(--space-1)))');
 	});
@@ -137,5 +141,32 @@ describe('tokens: denser defaults (spec 3.3, 3.4, decision 48)', () => {
 		const compact = parseVars(blockBody(css, ":root[data-density='compact']"));
 		expect(`${ROW_REM.comfortable}rem`).toBe(get(light, '--row-height'));
 		expect(`${ROW_REM.compact}rem`).toBe(get(compact, '--row-height'));
+	});
+});
+
+describe('tokens: sizes live only here', () => {
+	const files = import.meta.glob('/src/**/*.{svelte,css}', {
+		query: '?raw',
+		import: 'default',
+		eager: true
+	}) as Record<string, string>;
+	const strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/<!--[\s\S]*?-->/g, '');
+	const outside = Object.entries(files).filter(([p]) => p !== '/src/lib/design/tokens.css');
+
+	it('has no 2.75rem literal outside tokens.css: touch sizes come from --control-*', () => {
+		expect(outside.length).toBeGreaterThan(0);
+		const bad = outside.filter(([, src]) => /2\.75rem/.test(strip(src))).map(([p]) => p);
+		expect(bad).toEqual([]);
+	});
+	it('has no literal widths of the top bar name, side panel and sheet in components', () => {
+		const bad = outside
+			.filter(([p]) => /\/(AppTopBar|SlideOver|Sheet)\.svelte$/.test(p))
+			.filter(([, src]) => /\b(?:14|28|64)rem\b/.test(strip(src)))
+			.map(([p]) => p);
+		expect(bad).toEqual([]);
+	});
+	it('styles no global .btn.named', () => {
+		const bad = outside.filter(([, src]) => /\.btn\.named/.test(strip(src))).map(([p]) => p);
+		expect(bad).toEqual([]);
 	});
 });

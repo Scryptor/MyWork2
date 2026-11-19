@@ -252,7 +252,7 @@
 		align-items: center;
 		gap: var(--space-2);
 		box-sizing: border-box;
-		min-height: var(--control-md);
+		min-height: var(--touch-target);
 		padding: 0 var(--space-2) 0 var(--space-1);
 		border: 1px solid var(--border-strong);
 		border-radius: var(--radius-full);
@@ -280,7 +280,7 @@
 		gap: var(--space-2);
 		box-sizing: border-box;
 		width: 100%;
-		min-height: 2.75rem;
+		min-height: var(--control-md);
 		padding: 0 var(--space-2);
 		border: 0;
 		border-radius: var(--radius-md);

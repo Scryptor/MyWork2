@@ -210,13 +210,13 @@
 	}
 	@media (pointer: coarse) {
 		.item {
-			min-height: 2.75rem;
+			min-height: var(--control-md);
 		}
 		.remove {
 			opacity: 1;
 		}
 		.removable .item {
-			padding-right: 2.75rem;
+			padding-right: var(--control-md);
 		}
 	}
 </style>

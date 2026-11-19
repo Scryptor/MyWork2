@@ -56,7 +56,7 @@
 	}
 	@media (pointer: coarse) {
 		.retry {
-			min-height: 2.75rem;
+			min-height: var(--control-md);
 		}
 	}
 </style>

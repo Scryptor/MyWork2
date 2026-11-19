@@ -71,7 +71,7 @@
 @media (pointer: coarse) {
 	.mw-box,
 	.mw-box.select {
-		min-height: 2.75rem;
+		min-height: var(--control-md);
 		font-size: max(16px, var(--text-lg));
 	}
 }

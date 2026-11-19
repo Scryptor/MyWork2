@@ -132,7 +132,7 @@
 	}
 	@media (pointer: coarse) {
 		.btn {
-			min-height: 2.75rem;
+			min-height: var(--control-md);
 		}
 	}
 	.primary {

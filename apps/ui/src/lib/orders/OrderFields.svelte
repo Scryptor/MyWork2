@@ -598,8 +598,8 @@
 	@media (pointer: coarse) {
 		.reveal,
 		.link {
-			min-width: 2.75rem;
-			min-height: 2.75rem;
+			min-width: var(--control-md);
+			min-height: var(--control-md);
 		}
 	}
 	:global([data-width='xs']) .pair,

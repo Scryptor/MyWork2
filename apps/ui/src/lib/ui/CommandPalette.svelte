@@ -196,7 +196,7 @@
 	}
 	@media (pointer: coarse) {
 		:global(.mw-palette [data-command-item]) {
-			min-height: 2.75rem;
+			min-height: var(--control-md);
 		}
 	}
 </style>

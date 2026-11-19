@@ -14,7 +14,6 @@
 	let {
 		open = $bindable(false),
 		title,
-		width = 'min(28rem, 100vw - 3rem)',
 		actions,
 		header,
 		children,
@@ -26,7 +25,6 @@
 	}: {
 		open: boolean;
 		title: string;
-		width?: string;
 		/** Buttons in the top bar after the title, e.g. «⋯» on a phone (spec 6.12). */
 		actions?: Snippet;
 		header?: Snippet;
@@ -123,7 +121,6 @@
 			role="dialog"
 			aria-labelledby={titleId}
 			tabindex="-1"
-			style:--panel-width={width}
 			{onkeydown}
 		>
 			<div class="head">
@@ -169,7 +166,7 @@
 		box-sizing: border-box;
 		display: flex;
 		flex-direction: column;
-		width: var(--panel-width);
+		width: min(var(--panel-width), 100vw - 3rem);
 		border-left: 1px solid var(--border);
 		border-radius: var(--radius-lg) 0 0 var(--radius-lg);
 		background: var(--surface);

@@ -78,6 +78,12 @@ describe('size keys', () => {
 		expect(matchShortcut(ev({ code: 'Numpad0', key: '0', ctrlKey: true }), 'Mod+0', pc)).toBe(true);
 		expect(matchShortcut(ev({ code: 'Digit0', key: '0' }), 'Mod+0', pc)).toBe(false);
 	});
+	it('other digits: the number row only, not the numpad', () => {
+		expect(matchShortcut(ev({ code: 'Digit1', key: '1', ctrlKey: true }), 'Mod+1', pc)).toBe(true);
+		expect(matchShortcut(ev({ code: 'Numpad1', key: '1', ctrlKey: true }), 'Mod+1', pc)).toBe(
+			false
+		);
+	});
 });
 
 describe('matchShortcut', () => {

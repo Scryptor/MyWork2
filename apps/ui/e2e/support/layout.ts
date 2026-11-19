@@ -14,6 +14,8 @@ export interface ScreenCase {
 	band: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 	/** A phone: the list is cards, and only some scenes are gone through. */
 	phone?: boolean;
+	/** A touch screen: `hasTouch` and `isMobile` (the pointer is coarse, the controls are 44px). */
+	touch?: boolean;
 }
 
 // The window is the screen without the frame and the task bar: about 70px less in height.
@@ -143,6 +145,17 @@ export const SCREEN_CASES: readonly ScreenCase[] = [
 		rootPx: 16,
 		band: 'xs',
 		phone: true
+	},
+	// The same phone with a finger: coarse pointer, so every control takes its touch size.
+	{
+		name: 'phone-touch',
+		screen: { width: 390, height: 844 },
+		viewport: { width: 390, height: 844 },
+		dpr: 3,
+		rootPx: 16,
+		band: 'xs',
+		phone: true,
+		touch: true
 	}
 ];
 
@@ -201,6 +214,8 @@ function inPage({ check, bars, barNames, rootPx, band }: CheckArg): string[] {
 		'legend'
 	].join(',');
 	const TABLE = '[role="grid"],[role="treegrid"],[role="table"],table';
+	// A strip that scrolls sideways on purpose (the quick filters on a touch screen): `data-scroll-x`.
+	const STRIP = '[data-scroll-x]';
 	const CELL = '[role="gridcell"],[role="columnheader"],[role="rowheader"],[role="cell"],td,th';
 	const W = window.innerWidth;
 	const H = window.innerHeight;
@@ -326,7 +341,7 @@ function inPage({ check, bars, barNames, rootPx, band }: CheckArg): string[] {
 	 * Not a box that merely holds a table: `main` scrolls too, and a table must not push it sideways.
 	 */
 	const isTableScroller = (el: Element) =>
-		scrollsSideways(el) && (el.matches(TABLE) || !!el.closest(TABLE));
+		scrollsSideways(el) && (el.matches(TABLE) || !!el.closest(TABLE) || el.matches(STRIP));
 
 	/**
 	 * What the user sees: not hidden, not transparent, at least 2×2 (the visually hidden 1×1 helpers are
@@ -384,7 +399,7 @@ function inPage({ check, bars, barNames, rootPx, band }: CheckArg): string[] {
 		// No box but a table is wider than its content box, `main` included: what sticks out is a sideways
 		// scroll away (auto, scroll) or lost (hidden, clip).
 		for (const el of document.body.querySelectorAll('*')) {
-			if (el.matches(TABLE) || el.closest(TABLE) || !visible(el)) continue;
+			if (el.matches(TABLE) || el.closest(TABLE) || el.matches(STRIP) || !visible(el)) continue;
 			const s = getComputedStyle(el);
 			if (!['auto', 'scroll', 'hidden', 'clip'].includes(s.overflowX)) continue;
 			if (el.scrollWidth <= el.clientWidth + 1) continue;
@@ -437,11 +452,12 @@ function inPage({ check, bars, barNames, rootPx, band }: CheckArg): string[] {
 				const rects = items.map((el) => el.getBoundingClientRect());
 				items.forEach((el, a) => {
 					const r = rects[a]!;
+					// What is in a strip that scrolls on purpose may be partly beyond the bar's sides.
+					const strip = clipsOf(el).some((c) => isTableScroller(c.el));
 					if (
 						r.top < br.top - 1 ||
 						r.bottom > br.bottom + 1 ||
-						r.left < br.left - 1 ||
-						r.right > br.right + 1
+						(!strip && (r.left < br.left - 1 || r.right > br.right + 1))
 					)
 						out.push(`${describe(el)} sticks out of ${name} ${box(br)}`);
 					for (let b = a + 1; b < items.length; b++) {
@@ -501,16 +517,43 @@ const CHECKS: { check: Check; title: string }[] = [
 ];
 
 /**
+ * Scrolls every open panel and dialog body that has more content than room to its end, and returns how many
+ * it moved: what is below the fold is checked too. Waits for the scroll to settle.
+ */
+export async function scrollBodiesToEnd(page: Page): Promise<number> {
+	const moved = await page.evaluate(() => {
+		let n = 0;
+		for (const layer of document.querySelectorAll(
+			'[role="dialog"], [role="alertdialog"], dialog'
+		)) {
+			for (const el of [layer, ...layer.querySelectorAll('*')]) {
+				const s = getComputedStyle(el);
+				if (s.overflowY !== 'auto' && s.overflowY !== 'scroll') continue;
+				if (el.scrollHeight <= el.clientHeight + 1) continue;
+				el.scrollTop = el.scrollHeight;
+				n++;
+			}
+		}
+		return n;
+	});
+	if (moved > 0)
+		await page.evaluate(
+			() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))
+		);
+	return moved;
+}
+
+/**
  * Fails with a list of offenders: overflow, overlaps, cut labels (spec 5.3, the five checks).
  * Soft: the test records the failure and goes on to its next scene, so one run names them all.
  * `bars`: the top bar, the headers and footers of panels, the intake and dialogs, the filter row; every
  * bar must be on the page. `rootPx`, `band`: the case's `font-size` and `data-width` of <html> (check 5;
- * skipped without `rootPx`).
+ * skipped without `rootPx`). `label` is added to the titles of the failures.
  */
 export async function expectTidyLayout(
 	page: Page,
 	bars: Locator[],
-	{ rootPx, band }: { rootPx?: number; band?: ScreenCase['band'] } = {}
+	{ rootPx, band, label = '' }: { rootPx?: number; band?: ScreenCase['band']; label?: string } = {}
 ): Promise<void> {
 	const handles = await Promise.all(bars.map((b) => b.elementHandles()));
 	try {
@@ -523,7 +566,7 @@ export async function expectTidyLayout(
 				rootPx: rootPx ?? 0,
 				band: band ?? ''
 			});
-			expect.soft(offenders, `${title} (${page.url()})`).toEqual([]);
+			expect.soft(offenders, `${title}${label} (${page.url()})`).toEqual([]);
 		}
 	} finally {
 		await Promise.all(handles.flat().map((h) => h.dispose()));

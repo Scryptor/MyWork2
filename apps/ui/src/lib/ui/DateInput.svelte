@@ -317,17 +317,17 @@
 	@media (pointer: coarse) {
 		:global(.cal-btn) {
 			justify-content: center;
-			min-width: 2.75rem;
-			min-height: 2.75rem;
+			min-width: var(--control-md);
+			min-height: var(--control-md);
 			margin: 0 calc(-1 * var(--space-3));
 		}
 		:global(.cal-nav),
 		:global(.cal-day) {
-			width: 2.75rem;
-			height: 2.75rem;
+			width: var(--control-md);
+			height: var(--control-md);
 		}
 		:global(.cal-headcell) {
-			width: 2.75rem;
+			width: var(--control-md);
 		}
 	}
 </style>

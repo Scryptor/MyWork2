@@ -16,7 +16,8 @@
 		"test:watch": "vitest",
 		"test:e2e": "npm run build && playwright test",
 		"licenses": "node scripts/check-licenses.mjs",
-		"verify": "npm run check && npm run lint && npm run test && npm run build && npm run licenses"
+		"playwright-image": "node scripts/check-playwright-image.mjs",
+		"verify": "npm run check && npm run lint && npm run test && npm run build && npm run licenses && npm run playwright-image"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",

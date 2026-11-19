@@ -98,7 +98,7 @@ jobs:
           if-no-files-found: error
 
   # The image carries the browsers and their system libraries (no apt); its tag must equal the @playwright/test version
-  # in apps/ui/package-lock.json.
+  # in apps/ui/package-lock.json (`npm run verify` runs scripts/check-playwright-image.mjs, which fails on a mismatch).
   ui-e2e:
     name: ui-e2e (${{ matrix.project }})
     needs: e2e-server

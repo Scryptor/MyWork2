@@ -15,7 +15,6 @@
 	let {
 		open = $bindable(false),
 		title,
-		width = 'min(64rem, 100vw - 4rem)',
 		header,
 		children,
 		footer,
@@ -23,7 +22,6 @@
 	}: {
 		open: boolean;
 		title: string;
-		width?: string;
 		header?: Snippet;
 		children: Snippet;
 		footer?: Snippet;
@@ -98,7 +96,6 @@
 			onOpenAutoFocus={focusFirstField}
 			bind:ref={content}
 			class="mw-dialog mw-sheet {display.phone ? 'phone' : ''}"
-			style="--sheet-width: {width}"
 		>
 			<div class="mw-dialog-head">
 				<Dialog.Title class="mw-dialog-title" level={2}>{title}</Dialog.Title>

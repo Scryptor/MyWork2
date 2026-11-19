@@ -11,7 +11,12 @@ import {
 	uniq,
 	uniqPhone
 } from './support/api';
-import { expectTidyLayout, SCREEN_CASES, type ScreenCase } from './support/layout';
+import {
+	expectTidyLayout,
+	SCREEN_CASES,
+	scrollBodiesToEnd,
+	type ScreenCase
+} from './support/layout';
 
 // Every screen case (spec 5.3) goes through the main scenes on one page and checks the geometry; each
 // scene leaves a screenshot `layout-<case>-<scene>.png` for a person to look at (not compared with a
@@ -141,8 +146,16 @@ async function makeSeed(request: APIRequestContext): Promise<Seed> {
 	return { marker, point, full: full.id, ready: issuable.id, client };
 }
 
-// Once per worker: the scenes only look at these orders.
+// Once per worker: the scenes only look at these orders. A rejected seed is forgotten, so the next test
+// seeds again instead of failing on the same rejection.
 let seeded: Promise<Seed> | undefined;
+function seedOnce(request: APIRequestContext): Promise<Seed> {
+	seeded ??= makeSeed(request).catch((e: unknown) => {
+		seeded = undefined;
+		throw e;
+	});
+	return seeded;
+}
 
 /** No requests in flight for a moment, fonts loaded, transitions done: the screen is still. */
 async function settle(page: Page, pending: () => number) {
@@ -183,6 +196,15 @@ async function scene(
 		await settle(page, pending);
 		await page.screenshot({ path: test.info().outputPath(`layout-${c.name}-${name}.png`) });
 		await expectTidyLayout(page, bars, { rootPx: c.rootPx, band: c.band });
+		// The bodies of panels and dialogs that scroll: once more at their end, where the last fields are.
+		if ((await scrollBodiesToEnd(page)) > 0) {
+			await settle(page, pending);
+			await expectTidyLayout(page, bars, {
+				rootPx: c.rootPx,
+				band: c.band,
+				label: ' [scrolled to the end]'
+			});
+		}
 	});
 }
 
@@ -308,12 +330,16 @@ async function phoneScenes(page: Page, c: ScreenCase, seed: Seed, pending: () =>
 
 for (const c of SCREEN_CASES) {
 	test.describe(c.name, () => {
-		test.use({ viewport: c.viewport, screen: c.screen, deviceScaleFactor: c.dpr });
+		test.use({
+			viewport: c.viewport,
+			screen: c.screen,
+			deviceScaleFactor: c.dpr,
+			...(c.touch ? { hasTouch: true, isMobile: true } : {})
+		});
 
 		test('scenes', async ({ page, request }) => {
 			test.setTimeout(90_000);
-			seeded ??= makeSeed(request);
-			const seed = await seeded;
+			const seed = await seedOnce(request);
 			// Before the program starts: the manual size of the case and the point of this device.
 			await page.addInitScript(
 				({ scale, point }) => {
@@ -340,6 +366,13 @@ for (const c of SCREEN_CASES) {
 				).toBeVisible();
 			else await expect(grid.getByRole('row').nth(12)).toBeVisible();
 			await scene(page, c, 'orders', listBars(), pending);
+			// A finger cannot hover: the card's whole title is on the screen, not only in its hint.
+			if (c.touch) {
+				const title = page.getByRole('main').locator('.card .title').first();
+				await expect(title).toBeVisible();
+				const cut = await title.evaluate((el) => el.scrollWidth > el.clientWidth + 1);
+				expect(cut, 'the title of the card is cut on a touch screen').toBe(false);
+			}
 
 			// The order panel over the list (on a phone, the whole screen).
 			const panel = await openOrderPanel(page, c, seed, seed.full);

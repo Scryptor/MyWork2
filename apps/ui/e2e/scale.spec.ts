@@ -30,7 +30,7 @@ test.describe('1366x700 screen, manual 150 %', () => {
 		await page.goto('/orders');
 		const nav = page.getByRole('navigation', { name: 'Разделы' });
 		await expect(nav.getByRole('link', { name: 'Заказы' })).toBeVisible();
-		await expect(nav.locator('.label')).toHaveCount(0);
+		await expect(nav.getByText('Заказы')).toHaveCount(0);
 		const fits = await page.evaluate(
 			() => document.documentElement.scrollWidth <= window.innerWidth
 		);
@@ -40,7 +40,7 @@ test.describe('1366x700 screen, manual 150 %', () => {
 	test('a wider window brings the full menu back without a reload', async ({ page }) => {
 		await page.goto('/orders');
 		const nav = page.getByRole('navigation', { name: 'Разделы' });
-		await expect(nav.locator('.label')).toHaveCount(0);
+		await expect(nav.getByText('Заказы')).toHaveCount(0);
 		await page.setViewportSize({ width: 1920, height: 1010 });
 		await expect(nav.getByText('Заказы')).toBeVisible();
 		await expect(page.locator('html')).toHaveAttribute('data-width', 'xl');

@@ -60,7 +60,9 @@ export function matchShortcut(e: KeyboardEvent, spec: string, opts?: { mac?: boo
 	if (!!e.shiftKey !== s.shift) return false;
 	if (s.key === '/') return e.key === '/' || e.code === 'Slash';
 	if (/^[A-Za-z]$/.test(s.key)) return e.code === `Key${s.key.toUpperCase()}`;
-	if (/^\d$/.test(s.key)) return e.code === `Digit${s.key}` || e.code === `Numpad${s.key}`;
+	// The numpad counts only for «Mod+0» (the size reset); other digits are the number row.
+	if (/^\d$/.test(s.key))
+		return e.code === `Digit${s.key}` || (s.key === '0' && s.mod && e.code === 'Numpad0');
 	return e.key === s.key;
 }
 

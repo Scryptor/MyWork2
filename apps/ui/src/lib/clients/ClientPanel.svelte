@@ -392,7 +392,7 @@
 	}
 	@media (pointer: coarse) {
 		.link {
-			min-height: 2.75rem;
+			min-height: var(--control-md);
 		}
 	}
 </style>

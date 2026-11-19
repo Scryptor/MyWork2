@@ -38,7 +38,7 @@
 	inset: 0 0 0 auto;
 	translate: none;
 	z-index: var(--z-sheet);
-	width: var(--sheet-width);
+	width: min(var(--sheet-width), 100vw - 4rem);
 	max-height: none;
 	border-width: 0 0 0 1px;
 	border-radius: var(--radius-lg) 0 0 var(--radius-lg);
@@ -136,8 +136,8 @@
 }
 @media (pointer: coarse) {
 	.mw-dialog-close {
-		min-width: 2.75rem;
-		min-height: 2.75rem;
+		min-width: var(--control-md);
+		min-height: var(--control-md);
 	}
 }
 

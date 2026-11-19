@@ -167,7 +167,7 @@
 	}
 	@media (pointer: coarse) {
 		.action {
-			min-height: 2.75rem;
+			min-height: var(--control-md);
 		}
 	}
 	@keyframes toast-in {

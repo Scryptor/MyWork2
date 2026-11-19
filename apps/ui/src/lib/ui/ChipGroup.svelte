@@ -123,7 +123,7 @@
 	@media (pointer: coarse) {
 		.chip,
 		.draft {
-			min-height: 2.75rem;
+			min-height: var(--control-md);
 			font-size: max(16px, var(--text-lg));
 		}
 	}

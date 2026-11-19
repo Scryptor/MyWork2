@@ -63,8 +63,8 @@
 	}
 	@media (pointer: coarse) {
 		.ib {
-			min-width: 2.75rem;
-			min-height: 2.75rem;
+			min-width: var(--control-md);
+			min-height: var(--control-md);
 		}
 	}
 	.secondary {

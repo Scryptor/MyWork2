@@ -2,7 +2,10 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { flushSync } from 'svelte';
 import { DEFAULT_PREFS, display, prefs } from './prefs.svelte.js';
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+	vi.restoreAllMocks();
+	vi.unstubAllGlobals();
+});
 
 function stubMatchMedia() {
 	const added: Record<string, number> = {};
@@ -116,8 +119,6 @@ it('stop() removes every listener it added', () => {
 	const res = Object.keys(added).find((q) => q.startsWith('(resolution'));
 	expect(res).toBeDefined();
 	expect(removed[res!]).toBe(1);
-	addWin.mockRestore();
-	removeWin.mockRestore();
 });
 
 it('a screen change event updates data-width and --ui-scale', async () => {

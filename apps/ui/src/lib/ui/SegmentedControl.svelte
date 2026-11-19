@@ -65,7 +65,7 @@
 	}
 	@media (pointer: coarse) {
 		label {
-			min-height: 2.75rem;
+			min-height: var(--control-md);
 		}
 	}
 	label:hover:not(.on) {

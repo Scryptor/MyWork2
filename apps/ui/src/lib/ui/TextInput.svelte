@@ -123,8 +123,8 @@
 	@media (pointer: coarse) {
 		.reveal {
 			justify-content: center;
-			min-width: 2.75rem;
-			min-height: 2.75rem;
+			min-width: var(--control-md);
+			min-height: var(--control-md);
 			margin: 0 calc(-1 * var(--space-3));
 		}
 	}

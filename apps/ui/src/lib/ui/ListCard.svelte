@@ -129,6 +129,15 @@
 	.title {
 		font-weight: 500;
 	}
+	/* Touch has no hover, so the `title` hint is out of reach: the whole title is shown, wrapped. */
+	@media (pointer: coarse) {
+		.title {
+			overflow: visible;
+			text-overflow: clip;
+			white-space: normal;
+			overflow-wrap: anywhere;
+		}
+	}
 	.meta {
 		color: var(--text-3);
 		font-size: var(--text-sm);
