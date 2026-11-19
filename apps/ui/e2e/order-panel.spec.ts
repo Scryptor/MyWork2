@@ -539,6 +539,28 @@ test.describe('on a phone', () => {
 		await expect(toastsOf(page)).toContainText(`№ ${o.id} → Готов`);
 		expect((await fetchOrder(request, o.id)).status_id).toBe(await statusId(request, 'Готов'));
 	});
+	// A narrow window with a mouse: the status button keeps the compact size, the rows of the status list
+	// (a phone-only dialog) keep the finger size.
+	test('status button is compact and its choice rows are finger-sized on a mouse', async ({
+		page,
+		request
+	}) => {
+		const m = uniq('M');
+		const o = await createOrder(request, { model: m });
+		await page.goto(`/orders?q=${encodeURIComponent(m)}`);
+		await page.getByRole('button', { name: new RegExp(`№ ${o.id}(?!\\d)`) }).click();
+		const panel = panelOf(page, o.id);
+		const button = panel.getByRole('button', { name: /^Статус/ });
+		await expect(button).toBeVisible();
+		const trigger = await button.boundingBox();
+		expect(trigger!.height).toBeGreaterThanOrEqual(29);
+		expect(trigger!.height).toBeLessThan(36);
+		await button.click();
+		const list = page.getByRole('dialog', { name: 'Статус' });
+		const row = await list.getByRole('button', { name: 'Готов', exact: true }).boundingBox();
+		expect(row!.height).toBeGreaterThanOrEqual(43.5);
+		expect(row!.height).toBeLessThan(50);
+	});
 	test('bottom navigation and a full-screen panel with «←»', async ({ page, request }) => {
 		const m = uniq('M');
 		const o = await createOrder(request, { model: m });

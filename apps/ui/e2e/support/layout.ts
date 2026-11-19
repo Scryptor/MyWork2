@@ -399,7 +399,13 @@ function inPage({ check, bars, barNames, rootPx, band }: CheckArg): string[] {
 		// No box but a table is wider than its content box, `main` included: what sticks out is a sideways
 		// scroll away (auto, scroll) or lost (hidden, clip).
 		for (const el of document.body.querySelectorAll('*')) {
-			if (el.matches(TABLE) || el.closest(TABLE) || el.matches(STRIP) || !visible(el)) continue;
+			if (
+				el.matches(TABLE) ||
+				el.closest(TABLE) ||
+				(el.matches(STRIP) && scrollsSideways(el)) ||
+				!visible(el)
+			)
+				continue;
 			const s = getComputedStyle(el);
 			if (!['auto', 'scroll', 'hidden', 'clip'].includes(s.overflowX)) continue;
 			if (el.scrollWidth <= el.clientWidth + 1) continue;
@@ -541,6 +547,32 @@ export async function scrollBodiesToEnd(page: Page): Promise<number> {
 			() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))
 		);
 	return moved;
+}
+
+/** The offenders of every check, by its title: what `expectTidyLayout` asserts to be empty. */
+export async function layoutOffenders(
+	page: Page,
+	bars: Locator[],
+	{ rootPx, band }: { rootPx?: number; band?: ScreenCase['band'] } = {}
+): Promise<{ title: string; offenders: string[] }[]> {
+	const handles = await Promise.all(bars.map((b) => b.elementHandles()));
+	try {
+		const found: { title: string; offenders: string[] }[] = [];
+		for (const { check, title } of CHECKS) {
+			if (check === 'root' && rootPx === undefined) continue;
+			const offenders = await page.evaluate(inPage, {
+				check,
+				bars: handles,
+				barNames: bars.map((b) => b.toString()),
+				rootPx: rootPx ?? 0,
+				band: band ?? ''
+			});
+			found.push({ title, offenders });
+		}
+		return found;
+	} finally {
+		await Promise.all(handles.flat().map((h) => h.dispose()));
+	}
 }
 
 /**

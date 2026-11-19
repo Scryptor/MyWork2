@@ -81,6 +81,7 @@
 		justify-content: center;
 		gap: var(--space-0-5);
 		min-width: 0;
+		/* The bar exists on a phone only, so the finger size is unconditional here. */
 		min-height: var(--touch-target);
 		padding: var(--space-1) 0;
 		border: 0;

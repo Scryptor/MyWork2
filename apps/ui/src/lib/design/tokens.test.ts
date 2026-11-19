@@ -165,6 +165,20 @@ describe('tokens: sizes live only here', () => {
 			.map(([p]) => p);
 		expect(bad).toEqual([]);
 	});
+	// The unconditional finger sizes: the phone-only parts, whatever the pointer (a mouse on a narrow window).
+	it('uses --touch-target unconditionally only in the status choice rows and the bottom navigation', () => {
+		const users = outside.filter(([, src]) => /--touch-target/.test(strip(src))).map(([p]) => p);
+		expect(users.sort()).toEqual([
+			'/src/lib/ui/StatusPicker.svelte',
+			'/src/lib/ui/shell/BottomNav.svelte'
+		]);
+		const picker = strip(files['/src/lib/ui/StatusPicker.svelte']!);
+		const rule = (sel: string) => new RegExp(`\\n\\t${sel} \\{[^}]*\\}`).exec(picker)?.[0] ?? '';
+		expect(rule('\\.choice')).toContain('min-height: var(--touch-target)');
+		expect(rule('\\.trigger')).toContain('min-height: var(--control-md)');
+		const nav = strip(files['/src/lib/ui/shell/BottomNav.svelte']!);
+		expect(/\n\t\.item \{[^}]*min-height: var\(--touch-target\)/.test(nav)).toBe(true);
+	});
 	it('styles no global .btn.named', () => {
 		const bad = outside.filter(([, src]) => /\.btn\.named/.test(strip(src))).map(([p]) => p);
 		expect(bad).toEqual([]);
