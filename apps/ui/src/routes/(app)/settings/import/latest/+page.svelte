@@ -19,6 +19,8 @@
 	const t = ru.legacy;
 	let job = $state.raw<ImportJob | null>(null);
 	let problem = $state<string | null>(null);
+	/** The import wrote users of its own: not a failure, a sign-in. */
+	let signin = $state(false);
 	let none = $state(false);
 	let gone = false;
 	let stop: (() => void) | null = null;
@@ -42,7 +44,7 @@
 		// The base was written (the files may wait): its report says so.
 		else if (s.kind === 'failed' && s.importId !== null) void open(s.importId);
 		else if (s.kind === 'failed' || s.kind === 'forbidden') problem = s.message;
-		else if (s.kind === 'signin') problem = t.signIn;
+		else if (s.kind === 'signin') signin = true;
 		else void latestOfThePast();
 	}
 
@@ -73,6 +75,8 @@
 {#if problem}
 	<Callout tone="danger">{problem}</Callout>
 	<div><Button href={resolve('settings/import')}>{t.past}</Button></div>
+{:else if signin}
+	<Callout tone="info">{t.signIn}</Callout>
 {:else if none}
 	<p class="hint">{t.none}</p>
 {:else if job}

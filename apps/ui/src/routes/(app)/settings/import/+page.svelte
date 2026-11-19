@@ -33,6 +33,8 @@
 	let replaceable = $state<boolean | null>(null);
 	/** Why not, when the server says it (a server on the network). */
 	let notHere = $state<string | null>(null);
+	/** The server did not say which base it has (no connection, say): not a reason to say «только SQLite». */
+	let unknown = $state<string | null>(null);
 	let wizard = $state(false);
 	let resume = $state.raw<ImportJob | null>(null);
 
@@ -51,6 +53,7 @@
 			resume = job.value;
 			wizard = true;
 		}
+		if (about.status === 'rejected' && notHere === null) unknown = errorMessage(about.reason);
 		replaceable =
 			notHere === null && about.status === 'fulfilled' && about.value.database === 'SQLite';
 	});
@@ -72,6 +75,8 @@
 		</div>
 	{:else if notHere}
 		<Callout tone="info">{notHere}</Callout>
+	{:else if unknown}
+		<Callout tone="danger">{unknown}</Callout>
 	{:else if replaceable === false}
 		<p class="hint">{t.sqliteOnly}</p>
 	{/if}

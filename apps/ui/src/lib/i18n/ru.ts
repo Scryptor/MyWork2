@@ -578,7 +578,8 @@ export const ru = {
 		empty: 'Начать с пустой базы',
 		emptyHint: 'Название, первая точка и мастера; остальное — потом в настройках',
 		import: 'Перенести из MyWork 2',
-		importHint: 'Заказы, клиенты, справочники и файлы из папки старой программы',
+		importHint:
+			'Заказы, клиенты, справочники и файлы из папки старой программы; MyWork 2 перед этим закройте',
 		firmName: 'Название сервиса',
 		firmNameHint: 'Для печатных форм; можно поменять в настройках',
 		point: 'Первая точка',
@@ -592,7 +593,8 @@ export const ru = {
 	legacy: {
 		title: 'Перенос из MyWork 2',
 		folder: 'Путь к папке MyWork 2',
-		folderHint: 'Полный путь к папке, где лежит baza.sqlite',
+		folderHint:
+			'Полный путь к папке, где лежит baza.sqlite. Перед переносом закройте MyWork 2: иначе копия базы может оказаться неполной',
 		pick: 'Выбрать папку…',
 		folderRequired: 'Укажите папку MyWork 2',
 		check: 'Проверить',
@@ -603,9 +605,16 @@ export const ru = {
 		files: 'Файлов',
 		filesValue: (count: string, size: string) => `${count} (${size})`,
 		cannot: 'Перенести нельзя',
+		/** The base already has data (an administrator, say): the transfer replaces it, after the confirmation. */
+		replaceOffer: 'Перенести с заменой',
 		start: 'Перенести',
 		replaceTitle: 'Заменить данные?',
-		replaceText: 'Данные будут заменены, перед этим сделается копия.',
+		/** `dir`: where the server puts the copy of the current data; null — not known here. */
+		replaceText: (dir: string | null) =>
+			`Данные программы заменятся данными из MyWork 2. Пользователи и пароли станут такими, как в MyWork 2, ` +
+			`и всем придётся войти заново. Нынешние данные сохранятся копией в ${
+				dir === null ? 'папке backups внутри папки данных программы' : `папке ${dir}`
+			}.`,
 		replace: 'Заменить',
 		progress: 'Ход переноса',
 		stages: {
@@ -622,7 +631,8 @@ export const ru = {
 		failed: 'Перенос не удался',
 		tryAgain: 'Попробовать снова',
 		openReport: 'Открыть отчёт',
-		signIn: 'Перенос записан. Войдите под пользователем из MyWork 2, чтобы увидеть отчёт',
+		signIn:
+			'Перенос записан. Чтобы увидеть отчёт, войдите с логином и паролем из MyWork 2: логин — имя пользователя, которое выбиралось из списка в MyWork 2',
 		signInButton: 'Войти',
 		report: 'Отчёт о переносе',
 		reportOf: (date: string) => `Перенос от ${date}`,
@@ -639,7 +649,7 @@ export const ru = {
 		orderNumber: (id: number) => `№ ${id}`,
 		showAll: (n: number) => `Показать все (${n})`,
 		filesPending:
-			'Файлы заказов ещё в промежуточной папке: программа поставит их на место при следующем запуске',
+			'Файлы заказов ещё в промежуточной папке. При следующем запуске программа попробует поставить их на место; что останется, покажет этот отчёт',
 		save: 'Сохранить отчёт',
 		toOrders: 'К заказам',
 		notFound: 'Такого импорта нет',

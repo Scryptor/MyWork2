@@ -29,7 +29,8 @@ test.afterAll(async () => {
 });
 
 const STAGES = ['Чтение базы', 'Разбор', 'Копирование файлов', 'Запись', 'Установка файлов'];
-const SIGN_IN = 'Перенос записан. Войдите под пользователем из MyWork 2, чтобы увидеть отчёт';
+const SIGN_IN =
+	'Перенос записан. Чтобы увидеть отчёт, войдите с логином и паролем из MyWork 2: логин — имя пользователя, которое выбиралось из списка в MyWork 2';
 
 const pathField = (page: Page) => page.getByRole('textbox', { name: 'Путь к папке MyWork 2' });
 
@@ -168,7 +169,9 @@ test('«Настройки → Импорт из MyWork 2»: the past import wit
 	await expect(page.getByRole('region', { name: 'Что нашлось' })).toBeVisible();
 	await page.getByRole('button', { name: 'Перенести' }).click();
 	const confirm = page.getByRole('alertdialog', { name: 'Заменить данные?' });
-	await expect(confirm).toContainText('Данные будут заменены, перед этим сделается копия');
+	await expect(confirm).toContainText('Пользователи и пароли станут такими, как в MyWork 2');
+	// The folder of the copy is the server's own: `<data folder>/backups`.
+	await expect(confirm).toContainText(/Нынешние данные сохранятся копией в папке \S+backups\./);
 	await confirm.getByRole('button', { name: 'Заменить' }).click();
 
 	// The replacement closed every session, this one too.

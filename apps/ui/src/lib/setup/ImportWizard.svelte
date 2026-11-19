@@ -1,7 +1,9 @@
 <!-- The transfer from MyWork 2 (spec 6.9): 1) the folder («Выбрать папку…» in the desktop program, a path
      field in a browser); 2) «Проверить» — what was found or why not; 3) «Перенести» (with `replace` after a
      confirmation: the data is replaced, a copy is made first); 4) the stages, asked for once a second; 5) the
-     report, on its own screen. `resume`: an import under way when the screen opened (a reloaded page, another
+     report, on its own screen. A base that is not empty (the first run after `mw-server create-admin`): the
+     server answers `replace_required` (SQLite), and «Перенести с заменой» checks again for the replacement,
+     with the same confirmation. `resume`: an import under way when the screen opened (a reloaded page, another
      tab) — its progress at once. Once the base is written it may have users of its own: then one of them signs
      in, and the sign-in leads to the report. -->
 <script lang="ts">
@@ -58,6 +60,9 @@
 	let followed = $state.raw<Followed | null>(null);
 	let notice = $state<string | null>(null);
 	let stop: (() => void) | null = null;
+	/** The replacement chosen here, after the server said the base is not empty. */
+	let chosenReplace = $state(false);
+	const replacing = $derived(replace || chosenReplace);
 
 	function follow(from: ImportJob) {
 		stop?.();
@@ -101,9 +106,13 @@
 			pathError = t.folderRequired;
 			return;
 		}
+		await runCheck(p);
+	}
+
+	async function runCheck(p: string) {
 		checking = true;
 		try {
-			found = await checkLegacyFolder({ path: p, replace });
+			found = await checkLegacyFolder({ path: p, replace: replacing });
 			checkedPath = p;
 		} catch (err) {
 			failure = errorMessage(err);
@@ -112,12 +121,20 @@
 		}
 	}
 
+	/** The base has data: the same folder again, for the replacement. */
+	function chooseReplace() {
+		chosenReplace = true;
+		const p = checkedPath;
+		edited();
+		void runCheck(p);
+	}
+
 	async function start() {
 		if (!found?.ok || starting) return;
 		starting = true;
 		failure = null;
 		try {
-			follow(await startLegacyImport({ path: checkedPath, replace }));
+			follow(await startLegacyImport({ path: checkedPath, replace: replacing }));
 		} catch (err) {
 			if (err instanceof ApiError && err.status === 409) {
 				// Another window started one: this one shows its progress.
@@ -184,7 +201,14 @@
 		</div>
 	</form>
 	{#if failure}<Callout tone="danger">{failure}</Callout>{/if}
-	{#if found && !found.ok}
+	{#if found && !found.ok && found.replace_required}
+		<Callout tone="warning" title={t.cannot}>
+			{found.problem}
+			{#snippet actions()}
+				<Button busy={checking} onclick={chooseReplace}>{t.replaceOffer}</Button>
+			{/snippet}
+		</Callout>
+	{:else if found && !found.ok}
 		<Callout tone="danger" title={t.cannot}>{found.problem}</Callout>
 	{:else if found}
 		<section class="found" aria-labelledby="{uid}-found">
@@ -194,7 +218,7 @@
 				<Button
 					variant="primary"
 					busy={starting}
-					onclick={() => (replace ? (confirmOpen = true) : void start())}>{t.start}</Button
+					onclick={() => (replacing ? (confirmOpen = true) : void start())}>{t.start}</Button
 				>
 			</div>
 		</section>
@@ -227,11 +251,11 @@
 	</div>
 {/if}
 
-{#if replace}
+{#if replacing}
 	<ConfirmDialog
 		bind:open={confirmOpen}
 		title={t.replaceTitle}
-		description={t.replaceText}
+		description={t.replaceText(found?.backups_dir ?? null)}
 		confirmLabel={t.replace}
 		onconfirm={start}
 	/>
