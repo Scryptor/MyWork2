@@ -291,6 +291,8 @@ impl Core {
         };
         let _gate = self.settings_gate.lock().await;
         tx.commit().await?;
+        #[cfg(test)]
+        tests::pause_after_commit(settings.master_percent).await;
         *self.settings.write().unwrap_or_else(|e| e.into_inner()) = settings;
         Ok(())
     }
@@ -539,5 +541,85 @@ impl Core {
         .await?;
         self.commit_with_settings(tx, Some(new.clone())).await?;
         Ok(new)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
+
+    use tokio::sync::Notify;
+
+    use crate::{Actor, Core, FixedClock, SettingsPatch};
+
+    /// Запись с этим `master_percent` остановится после `commit`, до записи в кэш: сообщит
+    /// `reached` и подождёт `release` (один раз).
+    struct Pause {
+        percent: u8,
+        reached: Arc<Notify>,
+        release: Arc<Notify>,
+    }
+    static PAUSE_AFTER_COMMIT: Mutex<Vec<Pause>> = Mutex::new(Vec::new());
+
+    pub(super) async fn pause_after_commit(percent: u8) {
+        let pause = {
+            let mut guard = PAUSE_AFTER_COMMIT.lock().unwrap();
+            let at = guard.iter().position(|p| p.percent == percent);
+            at.map(|i| guard.remove(i))
+        };
+        if let Some(p) = pause {
+            p.reached.notify_one();
+            p.release.notified().await;
+        }
+    }
+
+    async fn write(core: &Core, percent: u8) {
+        core.update_settings(
+            &Actor::unrestricted("Тест"),
+            SettingsPatch {
+                master_percent: Some(percent),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    }
+
+    /// Запись A зафиксирована, но ещё не положила значение в кэш; запись B начинается после
+    /// её фиксации. Кэш после обеих равен последнему зафиксированному (B), то есть базе.
+    #[tokio::test]
+    async fn cache_equals_the_last_committed_write_even_if_an_earlier_one_is_slow() {
+        for (label, db) in mw_db::testing::all_backends().await {
+            let clock = Arc::new(FixedClock::new(chrono::Utc::now()));
+            let core = Core::open(db.clone(), clock.clone(), "UTC").await.unwrap();
+            let (a, b) = (61u8, 62u8);
+            let reached = Arc::new(Notify::new());
+            let release = Arc::new(Notify::new());
+            PAUSE_AFTER_COMMIT.lock().unwrap().push(Pause {
+                percent: a,
+                reached: reached.clone(),
+                release: release.clone(),
+            });
+            let first = {
+                let core = core.clone();
+                tokio::spawn(async move { write(&core, a).await })
+            };
+            reached.notified().await;
+            // A в базе, в кэше ещё нет. B берёт блокировку записи (свободна) и доходит до
+            // фиксации: с `settings_gate` она ждёт A, без него — обгоняет и кладёт своё значение.
+            let second = {
+                let core = core.clone();
+                tokio::spawn(async move { write(&core, b).await })
+            };
+            tokio::time::sleep(Duration::from_millis(300)).await;
+            release.notify_one();
+            first.await.unwrap();
+            second.await.unwrap();
+            let stored = Core::open(db, clock, "UTC").await.unwrap();
+            assert_eq!(stored.settings().master_percent, b, "{label}");
+            assert_eq!(core.settings().master_percent, b, "{label}: кэш устарел");
+        }
     }
 }

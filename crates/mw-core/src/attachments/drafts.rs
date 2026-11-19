@@ -663,9 +663,19 @@ mod tests {
             reached.notified().await;
             request.abort();
             request.await.unwrap_err();
+            // Зависший перенос не держит остановку вечно: по сроку — `false` и предупреждение.
+            assert!(
+                !core
+                    .wait_background(std::time::Duration::from_millis(100))
+                    .await,
+                "{label}"
+            );
             let waiter = {
                 let core = core.clone();
-                tokio::spawn(async move { core.wait_background().await })
+                tokio::spawn(async move {
+                    core.wait_background(std::time::Duration::from_secs(30))
+                        .await
+                })
             };
             tokio::time::sleep(std::time::Duration::from_millis(150)).await;
             assert!(
@@ -673,10 +683,11 @@ mod tests {
                 "{label}: ожидание не дождалось переноса"
             );
             release.notify_one();
-            tokio::time::timeout(std::time::Duration::from_secs(10), waiter)
+            let finished = tokio::time::timeout(std::time::Duration::from_secs(10), waiter)
                 .await
                 .unwrap()
                 .unwrap();
+            assert!(finished, "{label}");
             let f = core
                 .attachment_file(&actor, a.id, AttachmentVariant::Full)
                 .await

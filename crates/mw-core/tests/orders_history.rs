@@ -259,27 +259,26 @@ async fn warranty_case_day_lies_between_the_issue_and_now() -> Result<(), CoreEr
     Ok(())
 }
 
+/// Удалённый заказ отдаётся (`get_order`), поэтому и его история: в ней видно удаление.
 #[tokio::test]
-async fn history_of_a_deleted_order_is_not_found() -> Result<(), CoreError> {
+async fn history_of_a_deleted_order_shows_the_deletion() -> Result<(), CoreError> {
     for t in cores().await {
         let o = t.core.create_order(&admin(), sample_new_order()).await?;
-        assert!(
-            t.core
-                .order_history(&admin(), o.id, PageRequest::default())
-                .await
-                .is_ok()
-        );
         t.core.delete_order(&admin(), o.id, 1).await?;
-        assert!(
-            matches!(
-                t.core
-                    .order_history(&admin(), o.id, PageRequest::default())
-                    .await,
-                Err(CoreError::NotFound { .. })
-            ),
-            "{}",
-            t.label
-        );
+        assert!(t.core.get_order(&admin(), o.id).await?.deleted_at.is_some());
+        let page = t
+            .core
+            .order_history(&admin(), o.id, PageRequest::default())
+            .await?;
+        assert_eq!(page.total, 2, "{}", t.label);
+        assert_eq!(page.items[0].action, "order.deleted", "{}", t.label);
+        assert_eq!(page.items[1].action, "order.created");
+        assert!(matches!(
+            t.core
+                .order_history(&admin(), 9999, PageRequest::default())
+                .await,
+            Err(CoreError::NotFound { .. })
+        ));
     }
     Ok(())
 }

@@ -90,11 +90,22 @@ impl Core {
         self.clock.now_utc()
     }
 
-    /// Ждёт фоновые задачи (перенос файлов черновиков): вызывается перед закрытием БД.
-    pub async fn wait_background(&self) {
+    /// Ждёт фоновые задачи (перенос файлов черновиков) не дольше `limit`: вызывается перед
+    /// закрытием БД. Зависшая задача не должна держать остановку — по истечении срока пишет
+    /// предупреждение и возвращает `false`.
+    pub async fn wait_background(&self, limit: std::time::Duration) -> bool {
         self.background.close();
-        self.background.wait().await;
+        let done = tokio::time::timeout(limit, self.background.wait())
+            .await
+            .is_ok();
+        if !done {
+            tracing::warn!(
+                "фоновые задачи не завершились за {} с: база закрывается без них",
+                limit.as_secs_f32()
+            );
+        }
         self.background.reopen();
+        done
     }
 
     /// Копия настроек из кэша.

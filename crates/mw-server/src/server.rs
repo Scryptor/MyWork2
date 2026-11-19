@@ -157,7 +157,7 @@ impl Server {
         });
         cleanup.abort();
         // Перенос файлов черновиков, начатый до остановки, доходит до конца раньше закрытия БД.
-        core.wait_background().await;
+        core.wait_background(BACKGROUND_WAIT).await;
         drop(core);
         if let Err(e) = db.close().await {
             tracing::warn!("не удалось закрыть соединения с базой: {e}");
@@ -166,6 +166,9 @@ impl Server {
         result
     }
 }
+
+/// Сколько ждать перенос файлов черновиков при остановке, прежде чем закрыть базу.
+const BACKGROUND_WAIT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// Срок жизни черновика приёма с вложениями.
 const DRAFT_TTL_HOURS: i64 = 24;

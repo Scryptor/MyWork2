@@ -16,12 +16,8 @@ impl Core {
         page: PageRequest,
     ) -> Result<Page<AuditEntry>, CoreError> {
         validate_page(page.limit, page.offset)?;
-        // Удалённый заказ для истории — как несуществующий.
-        let live = order::Entity::find_by_id(id)
-            .filter(order::Column::DeletedAt.is_null())
-            .one(&self.db)
-            .await?;
-        if live.is_none() {
+        // Удалённый заказ, как и в `get_order`, отдаётся: в истории видно, кто его удалил.
+        if order::Entity::find_by_id(id).one(&self.db).await?.is_none() {
             return Err(CoreError::NotFound {
                 entity: "заказ",
                 id,
