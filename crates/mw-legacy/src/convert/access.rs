@@ -307,7 +307,7 @@ fn grant_users_manage(roles: &mut Roles, users: &[ImportedUser], w: &mut Warning
             "",
             "",
             &format!(
-                "Ни у одной роли пользователей не было права «Пользователи и права»: оно выдано роли «{}». Если войти не удаётся, создайте администратора командой mw-server create-admin.",
+                "Ни у одной роли пользователей не было права «Пользователи и права»: оно выдано роли «{}». Если войти не удаётся, создайте администратора командой mw-server create-admin (если это программа для компьютера — обратитесь к тому, кто её устанавливал).",
                 role.name
             ),
         );
@@ -380,5 +380,10 @@ mod tests {
                 && role.permissions.contains(Permission::AuditView)
         );
         assert_eq!(codes(&w31), [("users_manage_granted", "Мастера")]);
+        // Выход — и для сервера, и для программы на компьютере, где команды под рукой нет.
+        let message = &w31.list()[0].message;
+        assert!(message.contains("mw-server create-admin"), "{message}");
+        assert!(message.contains("программ"), "{message}");
+        assert!(message.contains("устанавливал"), "{message}");
     }
 }
