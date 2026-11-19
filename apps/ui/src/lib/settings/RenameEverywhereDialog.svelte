@@ -15,12 +15,15 @@
 		to,
 		/** «в 3 заказах» / «у 2 клиентов»: how many records have the value. */
 		where,
+		/** A warranty: the orders keep their term, so the change in them is off by default. */
+		warranty = false,
 		onconfirm
 	}: {
 		open: boolean;
 		from: string;
 		to: string;
 		where: string;
+		warranty?: boolean;
 		/** The text of a mistake, or null when it went through (the dialog closes). */
 		onconfirm: (inOrders: boolean) => Promise<string | null>;
 	} = $props();
@@ -33,7 +36,7 @@
 	$effect(() => {
 		if (!open) return;
 		untrack(() => {
-			everywhere = true;
+			everywhere = !warranty;
 			error = null;
 		});
 	});
@@ -63,6 +66,7 @@
 	dismissible={!busy}
 >
 	<Checkbox bind:checked={everywhere} label={t.renameEverywhere(where)} disabled={busy} />
+	{#if warranty}<p class="note">{t.warrantyNote}</p>{/if}
 	{#if error}<Callout tone="danger">{error}</Callout>{/if}
 	{#snippet footer()}
 		<Button variant="secondary" disabled={busy} onclick={() => (open = false)}>
@@ -71,3 +75,11 @@
 		<Button variant="primary" {busy} onclick={() => void confirm()}>{t.rename}</Button>
 	{/snippet}
 </Dialog>
+
+<style>
+	.note {
+		margin: var(--space-2) 0 0;
+		font-size: var(--text-sm);
+		color: var(--text-3);
+	}
+</style>

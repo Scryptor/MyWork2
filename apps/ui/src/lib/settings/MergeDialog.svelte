@@ -14,6 +14,7 @@
 		rows,
 		countLabel,
 		where,
+		warranty = false,
 		onconfirm
 	}: {
 		open: boolean;
@@ -23,6 +24,8 @@
 		countLabel: (n: number) => string;
 		/** «в заказах» / «у клиентов»: in «Заменить и …». */
 		where: string;
+		/** Warranties: the orders keep their term, so the change in them is off by default. */
+		warranty?: boolean;
 		/** The text of a mistake, or null when it went through (the dialog closes). */
 		onconfirm: (targetId: number, inOrders: boolean) => Promise<string | null>;
 	} = $props();
@@ -43,7 +46,7 @@
 					(best, r) => (best === null || (r.count ?? -1) > (best.count ?? -1) ? r : best),
 					null
 				)?.id ?? null;
-			everywhere = true;
+			everywhere = !warranty;
 			error = null;
 		});
 	});
@@ -83,6 +86,7 @@
 		{/each}
 	</fieldset>
 	<Checkbox bind:checked={everywhere} label={t.mergeEverywhere(where)} disabled={busy} />
+	{#if warranty}<p class="note">{t.warrantyNote}</p>{/if}
 	{#if error}<Callout tone="danger">{error}</Callout>{/if}
 	{#snippet footer()}
 		<Button variant="secondary" disabled={busy} onclick={() => (open = false)}>
@@ -128,5 +132,10 @@
 		font-size: var(--text-sm);
 		color: var(--text-3);
 		white-space: nowrap;
+	}
+	.note {
+		margin: var(--space-2) 0 0;
+		font-size: var(--text-sm);
+		color: var(--text-3);
 	}
 </style>

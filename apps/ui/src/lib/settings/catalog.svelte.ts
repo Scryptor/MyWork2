@@ -69,9 +69,12 @@ export function mergeOrder(full: number[], visibleOrdered: number[]): number[] {
 function mistake(e: unknown): string {
 	if (e instanceof ApiError && e.body) {
 		for (const f of e.body.fields) {
+			// `value` of a rename, `target_id` of a merge: the orders would get another warranty term.
+			if (f.code === 'changes_term') return ru.dictionaries.changesTerm;
 			if (f.field !== 'value') continue;
 			if (f.code === 'duplicate') return ru.dictionaries.duplicate;
 			if (f.code === 'required') return ru.settings.required;
+			if (f.code === 'comma') return ru.dictionaries.comma;
 		}
 	}
 	return errorMessage(e);

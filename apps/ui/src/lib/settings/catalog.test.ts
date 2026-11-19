@@ -138,6 +138,20 @@ describe('createCatalog', () => {
 		expect(await c.add(' ')).toBe('Обязательное поле');
 	});
 
+	it('answers a comma in a list and a change of the warranty term in words', async () => {
+		const c = await loaded();
+		api.add.mockRejectedValueOnce(validation('value', 'comma'));
+		expect(await c.add('Чехол, стекло')).toBe(
+			'В списке запятая разделяет значения — введите одно значение без запятой'
+		);
+		api.rename.mockRejectedValueOnce(validation('value', 'changes_term'));
+		const term =
+			'Срок гарантии в заказах изменился бы — замените значение только в справочнике, без замены в заказах';
+		expect((await c.renameEverywhere(1, '60 дней', true)).error).toBe(term);
+		api.merge.mockRejectedValueOnce(validation('target_id', 'changes_term'));
+		expect((await c.merge(2, [1], true)).error).toBe(term);
+	});
+
 	it('adds, then reads the list and the counts again', async () => {
 		const c = await loaded();
 		expect(await c.add('Delta')).toBeNull();

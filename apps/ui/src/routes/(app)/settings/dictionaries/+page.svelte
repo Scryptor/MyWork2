@@ -65,6 +65,13 @@
 	const nothing = $derived(!catalog.loading && !catalog.loadError && rows.length === 0);
 	const where = $derived(ofClients ? t.atClientsWhere : t.inOrdersWhere);
 	const changedForms = $derived(ofClients ? t.changedClients : t.changedOrders);
+	/** «Мастер» and «Гарантия» are also the defaults of a new order: those follow a rename and a merge. */
+	const followsDefaults = $derived(kind === 'master' || kind === 'warranty');
+
+	/** The program's copy of the settings, after the server moved a default along with its value. */
+	function defaultsMoved() {
+		if (followsDefaults) void app.refreshCatalogs().catch(() => {});
+	}
 
 	function pickKind(k: DictionaryKind | null) {
 		if (!k || k === kind) return;
@@ -100,12 +107,14 @@
 		}
 		const error = await catalog.rename(id, label);
 		if (error) fail(error);
+		else defaultsMoved();
 	}
 
 	async function renameEverywhere(inOrders: boolean): Promise<string | null> {
 		if (!renaming) return null;
 		const r = await catalog.renameEverywhere(renaming.id, renaming.to, inOrders);
 		if (r.error) return r.error;
+		defaultsMoved();
 		toast.show({
 			message: inOrders ? t.renamed(countOf(r.changed, changedForms)) : t.renamedPlain,
 			tone: 'success'
@@ -114,12 +123,14 @@
 	}
 
 	async function merge(targetId: number, inOrders: boolean): Promise<string | null> {
+		// What the dialog showed: a value archived meanwhile (elsewhere) is not merged unseen.
 		const r = await catalog.merge(
 			targetId,
-			selected.filter((id) => id !== targetId),
+			picked.map((p) => p.id).filter((id) => id !== targetId),
 			inOrders
 		);
 		if (r.error) return r.error;
+		defaultsMoved();
 		selected = [];
 		toast.show({
 			message: inOrders ? t.merged(countOf(r.changed, changedForms)) : t.mergedPlain,
@@ -254,11 +265,19 @@
 		from={renaming.from}
 		to={renaming.to}
 		where={renaming.where}
+		warranty={kind === 'warranty'}
 		onconfirm={renameEverywhere}
 	/>
 {/if}
 
-<MergeDialog bind:open={mergeOpen} rows={picked} {countLabel} {where} onconfirm={merge} />
+<MergeDialog
+	bind:open={mergeOpen}
+	rows={picked}
+	{countLabel}
+	{where}
+	warranty={kind === 'warranty'}
+	onconfirm={merge}
+/>
 
 <style>
 	.title {

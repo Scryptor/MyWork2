@@ -1,8 +1,9 @@
-import { render, screen, waitFor } from '@testing-library/svelte';
+import { render, screen, waitFor, within } from '@testing-library/svelte';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '#lib/api/client.js';
 
-// Without «settings_manage» (an imported user, or a role of plan 8) the screen only shows: no form, no
+// «Справочники» as a page. Without «settings_manage» (an imported user, or a role of plan 8) the screen only shows: no form, no
 // boxes, no buttons, no handles and not a single write request. The counts need the right too: the server
 // refuses them, and the screen then does not know them — it does not say «в 0 заказах».
 const api = vi.hoisted(() => ({
@@ -16,19 +17,26 @@ const api = vi.hoisted(() => ({
 	mergeDictionary: vi.fn()
 }));
 vi.mock('#lib/api/catalogs.js', () => api);
+const nav = vi.hoisted(() => ({ kind: 'brand' }));
 vi.mock('$app/state', () => ({
-	page: { url: new URL('http://localhost/settings/dictionaries?kind=brand') }
+	page: {
+		get url() {
+			return new URL(`http://localhost/settings/dictionaries?kind=${nav.kind}`);
+		}
+	}
 }));
 vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
 vi.mock('$app/paths', () => ({ resolve: (p: string) => `/${p}` }));
-const rights = vi.hoisted(() => ({ manage: false }));
-vi.mock('#lib/app/context.svelte.js', () => ({ app: { can: () => rights.manage } }));
+const rights = vi.hoisted(() => ({ manage: false, refreshCatalogs: vi.fn(async () => {}) }));
+vi.mock('#lib/app/context.svelte.js', () => ({
+	app: { can: () => rights.manage, refreshCatalogs: rights.refreshCatalogs }
+}));
 
 import Page from './DictionariesPageHarness.test-helper.svelte';
 
 const item = (id: number, value: string, archived = false) => ({
 	id,
-	kind: 'brand',
+	kind: nav.kind,
 	value,
 	sort_order: id,
 	archived
@@ -48,6 +56,8 @@ const forbidden = () =>
 beforeEach(() => {
 	for (const f of Object.values(api)) f.mockReset();
 	rights.manage = false;
+	rights.refreshCatalogs.mockClear();
+	nav.kind = 'brand';
 	api.listDictionary.mockResolvedValue([item(1, 'Alpha'), item(2, 'Beta'), item(3, 'Old', true)]);
 	api.dictionaryUsage.mockRejectedValue(forbidden());
 });
@@ -97,5 +107,69 @@ describe('«Справочники» when the counts cannot be read', () => {
 		expect(screen.queryAllByText(/^в \d+ заказ/)).toHaveLength(0);
 		expect(screen.getAllByRole('button', { name: 'В архив' })).toHaveLength(2);
 		expect(screen.queryByRole('button', { name: 'Удалить' })).not.toBeInTheDocument();
+	});
+});
+
+describe('«Справочники» for an administrator', () => {
+	beforeEach(() => {
+		rights.manage = true;
+		api.dictionaryUsage.mockResolvedValue([]);
+	});
+
+	it('a renamed master: the program reads its settings again (the default follows)', async () => {
+		nav.kind = 'master';
+		api.listDictionary.mockResolvedValue([item(1, 'Иванов')]);
+		api.updateDictionaryItem.mockResolvedValue(item(1, 'Петров'));
+		render(Page);
+		await userEvent.click(await screen.findByRole('button', { name: 'Иванов' }));
+		const field = screen.getByRole('textbox', { name: 'Значение „Иванов“' });
+		await userEvent.clear(field);
+		await userEvent.type(field, 'Петров{Enter}');
+		await waitFor(() =>
+			expect(api.updateDictionaryItem).toHaveBeenCalledWith(1, { value: 'Петров' })
+		);
+		await waitFor(() => expect(rights.refreshCatalogs).toHaveBeenCalled());
+	});
+
+	it('a brand is not a default: nothing more is read', async () => {
+		api.listDictionary.mockResolvedValue([item(1, 'Alpha')]);
+		api.updateDictionaryItem.mockResolvedValue(item(1, 'Omega'));
+		render(Page);
+		await userEvent.click(await screen.findByRole('button', { name: 'Alpha' }));
+		await userEvent.type(screen.getByRole('textbox', { name: 'Значение „Alpha“' }), 'X{Enter}');
+		await waitFor(() => expect(api.updateDictionaryItem).toHaveBeenCalled());
+		expect(rights.refreshCatalogs).not.toHaveBeenCalled();
+	});
+
+	it('merges what the dialog shows: a value archived meanwhile stays out', async () => {
+		api.listDictionary.mockResolvedValue([item(1, 'Alpha'), item(2, 'Beta'), item(3, 'Gamma')]);
+		api.updateDictionaryItem.mockResolvedValue(item(2, 'Beta 2'));
+		api.mergeDictionary.mockResolvedValue({ item: item(1, 'Alpha'), records_changed: 0 });
+		render(Page);
+		for (const name of ['Alpha', 'Beta', 'Gamma']) {
+			await userEvent.click(await screen.findByRole('checkbox', { name: `Выбрать „${name}“` }));
+		}
+		// Somebody else archives «Gamma»; the list is read again after a rename here.
+		api.listDictionary.mockResolvedValue([
+			item(1, 'Alpha'),
+			item(2, 'Beta 2'),
+			item(3, 'Gamma', true)
+		]);
+		await userEvent.click(screen.getByRole('button', { name: 'Beta' }));
+		await userEvent.type(screen.getByRole('textbox', { name: 'Значение „Beta“' }), ' 2{Enter}');
+		expect(await screen.findByRole('button', { name: 'Beta 2' })).toBeInTheDocument();
+
+		await userEvent.click(screen.getByRole('button', { name: 'Объединить выбранные' }));
+		const dialog = await screen.findByRole('dialog', { name: 'Объединить значения' });
+		expect(within(dialog).queryByText('Gamma')).not.toBeInTheDocument();
+		await userEvent.click(within(dialog).getByRole('radio', { name: /Alpha/ }));
+		await userEvent.click(within(dialog).getByRole('button', { name: 'Объединить' }));
+		await waitFor(() =>
+			expect(api.mergeDictionary).toHaveBeenCalledWith('brand', {
+				target_id: 1,
+				source_ids: [2],
+				in_orders: true
+			})
+		);
 	});
 });
