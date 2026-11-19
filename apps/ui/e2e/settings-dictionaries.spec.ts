@@ -168,7 +168,8 @@ test('an archived brand leaves the intake suggestions and comes back with «Ве
 
 	await openBrands(page);
 	await rowOf(page, brand).getByRole('button', { name: 'Вернуть' }).click();
-	await expect(page.getByRole('heading', { name: 'Архив' })).toHaveCount(0);
+	// Back among the live values (the archive of the shared server may hold the values of other specs).
+	await expect(rowOf(page, brand).getByRole('button', { name: 'В архив' })).toBeVisible();
 	await expect(await suggests()).toBeVisible();
 });
 
@@ -188,11 +189,20 @@ test('dragging by the handle changes the order and it survives a reload', async 
 	const from = await handle.boundingBox();
 	const to = await rows.first().boundingBox();
 	if (!from || !to) throw new Error('no boxes');
+	// The list shows the new order at once; the reload waits for the server to have taken it.
+	const saved = page.waitForResponse(
+		(r) =>
+			r.url().endsWith('/api/v1/dictionaries/warranty/order') &&
+			r.request().method() === 'PUT' &&
+			r.ok(),
+		{ timeout: 10_000 }
+	);
 	await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
 	await page.mouse.down();
 	await page.mouse.move(from.x + from.width / 2, to.y + 2, { steps: 8 });
 	await page.mouse.up();
 	await expect(rows.first()).toContainText(`Вторая-${id}`);
+	await saved;
 
 	await page.reload();
 	await page.getByRole('textbox', { name: 'Найти' }).fill(id);

@@ -206,11 +206,18 @@ test('dragging changes the order of the statuses and it survives a reload', asyn
 		const from = await handle.boundingBox();
 		const to = await rows.first().boundingBox();
 		if (!from || !to) throw new Error('no boxes');
+		// The list shows the new order at once; the reload waits for the server to have taken it (a refusal
+		// because another spec added a status meanwhile is sent again).
+		const saved = page.waitForResponse(
+			(r) => r.url().endsWith('/api/v1/statuses/order') && r.request().method() === 'PUT' && r.ok(),
+			{ timeout: 10_000 }
+		);
 		await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
 		await page.mouse.down();
 		await page.mouse.move(from.x + from.width / 2, to.y + 2, { steps: 8 });
 		await page.mouse.up();
 		await expect(rows.first()).toContainText(`Второй-${id}`);
+		await saved;
 
 		await page.reload();
 		await expect(rows.first()).toContainText(`Второй-${id}`);
