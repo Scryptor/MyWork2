@@ -24,6 +24,17 @@ import {
 
 test.describe.configure({ mode: 'parallel' });
 
+// The program writes the keys as on the system: «⌘K» on a Mac, «Ctrl K» elsewhere, which is longer. The
+// sweep goes with the longer one everywhere (as CI on Linux does), so a Mac does not hide a cut label.
+test.beforeEach(async ({ page }) => {
+	await page.addInitScript(() =>
+		Object.defineProperty(Navigator.prototype, 'platform', {
+			get: () => 'Linux x86_64',
+			configurable: true
+		})
+	);
+});
+
 async function mod(page: Page): Promise<'Meta' | 'Control'> {
 	const mac = await page.evaluate(() => /Mac|iPhone|iPad/.test(navigator.platform));
 	return mac ? 'Meta' : 'Control';
@@ -372,6 +383,8 @@ for (const c of SCREEN_CASES) {
 				await expect(title).toBeVisible();
 				const cut = await title.evaluate((el) => el.scrollWidth > el.clientWidth + 1);
 				expect(cut, 'the title of the card is cut on a touch screen').toBe(false);
+				// Nor has it keys: no shortcut hints (the top bar's search shows its whole label).
+				await expect(page.locator('kbd:visible')).toHaveCount(0);
 			}
 
 			// The order panel over the list (on a phone, the whole screen).

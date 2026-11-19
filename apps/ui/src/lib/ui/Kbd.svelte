@@ -1,10 +1,13 @@
+<!-- A key or a shortcut. As a hint next to a control (`hint`, by default) it goes on a touch screen: there
+     are no keys to press there, and the room is better left to the label. The list of the shortcuts
+     (`hint={false}`) shows the keys everywhere. -->
 <script lang="ts">
 	import { formatShortcut } from '#lib/design/hotkeys.svelte.js';
 
-	let { shortcut }: { shortcut: string } = $props();
+	let { shortcut, hint = true }: { shortcut: string; hint?: boolean } = $props();
 </script>
 
-<kbd>{formatShortcut(shortcut)}</kbd>
+<kbd class:hint>{formatShortcut(shortcut)}</kbd>
 
 <style>
 	kbd {
@@ -16,5 +19,10 @@
 		border-radius: var(--radius-xs);
 		background: var(--surface-2);
 		color: var(--text-2);
+	}
+	@media (pointer: coarse) {
+		.hint {
+			display: none;
+		}
 	}
 </style>

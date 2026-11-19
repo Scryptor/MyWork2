@@ -56,7 +56,8 @@
 		<button type="button" class="find" onclick={onsearch}>
 			<Search size={14} aria-hidden="true" />
 			<span>{ru.palette.title}…</span>
-			<Kbd shortcut="Mod+K" />
+			<!-- A phone leaves the whole room to the words (and a touch screen has no keys: Kbd). -->
+			{#if !display.phone}<Kbd shortcut="Mod+K" />{/if}
 		</button>
 	{/snippet}
 	{#snippet actions()}

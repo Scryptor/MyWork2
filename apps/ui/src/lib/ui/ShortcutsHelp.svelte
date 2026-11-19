@@ -23,7 +23,7 @@
 				{#each group.items as item (item.label)}
 					<div class="row">
 						<dt>{item.label}</dt>
-						<dd><Kbd shortcut={item.shortcut} /></dd>
+						<dd><Kbd shortcut={item.shortcut} hint={false} /></dd>
 					</div>
 				{/each}
 			</dl>
