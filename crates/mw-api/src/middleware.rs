@@ -27,18 +27,26 @@ pub(crate) async fn request_log(req: Request, next: Next) -> Response {
     response
 }
 
-/// Ограничивает время обработки: дольше `limit` — 503 `unavailable`.
+/// Ограничивает время обработки: дольше `limit` — 503 `unavailable`. Кроме `POST UNTIMED_LEGACY_CHECK`.
 pub(crate) fn with_timeout<S: Clone + Send + Sync + 'static>(
     router: Router<S>,
     limit: Duration,
 ) -> Router<S> {
     router.layer(from_fn(move |req: Request, next: Next| async move {
+        if req.method() == Method::POST && req.uri().path() == UNTIMED_LEGACY_CHECK {
+            return next.run(req).await;
+        }
         match tokio::time::timeout(limit, next.run(req)).await {
             Ok(response) => response,
             Err(_) => ApiError::timed_out().into_response(),
         }
     }))
 }
+
+/// Проверка папки MyWork 2 без ограничения времени: она читает и разбирает всю старую базу и проверяет
+/// каждый файл, на большой или медленной папке это дольше `REQUEST_TIMEOUT`. Маршрут только для сервера на
+/// loopback и для того, у кого есть права импорта, и ничего не пишет.
+pub(crate) const UNTIMED_LEGACY_CHECK: &str = "/api/v1/legacy-import/check";
 
 /// Имя хоста без порта и квадратных скобок, в нижнем регистре.
 fn host_name(raw: &str) -> String {
@@ -180,6 +188,46 @@ mod tests {
         let bytes = resp.into_body().collect().await.unwrap().to_bytes();
         let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(body["code"], "unavailable");
+    }
+
+    #[tokio::test]
+    async fn checking_a_legacy_folder_is_not_limited_in_time() {
+        let slow = || async {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            "готово"
+        };
+        let app = with_timeout(
+            Router::new()
+                .route(UNTIMED_LEGACY_CHECK, axum::routing::post(slow).get(slow))
+                .route("/api/v1/legacy-import", axum::routing::post(slow)),
+            Duration::from_millis(20),
+        );
+        let status = |method: Method, path: &'static str| {
+            let app = app.clone();
+            async move {
+                let request = Request::builder()
+                    .method(method)
+                    .uri(path)
+                    .body(Body::empty())
+                    .unwrap();
+                app.oneshot(request).await.unwrap().status().as_u16()
+            }
+        };
+        assert_eq!(status(Method::POST, UNTIMED_LEGACY_CHECK).await, 200);
+        // Только этот маршрут и только POST: остальное ограничено, как раньше.
+        assert_eq!(status(Method::GET, UNTIMED_LEGACY_CHECK).await, 503);
+        assert_eq!(status(Method::POST, "/api/v1/legacy-import").await, 503);
+    }
+
+    #[test]
+    fn the_untimed_path_is_the_route_of_the_legacy_folder_check() {
+        let api = crate::openapi();
+        let item = api
+            .paths
+            .paths
+            .get(UNTIMED_LEGACY_CHECK)
+            .expect("маршрут проверки папки");
+        assert!(item.post.is_some());
     }
 
     #[test]
