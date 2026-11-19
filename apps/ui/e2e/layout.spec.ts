@@ -1,5 +1,8 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
 import type { Client } from '$api/Client';
+import type { ImportReportView } from '$api/ImportReportView';
+import type { LegacyImportItem } from '$api/LegacyImportItem';
+import type { ServerInfo } from '$api/ServerInfo';
 import type { ServicePoint } from '$api/ServicePoint';
 import {
 	createClient,
@@ -272,6 +275,122 @@ async function intakeScene(page: Page, c: ScreenCase, seed: Seed, pending: () =>
 	await expect(sheet).toBeHidden();
 }
 
+// The server of the sweep is set up and has no import (an import there could only replace its data): the
+// past imports and a report are answers made up here, with long paths and many numbers.
+const LONG_PATH =
+	'C:\\Users\\Администратор\\Documents\\Сервисный центр «Галерея»\\MyWork2 (копия от 01.11.2026)';
+const SAMPLE_IMPORTS: LegacyImportItem[] = [
+	{
+		id: 9002,
+		imported_at: '2026-11-19T14:05:09',
+		source_path: LONG_PATH,
+		mode: 'replace',
+		orders: 10482,
+		warnings: 314
+	},
+	{
+		id: 9001,
+		imported_at: '2026-11-18T09:30:00',
+		source_path: 'D:\\MyWork2',
+		mode: 'into_empty',
+		orders: 10479,
+		warnings: 0
+	}
+];
+const ids = (from: number, n: number) => Array.from({ length: n }, (_, i) => from + i * 7);
+const SAMPLE_REPORT: ImportReportView = {
+	id: 9002,
+	imported_at: '2026-11-19T14:05:09',
+	source_path: LONG_PATH,
+	mode: 'replace',
+	orders: 10482,
+	clients: 6311,
+	users: 4,
+	files: { copied: 3214, bytes: 1_932_735_283, missing: 12 },
+	groups: [
+		{
+			code: 'date_unparsed',
+			severity: 'warning',
+			title: 'Не разобрана дата',
+			count: 150,
+			order_ids: ids(10001, 150)
+		},
+		{
+			code: 'barcode_duplicate',
+			severity: 'warning',
+			title: 'Одинаковый штрихкод у нескольких заказов',
+			count: 277,
+			order_ids: ids(10003, 40)
+		},
+		{
+			code: 'client_missing',
+			severity: 'warning',
+			title: 'Клиент не найден — восстановлен из заказа',
+			count: 3,
+			order_ids: []
+		},
+		{
+			code: 'phone_split',
+			severity: 'info',
+			title: 'Телефоны разложены по номерам',
+			count: 812,
+			order_ids: ids(10010, 12)
+		},
+		{
+			code: 'status_custom',
+			severity: 'info',
+			title: 'Добавлен статус из старой базы',
+			count: 2,
+			order_ids: []
+		}
+	],
+	warnings_text: 'Отчёт',
+	files_pending: true
+};
+
+/** «Импорт из MyWork 2»: the past imports, then the report of one with its first group open. */
+async function importScenes(page: Page, c: ScreenCase, bars: Locator[], pending: () => number) {
+	await page.route('**/api/v1/legacy-imports', (route) => route.fulfill({ json: SAMPLE_IMPORTS }));
+	await page.route('**/api/v1/legacy-imports/9002', (route) =>
+		route.fulfill({ json: SAMPLE_REPORT })
+	);
+	await page.goto('/settings/import');
+	await expect(page.getByRole('heading', { name: 'Импорт из MyWork 2' })).toBeVisible();
+	await expect(page.getByRole('list', { name: 'Прошлые импорты' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Перенести снова' })).toBeVisible();
+	await scene(page, c, 'settings-import', bars, pending);
+
+	await page.goto('/settings/import/9002');
+	await expect(page.getByRole('heading', { name: 'Отчёт о переносе' })).toBeVisible();
+	await page.getByRole('button', { name: /^Не разобрана дата/ }).click();
+	await expect(page.getByRole('button', { name: /^Показать все/ })).toBeVisible();
+	await scene(page, c, 'import-report', bars, pending);
+	await page.unroute('**/api/v1/legacy-imports');
+	await page.unroute('**/api/v1/legacy-imports/9002');
+}
+
+/**
+ * The first run, outside the shell: the server's answer says the base is new (nothing is sent), the choice
+ * and the form of an empty base. Last of the scenes: the answer is put back after it.
+ */
+async function setupScenes(page: Page, c: ScreenCase, pending: () => number) {
+	const info = '**/api/v1/server-info';
+	await page.route(info, async (route) => {
+		const response = await route.fetch();
+		const body = (await response.json()) as ServerInfo;
+		await route.fulfill({ response, json: { ...body, setup_required: true } });
+	});
+	await page.goto('/setup');
+	await expect(page.getByRole('heading', { name: 'Первый запуск' })).toBeVisible();
+	await scene(page, c, 'setup', [], pending);
+	await page.getByRole('button', { name: 'Начать с пустой базы' }).click();
+	await expect(page.getByRole('textbox', { name: /^Название сервиса/ })).toBeVisible();
+	await page.getByRole('textbox', { name: 'Мастера' }).fill('Константинопольский Вячеслав');
+	await page.getByRole('textbox', { name: 'Мастера' }).press('Enter');
+	await scene(page, c, 'setup-form', [], pending);
+	await page.unroute(info);
+}
+
 /** «Настройки → Общие», «Заказы» and «О программе»: each once its fields are filled from the server. */
 async function serverSettingsScenes(
 	page: Page,
@@ -317,6 +436,8 @@ async function serverSettingsScenes(
 	await expect(page.getByRole('heading', { name: 'О программе' })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Скопировать' })).toBeVisible();
 	await scene(page, c, 'about', bars, pending);
+
+	await importScenes(page, c, bars, pending);
 }
 
 /** A phone after the list and the panel: «Настройки» (the list, then «Внешний вид») and the intake. */
@@ -338,6 +459,8 @@ async function phoneScenes(page: Page, c: ScreenCase, seed: Seed, pending: () =>
 		.getByRole('button', { name: /Принять/ })
 		.click();
 	await intakeScene(page, c, seed, pending);
+
+	await setupScenes(page, c, pending);
 }
 
 for (const c of SCREEN_CASES) {
@@ -469,6 +592,9 @@ for (const c of SCREEN_CASES) {
 			await palette.getByRole('combobox').fill(seed.marker);
 			await expect(palette.getByRole('option').nth(3)).toBeVisible();
 			await scene(page, c, 'palette', [], pending);
+			await page.keyboard.press('Escape');
+
+			await setupScenes(page, c, pending);
 		});
 
 		test.describe('signed in', () => {

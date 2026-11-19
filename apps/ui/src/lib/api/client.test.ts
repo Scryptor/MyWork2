@@ -129,6 +129,22 @@ describe('request', () => {
 		const init = (fn.mock.calls[0] as unknown as [string, RequestInit])[1];
 		expect(new Headers(init.headers).get('Authorization')).toBe('Bearer tok');
 	});
+	it('a quiet request leaves a 401 to its caller: the session handler is not called', async () => {
+		const handler = vi.fn();
+		setUnauthenticatedHandler(handler);
+		stubFetch(401, {
+			code: 'unauthenticated',
+			message: 'Войдите',
+			fields: [],
+			current_version: null,
+			permission: null,
+			retry_after_secs: null
+		});
+		await expect(
+			request('GET', '/legacy-import/current', { quietUnauthenticated: true })
+		).rejects.toMatchObject({ status: 401 });
+		expect(handler).not.toHaveBeenCalled();
+	});
 	it('does not call the 401 handler for the login request', async () => {
 		const handler = vi.fn();
 		setUnauthenticatedHandler(handler);

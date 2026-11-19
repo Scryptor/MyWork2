@@ -10,6 +10,7 @@
 		SegmentedControl,
 		Select,
 		Switch,
+		TagInput,
 		TextInput,
 		Textarea
 	} from '#lib/ui/index.js';
@@ -71,6 +72,9 @@
 	let dateErr = $state<string | null>(null);
 	let dateOff = $state<string | null>('2026-11-15');
 	let dateSm = $state<string | null>(null);
+
+	let masters = $state<string[]>(['Петров', 'Сидоров']);
+	let mastersErr = $state<string[]>([]);
 
 	let brand = $state('');
 	let kitReception = $state<string[]>([]);
@@ -138,6 +142,12 @@
 	<DateInput bind:value={dateErr} label="Дата с ошибкой" error="Дата обязательна" />
 	<DateInput bind:value={dateOff} label="Дата отключённая" disabled />
 	<DateInput bind:value={dateSm} label="Дата с подсказкой" hint="дд.мм.гггг" min="2026-01-01" />
+</div>
+
+<h3>Список значений</h3>
+<div class="grid">
+	<TagInput bind:values={masters} label="Мастера" hint="Имя и Enter" />
+	<TagInput bind:values={mastersErr} label="Мастера с ошибкой" error="Добавьте хотя бы одного" />
 </div>
 
 <h3>Приём устройства</h3>

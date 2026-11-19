@@ -17,7 +17,13 @@
 	const atRoot = $derived(page.url.pathname === ROOT);
 	const showList = $derived(!display.phone || atRoot);
 	const showContent = $derived(!display.phone || !atRoot);
-	const current = $derived(SETTINGS_SECTIONS.find((s) => page.url.pathname === resolve(s.href)));
+	// A subsection's own pages (the report of an import) keep it marked.
+	const current = $derived(
+		SETTINGS_SECTIONS.find((s) => {
+			const href = resolve(s.href);
+			return page.url.pathname === href || page.url.pathname.startsWith(`${href}/`);
+		})
+	);
 
 	// «Настройки» itself is the list of subsections on a phone; elsewhere it opens the first one, also
 	// when a phone's window is widened while the list is shown.

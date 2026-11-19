@@ -89,12 +89,20 @@ async function send(
 	}
 }
 
-/** Turns a failed response into an ApiError (and tells the session about a 401). */
-async function fail(response: Response, method: Method, path: string): Promise<never> {
+/**
+ * Turns a failed response into an ApiError (and tells the session about a 401, unless the request is
+ * `quiet`: its caller handles that itself).
+ */
+async function fail(
+	response: Response,
+	method: Method,
+	path: string,
+	quiet = false
+): Promise<never> {
 	const data = await readBody(response);
 	const isBody = typeof data === 'object' && data !== null && 'code' in data;
 	const errorBody = isBody ? (data as ErrorBody) : null;
-	if (response.status === 401 && !(method === 'POST' && path === '/auth/login')) {
+	if (response.status === 401 && !quiet && !(method === 'POST' && path === '/auth/login')) {
 		onUnauthenticated();
 	}
 	throw new ApiError(
@@ -105,11 +113,24 @@ async function fail(response: Response, method: Method, path: string): Promise<n
 	);
 }
 
+export interface RequestOptions {
+	query?: Query;
+	body?: unknown;
+	signal?: AbortSignal;
+	/** The request outlives the page (a deletion sent as the page is left). */
+	keepalive?: boolean;
+	/**
+	 * A 401 does not end the session of the program: the caller makes sense of it. The progress of an
+	 * import: the base it has just written has users of its own, and the screen asks one of them to sign in.
+	 */
+	quietUnauthenticated?: boolean;
+}
+
 /** Like `request`, with the answer's headers. */
 export async function requestWithHeaders<T>(
 	method: Method,
 	path: string,
-	opts: { query?: Query; body?: unknown; signal?: AbortSignal; keepalive?: boolean } = {}
+	opts: RequestOptions = {}
 ): Promise<{ data: T; headers: Headers }> {
 	const headers = authHeaders();
 	let body: string | undefined;
@@ -117,21 +138,20 @@ export async function requestWithHeaders<T>(
 	// send that without CORS).
 	if (method !== 'GET') headers.set('Content-Type', 'application/json');
 	if (opts.body !== undefined && method !== 'GET') body = JSON.stringify(opts.body);
-	// `keepalive`: the request outlives the page (a deletion sent as the page is left).
 	const response = await send(method, path, opts.query, {
 		headers,
 		body,
 		signal: opts.signal,
 		keepalive: opts.keepalive
 	});
-	if (!response.ok) return fail(response, method, path);
+	if (!response.ok) return fail(response, method, path, opts.quietUnauthenticated);
 	return { data: (await readBody(response)) as T, headers: response.headers };
 }
 
 export async function request<T>(
 	method: Method,
 	path: string,
-	opts: { query?: Query; body?: unknown; signal?: AbortSignal; keepalive?: boolean } = {}
+	opts: RequestOptions = {}
 ): Promise<T> {
 	return (await requestWithHeaders<T>(method, path, opts)).data;
 }

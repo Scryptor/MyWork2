@@ -1,5 +1,6 @@
 import BookOpen from '@lucide/svelte/icons/book-open';
 import CircleDot from '@lucide/svelte/icons/circle-dot';
+import FolderInput from '@lucide/svelte/icons/folder-input';
 import Info from '@lucide/svelte/icons/info';
 import ListOrdered from '@lucide/svelte/icons/list-ordered';
 import MapPin from '@lucide/svelte/icons/map-pin';
@@ -30,5 +31,6 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
 	},
 	{ id: 'statuses', label: ru.settings.statuses, icon: CircleDot, href: 'settings/statuses' },
 	{ id: 'points', label: ru.settings.points, icon: MapPin, href: 'settings/points' },
+	{ id: 'import', label: ru.settings.import, icon: FolderInput, href: 'settings/import' },
 	{ id: 'about', label: ru.settings.about, icon: Info, href: 'settings/about' }
 ];

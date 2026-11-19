@@ -1,7 +1,9 @@
 import { defineConfig, devices } from '@playwright/test';
+import { FRESH_PORTS } from './e2e/support/fresh';
 
-// Two real mw-server instances serve the built UI and the API from one origin each:
-// 4173 runs without sign-in (open mode), 4174 has an administrator.
+// Real mw-server instances serve the built UI and the API from one origin each:
+// 4173 runs without sign-in (open mode), 4174 has an administrator; both are set up already.
+// The fresh ones (e2e/support/fresh.ts) start with a new base each time: the first run and the import.
 const server = (port: number, extra = '') => ({
 	command: `node e2e/support/server.mjs --port ${port}${extra}`,
 	url: `http://127.0.0.1:${port}/api/v1/server-info`,
@@ -17,7 +19,14 @@ const server = (port: number, extra = '') => ({
 export default defineConfig({
 	testDir: 'e2e',
 	use: { baseURL: 'http://127.0.0.1:4173' },
-	webServer: [server(4173), server(4174, ' --admin')],
+	webServer: [
+		server(4173),
+		server(4174, ' --admin'),
+		// Never one left from an earlier run: its base would be set up already.
+		...Object.values(FRESH_PORTS)
+			.flatMap((ports) => Object.values(ports))
+			.map((port) => ({ ...server(port, ' --fresh'), reuseExistingServer: false }))
+	],
 	projects: [
 		{
 			name: 'chromium',

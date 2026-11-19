@@ -9,4 +9,8 @@ describe('formatBytes', () => {
 		expect(formatBytes(1_234_567)).toBe('1,2 МБ');
 		expect(formatBytes(25 * 1024 * 1024)).toBe('25 МБ');
 	});
+	it('a folder of files can be gigabytes', () => {
+		expect(formatBytes(3.5 * 1024 * 1024 * 1024)).toBe('3,5 ГБ');
+		expect(formatBytes(1023 * 1024 * 1024)).toBe('1023 МБ');
+	});
 });

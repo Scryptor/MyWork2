@@ -78,7 +78,8 @@ jobs:
       - run: npm ci
       - run: npm run verify
 
-  # The server is built once; both browsers take the binary as an artifact.
+  # The server is built once; both browsers take the binary as an artifact. With it goes make_fixture, which
+  # writes the synthetic MyWork 2 folder of the import tests (the artifact keeps the paths below target/debug).
   e2e-server:
     name: e2e-server (ubuntu-24.04)
     runs-on: ubuntu-24.04
@@ -90,10 +91,13 @@ jobs:
         run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
       - run: cargo build -p mw-server
+      - run: cargo build -p mw-legacy --features fixtures --example make_fixture
       - uses: actions/upload-artifact@v5
         with:
           name: mw-server-linux
-          path: target/debug/mw-server
+          path: |
+            target/debug/mw-server
+            target/debug/examples/make_fixture
           retention-days: 1
           if-no-files-found: error
 
@@ -122,9 +126,13 @@ jobs:
         with:
           name: mw-server-linux
           path: mw-server-bin
-      - run: chmod +x "$GITHUB_WORKSPACE/mw-server-bin/mw-server"
+      - run: chmod +x "$GITHUB_WORKSPACE/mw-server-bin/mw-server" "$GITHUB_WORKSPACE/mw-server-bin/examples/make_fixture"
       - run: npm run build
-      - run: MW_E2E_SERVER_BIN="$GITHUB_WORKSPACE/mw-server-bin/mw-server" npx playwright test --project=${{ matrix.project }}
+      # $GITHUB_WORKSPACE, not github.workspace: inside the container only the variable has the container's path.
+      - run: >-
+          MW_E2E_SERVER_BIN="$GITHUB_WORKSPACE/mw-server-bin/mw-server"
+          MW_E2E_FIXTURE_BIN="$GITHUB_WORKSPACE/mw-server-bin/examples/make_fixture"
+          npx playwright test --project=${{ matrix.project }}
       # Screenshots of the screen sweep (layout-<case>-<scene>.png) and the traces of failed tests: a person looks
       # at them, they are not compared with a reference.
       - name: Upload e2e results
