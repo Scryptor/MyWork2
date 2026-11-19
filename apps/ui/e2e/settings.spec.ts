@@ -1,7 +1,11 @@
-import { expect, test, type Page } from '@playwright/test';
-import { createOrder, uniq } from './support/api';
+import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
+import type { AppSettings } from '$api/AppSettings';
+import type { AboutInfo } from '$api/AboutInfo';
+import type { ServerInfo } from '$api/ServerInfo';
+import { createOrder, E2E_ADMIN_LOGIN, E2E_ADMIN_PASSWORD, uniq } from './support/api';
 
-// «Настройки → Внешний вид»: kept on this computer, every field applies at once.
+// «Настройки»: «Внешний вид» is kept on this computer and applies at once; «Общие», «Заказы» and «О программе»
+// are the server's and are saved as they are edited.
 
 test.use({ screen: { width: 1280, height: 720 }, viewport: { width: 1280, height: 720 } });
 
@@ -19,22 +23,46 @@ async function openAppearance(page: Page) {
 		.getByRole('navigation', { name: 'Разделы' })
 		.getByRole('link', { name: 'Настройки' })
 		.click();
+	await expect(page).toHaveURL(/\/settings\/general$/);
+	await page
+		.getByRole('navigation', { name: 'Разделы настроек' })
+		.getByRole('link', { name: 'Внешний вид' })
+		.click();
 	await expect(page).toHaveURL(/\/settings\/appearance$/);
 }
 
-test('«Настройки» opened by its address goes on to «Внешний вид»', async ({ page }) => {
+test('«Настройки» opened by its address goes on to «Общие»', async ({ page }) => {
 	await page.goto('/settings');
-	await expect(page).toHaveURL(/\/settings\/appearance$/);
-	await expect(page.getByRole('heading', { name: 'Внешний вид' })).toBeVisible();
+	await expect(page).toHaveURL(/\/settings\/general$/);
+	await expect(page.getByRole('heading', { name: 'Общие' })).toBeVisible();
 	// Replaced, not pushed: «Назад» does not return to the address that only redirects.
 	await page.goto('/orders');
 	await page.goto('/settings');
-	await expect(page).toHaveURL(/\/settings\/appearance$/);
+	await expect(page).toHaveURL(/\/settings\/general$/);
 	await page.goBack();
 	await expect(page).toHaveURL(/\/orders$/);
 });
 
-test('«Настройки» in the menu opens «Внешний вид»', async ({ page }) => {
+test('«Настройки» in the menu opens «Общие»; the subsections are in order', async ({ page }) => {
+	await page.goto('/orders');
+	await page
+		.getByRole('navigation', { name: 'Разделы' })
+		.getByRole('link', { name: 'Настройки' })
+		.click();
+	const sections = page.getByRole('navigation', { name: 'Разделы настроек' });
+	await expect(sections.getByRole('link')).toHaveText([
+		'Общие',
+		'Внешний вид',
+		'Заказы',
+		'О программе'
+	]);
+	await expect(sections.getByRole('link', { name: 'Общие' })).toHaveAttribute(
+		'aria-current',
+		'page'
+	);
+});
+
+test('«Настройки» opens «Внешний вид» from its subsection', async ({ page }) => {
 	await openAppearance(page);
 	await expect(page.getByRole('heading', { name: 'Внешний вид' })).toBeVisible();
 	await expect(page.getByText('Только на этом компьютере')).toBeVisible();
@@ -126,7 +154,7 @@ test('compact density makes table rows 28px', async ({ page, request }) => {
 	await openAppearance(page);
 	await page.getByRole('radio', { name: 'Компактная' }).check({ force: true });
 	await page
-		.getByRole('navigation', { name: 'Разделы' })
+		.getByRole('navigation', { name: 'Разделы', exact: true })
 		.getByRole('link', { name: 'Заказы' })
 		.click();
 	const row = page
@@ -166,7 +194,7 @@ test.describe('phone', () => {
 		await expect(page).toHaveURL(/\/settings$/);
 	});
 
-	test('a phone widened on «Настройки» lands on «Внешний вид»', async ({ page }) => {
+	test('a phone widened on «Настройки» lands on «Общие»', async ({ page }) => {
 		await page.goto('/settings');
 		await expect(
 			page.getByRole('navigation', { name: 'Разделы настроек' }).getByRole('link', {
@@ -175,8 +203,8 @@ test.describe('phone', () => {
 		).toBeVisible();
 		await expect(page).toHaveURL(/\/settings$/);
 		await page.setViewportSize({ width: 1280, height: 720 });
-		await expect(page).toHaveURL(/\/settings\/appearance$/);
-		await expect(page.getByRole('heading', { name: 'Внешний вид' })).toBeVisible();
+		await expect(page).toHaveURL(/\/settings\/general$/);
+		await expect(page.getByRole('heading', { name: 'Общие' })).toBeVisible();
 	});
 
 	test('«Размер» is a list: six sizes do not fit a phone in a row', async ({ page }) => {
@@ -189,5 +217,142 @@ test.describe('phone', () => {
 		await expect(html(page)).toHaveCSS('font-size', '17.6px');
 		await expect(size).toContainText('110 %');
 		await expect(page.getByText('Подбирается по экрану')).toHaveCount(0);
+	});
+});
+
+// The server's settings: shared by every test on the server, so each test puts back what it changed.
+const settingsSaved = (page: Page) =>
+	page.waitForResponse(
+		(r) => r.url().endsWith('/api/v1/settings') && r.request().method() === 'PATCH'
+	);
+
+async function currentSettings(request: APIRequestContext): Promise<AppSettings> {
+	const response = await request.get('/api/v1/settings');
+	expect(response.ok()).toBe(true);
+	return (await response.json()) as AppSettings;
+}
+
+test.describe('server settings', () => {
+	test('«Название сервиса» is saved as it is typed and survives a reload', async ({
+		page,
+		request
+	}) => {
+		const before = (await currentSettings(request)).firm_name;
+		const name = uniq('Сервис');
+		try {
+			await page.goto('/settings/general');
+			const field = page.getByRole('textbox', { name: 'Название сервиса' });
+			await expect(field).toBeEnabled();
+			const saved = settingsSaved(page);
+			await field.fill(name);
+			expect((await saved).ok()).toBe(true);
+			await expect(page.getByRole('status').filter({ hasText: 'Сохранено' })).toBeVisible();
+			await page.reload();
+			await expect(page.getByRole('textbox', { name: 'Название сервиса' })).toHaveValue(name);
+		} finally {
+			await request.patch('/api/v1/settings', { data: { firm_name: before } });
+		}
+	});
+
+	test('«Долгая диагностика, дней» 0 is a mistake under the field and is not kept', async ({
+		page,
+		request
+	}) => {
+		const before = (await currentSettings(request)).diagnostics_overdue_days;
+		await page.goto('/settings/orders');
+		const field = page.getByRole('textbox', { name: 'Долгая диагностика, дней' });
+		await expect(field).toHaveValue(String(before));
+		await field.fill('0');
+		await expect(page.getByText('От 1 до 365')).toBeVisible();
+		await expect(field).toHaveAttribute('aria-invalid', 'true');
+		await page.reload();
+		await expect(page.getByRole('textbox', { name: 'Долгая диагностика, дней' })).toHaveValue(
+			String(before)
+		);
+		expect((await currentSettings(request)).diagnostics_overdue_days).toBe(before);
+	});
+
+	test('an empty «Валюта» is «Обязательное поле» and the currency stays', async ({
+		page,
+		request
+	}) => {
+		const before = (await currentSettings(request)).currency_symbol;
+		await page.goto('/settings/general');
+		const field = page.getByRole('textbox', { name: 'Валюта' });
+		await expect(field).toHaveValue(before);
+		await field.fill('');
+		await expect(page.getByText('Обязательное поле')).toBeVisible();
+		await page.reload();
+		await expect(page.getByRole('textbox', { name: 'Валюта' })).toHaveValue(before);
+	});
+
+	test('«Следующий номер заказа» gives the next order its number; a number in use is refused', async ({
+		page,
+		request
+	}) => {
+		const response = await request.get('/api/v1/orders/next-number');
+		const current = ((await response.json()) as { next: number }).next;
+		// Both engines run this on one server: the second one must ask for more than the first got.
+		const wanted = Math.max(900000, current + 1000);
+		await page.goto('/settings/general');
+		const field = page.getByRole('textbox', { name: 'Следующий номер заказа' });
+		await expect(field).toHaveValue(/^\d+$/);
+		await field.fill(String(wanted));
+		await field.press('Enter');
+		await expect(page.getByText('Номер должен быть больше')).toHaveCount(0);
+		await expect(async () => {
+			const now = await request.get('/api/v1/orders/next-number');
+			expect(((await now.json()) as { next: number }).next).toBeGreaterThanOrEqual(wanted);
+		}).toPass();
+		const order = await createOrder(request, { clientName: uniq('Номер') });
+		expect(order.id).toBeGreaterThanOrEqual(wanted);
+
+		// An order has that number already: the server refuses, the field is as it was.
+		const shown = await field.inputValue();
+		await field.fill('1');
+		await field.blur();
+		await expect(
+			page.getByText('Номер должен быть больше номеров существующих заказов')
+		).toBeVisible();
+		await expect(field).toHaveValue(shown);
+	});
+
+	test('«О программе» shows the version the server reports', async ({ page, request }) => {
+		const info = (await (await request.get('/api/v1/server-info')).json()) as ServerInfo;
+		const about = (await (await request.get('/api/v1/about')).json()) as AboutInfo;
+		await page.goto('/settings/about');
+		await expect(page.getByRole('heading', { name: 'О программе' })).toBeVisible();
+		await expect(page.getByText(info.version, { exact: true })).toBeVisible();
+		await expect(page.getByText(about.database, { exact: true })).toBeVisible();
+		await expect(page.getByRole('button', { name: 'Скопировать' })).toBeVisible();
+	});
+
+	test('«Заказы»: the default point offers «Не выбрана» and the live points', async ({ page }) => {
+		await page.goto('/settings/orders');
+		const point = page.getByRole('combobox', { name: 'Точка по умолчанию' });
+		await expect(point).toBeEnabled();
+		await point.click();
+		await expect(page.getByRole('option', { name: 'Не выбрана' })).toBeVisible();
+		await page.keyboard.press('Escape');
+		await expect(
+			page.getByRole('switch', { name: 'Проверять обязательные поля при приёме' })
+		).toBeEnabled();
+	});
+});
+
+test.describe('signed in as the administrator', () => {
+	test.use({ baseURL: 'http://127.0.0.1:4174' });
+
+	test('the administrator may change the settings: the fields are enabled', async ({ page }) => {
+		await page.goto('/login');
+		await page.getByLabel('Логин').fill(E2E_ADMIN_LOGIN);
+		await page.getByLabel('Пароль').fill(E2E_ADMIN_PASSWORD);
+		await page.getByRole('button', { name: 'Войти' }).click();
+		await expect(page).toHaveURL(/\/orders/);
+		await page.goto('/settings/general');
+		await expect(page.getByRole('textbox', { name: 'Название сервиса' })).toBeEnabled();
+		await expect(page.getByText('Изменять настройки может администратор')).toHaveCount(0);
+		await page.goto('/settings/orders');
+		await expect(page.getByRole('textbox', { name: 'Долгая диагностика, дней' })).toBeEnabled();
 	});
 });

@@ -238,6 +238,31 @@ async function intakeScene(page: Page, c: ScreenCase, seed: Seed, pending: () =>
 	await expect(sheet).toBeHidden();
 }
 
+/** «Настройки → Общие», «Заказы» and «О программе»: each once its fields are filled from the server. */
+async function serverSettingsScenes(
+	page: Page,
+	c: ScreenCase,
+	bars: Locator[],
+	pending: () => number
+) {
+	await page.goto('/settings/general');
+	await expect(page.getByRole('heading', { name: 'Общие' })).toBeVisible();
+	await expect(page.getByRole('textbox', { name: 'Следующий номер заказа' })).toHaveValue(/^\d+$/);
+	await scene(page, c, 'general', bars, pending);
+
+	await page.goto('/settings/orders');
+	await expect(page.getByRole('heading', { name: 'Заказы' })).toBeVisible();
+	await expect(page.getByRole('textbox', { name: 'Долгая диагностика, дней' })).toHaveValue(
+		/^\d+$/
+	);
+	await scene(page, c, 'orders-settings', bars, pending);
+
+	await page.goto('/settings/about');
+	await expect(page.getByRole('heading', { name: 'О программе' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Скопировать' })).toBeVisible();
+	await scene(page, c, 'about', bars, pending);
+}
+
 /** A phone after the list and the panel: «Настройки» (the list, then «Внешний вид») and the intake. */
 async function phoneScenes(page: Page, c: ScreenCase, seed: Seed, pending: () => number) {
 	await page.goto('/settings');
@@ -248,6 +273,7 @@ async function phoneScenes(page: Page, c: ScreenCase, seed: Seed, pending: () =>
 	await sections.getByRole('link', { name: 'Внешний вид' }).click();
 	await expect(page.getByRole('heading', { name: 'Внешний вид' })).toBeVisible();
 	await scene(page, c, 'appearance', [banner(page), bottomNav(page)], pending);
+	await serverSettingsScenes(page, c, [banner(page), bottomNav(page)], pending);
 
 	// Intake from «Принять» of the bottom navigation.
 	await page.goto('/orders');
@@ -355,6 +381,7 @@ for (const c of SCREEN_CASES) {
 			await page.goto('/settings/appearance');
 			await expect(page.getByRole('heading', { name: 'Внешний вид' })).toBeVisible();
 			await scene(page, c, 'appearance', [banner(page)], pending);
+			await serverSettingsScenes(page, c, [banner(page)], pending);
 
 			// «Выдать» over the panel of a ready order.
 			const readyPanel = await openOrderPanel(page, c, seed, seed.ready);

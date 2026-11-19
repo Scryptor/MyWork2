@@ -1,4 +1,7 @@
+import Info from '@lucide/svelte/icons/info';
+import ListOrdered from '@lucide/svelte/icons/list-ordered';
 import Palette from '@lucide/svelte/icons/palette';
+import Settings2 from '@lucide/svelte/icons/settings-2';
 import type { Component } from 'svelte';
 import type { Path } from '$app/types';
 import { ru } from '#lib/i18n/ru.js';
@@ -13,5 +16,8 @@ export interface SettingsSection {
 
 /** Subsections of «Настройки», in order. A new subsection is one entry here plus its route. */
 export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
-	{ id: 'appearance', label: ru.settings.appearance, icon: Palette, href: 'settings/appearance' }
+	{ id: 'general', label: ru.settings.general, icon: Settings2, href: 'settings/general' },
+	{ id: 'appearance', label: ru.settings.appearance, icon: Palette, href: 'settings/appearance' },
+	{ id: 'orders', label: ru.settings.ordersTitle, icon: ListOrdered, href: 'settings/orders' },
+	{ id: 'about', label: ru.settings.about, icon: Info, href: 'settings/about' }
 ];
