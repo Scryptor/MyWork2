@@ -1,9 +1,10 @@
 import { render, screen, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import { createRawSnippet } from 'svelte';
+import { createRawSnippet, tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { prefs } from '#lib/design/prefs.svelte.js';
 import DataTable from './DataTableHarness.test-helper.svelte';
+import SelectionHarness from './DataTableSelectionHarness.test-helper.svelte';
 import type { Column } from './types.js';
 
 interface Item {
@@ -167,5 +168,155 @@ describe('DataTable columns fill the width', () => {
 		);
 		const { cols } = renderMixed();
 		expect(cols()).toBe('80px 260px 190px 150px minmax(var(--control-lg), 1fr)');
+	});
+});
+
+describe('DataTable without a parent of its own height', () => {
+	it('the table is capped by the window, so it scrolls instead of growing with its rows', () => {
+		const { container } = render(DataTable, {
+			props: {
+				rows: ROWS,
+				columns: COLUMNS,
+				rowId: (r: unknown) => (r as Item).id,
+				storageKey: 'test-cap',
+				ariaLabel: 'Тест'
+			}
+		});
+		expect(container.querySelector<HTMLElement>('.mw-table')!.style.maxHeight).toBe('100vh');
+	});
+});
+
+describe('DataTable selection follows the data', () => {
+	const MANY: Item[] = Array.from({ length: 30 }, (_, i) => ({
+		id: i + 1,
+		name: `Строка ${i + 1}`
+	}));
+	function renderSelectable(rows: Item[], selected: Set<number>) {
+		return render(SelectionHarness, {
+			props: {
+				rows,
+				columns: COLUMNS,
+				rowId: (r: unknown) => (r as Item).id,
+				storageKey: 'test-sel',
+				ariaLabel: 'Тест',
+				selectable: true,
+				selected
+			}
+		});
+	}
+
+	it('a new data set (another filter) drops the selected rows that are no longer there', async () => {
+		const view = renderSelectable(MANY.slice(0, 10), new Set([2, 5]));
+		expect(screen.getByTestId('selected')).toHaveTextContent('2,5');
+		await view.rerender({ rows: MANY.slice(4, 14) });
+		expect(screen.getByTestId('selected')).toHaveTextContent('5');
+		await view.rerender({ rows: MANY.slice(20, 25) });
+		expect(screen.getByTestId('selected').textContent).toBe('');
+	});
+
+	it('more rows of the same list (the next page) keep the selection', async () => {
+		const view = renderSelectable(MANY.slice(0, 10), new Set([2, 5]));
+		await view.rerender({ rows: MANY.slice(0, 20) });
+		expect(screen.getByTestId('selected')).toHaveTextContent('2,5');
+	});
+});
+
+describe('DataTable asks for more once per rows array', () => {
+	const MANY: Item[] = Array.from({ length: 25 }, (_, i) => ({
+		id: i + 1,
+		name: `Строка ${i + 1}`
+	}));
+	it('scrolling does not ask again; a new array may', async () => {
+		const onendreached = vi.fn();
+		const view = render(DataTable, {
+			props: {
+				rows: MANY,
+				columns: COLUMNS,
+				rowId: (r: unknown) => (r as Item).id,
+				storageKey: 'test-end',
+				ariaLabel: 'Тест',
+				onendreached
+			}
+		});
+		await bodyRows();
+		expect(onendreached).toHaveBeenCalledTimes(1);
+		const grid = screen.getByRole('grid', { name: 'Тест' });
+		grid.scrollTop = 200;
+		grid.dispatchEvent(new Event('scroll'));
+		await view.rerender({ rows: MANY });
+		await bodyRows();
+		expect(onendreached).toHaveBeenCalledTimes(1);
+		await view.rerender({ rows: [...MANY] });
+		await bodyRows();
+		expect(onendreached).toHaveBeenCalledTimes(2);
+	});
+});
+
+describe('DataTable keeps the first visible row when the row height changes', () => {
+	const MANY: Item[] = Array.from({ length: 60 }, (_, i) => ({
+		id: i + 1,
+		name: `Строка ${i + 1}`
+	}));
+	afterEach(() => prefs.set({ scale: 'auto', density: 'comfortable' }));
+
+	it('a denser table keeps its place, a looser one too', async () => {
+		prefs.set({ scale: 1.1, density: 'comfortable' }); // 35px rows
+		render(DataTable, {
+			props: {
+				rows: MANY,
+				columns: COLUMNS,
+				rowId: (r: unknown) => (r as Item).id,
+				storageKey: 'test-keep',
+				ariaLabel: 'Тест'
+			}
+		});
+		await bodyRows();
+		const grid = screen.getByRole('grid', { name: 'Тест' });
+		grid.scrollTop = 35 * 12; // the 13th row is on top
+		prefs.set({ scale: 0.9, density: 'compact' }); // 25px rows
+		await tick();
+		await tick();
+		expect(grid.scrollTop).toBe(25 * 12);
+		prefs.set({ scale: 1.1, density: 'comfortable' });
+		await tick();
+		await tick();
+		expect(grid.scrollTop).toBe(35 * 12);
+	});
+});
+
+describe('DataTable column edge', () => {
+	const STORED = JSON.stringify({ v: 2, order: ['name'], hidden: [], widths: { name: 200 } });
+	function renderWide() {
+		localStorage.setItem('mw.table.test-edge', STORED);
+		render(DataTable, {
+			props: {
+				rows: ROWS,
+				columns: COLUMNS,
+				rowId: (r: unknown) => (r as Item).id,
+				storageKey: 'test-edge',
+				ariaLabel: 'Тест'
+			}
+		});
+		return document.querySelector<HTMLElement>('.resize')!;
+	}
+	const pointer = (target: EventTarget, type: string, clientX: number) =>
+		target.dispatchEvent(
+			new PointerEvent(type, { button: 0, bubbles: true, cancelable: true, clientX, pointerId: 1 })
+		);
+
+	it('a click with a jitter under 4px keeps the stored widths as they were', () => {
+		const edge = renderWide();
+		pointer(edge, 'pointerdown', 100);
+		pointer(window, 'pointermove', 103);
+		pointer(window, 'pointerup', 103);
+		expect(localStorage.getItem('mw.table.test-edge')).toBe(STORED);
+	});
+
+	it('a drag of 4px or more saves the width', () => {
+		const edge = renderWide();
+		pointer(edge, 'pointerdown', 100);
+		pointer(window, 'pointermove', 140);
+		pointer(window, 'pointerup', 140);
+		expect(JSON.parse(localStorage.getItem('mw.table.test-edge')!).widths.name).toBe(240);
 	});
 });

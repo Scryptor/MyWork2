@@ -7,15 +7,41 @@
 		value,
 		onchange,
 		label,
-		disabled = false
+		disabled = false,
+		selectOnArrow = true
 	}: {
 		value: StatusHue;
 		onchange: (hue: StatusHue) => void;
 		label: string;
 		disabled?: boolean;
+		/** `false`: arrows only move the focus; Enter, Space or a click chooses (a palette in a popover that
+		 *  closes on a choice). */
+		selectOnArrow?: boolean;
 	} = $props();
 
 	const name = $props.id();
+
+	const ARROWS = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'];
+
+	function onkeydown(e: KeyboardEvent) {
+		const input = e.target;
+		if (selectOnArrow || !(input instanceof HTMLInputElement) || input.type !== 'radio') return;
+		if (e.key === 'Enter') {
+			e.preventDefault();
+			if (!input.disabled) input.click();
+			return;
+		}
+		if (!ARROWS.includes(e.key)) return;
+		e.preventDefault();
+		const radios = [
+			...(input
+				.closest('[role="radiogroup"]')
+				?.querySelectorAll<HTMLInputElement>('input[type="radio"]:not(:disabled)') ?? [])
+		];
+		const at = radios.indexOf(input);
+		const step = e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 1;
+		radios[(at + step + radios.length) % radios.length]?.focus();
+	}
 
 	function sync(changed: HTMLInputElement) {
 		const group = changed.closest('[role="radiogroup"]');
@@ -30,6 +56,7 @@
 	role="radiogroup"
 	aria-label={label}
 	aria-disabled={disabled ? 'true' : undefined}
+	{onkeydown}
 >
 	{#each STATUS_HUES as hue (hue)}
 		<label class="swatch st-{hue}" class:on={value === hue} class:disabled>

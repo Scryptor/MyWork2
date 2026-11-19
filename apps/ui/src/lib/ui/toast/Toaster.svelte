@@ -60,7 +60,10 @@
 	aria-live="polite"
 	aria-atomic="false"
 	aria-label={ru.toast.region}
-	onmousedown={(e) => e.preventDefault()}
+	onmousedown={(e) => {
+		// Only a press on a toast keeps the focus; beside the toasts the page may select its text.
+		if (e.target instanceof Element && e.target.closest('.toast')) e.preventDefault();
+	}}
 	onmouseenter={() => (hovered = true)}
 	onmouseleave={() => (hovered = false)}
 	onfocusin={() => (focused = true)}
@@ -85,9 +88,10 @@
 </div>
 
 <style>
-	/* An open modal turns pointer events off on <body>: toasts stay pressable over it. */
+	/* An open modal turns pointer events off on <body>: the toasts (not the region around them, which on a
+	   phone is as wide as the screen) take them back, so the page under the gaps stays selectable. */
 	.toaster {
-		pointer-events: auto;
+		pointer-events: none;
 		position: fixed;
 		z-index: var(--z-toast);
 		left: var(--space-4);
@@ -120,6 +124,7 @@
 		color: var(--text);
 		box-shadow: var(--shadow-lg);
 		font-size: var(--text-md);
+		pointer-events: auto;
 		animation: toast-in var(--duration-normal) var(--ease-out);
 	}
 	.success {

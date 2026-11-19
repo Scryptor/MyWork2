@@ -342,12 +342,29 @@ test.describe('layers', () => {
 		await expect(page.getByRole('checkbox', { name: 'Статус' }).first()).toBeVisible();
 		await page.keyboard.press('Escape');
 		await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+		// The click left the pointer on the button, and bits-ui opens a tooltip on pointer *entering* (and
+		// not after a press until the pointer leaves): leave first, or the hover below is a no-op.
+		await page.mouse.move(0, 0);
 		await trigger.hover();
 		await expect(page.getByRole('tooltip', { name: 'Колонки' })).toBeVisible();
 	});
 });
 
 test.describe('toaster', () => {
+	test('the region lets the page under it be selected: only the toasts take the pointer', async ({
+		page
+	}) => {
+		await page.goto('/design');
+		await page.locator('#layers').getByRole('button', { name: 'Успех' }).click();
+		const toasts = page.getByRole('status', { name: 'Уведомления' });
+		await expect(toasts.getByText('Сохранено')).toBeVisible();
+		const style = await toasts.evaluate((el) => ({
+			region: getComputedStyle(el).pointerEvents,
+			toast: getComputedStyle(el.querySelector('.toast')!).pointerEvents
+		}));
+		expect(style).toEqual({ region: 'none', toast: 'auto' });
+	});
+
 	test('the region is polite and not atomic: a new toast is read alone, not with the others', async ({
 		page
 	}) => {

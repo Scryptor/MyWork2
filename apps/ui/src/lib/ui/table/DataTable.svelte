@@ -155,8 +155,12 @@
 				}
 			});
 			if (size !== measuredPx) {
+				// The first visible row stays first: the offset in rows is kept, not the one in pixels.
+				const was = measuredPx;
+				const rowsAbove = el && was > 0 ? el.scrollTop / was : 0;
 				measuredPx = size;
 				$virtualizer.measure();
+				if (el && was > 0 && el.scrollTop > 0) el.scrollTop = Math.round(rowsAbove * size);
 			}
 		});
 	});
@@ -225,6 +229,17 @@
 
 	// Selection: checkboxes, Shift+click ranges from the anchor (the row clicked or toggled last).
 	let anchor: RowId | null = null;
+	// A new data set (another filter) must not leave rows selected that are not on the screen: bulk actions
+	// would reach them. The next page of the same list keeps what is selected.
+	$effect(() => {
+		const known = indexById;
+		untrack(() => {
+			if (selected.size === 0) return;
+			const kept = [...selected].filter((id) => known.has(id));
+			if (kept.length !== selected.size) selected = new Set(kept);
+			if (anchor !== null && !known.has(anchor)) anchor = null;
+		});
+	});
 	const selectedHere = $derived(rows.reduce((n, r) => (selected.has(rowId(r)) ? n + 1 : n), 0));
 	const allSelected = $derived(rows.length > 0 && selectedHere === rows.length);
 
@@ -340,6 +355,7 @@
 	}
 
 	// Width: drag the header edge, double click returns the default.
+	const RESIZE_SLOP = 4; // px
 	function startResize(e: PointerEvent, c: Column<Row>) {
 		if (e.button !== 0) return;
 		e.preventDefault();
@@ -358,7 +374,10 @@
 		const startWidth =
 			colPrefs.widths[c.id] ?? (cell ? cell.getBoundingClientRect().width / k : c.width);
 		resizing = { id: c.id, width: startWidth };
+		// A click with a shaking hand is not a drag: a flexible column would become fixed at its width.
+		let dragged = false;
 		const move = (ev: PointerEvent) => {
+			if (Math.abs(ev.clientX - startX) >= RESIZE_SLOP) dragged = true;
 			resizing = {
 				id: c.id,
 				width: clampColumnWidth(startWidth + (ev.clientX - startX) / k, c.minWidth)
@@ -370,7 +389,7 @@
 			window.removeEventListener('pointercancel', end);
 			const done = resizing;
 			resizing = null;
-			if (done && done.width !== startWidth) {
+			if (dragged && done && done.width !== startWidth) {
 				commit({ ...colPrefs, widths: { ...colPrefs.widths, [c.id]: done.width } });
 			}
 		};
@@ -386,7 +405,9 @@
 	}
 </script>
 
-<div class="mw-table" style:--cols={template} style:--table-min={minWidth}>
+<!-- max-height: a parent without a height of its own would let the table grow with all its rows; then the
+     window is its limit and it scrolls inside. A parent with a height shorter than that still wins. -->
+<div class="mw-table" style:--cols={template} style:--table-min={minWidth} style:max-height="100vh">
 	<div
 		bind:this={scroller}
 		class="scroller"

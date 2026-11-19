@@ -1,7 +1,7 @@
 <script lang="ts" generics="T">
 	import GripVertical from '@lucide/svelte/icons/grip-vertical';
 	import type { Snippet } from 'svelte';
-	import { onDestroy, tick } from 'svelte';
+	import { onDestroy, tick, untrack } from 'svelte';
 	import { ru } from '#lib/i18n/ru.js';
 
 	let {
@@ -29,7 +29,45 @@
 	let abortDrag: (() => void) | null = null;
 	onDestroy(() => abortDrag?.());
 
-	const ids = $derived(items.map(key));
+	/** Arrows move the row on screen at once; the parent hears of it once, after a pause or when focus leaves. */
+	const PAUSE_MS = 400;
+	let pending = $state<{ order: number[]; id: number; label: string } | null>(null);
+	let timer: ReturnType<typeof setTimeout> | null = null;
+	/** Focus goes off the handle for a moment while its row moves in the DOM: that is not «leaving». */
+	let refocusing = false;
+	onDestroy(() => timer && clearTimeout(timer));
+
+	const ids = $derived(pending?.order ?? items.map(key));
+	const shown = $derived(
+		pending ? pending.order.flatMap((id) => items.filter((i) => key(i) === id)) : items
+	);
+
+	// The list itself changed under the arrows (a row added or removed elsewhere): the pending order is stale.
+	$effect(() => {
+		const have = items.map(key);
+		untrack(() => {
+			if (!pending) return;
+			const order = pending.order;
+			if (order.length !== have.length || !order.every((id) => have.includes(id))) {
+				pending = null;
+				if (timer) clearTimeout(timer);
+				timer = null;
+			}
+		});
+	});
+
+	/** Sends what the arrows made, then says where the row is: after the parent has taken it. */
+	function flush() {
+		if (timer) clearTimeout(timer);
+		timer = null;
+		const p = pending;
+		pending = null;
+		if (!p) return;
+		const from = items.map(key);
+		if (p.order.every((id, i) => id === from[i])) return;
+		onreorder(p.order);
+		announcement = ru.sortable.place(p.label, p.order.indexOf(p.id) + 1, p.order.length);
+	}
 
 	function moved(order: number[], id: number, to: number): number[] {
 		const rest = order.filter((x) => x !== id);
@@ -50,8 +88,10 @@
 	}
 
 	async function focusHandle(id: number) {
+		refocusing = true;
 		await tick();
 		list?.querySelector<HTMLElement>(`[data-handle="${id}"]`)?.focus();
+		refocusing = false;
 	}
 
 	function onkey(e: KeyboardEvent, item: T) {
@@ -62,9 +102,14 @@
 		const from = ids.indexOf(id);
 		const to = from + step;
 		if (to < 0 || to >= ids.length) return;
-		announcement = ru.sortable.place(label(item), to + 1, ids.length);
-		onreorder(moved(ids, id, to));
+		pending = { order: moved(ids, id, to), id, label: label(item) };
+		if (timer) clearTimeout(timer);
+		timer = setTimeout(flush, PAUSE_MS);
 		void focusHandle(id);
+	}
+
+	function onfocusout() {
+		if (!refocusing) flush();
 	}
 
 	function rows(): HTMLElement[] {
@@ -85,6 +130,7 @@
 	function ondown(e: PointerEvent, item: T) {
 		if (e.button !== 0) return;
 		e.preventDefault();
+		flush();
 		const id = key(item);
 		const handle = e.currentTarget as HTMLElement;
 		try {
@@ -107,6 +153,7 @@
 			window.removeEventListener('pointermove', move);
 			window.removeEventListener('pointerup', up);
 			window.removeEventListener('pointercancel', cancel);
+			window.removeEventListener('keydown', escape);
 			const d = drag;
 			drag = null;
 			if (!commit || !d || d.to === ids.indexOf(id)) return;
@@ -116,14 +163,22 @@
 		abortDrag = () => finish(false);
 		const up = () => finish(true);
 		const cancel = () => finish(false);
+		// Esc takes the drag back (and is ours alone: a panel under the list keeps its own Esc for later).
+		const escape = (ev: KeyboardEvent) => {
+			if (ev.key !== 'Escape') return;
+			ev.preventDefault();
+			finish(false);
+		};
+		window.addEventListener('keydown', escape);
 		window.addEventListener('pointermove', move);
 		window.addEventListener('pointerup', up);
 		window.addEventListener('pointercancel', cancel);
 	}
 </script>
 
-<ul class="list" bind:this={list}>
-	{#each items as item (key(item))}
+<!-- focusout: the handle that moved a row is the one that has the focus. -->
+<ul class="list" bind:this={list} {onfocusout}>
+	{#each shown as item (key(item))}
 		{@const id = key(item)}
 		{@const dragging = drag?.id === id}
 		<li

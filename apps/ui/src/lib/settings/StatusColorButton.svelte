@@ -36,6 +36,7 @@
 		value={hue}
 		label={ru.statuses.color}
 		{disabled}
+		selectOnArrow={false}
 		onchange={(h) => {
 			open = false;
 			onchange(h);

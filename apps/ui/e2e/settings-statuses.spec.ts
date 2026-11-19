@@ -45,6 +45,34 @@ async function archiveAll(request: APIRequestContext, ids: string[]) {
 	}
 }
 
+test('the colour palette: arrows move the focus and keep it open, Enter chooses, Esc closes unchanged', async ({
+	page
+}) => {
+	await openStatuses(page);
+	const button = page.getByRole('button', { name: /^Цвет „.*“: / }).first();
+	const before = await button.getAttribute('aria-label');
+	await button.click();
+	const palette = page.getByRole('dialog', { name: 'Цвет' });
+	await expect(palette).toBeVisible();
+	await palette.getByRole('radio', { checked: true }).focus();
+	await page.keyboard.press('ArrowRight');
+	await page.keyboard.press('ArrowRight');
+	await page.keyboard.press('ArrowLeft');
+	await expect(palette).toBeVisible();
+	await expect(button).toHaveAttribute('aria-label', before!);
+	await page.keyboard.press('Escape');
+	await expect(palette).toBeHidden();
+	await expect(button).toHaveAttribute('aria-label', before!);
+
+	await button.click();
+	await expect(palette).toBeVisible();
+	await palette.getByRole('radio', { checked: true }).focus();
+	await page.keyboard.press('ArrowRight');
+	await page.keyboard.press('Enter');
+	await expect(palette).toBeHidden();
+	await expect(button).not.toHaveAttribute('aria-label', before!);
+});
+
 test('a new status shows in the filters at once; a change of kind warns and Cancel keeps it', async ({
 	page,
 	request

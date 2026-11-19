@@ -26,3 +26,21 @@ test('a row is dragged by its handle and the swatches pick with arrows', async (
 	await page.keyboard.press('ArrowRight');
 	await expect(swatches.getByRole('radio', { name: 'Розовый' })).toBeChecked();
 });
+
+test('Esc during a mouse drag puts the row back and sends nothing', async ({ page }) => {
+	await page.goto('/design');
+	const demo = page.getByTestId('sortable-demo');
+	const rows = demo.locator('li');
+	await rows.first().scrollIntoViewIfNeeded();
+	const first = await rows.first().textContent();
+	const from = await demo.getByRole('button', { name: 'Переместить „Принят“' }).boundingBox();
+	const to = await rows.nth(2).boundingBox();
+	if (!from || !to) throw new Error('no boxes');
+	await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+	await page.mouse.down();
+	await page.mouse.move(from.x + from.width / 2, to.y + to.height * 0.8, { steps: 8 });
+	await page.keyboard.press('Escape');
+	await page.mouse.up();
+	await expect(rows.first()).toHaveText(first!);
+	await expect(rows.first()).toContainText('Принят');
+});
