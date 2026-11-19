@@ -10,6 +10,7 @@
 	import { currentLegacyImport, listLegacyImports } from '#lib/api/import.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import { reportRoute } from '#lib/import/report.js';
+	import { signInForReport } from '#lib/import/signin.js';
 	import ImportProgress from '#lib/setup/ImportProgress.svelte';
 	import { followImport, jobState, type Followed } from '#lib/setup/progress.js';
 	import Button from '#lib/ui/Button.svelte';
@@ -77,6 +78,7 @@
 	<div><Button href={resolve('settings/import')}>{t.past}</Button></div>
 {:else if signin}
 	<Callout tone="info">{t.signIn}</Callout>
+	<div><Button variant="primary" onclick={signInForReport}>{t.signInButton}</Button></div>
 {:else if none}
 	<p class="hint">{t.none}</p>
 {:else if job}

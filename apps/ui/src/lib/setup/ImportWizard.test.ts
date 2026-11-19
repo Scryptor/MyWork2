@@ -2,6 +2,7 @@ import { render, screen, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FolderCheck } from '$api/FolderCheck';
+import { ApiError } from '#lib/api/client.js';
 
 // The first run on a base that already has users (an administrator made by `mw-server create-admin`): the
 // server answers the check with `replace_required` (SQLite), and the wizard offers the replacement with the
@@ -62,6 +63,9 @@ describe('ImportWizard on a base that already has users', () => {
 		await check();
 		expect(api.checkLegacyFolder).toHaveBeenLastCalledWith({ path: PATH, replace: false });
 		expect(await screen.findByText(/уже есть данные \(пользователи: 1\)/)).toBeInTheDocument();
+		// Not «Перенести нельзя» next to «Перенести с заменой»: the base has data, that is all.
+		expect(screen.getByText('В базе уже есть данные')).toBeInTheDocument();
+		expect(screen.queryByText('Перенести нельзя')).not.toBeInTheDocument();
 		expect(screen.queryByRole('button', { name: 'Перенести' })).not.toBeInTheDocument();
 
 		await userEvent.click(screen.getByRole('button', { name: 'Перенести с заменой' }));
@@ -74,6 +78,25 @@ describe('ImportWizard on a base that already has users', () => {
 		expect(api.startLegacyImport).not.toHaveBeenCalled();
 		await userEvent.click(within(dialog).getByRole('button', { name: 'Заменить' }));
 		expect(api.startLegacyImport).toHaveBeenCalledWith({ path: PATH, replace: true });
+	});
+
+	it('a new path forgets the replacement chosen for the old one', async () => {
+		api.checkLegacyFolder
+			.mockResolvedValueOnce(notEmpty(true))
+			.mockResolvedValueOnce(found())
+			.mockResolvedValueOnce(notEmpty(true));
+		render(ImportWizard, {});
+		await check();
+		await userEvent.click(await screen.findByRole('button', { name: 'Перенести с заменой' }));
+		expect(api.checkLegacyFolder).toHaveBeenLastCalledWith({ path: PATH, replace: true });
+		await screen.findByRole('button', { name: 'Перенести' });
+		await userEvent.type(screen.getByRole('textbox', { name: /Путь к папке MyWork 2/ }), '-копия');
+		await userEvent.click(screen.getByRole('button', { name: 'Проверить' }));
+		expect(api.checkLegacyFolder).toHaveBeenLastCalledWith({
+			path: `${PATH}-копия`,
+			replace: false
+		});
+		expect(await screen.findByRole('button', { name: 'Перенести с заменой' })).toBeInTheDocument();
 	});
 
 	it('does not offer it where the server cannot replace (PostgreSQL)', async () => {
@@ -102,6 +125,31 @@ describe('ImportWizard on a base that already has users', () => {
 		const dialog = await screen.findByRole('alertdialog');
 		expect(
 			within(dialog).getByText(/папке backups внутри папки данных программы/)
+		).toBeInTheDocument();
+	});
+
+	it('a check the connection cut (a slow folder) gets advice instead of «Нет связи»', async () => {
+		api.checkLegacyFolder.mockRejectedValueOnce(
+			new ApiError(0, 'network', 'Нет связи с сервером', null)
+		);
+		render(ImportWizard, {});
+		await check();
+		expect(
+			await screen.findByText(
+				'Проверка не успела закончиться. Скопируйте папку MyWork 2 на этот компьютер и проверьте снова.'
+			)
+		).toBeInTheDocument();
+		expect(screen.queryByText('Нет связи с сервером')).not.toBeInTheDocument();
+	});
+
+	it('other errors of the check keep the words of the server', async () => {
+		api.checkLegacyFolder.mockRejectedValueOnce(
+			new ApiError(403, 'forbidden', 'Импорт по пути доступен только на этом компьютере', null)
+		);
+		render(ImportWizard, {});
+		await check();
+		expect(
+			await screen.findByText('Импорт по пути доступен только на этом компьютере')
 		).toBeInTheDocument();
 	});
 });

@@ -605,6 +605,11 @@ export const ru = {
 		files: 'Файлов',
 		filesValue: (count: string, size: string) => `${count} (${size})`,
 		cannot: 'Перенести нельзя',
+		/** The title next to «Перенести с заменой»: the base is not empty. */
+		hasData: 'В базе уже есть данные',
+		/** The check got no answer: a large or slow folder (a network one), the webview cut the request. */
+		checkCut:
+			'Проверка не успела закончиться. Скопируйте папку MyWork 2 на этот компьютер и проверьте снова.',
 		/** The base already has data (an administrator, say): the transfer replaces it, after the confirmation. */
 		replaceOffer: 'Перенести с заменой',
 		start: 'Перенести',
@@ -649,7 +654,7 @@ export const ru = {
 		orderNumber: (id: number) => `№ ${id}`,
 		showAll: (n: number) => `Показать все (${n})`,
 		filesPending:
-			'Файлы заказов ещё в промежуточной папке. При следующем запуске программа попробует поставить их на место; что останется, покажет этот отчёт',
+			'Файлы заказов ещё в промежуточной папке. При следующем запуске программа попробует поставить их на место; если не получится, этот отчёт скажет об этом',
 		save: 'Сохранить отчёт',
 		toOrders: 'К заказам',
 		notFound: 'Такого импорта нет',

@@ -15,12 +15,11 @@
 	import type { ImportJob } from '$api/ImportJob';
 	import { ApiError, errorMessage } from '#lib/api/client.js';
 	import { checkLegacyFolder, currentLegacyImport, startLegacyImport } from '#lib/api/import.js';
-	import { clearToken } from '#lib/api/session.js';
-	import { loginPath } from '#lib/app/login.js';
 	import { formatBytes } from '#lib/format/bytes.js';
 	import { groupDigits } from '#lib/format/digits.js';
 	import { ru } from '#lib/i18n/ru.js';
-	import { LATEST_REPORT, reportRoute } from '#lib/import/report.js';
+	import { reportRoute } from '#lib/import/report.js';
+	import { signInForReport } from '#lib/import/signin.js';
 	import { pickFolder } from '#lib/platform/folder.js';
 	import { isTauri } from '#lib/platform/tauri.js';
 	import Button from '#lib/ui/Button.svelte';
@@ -64,6 +63,10 @@
 	let chosenReplace = $state(false);
 	const replacing = $derived(replace || chosenReplace);
 
+	/** No answer to the request (cut by the webview, the connection) or the server's time limit. */
+	const cutShort = (err: unknown) =>
+		err instanceof ApiError && (err.code === 'network' || err.code === 'unavailable');
+
 	function follow(from: ImportJob) {
 		stop?.();
 		job = from;
@@ -90,11 +93,17 @@
 		pathError = undefined;
 	}
 
+	/** Another folder: the replacement chosen for the old one is not chosen for it. */
+	function pathChanged() {
+		chosenReplace = false;
+		edited();
+	}
+
 	async function pick() {
 		const chosen = await pickFolder();
 		if (chosen === null) return;
 		path = chosen;
-		edited();
+		pathChanged();
 	}
 
 	async function check(e: SubmitEvent) {
@@ -115,7 +124,8 @@
 			found = await checkLegacyFolder({ path: p, replace: replacing });
 			checkedPath = p;
 		} catch (err) {
-			failure = errorMessage(err);
+			// The check reads the whole folder; a webview may cut a request that is silent for a minute.
+			failure = cutShort(err) ? t.checkCut : errorMessage(err);
 		} finally {
 			checking = false;
 		}
@@ -153,9 +163,7 @@
 
 	function signIn() {
 		stop?.();
-		// The token is no good any more (the replacement closed the sessions); nobody is signed in here.
-		clearToken();
-		void goto(resolve(loginPath(LATEST_REPORT)));
+		signInForReport();
 	}
 
 	function again() {
@@ -188,7 +196,7 @@
 			hint={t.folderHint}
 			bind:value={path}
 			error={pathError}
-			oninput={edited}
+			oninput={pathChanged}
 			autocomplete="off"
 			autofocus
 		/>
@@ -202,7 +210,7 @@
 	</form>
 	{#if failure}<Callout tone="danger">{failure}</Callout>{/if}
 	{#if found && !found.ok && found.replace_required}
-		<Callout tone="warning" title={t.cannot}>
+		<Callout tone="warning" title={t.hasData}>
 			{found.problem}
 			{#snippet actions()}
 				<Button busy={checking} onclick={chooseReplace}>{t.replaceOffer}</Button>
