@@ -19,6 +19,8 @@ jobs:
         shell: bash
         run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Format
         if: matrix.os == 'ubuntu-latest'
         run: cargo fmt --all --check
@@ -54,6 +56,8 @@ jobs:
         shell: bash
         run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Test
         run: cargo test --workspace
 
@@ -109,6 +113,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: apps/desktop/src-tauri
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: actions/setup-node@v5
         with:
           node-version: 24
@@ -144,6 +149,8 @@ jobs:
         shell: bash
         run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo build -p mw-server
       - run: cargo build -p mw-legacy --features fixtures --example make_fixture
       - uses: actions/upload-artifact@v5
