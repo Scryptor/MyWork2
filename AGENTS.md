@@ -22,6 +22,7 @@
   - MPL-2.0 — только для инструментов сборки, которые не попадают в программу: сейчас `lightningcss` (минификатор CSS в Vite), исключён по имени в `apps/ui/scripts/check-licenses.mjs`.
   Всё, что попадает в сборку интерфейса, лежит в `dependencies`; их лицензии проверяет `npm run licenses`.
   Программа для компьютера: `option-ext` (MPL-2.0, его тянет Tauri через `dirs`) заменён своей реализацией под MIT в `apps/desktop/src-tauri/vendor/option-ext` (`[patch.crates-io]`); лицензии того, что входит в программу (обычные зависимости на всех ОС), проверяет `npm run licenses` в `apps/desktop`.
+- После изменения зависимостей в `crates/*` обновить `apps/desktop/src-tauri/Cargo.lock` (`cargo update -p <крейт>` или `cargo check` в `apps/desktop/src-tauri`): поставляемая программа должна собираться с теми же версиями.
 - Типы API — это типы `mw-core`/`mw-domain` с `Serialize`/`Deserialize`, `ts_rs::TS` и `utoipa::ToSchema`. Входные типы — с `deny_unknown_fields`; в правках различие «не передано» и `null` — через `patch::present`/`patch::nullable`. `#[ts(export)]` не ставить.
 - `crates/mw-api/openapi.json` и `crates/mw-api/bindings/` генерируются, руками не правятся. После изменения API:
   `MW_UPDATE_CONTRACT=1 cargo test -p mw-api --test contract -- --test-threads=1`, затем коммит вместе с кодом.
