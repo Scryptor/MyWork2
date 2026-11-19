@@ -21,21 +21,31 @@ const withAdmin = args.includes('--admin');
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
 const uiDir = path.join(repoRoot, 'apps/ui/build');
-const targetDir = process.env.CARGO_TARGET_DIR
-	? path.resolve(process.env.CARGO_TARGET_DIR)
-	: path.join(repoRoot, 'target');
-const binary = path.join(
-	targetDir,
-	'debug',
-	process.platform === 'win32' ? 'mw-server.exe' : 'mw-server'
-);
-
-const build = spawnSync('cargo', ['build', '-p', 'mw-server'], {
-	cwd: repoRoot,
-	stdio: 'inherit',
-	shell: process.platform === 'win32'
-});
-if (build.status !== 0) process.exit(build.status ?? 1);
+// MW_E2E_SERVER_BIN: a ready binary (CI builds it once for both browsers); without it the server is built here.
+let binary = process.env.MW_E2E_SERVER_BIN ? path.resolve(process.env.MW_E2E_SERVER_BIN) : '';
+if (binary) {
+	try {
+		await fs.access(binary);
+	} catch {
+		console.error(`MW_E2E_SERVER_BIN points to a missing file: ${binary}`);
+		process.exit(2);
+	}
+} else {
+	const targetDir = process.env.CARGO_TARGET_DIR
+		? path.resolve(process.env.CARGO_TARGET_DIR)
+		: path.join(repoRoot, 'target');
+	binary = path.join(
+		targetDir,
+		'debug',
+		process.platform === 'win32' ? 'mw-server.exe' : 'mw-server'
+	);
+	const build = spawnSync('cargo', ['build', '-p', 'mw-server'], {
+		cwd: repoRoot,
+		stdio: 'inherit',
+		shell: process.platform === 'win32'
+	});
+	if (build.status !== 0) process.exit(build.status ?? 1);
+}
 
 const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mw-e2e-'));
 // A fixed enterprise time zone keeps dates deterministic.

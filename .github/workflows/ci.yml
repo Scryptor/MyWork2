@@ -78,36 +78,61 @@ jobs:
       - run: npm ci
       - run: npm run verify
 
-  ui-e2e:
-    name: ui-e2e (ubuntu-latest)
+  # The server is built once; both browsers take the binary as an artifact.
+  e2e-server:
+    name: e2e-server (ubuntu-latest)
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-    defaults:
-      run:
-        working-directory: apps/ui
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
       - name: Install toolchain from rust-toolchain.toml
         shell: bash
         run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
-      - uses: actions/setup-node@v5
+      - run: cargo build -p mw-server
+      - uses: actions/upload-artifact@v5
         with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: apps/ui/package-lock.json
+          name: mw-server-linux
+          path: target/debug/mw-server
+          retention-days: 1
+          if-no-files-found: error
+
+  # The image carries the browsers and their system libraries (no apt); its tag must equal the @playwright/test version
+  # in apps/ui/package-lock.json.
+  ui-e2e:
+    name: ui-e2e (${{ matrix.project }})
+    needs: e2e-server
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container:
+      image: mcr.microsoft.com/playwright:v1.65.1-noble
+      options: --ipc=host
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [chromium, webkit]
+    defaults:
+      run:
+        working-directory: apps/ui
+    steps:
+      - uses: actions/checkout@v5
+      - run: node --version
       - run: npm ci
-      - name: Install browsers (up to three attempts of 5 minutes)
-        shell: bash
-        timeout-minutes: 16
-        run: for i in 1 2 3; do timeout 300 npx playwright install --with-deps chromium webkit && exit 0; echo "retry $i"; done; exit 1
-      - run: npm run test:e2e
+      - uses: actions/download-artifact@v5
+        with:
+          name: mw-server-linux
+          path: ${{ github.workspace }}/mw-server-bin
+      - run: chmod +x "$GITHUB_WORKSPACE/mw-server-bin/mw-server"
+      - run: npm run build
+      - run: npx playwright test --project=${{ matrix.project }}
+        env:
+          MW_E2E_SERVER_BIN: ${{ github.workspace }}/mw-server-bin/mw-server
       # Screenshots of the screen sweep (layout-<case>-<scene>.png) and the traces of failed tests: a person looks
       # at them, they are not compared with a reference.
       - name: Upload e2e results
         if: always()
         uses: actions/upload-artifact@v5
         with:
-          name: ui-e2e-results
+          name: ui-e2e-results-${{ matrix.project }}
           path: apps/ui/test-results
           retention-days: 7
