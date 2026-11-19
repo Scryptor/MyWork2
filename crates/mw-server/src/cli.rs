@@ -225,10 +225,21 @@ pub async fn run(cli: Cli) -> Result<(), ServerError> {
                     "Пользователей нет: на этом компьютере вход без пароля, как в MyWork 2. Для работы по сети создайте администратора: mw-server create-admin"
                 );
             }
-            println!("Если сервер уже запущен с этой базой, перезапустите его");
+            if let Some(hint) = restart_hint(&config) {
+                println!("{hint}");
+            }
             Ok(())
         }
     }
+}
+
+/// Подсказка после импорта командой: сервер на SQLite этой папки данных во время импорта не запущен
+/// (импорт держит замок папки), а с базой, заданной адресом (PostgreSQL), может работать сервер с другой
+/// папкой данных — у него старый кэш настроек.
+fn restart_hint(config: &Config) -> Option<&'static str> {
+    config.database_url.is_some().then_some(
+        "Если с этой базой (PostgreSQL) уже работает сервер с другой папкой данных, перезапустите его",
+    )
 }
 
 fn ask_password() -> Result<String, ServerError> {
@@ -326,6 +337,23 @@ mod tests {
     fn parses_ui_dir() {
         let cli = Cli::try_parse_from(["mw-server", "--ui-dir", "/ui"]).unwrap();
         assert_eq!(cli.config().unwrap().ui_dir, Some(PathBuf::from("/ui")));
+    }
+
+    #[test]
+    fn the_restart_hint_is_only_for_a_base_another_data_folder_may_share() {
+        let cli = Cli::try_parse_from(["mw-server", "--data-dir", "/d"]).unwrap();
+        // SQLite этой папки: сервер на ней не запущен — импорт держит замок папки.
+        assert_eq!(restart_hint(&cli.config().unwrap()), None);
+        let cli = Cli::try_parse_from([
+            "mw-server",
+            "--data-dir",
+            "/d",
+            "--database-url",
+            "postgres://db/mw",
+        ])
+        .unwrap();
+        let hint = restart_hint(&cli.config().unwrap()).unwrap();
+        assert!(hint.contains("PostgreSQL"), "{hint}");
     }
 
     #[test]
