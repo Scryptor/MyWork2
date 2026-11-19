@@ -666,3 +666,82 @@ async fn draft_age_is_measured_in_real_hours_across_a_clock_change() -> Result<(
     }
     Ok(())
 }
+
+/// Последнее фото ушло из черновика (удалением или отменой) — папки черновика больше нет.
+#[tokio::test]
+async fn draft_folder_goes_away_with_its_last_file() -> Result<(), CoreError> {
+    for t in cores().await {
+        let dir = tempfile::tempdir().unwrap();
+        let core = with_dir(&t, dir.path()).await;
+        let drafts = dir.path().join("attachments/drafts");
+        let a = core
+            .add_draft_attachment(&creator(), "solo", "p.jpg", jpeg_bytes(20, 20))
+            .await?;
+        let b = core
+            .add_draft_attachment(&creator(), "solo", "q.jpg", jpeg_bytes(20, 20))
+            .await?;
+        core.delete_attachment(&creator(), a.id).await?;
+        assert!(drafts.join("solo").exists(), "{}: ещё есть файл", t.label);
+        core.delete_attachment(&creator(), b.id).await?;
+        assert!(!drafts.join("solo").exists(), "{}", t.label);
+
+        core.add_draft_attachment(&creator(), "gone", "p.jpg", jpeg_bytes(20, 20))
+            .await?;
+        core.discard_draft(&creator(), "gone").await?;
+        assert!(!drafts.join("gone").exists(), "{}", t.label);
+    }
+    Ok(())
+}
+
+/// HEIF с основным брендом `mif1` и совместимым `heic`/`heix` — тот же отказ, что у HEIC;
+/// без таких брендов (AVIF) — файл как есть.
+#[tokio::test]
+async fn heif_with_compatible_heic_brand_is_refused_like_heic() -> Result<(), CoreError> {
+    fn ftyp(major: &[u8; 4], compat: &[&[u8; 4]]) -> Vec<u8> {
+        let mut b = Vec::new();
+        let size = u32::try_from(16 + 4 * compat.len()).unwrap();
+        b.extend_from_slice(&size.to_be_bytes());
+        b.extend_from_slice(b"ftyp");
+        b.extend_from_slice(major);
+        b.extend_from_slice(&[0; 4]);
+        for c in compat {
+            b.extend_from_slice(*c);
+        }
+        b.extend_from_slice(&[0; 16]);
+        b
+    }
+    for compat in [
+        vec![b"mif1", b"heic"],
+        vec![b"mif1", b"heix"],
+        vec![b"mif1", b"miaf", b"heic"],
+    ] {
+        assert_eq!(
+            process_photo(&ftyp(b"mif1", &compat)),
+            Err(PhotoError::Unsupported {
+                format: Some("heic".into())
+            })
+        );
+    }
+    assert_ne!(
+        process_photo(&ftyp(b"mif1", &[b"mif1", b"avif", b"miaf"])),
+        Err(PhotoError::Unsupported {
+            format: Some("heic".into())
+        })
+    );
+    for t in cores().await {
+        let dir = tempfile::tempdir().unwrap();
+        let core = with_dir(&t, dir.path()).await;
+        let o = core.create_order(&admin(), sample_new_order()).await?;
+        assert_validation(
+            core.add_order_attachment(
+                &creator(),
+                o.id,
+                "a.heic",
+                ftyp(b"mif1", &[b"mif1", b"heic"]),
+            )
+            .await,
+            &[("file", "unsupported")],
+        );
+    }
+    Ok(())
+}

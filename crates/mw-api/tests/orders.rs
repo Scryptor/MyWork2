@@ -473,3 +473,32 @@ async fn warranty_case_and_unstamped_issue() {
         );
     }
 }
+
+/// Повтор `POST /orders` с тем же `request_key` — тот же заказ и заголовок `X-MW-Replayed: 1`;
+/// первая попытка заголовка не несёт.
+#[tokio::test]
+async fn replayed_order_creation_is_marked() {
+    for t in apis(Listen::Network).await {
+        let token = t.admin_token().await;
+        let mut body = new_order("Анна", "", "Samsung", "A52");
+        body["request_key"] = json!("replay-1");
+        let first = t
+            .send(
+                Method::POST,
+                "/api/v1/orders",
+                Some(&token),
+                Some(body.clone()),
+            )
+            .await;
+        assert_eq!(first.status, 201, "{}", t.label);
+        assert!(first.headers.get("x-mw-replayed").is_none(), "{}", t.label);
+        let again = t
+            .send(Method::POST, "/api/v1/orders", Some(&token), Some(body))
+            .await;
+        assert_eq!(again.status, 201, "{}", t.label);
+        assert_eq!(again.headers["x-mw-replayed"], "1", "{}", t.label);
+        assert_eq!(again.body["id"], first.body["id"]);
+        let plain = create_order(&t, &token, new_order("Анна", "", "Samsung", "A52")).await;
+        assert_ne!(plain["id"], first.body["id"]);
+    }
+}

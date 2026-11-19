@@ -267,7 +267,7 @@ pub(crate) async fn follow_dictionary_value(
             order_id: None,
             client_id: None,
             summary: format!("Изменены настройки: {label}{}", via.suffix_ru()),
-            details: Some(json!({ key: to, "via": via.code() })),
+            details: Some(json!({ key: to })),
         },
     )
     .await?;
@@ -275,11 +275,24 @@ pub(crate) async fn follow_dictionary_value(
 }
 
 impl Core {
-    /// Кладёт в кэш настройки, прочитанные в уже зафиксированной транзакции.
-    pub(crate) fn cache_settings(&self, settings: Option<AppSettings>) {
-        if let Some(settings) = settings {
-            *self.settings.write().unwrap_or_else(|e| e.into_inner()) = settings;
-        }
+    /// Фиксирует транзакцию записи и кладёт в кэш настройки, прочитанные в ней (`None` — кэш не
+    /// трогаем). Кэш обновляется, пока держится `settings_gate`, взятый ДО фиксации: следующий
+    /// писатель, начавшийся сразу после фиксации, дойдёт до своего `commit_with_settings` только
+    /// после того, как мы положим своё значение, поэтому кэш всегда равен последнему
+    /// зафиксированному.
+    pub(crate) async fn commit_with_settings(
+        &self,
+        tx: DatabaseTransaction,
+        settings: Option<AppSettings>,
+    ) -> Result<(), CoreError> {
+        let Some(settings) = settings else {
+            tx.commit().await?;
+            return Ok(());
+        };
+        let _gate = self.settings_gate.lock().await;
+        tx.commit().await?;
+        *self.settings.write().unwrap_or_else(|e| e.into_inner()) = settings;
+        Ok(())
     }
 }
 
@@ -524,8 +537,7 @@ impl Core {
             },
         )
         .await?;
-        tx.commit().await?;
-        *self.settings.write().unwrap_or_else(|e| e.into_inner()) = new.clone();
+        self.commit_with_settings(tx, Some(new.clone())).await?;
         Ok(new)
     }
 }

@@ -32,6 +32,9 @@ async fn site(with_ui: bool, addr: SocketAddr) -> Site {
     std::fs::create_dir_all(ui.join("_app")).unwrap();
     std::fs::write(ui.join("index.html"), INDEX).unwrap();
     std::fs::write(ui.join("_app/x.js"), SCRIPT).unwrap();
+    std::fs::create_dir_all(ui.join("_app/immutable/chunks")).unwrap();
+    std::fs::write(ui.join("_app/immutable/chunks/a.js"), SCRIPT).unwrap();
+    std::fs::write(ui.join("_app/version.json"), "{}").unwrap();
     std::fs::write(root.join("secret"), "секрет").unwrap();
     let (_, db) = mw_db::testing::all_backends().await.remove(0);
     let clock = Arc::new(FixedClock::new(
@@ -158,4 +161,44 @@ async fn no_response_can_be_framed_by_another_site() {
             "{path} {host}"
         );
     }
+}
+
+#[tokio::test]
+async fn cache_headers_follow_the_kind_of_file() {
+    let s = site(true, net()).await;
+    let (code, headers, _) = call(&s, Method::GET, "/_app/immutable/chunks/a.js", "h").await;
+    assert_eq!(code, 200);
+    assert_eq!(
+        headers["cache-control"],
+        "public, max-age=31536000, immutable"
+    );
+    assert_eq!(headers["x-content-type-options"], "nosniff");
+    for path in ["/", "/orders/5", "/_app/version.json", "/_app/x.js"] {
+        let (code, headers, _) = call(&s, Method::GET, path, "h").await;
+        assert_eq!(code, 200, "{path}");
+        assert_eq!(headers["cache-control"], "no-store", "{path}");
+    }
+    let (_, headers, _) = call(&s, Method::HEAD, "/_app/immutable/chunks/a.js", "h").await;
+    assert_eq!(
+        headers["cache-control"],
+        "public, max-age=31536000, immutable"
+    );
+}
+
+#[tokio::test]
+async fn missing_app_files_are_404_not_index() {
+    let s = site(true, net()).await;
+    for path in [
+        "/_app/immutable/chunks/gone.js",
+        "/_app/nope.js",
+        "/_app/immutable/",
+        "/_app/",
+    ] {
+        let (code, headers, body) = call(&s, Method::GET, path, "h").await;
+        assert_eq!(code, 404, "{path}");
+        assert!(!body.contains("<title>mw</title>"), "{path}: {body}");
+        assert_eq!(headers["cache-control"], "no-store", "{path}");
+    }
+    let (code, _, body) = call(&s, Method::GET, "/orders/5", "h").await;
+    assert_eq!((code, body.as_str()), (200, INDEX));
 }

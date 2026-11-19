@@ -195,11 +195,8 @@ impl Core {
         } else {
             None
         };
-        tx.commit().await?;
-        if let Some(settings) = reloaded {
-            // Кэш настроек следит за тем, живёт ли точка по умолчанию.
-            *self.settings.write().unwrap_or_else(|e| e.into_inner()) = settings;
-        }
+        // Кэш настроек следит за тем, живёт ли точка по умолчанию.
+        self.commit_with_settings(tx, reloaded).await?;
         Ok(model.into())
     }
 

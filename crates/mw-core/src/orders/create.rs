@@ -43,6 +43,16 @@ impl Core {
     /// Приём устройства: клиент, заказ, штрихкод и запись журнала в одной транзакции.
     /// Повтор с тем же `request_key` возвращает уже созданный заказ.
     pub async fn create_order(&self, actor: &Actor, new: NewOrder) -> Result<Order, CoreError> {
+        self.create_order_marked(actor, new).await.map(|(o, _)| o)
+    }
+
+    /// То же, что `create_order`, плюс признак повтора: `true`, если вернулся заказ,
+    /// созданный раньше с тем же `request_key`.
+    pub async fn create_order_marked(
+        &self,
+        actor: &Actor,
+        new: NewOrder,
+    ) -> Result<(Order, bool), CoreError> {
         actor.require(Permission::OrdersCreate)?;
         for (field, key) in [
             ("request_key", &new.request_key),
@@ -55,18 +65,19 @@ impl Core {
             }
         }
         let Some(key) = new.request_key.clone() else {
-            return self.create_order_once(actor, new).await;
+            return Ok((self.create_order_once(actor, new).await?, false));
         };
         if let Some(found) = self.order_by_request_key(&key).await? {
-            return Ok(found);
+            return Ok((found, true));
         }
         match self.create_order_once(actor, new).await {
+            Ok(created) => Ok((created, false)),
             // Параллельный приём с тем же ключом: победитель уже записан.
             Err(e @ CoreError::Db(_)) => match self.order_by_request_key(&key).await? {
-                Some(found) => Ok(found),
+                Some(found) => Ok((found, true)),
                 None => Err(e),
             },
-            other => other,
+            Err(e) => Err(e),
         }
     }
 

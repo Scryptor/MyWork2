@@ -607,8 +607,7 @@ impl Core {
                         return Err(e);
                     }
                 };
-                tx.commit().await?;
-                *self.settings.write().unwrap_or_else(|e| e.into_inner()) = loaded;
+                self.commit_with_settings(tx, Some(loaded)).await?;
                 Ok(summary)
             }
             Err(e) => {

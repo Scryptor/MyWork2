@@ -107,7 +107,7 @@ async fn rename_in_orders_edits_matching_orders_like_a_normal_edit() -> Result<(
                 details["changes"],
                 json!({ "brand": [old, "Samsung Electronics"] })
             );
-            assert_eq!(details["via"], json!("dictionary"));
+            assert_eq!(details.get("via"), None);
         }
         let history = t
             .core
@@ -432,8 +432,8 @@ async fn merge_client_sources_edits_clients() -> Result<(), CoreError> {
         assert_eq!(
             audit_details(&t.core, "client.updated").await,
             [
-                json!({ "source": "Интернет", "via": "dictionary" }),
-                json!({ "source": "Интернет", "via": "dictionary" })
+                json!({ "source": "Интернет" }),
+                json!({ "source": "Интернет" })
             ]
         );
         let usage = t
@@ -796,10 +796,7 @@ async fn defaults_follow_rename_and_merge() -> Result<(), CoreError> {
         );
         assert_eq!(count_audit(&t.core, "settings.updated").await, before + 1);
         let d = audit_details(&t.core, "settings.updated").await;
-        assert_eq!(
-            d.last().unwrap(),
-            &json!({ "default_master": "Петров", "via": "dictionary" })
-        );
+        assert_eq!(d.last().unwrap(), &json!({ "default_master": "Петров" }));
 
         // Простое переименование (PATCH) — тоже.
         t.core

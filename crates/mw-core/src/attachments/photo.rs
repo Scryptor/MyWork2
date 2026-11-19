@@ -46,12 +46,33 @@ pub enum PhotoError {
     TooLarge,
 }
 
-/// Сигнатуры HEIC: байты 4..12. Общие бренды HEIF `mif1`/`msf1` не в счёт — их ставит и AVIF.
+/// Сигнатуры HEIC: основной бренд `ftyp` (байты 8..12) из семейства HEIC. Общие бренды HEIF
+/// `mif1`/`msf1` не в счёт сами по себе — их ставит и AVIF; но с совместимым брендом
+/// `heic`/`heix` (так пишут некоторые камеры) это HEIC.
 pub(crate) fn is_heic(bytes: &[u8]) -> bool {
-    matches!(
-        bytes.get(4..12),
-        Some(b"ftypheic" | b"ftypheix" | b"ftyphevc" | b"ftypheim" | b"ftypheis")
-    )
+    const MAJOR: [&[u8]; 5] = [b"heic", b"heix", b"hevc", b"heim", b"heis"];
+    const COMPATIBLE: [&[u8]; 2] = [b"heic", b"heix"];
+    if bytes.get(4..8) != Some(b"ftyp") {
+        return false;
+    }
+    let Some(major) = bytes.get(8..12) else {
+        return false;
+    };
+    if MAJOR.contains(&major) {
+        return true;
+    }
+    if major != b"mif1" && major != b"msf1" {
+        return false;
+    }
+    // Совместимые бренды: с байта 16 до конца блока `ftyp` (но не дальше начала данных).
+    let size = bytes
+        .get(0..4)
+        .and_then(|b| <[u8; 4]>::try_from(b).ok())
+        .map_or(0, |b| u32::from_be_bytes(b) as usize);
+    let end = size.clamp(16, 256).min(bytes.len());
+    bytes
+        .get(16..end)
+        .is_some_and(|brands| brands.chunks_exact(4).any(|b| COMPATIBLE.contains(&b)))
 }
 
 fn encode_jpeg(img: &DynamicImage, quality: u8) -> Result<Vec<u8>, PhotoError> {

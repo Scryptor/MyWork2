@@ -324,8 +324,7 @@ impl Core {
             )
             .await?;
         }
-        tx.commit().await?;
-        self.cache_settings(settings);
+        self.commit_with_settings(tx, settings).await?;
         to_item(model)
     }
 
@@ -401,8 +400,7 @@ impl Core {
             },
         )
         .await?;
-        tx.commit().await?;
-        self.cache_settings(settings);
+        self.commit_with_settings(tx, settings).await?;
         Ok(RewriteResult {
             item: to_item(model)?,
             records_changed,
@@ -496,8 +494,7 @@ impl Core {
             },
         )
         .await?;
-        tx.commit().await?;
-        self.cache_settings(settings);
+        self.commit_with_settings(tx, settings).await?;
         Ok(RewriteResult {
             item: to_item(target)?,
             records_changed,

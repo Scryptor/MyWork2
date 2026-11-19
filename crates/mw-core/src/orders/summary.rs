@@ -151,12 +151,29 @@ impl Core {
         if let (OrderValueField::Model, Some(b)) = (field, brand) {
             cond = cond.add(o(order::Column::BrandKey).eq(normalize_search(b)));
         }
+        // Сначала самые частые ключи — с `LIMIT` в SQL, затем написания только для них.
+        let mut top = Query::select();
+        top.column(key_col)
+            .from(order::Entity)
+            .cond_where(cond.clone())
+            .group_by_col(key_col)
+            .order_by_expr(Expr::count(Expr::col(Asterisk)), Order::Desc)
+            .order_by(key_col, Order::Asc)
+            .limit(VALUES_LIMIT as u64);
+        let mut wanted_keys: Vec<String> = Vec::new();
+        for row in self
+            .db
+            .query_all_raw(StatementBuilder::build(&top, &backend))
+            .await?
+        {
+            wanted_keys.push(row.try_get_by_index(0)?);
+        }
         let mut q = Query::select();
         q.column(key_col)
             .column(raw_col)
             .expr(Func::count(Expr::col(Asterisk)))
             .from(order::Entity)
-            .cond_where(cond)
+            .cond_where(cond.add(o(key_col).is_in(wanted_keys)))
             .group_by_col(key_col)
             .group_by_col(raw_col);
 

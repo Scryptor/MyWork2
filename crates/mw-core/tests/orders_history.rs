@@ -258,3 +258,28 @@ async fn warranty_case_day_lies_between_the_issue_and_now() -> Result<(), CoreEr
     }
     Ok(())
 }
+
+#[tokio::test]
+async fn history_of_a_deleted_order_is_not_found() -> Result<(), CoreError> {
+    for t in cores().await {
+        let o = t.core.create_order(&admin(), sample_new_order()).await?;
+        assert!(
+            t.core
+                .order_history(&admin(), o.id, PageRequest::default())
+                .await
+                .is_ok()
+        );
+        t.core.delete_order(&admin(), o.id, 1).await?;
+        assert!(
+            matches!(
+                t.core
+                    .order_history(&admin(), o.id, PageRequest::default())
+                    .await,
+                Err(CoreError::NotFound { .. })
+            ),
+            "{}",
+            t.label
+        );
+    }
+    Ok(())
+}

@@ -315,12 +315,8 @@ impl Core {
         )
         .await?;
         tx.commit().await?;
-        let files: Vec<PathBuf> = [Some(current.path.as_str()), current.thumb_path.as_deref()]
-            .into_iter()
-            .flatten()
-            .filter_map(|rel| store::resolve(&data_dir, rel))
-            .collect();
-        store::remove_files(&files);
+        // Для вложения черновика уходит и опустевшая папка черновика.
+        drafts::remove_rows_files(&data_dir, std::slice::from_ref(&current));
         Ok(())
     }
 }

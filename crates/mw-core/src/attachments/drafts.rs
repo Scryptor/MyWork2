@@ -190,7 +190,10 @@ impl Core {
     /// бросил обработчик) не остановит их на полпути, когда файлы уже перенесены, а пути — нет.
     pub(crate) async fn move_draft_files(&self, order_id: i64, rows: Vec<attachment::Model>) {
         let core = self.clone();
-        let task = tokio::spawn(async move { core.move_draft_files_now(order_id, rows).await });
+        // Задача на трекере: остановка сервера ждёт её (`Core::wait_background`) до закрытия БД.
+        let task = self
+            .background
+            .spawn(async move { core.move_draft_files_now(order_id, rows).await });
         if let Err(e) = task.await {
             tracing::warn!(order_id, error = %e, "перенос вложений черновика прерван");
         }
@@ -339,7 +342,7 @@ pub(crate) fn move_files(
 
 /// Удаляет файлы этих записей черновиков, затем их опустевшие папки. Папка, где остались
 /// другие файлы (например, файлы заказа, не перенесённые из черновика), остаётся.
-fn remove_rows_files(data_dir: &std::path::Path, rows: &[attachment::Model]) {
+pub(super) fn remove_rows_files(data_dir: &std::path::Path, rows: &[attachment::Model]) {
     let files: Vec<PathBuf> = rows.iter().flat_map(|m| paths_of(data_dir, m)).collect();
     store::remove_files(&files);
     let mut keys: Vec<&str> = rows.iter().filter_map(|m| m.draft_key.as_deref()).collect();
@@ -365,13 +368,13 @@ mod tests {
     pub(super) static FAIL_PATH_UPDATE: Mutex<Option<String>> = Mutex::new(None);
 
     /// Перенос черновика с этим ключом остановится перед записью путей: сообщит `reached` и
-    /// подождёт `release` (один раз).
+    /// подождёт `release` (один раз); меток может быть несколько — по одной на ключ.
     struct Pause {
         key: String,
         reached: Arc<Notify>,
         release: Arc<Notify>,
     }
-    static PAUSE_BEFORE_PATHS: Mutex<Option<Pause>> = Mutex::new(None);
+    static PAUSE_BEFORE_PATHS: Mutex<Vec<Pause>> = Mutex::new(Vec::new());
 
     /// Снимает метку, если она для этого ключа.
     pub(super) fn take_hook(hook: &Mutex<Option<String>>, key: Option<&str>) -> bool {
@@ -387,11 +390,8 @@ mod tests {
     pub(super) async fn pause_before_paths(key: Option<&str>) {
         let pause = {
             let mut guard = PAUSE_BEFORE_PATHS.lock().unwrap();
-            if key.is_some() && guard.as_ref().map(|p| p.key.as_str()) == key {
-                guard.take()
-            } else {
-                None
-            }
+            let at = guard.iter().position(|p| Some(p.key.as_str()) == key);
+            at.map(|i| guard.remove(i))
         };
         if let Some(p) = pause {
             p.reached.notify_one();
@@ -561,7 +561,7 @@ mod tests {
                 .unwrap();
             let reached = Arc::new(Notify::new());
             let release = Arc::new(Notify::new());
-            *PAUSE_BEFORE_PATHS.lock().unwrap() = Some(Pause {
+            PAUSE_BEFORE_PATHS.lock().unwrap().push(Pause {
                 key: "drop".into(),
                 reached: reached.clone(),
                 release: release.clone(),
@@ -605,6 +605,86 @@ mod tests {
                 tokio::time::sleep(std::time::Duration::from_millis(20)).await;
             }
             assert!(readable, "{label}: путь вложения не записан после переноса");
+        }
+    }
+
+    /// Остановка сервера ждёт перенос файлов: `wait_background` не возвращается, пока перенос
+    /// оборванного запроса не дошёл до записи путей, и после него файлы уже на месте.
+    #[tokio::test]
+    async fn wait_background_waits_for_a_dropped_requests_move() {
+        use crate::{Actor, AttachmentVariant, ClientRef, Core, FixedClock, NewClient, NewOrder};
+
+        for (label, db) in mw_db::testing::all_backends().await {
+            let clock = Arc::new(FixedClock::new(chrono::Utc::now()));
+            let dir = tempfile::tempdir().unwrap();
+            let core = Core::open(db, clock, "UTC")
+                .await
+                .unwrap()
+                .with_attachments_dir(dir.path().to_path_buf());
+            let actor = Actor::unrestricted("Тест");
+            let img = image::RgbImage::from_pixel(20, 20, image::Rgb([9, 9, 9]));
+            let mut png = std::io::Cursor::new(Vec::new());
+            image::DynamicImage::ImageRgb8(img)
+                .write_to(&mut png, image::ImageFormat::Png)
+                .unwrap();
+            let a = core
+                .add_draft_attachment(&actor, "wait", "p.png", png.into_inner())
+                .await
+                .unwrap();
+            let reached = Arc::new(Notify::new());
+            let release = Arc::new(Notify::new());
+            PAUSE_BEFORE_PATHS.lock().unwrap().push(Pause {
+                key: "wait".into(),
+                reached: reached.clone(),
+                release: release.clone(),
+            });
+            let request = {
+                let core = core.clone();
+                let actor = actor.clone();
+                tokio::spawn(async move {
+                    core.create_order(
+                        &actor,
+                        NewOrder {
+                            client: ClientRef::New(NewClient {
+                                full_name: "Ким".into(),
+                                ..Default::default()
+                            }),
+                            device_type: "Телефон".into(),
+                            brand: "А".into(),
+                            model: "Б".into(),
+                            malfunction: "Не включается".into(),
+                            attachment_draft: Some("wait".into()),
+                            ..Default::default()
+                        },
+                    )
+                    .await
+                })
+            };
+            reached.notified().await;
+            request.abort();
+            request.await.unwrap_err();
+            let waiter = {
+                let core = core.clone();
+                tokio::spawn(async move { core.wait_background().await })
+            };
+            tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+            assert!(
+                !waiter.is_finished(),
+                "{label}: ожидание не дождалось переноса"
+            );
+            release.notify_one();
+            tokio::time::timeout(std::time::Duration::from_secs(10), waiter)
+                .await
+                .unwrap()
+                .unwrap();
+            let f = core
+                .attachment_file(&actor, a.id, AttachmentVariant::Full)
+                .await
+                .unwrap();
+            assert!(
+                f.path.starts_with(dir.path().join("attachments/orders")),
+                "{label}"
+            );
         }
     }
 }

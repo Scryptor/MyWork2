@@ -23,6 +23,14 @@ fn deleted_error() -> CoreError {
     CoreError::Validation(vec![FieldError::new("id", "deleted")])
 }
 
+/// Даты приёма и выдачи правит только тот, у кого есть `order_dates_edit`.
+fn require_dates_permission(actor: &Actor, patch: &OrderPatch) -> Result<(), CoreError> {
+    if patch.received_at.is_some() || patch.issued_at.is_some() {
+        actor.require(Permission::OrderDatesEdit)?;
+    }
+    Ok(())
+}
+
 async fn load(conn: &impl ConnectionTrait, id: i64) -> Result<order::Model, CoreError> {
     order::Entity::find_by_id(id)
         .one(conn)
@@ -72,6 +80,8 @@ impl Core {
         patch: OrderPatch,
     ) -> Result<Order, CoreError> {
         actor.require(Permission::OrdersEdit)?;
+        // Отказ без права на даты — до блокировки записи.
+        require_dates_permission(actor, &patch)?;
         let tx = self.begin_write().await?;
         let (updated, _) = self
             .update_order_in(&tx, actor, id, expected_version, patch, None)
@@ -98,9 +108,7 @@ impl Core {
             issued_at: patch.issued_at.map(|t| t.map(|t| t.trunc_subsecs(0))),
             ..patch
         };
-        if patch.received_at.is_some() || patch.issued_at.is_some() {
-            actor.require(Permission::OrderDatesEdit)?;
-        }
+        require_dates_permission(actor, &patch)?;
         let current = load(tx, id).await?;
         if current.deleted_at.is_some() {
             return Err(deleted_error());
@@ -363,10 +371,10 @@ impl Core {
         check_affected(tx, res.rows_affected, id).await?;
 
         let mut summary = format!("Изменено: {}", d.labels.join(", "));
-        let mut details = json!({ "changes": d.changes });
+        let details = json!({ "changes": d.changes });
+        // Пометка «из справочника» — только в тексте записи, не среди полей правки.
         if let Some(via) = via {
             summary.push_str(via.suffix_ru());
-            details["via"] = json!(via.code());
         }
         write_audit(
             tx,
@@ -684,4 +692,46 @@ async fn check_affected(conn: &impl ConnectionTrait, rows: u64, id: i64) -> Resu
         id,
         current_version: m.version,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use mw_domain::permission::{Permission, PermissionSet};
+
+    use super::*;
+    use crate::{Actor, FixedClock};
+
+    /// Отказ без права на даты приходит сразу: блокировка записи для него не берётся.
+    #[tokio::test]
+    async fn dates_permission_is_checked_before_the_write_lock() {
+        for (label, db) in mw_db::testing::all_backends().await {
+            let clock = Arc::new(FixedClock::new(chrono::Utc::now()));
+            let core = Core::open(db, clock, "UTC").await.unwrap();
+            let mut set = PermissionSet::empty();
+            set.insert(Permission::OrdersEdit);
+            let editor = Actor::for_tests(None, "Тест", set);
+            let held = core.begin_write().await.unwrap();
+            let patch = OrderPatch {
+                received_at: Some(core.now()),
+                ..Default::default()
+            };
+            let result = tokio::time::timeout(
+                Duration::from_secs(2),
+                core.update_order(&editor, 1, 1, patch),
+            )
+            .await;
+            held.rollback().await.ok();
+            assert!(
+                matches!(
+                    result,
+                    Ok(Err(CoreError::Forbidden(Permission::OrderDatesEdit)))
+                ),
+                "{label}: отказ ждал блокировку записи: {result:?}"
+            );
+        }
+    }
 }

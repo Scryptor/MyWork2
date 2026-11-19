@@ -16,7 +16,12 @@ impl Core {
         page: PageRequest,
     ) -> Result<Page<AuditEntry>, CoreError> {
         validate_page(page.limit, page.offset)?;
-        if order::Entity::find_by_id(id).one(&self.db).await?.is_none() {
+        // Удалённый заказ для истории — как несуществующий.
+        let live = order::Entity::find_by_id(id)
+            .filter(order::Column::DeletedAt.is_null())
+            .one(&self.db)
+            .await?;
+        if live.is_none() {
             return Err(CoreError::NotFound {
                 entity: "заказ",
                 id,

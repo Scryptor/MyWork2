@@ -114,3 +114,26 @@ async fn values_are_distinct_by_key_most_frequent_first() -> Result<(), CoreErro
     }
     Ok(())
 }
+
+/// Подсказок не больше 20: самые частые, при равенстве — по ключу.
+#[tokio::test]
+async fn values_are_limited_to_the_most_frequent_twenty() -> Result<(), CoreError> {
+    for t in cores().await {
+        // Бренд `bNN` встречается (NN % 5 + 1) раз; всего 25 брендов.
+        for i in 0..25usize {
+            for _ in 0..(i % 5 + 1) {
+                create_order_with(&t, |n| n.brand = format!("b{i:02}")).await;
+            }
+        }
+        let got = t
+            .core
+            .order_values(&admin(), OrderValueField::Brand, "", None)
+            .await?;
+        let mut expected: Vec<(usize, String)> =
+            (0..25).map(|i| (i % 5 + 1, format!("b{i:02}"))).collect();
+        expected.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+        let expected: Vec<String> = expected.into_iter().take(20).map(|e| e.1).collect();
+        assert_eq!(got, expected, "{}", t.label);
+    }
+    Ok(())
+}

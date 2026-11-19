@@ -1,7 +1,7 @@
 //! Заказы.
 
 use axum::extract::State;
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use mw_core::{
     NewOrder, NewWarrantyCase, Order, OrderListItem, OrderPatch, OrderSummary, PageRequest,
 };
@@ -165,17 +165,25 @@ pub(super) async fn get_order(
     tag = "Заказы",
     security(("bearer" = [])),
     request_body = NewOrder,
-    responses((status = 201, description = "Заказ создан", body = Order))
+    responses((
+        status = 201,
+        description = "Заказ создан. Повтор с тем же `request_key` отвечает тем же заказом \
+            и заголовком `X-MW-Replayed: 1`",
+        body = Order,
+        headers(("X-MW-Replayed" = String, description = "`1` — заказ уже был создан раньше"))
+    ))
 )]
 pub(super) async fn create_order(
     State(state): State<AppState>,
     CurrentActor(actor): CurrentActor,
     Json(new): Json<NewOrder>,
-) -> Result<(StatusCode, Json<Order>), ApiError> {
-    Ok((
-        StatusCode::CREATED,
-        Json(state.core.create_order(&actor, new).await?),
-    ))
+) -> Result<(StatusCode, HeaderMap, Json<Order>), ApiError> {
+    let (order, replayed) = state.core.create_order_marked(&actor, new).await?;
+    let mut headers = HeaderMap::new();
+    if replayed {
+        headers.insert("x-mw-replayed", HeaderValue::from_static("1"));
+    }
+    Ok((StatusCode::CREATED, headers, Json(order)))
 }
 
 /// Изменение заказа по версии записи. Правка без различий успешна и версию не проверяет.

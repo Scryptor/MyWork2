@@ -611,7 +611,6 @@ impl Core {
         );
         if let Some(via) = via {
             summary.push_str(via.suffix_ru());
-            changed.insert("via".to_owned(), json!(via.code()));
         }
 
         let now = self.now();

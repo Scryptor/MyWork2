@@ -7,6 +7,8 @@ use sea_orm::{
     TransactionOptions, TransactionTrait,
 };
 
+use tokio_util::task::TaskTracker;
+
 use crate::auth::{HashGate, MAX_CONCURRENT_PASSWORD_HASHES};
 use crate::settings::{self, AppSettings};
 use crate::{Clock, CoreError};
@@ -20,6 +22,10 @@ pub struct Core {
     pub(crate) hash_gate: HashGate,
     /// Корень папки данных: файлы вложений лежат в `<корень>/attachments`.
     pub(crate) data_dir: Option<PathBuf>,
+    /// Фоновые задачи, которые нельзя бросать при остановке (перенос файлов черновиков).
+    pub(crate) background: TaskTracker,
+    /// Порядок обновления кэша настроек (см. `Core::commit_with_settings`).
+    pub(crate) settings_gate: Arc<tokio::sync::Mutex<()>>,
 }
 
 impl Core {
@@ -37,6 +43,8 @@ impl Core {
             settings: Arc::new(RwLock::new(loaded)),
             hash_gate: HashGate::new(MAX_CONCURRENT_PASSWORD_HASHES),
             data_dir: None,
+            background: TaskTracker::new(),
+            settings_gate: Arc::new(tokio::sync::Mutex::new(())),
         })
     }
 
@@ -80,6 +88,13 @@ impl Core {
     /// Показания часов `Core` в UTC, без перевода в пояс предприятия (интервалы, ограничение попыток).
     pub fn now_utc(&self) -> chrono::DateTime<chrono::Utc> {
         self.clock.now_utc()
+    }
+
+    /// Ждёт фоновые задачи (перенос файлов черновиков): вызывается перед закрытием БД.
+    pub async fn wait_background(&self) {
+        self.background.close();
+        self.background.wait().await;
+        self.background.reopen();
     }
 
     /// Копия настроек из кэша.

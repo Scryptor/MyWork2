@@ -1828,7 +1828,15 @@
         },
         "responses": {
           "201": {
-            "description": "Заказ создан",
+            "description": "Заказ создан. Повтор с тем же `request_key` отвечает тем же заказом и заголовком `X-MW-Replayed: 1`",
+            "headers": {
+              "X-MW-Replayed": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "`1` — заказ уже был создан раньше"
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {

@@ -156,6 +156,8 @@ impl Server {
             source,
         });
         cleanup.abort();
+        // Перенос файлов черновиков, начатый до остановки, доходит до конца раньше закрытия БД.
+        core.wait_background().await;
         drop(core);
         if let Err(e) = db.close().await {
             tracing::warn!("не удалось закрыть соединения с базой: {e}");
