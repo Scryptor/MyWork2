@@ -80,8 +80,8 @@ jobs:
 
   # The server is built once; both browsers take the binary as an artifact.
   e2e-server:
-    name: e2e-server (ubuntu-latest)
-    runs-on: ubuntu-latest
+    name: e2e-server (ubuntu-24.04)
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
@@ -102,7 +102,7 @@ jobs:
   ui-e2e:
     name: ui-e2e (${{ matrix.project }})
     needs: e2e-server
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     container:
       image: mcr.microsoft.com/playwright:v1.65.1-noble
@@ -121,12 +121,10 @@ jobs:
       - uses: actions/download-artifact@v5
         with:
           name: mw-server-linux
-          path: ${{ github.workspace }}/mw-server-bin
+          path: mw-server-bin
       - run: chmod +x "$GITHUB_WORKSPACE/mw-server-bin/mw-server"
       - run: npm run build
-      - run: npx playwright test --project=${{ matrix.project }}
-        env:
-          MW_E2E_SERVER_BIN: ${{ github.workspace }}/mw-server-bin/mw-server
+      - run: MW_E2E_SERVER_BIN="$GITHUB_WORKSPACE/mw-server-bin/mw-server" npx playwright test --project=${{ matrix.project }}
       # Screenshots of the screen sweep (layout-<case>-<scene>.png) and the traces of failed tests: a person looks
       # at them, they are not compared with a reference.
       - name: Upload e2e results
