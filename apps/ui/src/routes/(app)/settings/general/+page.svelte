@@ -52,7 +52,8 @@
 		try {
 			await setNextOrderNumber(Number(raw));
 			nextServer = Number(raw);
-			next = String(nextServer);
+			// Not over what was typed meanwhile.
+			if (next.trim() === raw) next = String(nextServer);
 			nextError = undefined;
 		} catch (e) {
 			nextError =

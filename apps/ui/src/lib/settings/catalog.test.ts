@@ -94,6 +94,21 @@ describe('createCatalog', () => {
 		expect(c.active.map((r) => r.id)).toEqual([1, 2, 3]);
 	});
 
+	it('a stale order is refused once: the move is made again on the fresh list', async () => {
+		const c = await loaded();
+		api.reorder.mockRejectedValueOnce(new ApiError(422, 'validation', 'Список изменился', null));
+		api.list.mockResolvedValue([
+			item(1, 'Alpha'),
+			item(2, 'Beta'),
+			item(3, 'Gamma'),
+			item(5, 'New'),
+			item(4, 'Old', true)
+		]);
+		expect(await c.reorder([3, 1, 2])).toBeNull();
+		expect(api.reorder).toHaveBeenCalledTimes(2);
+		expect(api.reorder).toHaveBeenLastCalledWith('brand', [3, 1, 2, 4, 5]);
+	});
+
 	it('reorders the filtered rows inside their own slots', async () => {
 		const c = await loaded();
 		c.query = 'a';

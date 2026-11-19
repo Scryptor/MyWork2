@@ -69,7 +69,7 @@ test('a new status shows in the filters at once; a change of kind warns and Canc
 		await openStatuses(page);
 		await expect(rowOf(page, name)).toContainText('в 1 заказе');
 
-		const kind = rowOf(page, name).getByRole('combobox', { name: 'Вид' });
+		const kind = rowOf(page, name).getByRole('combobox', { name: /^Вид статуса/ });
 		await kind.click();
 		await page.getByRole('option', { name: 'Выдан' }).click();
 		const dialog = page.getByRole('alertdialog', { name: `Сменить вид статуса „${name}“?` });
@@ -89,18 +89,21 @@ test('a new status shows in the filters at once; a change of kind warns and Canc
 
 test('the last «Выдан» cannot lose its kind', async ({ page }) => {
 	await openStatuses(page);
-	const kinds = page.getByRole('main').getByRole('combobox', { name: 'Вид' });
+	const kinds = page.getByRole('main').getByRole('combobox', { name: /^Вид статуса/ });
+	// The list is loaded before it is counted.
+	await expect(kinds.first()).toBeVisible();
 	const issued = page.getByRole('main').getByRole('listitem').filter({ hasText: 'заказ выдан' });
 	// Only if exactly one live status is «Выдан» does the refusal show; otherwise the change is just allowed.
 	test.skip((await issued.count()) !== 1, 'more than one «Выдан» status on this server');
-	await expect(kinds.first()).toBeVisible();
-	const one = issued.getByRole('combobox', { name: 'Вид' });
+	const one = issued.getByRole('combobox', { name: /^Вид статуса/ });
 	await one.click();
 	await page.getByRole('option', { name: 'Открыт' }).click();
-	// Orders were issued by other specs: the warning comes first, then the server refuses.
+	// Orders issued by other specs: the warning comes first, then the server refuses; with none, only the refusal.
 	const warn = page.getByRole('alertdialog');
+	const refusal = page.getByText('Нужен хотя бы один статус вида „Выдан“');
+	await expect(warn.or(refusal)).toBeVisible();
 	if (await warn.isVisible()) await warn.getByRole('button', { name: 'Сменить вид' }).click();
-	await expect(page.getByText('Нужен хотя бы один статус вида „Выдан“')).toBeVisible();
+	await expect(refusal).toBeVisible();
 	await expect(one).toHaveText('Выдан');
 });
 

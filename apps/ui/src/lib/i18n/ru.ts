@@ -590,6 +590,7 @@ export const ru = {
 		addColor: 'Цвет нового статуса',
 		addButton: 'Добавить статус',
 		kind: 'Вид',
+		kindOf: (name: string) => `Вид статуса „${name}“`,
 		color: 'Цвет',
 		colorOf: (name: string, hue: string) => `Цвет „${name}“: ${hue}`,
 		kindNames: {

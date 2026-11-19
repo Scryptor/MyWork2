@@ -14,6 +14,7 @@ import {
 } from '#lib/api/catalogs.js';
 import { ApiError, errorMessage } from '#lib/api/client.js';
 import { ru } from '#lib/i18n/ru.js';
+import { movedId, putOrder } from './order.js';
 
 export interface CatalogApi {
 	list: typeof listDictionary;
@@ -194,7 +195,13 @@ export function createCatalog(api: CatalogApi = realApi) {
 			const order = [...fullActive, ...rest];
 			items = sorted(before.map((i) => ({ ...i, sort_order: order.indexOf(i.id) })));
 			try {
-				await api.reorder(kind, [...fullActive, ...rest]);
+				const saved = await putOrder({
+					ordered: order,
+					moved: movedId(activeIds, fullActive),
+					put: (ids) => api.reorder(kind, ids),
+					fresh: async () => sorted(await api.list(kind, true)).map((i) => i.id)
+				});
+				if (saved !== order) await refresh();
 				return null;
 			} catch (e) {
 				items = before;

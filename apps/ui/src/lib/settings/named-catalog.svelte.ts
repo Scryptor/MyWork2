@@ -5,6 +5,7 @@ import type { CatalogUsage } from '$api/CatalogUsage';
 import { ApiError, errorMessage } from '#lib/api/client.js';
 import { ru } from '#lib/i18n/ru.js';
 import { mergeOrder, type CatalogRow } from './catalog.svelte.js';
+import { movedId, putOrder } from './order.js';
 
 export interface NamedItem {
 	id: number;
@@ -137,7 +138,13 @@ export function createNamedCatalog<T extends NamedItem, N, P>(
 			];
 			items = sorted(before.map((i) => ({ ...i, sort_order: order.indexOf(i.id) })));
 			try {
-				await api.reorder(order);
+				const saved = await putOrder({
+					ordered: order,
+					moved: movedId(activeIds, mergeOrder(activeIds, visibleIds)),
+					put: api.reorder,
+					fresh: async () => sorted(await api.list()).map((i) => i.id)
+				});
+				if (saved !== order) await refresh();
 			} catch (e) {
 				items = before;
 				return errorMessage(e);

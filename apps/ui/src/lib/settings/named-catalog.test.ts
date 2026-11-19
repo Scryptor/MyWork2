@@ -78,4 +78,20 @@ describe('createNamedCatalog', () => {
 		await first;
 		expect(c.active.map((r) => r.label)).toEqual(['A', 'B', 'C']);
 	});
+
+	it('a stale order is refused once: the move is made again on the fresh list and kept', async () => {
+		const { c, api } = make();
+		await c.load();
+		api.reorder.mockRejectedValueOnce(new Error('stale'));
+		api.list.mockResolvedValue([
+			st(1, 'A'),
+			st(2, 'B'),
+			st(3, 'C'),
+			st(5, 'New'),
+			st(4, 'Old', true)
+		]);
+		expect(await c.reorder([3, 1, 2])).toBeNull();
+		expect(api.reorder).toHaveBeenCalledTimes(2);
+		expect(api.reorder).toHaveBeenLastCalledWith([3, 1, 2, 4, 5]);
+	});
 });

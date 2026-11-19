@@ -185,6 +185,7 @@
 								<span class="kind">
 									<Select
 										label={t.kind}
+										ariaLabel={t.kindOf(s.name)}
 										items={kindItems}
 										disabled={readonly}
 										bind:value={() => s.kind, (v) => pickKind(s, v)}

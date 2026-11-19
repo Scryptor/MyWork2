@@ -12,6 +12,7 @@
 		items,
 		placeholder = ru.fields.select,
 		label,
+		ariaLabel,
 		hint,
 		error,
 		required = false,
@@ -22,6 +23,8 @@
 		items: { value: T; label: string; disabled?: boolean }[];
 		placeholder?: string;
 		label?: string;
+		/** The name for assistive technology when the visible label is the same in many places. */
+		ariaLabel?: string;
 		hint?: string;
 		error?: string;
 		required?: boolean;
@@ -57,6 +60,7 @@
 			<Select.Trigger
 				id={f.id}
 				class="mw-box select"
+				aria-label={ariaLabel}
 				aria-describedby={f.describedBy}
 				aria-invalid={f.invalid ? 'true' : undefined}
 				aria-required={required ? 'true' : undefined}

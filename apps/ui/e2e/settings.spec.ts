@@ -337,11 +337,15 @@ test.describe('server settings', () => {
 
 			// An order has that number already: the server refuses, the field is as it was.
 			const shown = await field.inputValue();
-			await field.fill('1');
-			await field.blur();
-			await expect(
-				page.getByText('Номер должен быть больше номеров существующих заказов')
-			).toBeVisible();
+			// The save of the first number may still be in flight (the page skips a second one then): again
+			// until the refusal shows.
+			await expect(async () => {
+				await field.fill('1');
+				await field.blur();
+				await expect(
+					page.getByText('Номер должен быть больше номеров существующих заказов')
+				).toBeVisible({ timeout: 1500 });
+			}).toPass();
 			await expect(field).toHaveValue(shown);
 		} finally {
 			await api.dispose();
