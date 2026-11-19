@@ -1,3 +1,4 @@
+import BookOpen from '@lucide/svelte/icons/book-open';
 import Info from '@lucide/svelte/icons/info';
 import ListOrdered from '@lucide/svelte/icons/list-ordered';
 import Palette from '@lucide/svelte/icons/palette';
@@ -19,5 +20,11 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
 	{ id: 'general', label: ru.settings.general, icon: Settings2, href: 'settings/general' },
 	{ id: 'appearance', label: ru.settings.appearance, icon: Palette, href: 'settings/appearance' },
 	{ id: 'orders', label: ru.settings.ordersTitle, icon: ListOrdered, href: 'settings/orders' },
+	{
+		id: 'dictionaries',
+		label: ru.settings.dictionaries,
+		icon: BookOpen,
+		href: 'settings/dictionaries'
+	},
 	{ id: 'about', label: ru.settings.about, icon: Info, href: 'settings/about' }
 ];

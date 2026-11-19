@@ -257,6 +257,14 @@ async function serverSettingsScenes(
 	);
 	await scene(page, c, 'orders-settings', bars, pending);
 
+	await page.goto('/settings/dictionaries?kind=device_type');
+	await expect(page.getByRole('heading', { name: 'Справочники' })).toBeVisible();
+	// Loaded: the values, or «Значений пока нет» on a server that has none.
+	await expect(
+		page.getByRole('main').getByRole('listitem').first().or(page.getByText('Значений пока нет'))
+	).toBeVisible();
+	await scene(page, c, 'dictionaries', bars, pending);
+
 	await page.goto('/settings/about');
 	await expect(page.getByRole('heading', { name: 'О программе' })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Скопировать' })).toBeVisible();

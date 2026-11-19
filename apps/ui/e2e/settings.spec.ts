@@ -54,6 +54,7 @@ test('«Настройки» in the menu opens «Общие»; the subsections a
 		'Общие',
 		'Внешний вид',
 		'Заказы',
+		'Справочники',
 		'О программе'
 	]);
 	await expect(sections.getByRole('link', { name: 'Общие' })).toHaveAttribute(
