@@ -540,6 +540,24 @@ export const ru = {
 		failed: 'Камера не запустилась — добавьте фото файлами'
 	},
 	status: { label: 'Статус' },
+	sortable: {
+		move: (label: string) => `Переместить „${label}“`,
+		place: (label: string, n: number, m: number) => `„${label}“ — место ${n} из ${m}`
+	},
+	hues: {
+		gray: 'Серый',
+		red: 'Красный',
+		orange: 'Оранжевый',
+		amber: 'Янтарный',
+		lime: 'Лаймовый',
+		green: 'Зелёный',
+		teal: 'Бирюзовый',
+		cyan: 'Голубой',
+		blue: 'Синий',
+		indigo: 'Индиго',
+		violet: 'Фиолетовый',
+		pink: 'Розовый'
+	},
 	table: {
 		columns: 'Колонки',
 		moveUp: 'Выше',
