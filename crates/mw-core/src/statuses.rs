@@ -277,6 +277,7 @@ impl Core {
         &self,
         actor: &Actor,
         ordered_ids: &[i64],
+        seen_ids: Option<&[i64]>,
     ) -> Result<(), CoreError> {
         actor.require(Permission::SettingsManage)?;
         let tx = self.begin_write().await?;
@@ -284,6 +285,9 @@ impl Core {
         check_permutation(ordered_ids, rows.iter().map(|r| r.id))?;
         if rows.iter().map(|r| r.id).eq(ordered_ids.iter().copied()) {
             return Ok(());
+        }
+        if let Some(seen) = seen_ids {
+            check_seen_order(seen, rows.iter().map(|r| (r.id, r.sort_order)))?;
         }
         for (position, id) in (0_i32..).zip(ordered_ids) {
             status::ActiveModel {
@@ -309,6 +313,31 @@ impl Core {
         .await?;
         tx.commit().await?;
         Ok(())
+    }
+}
+
+/// Порядок, который видел экран (`seen`), всё ещё верен: тот же набор номеров, и `sort_order` вдоль него
+/// не убывает (равные — в любом порядке). Иначе порядок тем временем изменили с другого экрана —
+/// `ordered_ids: stale`: экран перечитает список и повторит своё перемещение, не затирая чужое.
+pub(crate) fn check_seen_order(
+    seen: &[i64],
+    current: impl Iterator<Item = (i64, i32)>,
+) -> Result<(), CoreError> {
+    let by_id: std::collections::HashMap<i64, i32> = current.collect();
+    let mut ids = seen.to_vec();
+    ids.sort_unstable();
+    ids.dedup();
+    let positions: Option<Vec<i32>> = seen.iter().map(|id| by_id.get(id).copied()).collect();
+    let fresh = ids.len() == seen.len()
+        && seen.len() == by_id.len()
+        && positions.is_some_and(|p| p.windows(2).all(|w| w[0] <= w[1]));
+    if fresh {
+        Ok(())
+    } else {
+        Err(CoreError::Validation(vec![FieldError::new(
+            "ordered_ids",
+            "stale",
+        )]))
     }
 }
 

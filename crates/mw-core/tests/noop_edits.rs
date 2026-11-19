@@ -48,7 +48,7 @@ async fn same_values_change_nothing_anywhere() -> Result<(), CoreError> {
             .iter()
             .map(|s| s.id)
             .collect();
-        t.core.reorder_statuses(&admin(), &status_ids).await?;
+        t.core.reorder_statuses(&admin(), &status_ids, None).await?;
         let p = t.core.create_service_point(&admin(), "Центр").await?;
         assert_eq!(
             t.core
@@ -63,7 +63,9 @@ async fn same_values_change_nothing_anywhere() -> Result<(), CoreError> {
                 .await?,
             p
         );
-        t.core.reorder_service_points(&admin(), &[p.id]).await?;
+        t.core
+            .reorder_service_points(&admin(), &[p.id], None)
+            .await?;
         let brands = t.core.list_dictionary(DictionaryKind::Brand, false).await?;
         assert_eq!(
             t.core
@@ -80,6 +82,7 @@ async fn same_values_change_nothing_anywhere() -> Result<(), CoreError> {
                 &admin(),
                 DictionaryKind::Brand,
                 &brands.iter().map(|i| i.id).collect::<Vec<_>>(),
+                None,
             )
             .await?;
         for action in [

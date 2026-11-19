@@ -14,7 +14,7 @@ use serde_json::json;
 
 use crate::dictionaries_rewrite::records_word;
 use crate::settings::follow_dictionary_value;
-use crate::statuses::check_permutation;
+use crate::statuses::{check_permutation, check_seen_order};
 use crate::usage::usage_target;
 use crate::{Actor, Core, CoreError, NewAuditEntry, write_audit};
 
@@ -530,12 +530,14 @@ impl Core {
         Ok(())
     }
 
-    /// Принимает перестановку всех id значений этого справочника.
+    /// Принимает перестановку всех id значений этого справочника; `seen_ids` — порядок, который видел
+    /// экран (переставили тем временем — `ordered_ids: stale`).
     pub async fn reorder_dictionary(
         &self,
         actor: &Actor,
         kind: DictionaryKind,
         ordered_ids: &[i64],
+        seen_ids: Option<&[i64]>,
     ) -> Result<(), CoreError> {
         actor.require(Permission::SettingsManage)?;
         let tx = self.begin_write().await?;
@@ -544,6 +546,9 @@ impl Core {
         let current = sorted_items(rows)?;
         if current.iter().map(|i| i.id).eq(ordered_ids.iter().copied()) {
             return Ok(());
+        }
+        if let Some(seen) = seen_ids {
+            check_seen_order(seen, current.iter().map(|i| (i.id, i.sort_order)))?;
         }
         for (position, id) in (0_i32..).zip(ordered_ids) {
             dictionary_item::ActiveModel {

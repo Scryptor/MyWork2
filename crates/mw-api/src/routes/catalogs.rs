@@ -126,7 +126,7 @@ pub(super) async fn reorder_statuses(
 ) -> Result<StatusCode, ApiError> {
     state
         .core
-        .reorder_statuses(&actor, &req.ordered_ids)
+        .reorder_statuses(&actor, &req.ordered_ids, req.seen_ids.as_deref())
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -202,7 +202,7 @@ pub(super) async fn reorder_dictionary(
 ) -> Result<StatusCode, ApiError> {
     state
         .core
-        .reorder_dictionary(&actor, kind, &req.ordered_ids)
+        .reorder_dictionary(&actor, kind, &req.ordered_ids, req.seen_ids.as_deref())
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -373,7 +373,7 @@ pub(super) async fn reorder_service_points(
 ) -> Result<StatusCode, ApiError> {
     state
         .core
-        .reorder_service_points(&actor, &req.ordered_ids)
+        .reorder_service_points(&actor, &req.ordered_ids, req.seen_ids.as_deref())
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }

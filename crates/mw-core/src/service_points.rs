@@ -9,7 +9,7 @@ use sea_orm::{
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::statuses::check_permutation;
+use crate::statuses::{check_permutation, check_seen_order};
 use crate::{Actor, Core, CoreError, NewAuditEntry, write_audit};
 
 /// Точка обслуживания.
@@ -208,6 +208,7 @@ impl Core {
         &self,
         actor: &Actor,
         ordered_ids: &[i64],
+        seen_ids: Option<&[i64]>,
     ) -> Result<(), CoreError> {
         actor.require(Permission::SettingsManage)?;
         let tx = self.begin_write().await?;
@@ -215,6 +216,9 @@ impl Core {
         check_permutation(ordered_ids, rows.iter().map(|r| r.id))?;
         if rows.iter().map(|r| r.id).eq(ordered_ids.iter().copied()) {
             return Ok(());
+        }
+        if let Some(seen) = seen_ids {
+            check_seen_order(seen, rows.iter().map(|r| (r.id, r.sort_order)))?;
         }
         for (position, id) in (0_i32..).zip(ordered_ids) {
             service_point::ActiveModel {

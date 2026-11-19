@@ -1,5 +1,16 @@
 import { describe, expect, it, vi } from 'vitest';
+import { ApiError } from '#lib/api/client.js';
 import { movedId, putOrder, reapplyMove } from './order.js';
+
+const stale = () =>
+	new ApiError(422, 'validation', 'Порядок тем временем изменили', {
+		code: 'validation',
+		message: 'Порядок тем временем изменили',
+		fields: [{ field: 'ordered_ids', code: 'stale', message: 'x' }],
+		current_version: null,
+		permission: null,
+		retry_after_secs: null
+	});
 
 describe('movedId', () => {
 	it('finds the one id that moved', () => {
@@ -22,11 +33,12 @@ describe('reapplyMove', () => {
 });
 
 describe('putOrder', () => {
-	it('sends once when the server accepts', async () => {
+	it('sends once, with the order it was made from, when the server accepts', async () => {
 		const put = vi.fn(async () => {});
 		const fresh = vi.fn(async () => [1, 2]);
-		expect(await putOrder({ ordered: [2, 1], moved: 2, put, fresh })).toEqual([2, 1]);
+		expect(await putOrder({ ordered: [2, 1], seen: [1, 2], moved: 2, put, fresh })).toEqual([2, 1]);
 		expect(put).toHaveBeenCalledTimes(1);
+		expect(put).toHaveBeenCalledWith([2, 1], [1, 2]);
 		expect(fresh).not.toHaveBeenCalled();
 	});
 	it('a refusal with a changed list: read again, move again, retry once', async () => {
@@ -34,28 +46,56 @@ describe('putOrder', () => {
 		put.mockRejectedValueOnce(new Error('stale'));
 		const saved = await putOrder({
 			ordered: [1, 3, 2],
+			seen: [1, 2, 3],
 			moved: 3,
 			put,
 			fresh: async () => [1, 2, 3, 9]
 		});
 		expect(saved).toEqual([1, 3, 2, 9]);
-		expect(put).toHaveBeenLastCalledWith([1, 3, 2, 9]);
+		expect(put).toHaveBeenLastCalledWith([1, 3, 2, 9], [1, 2, 3, 9]);
 	});
-	it('a refusal of the same list is not retried', async () => {
+	it('a refusal because another screen moved something: its move stays, ours is made on top', async () => {
+		const put = vi.fn(async () => {});
+		put.mockRejectedValueOnce(new Error('stale'));
+		// We moved 3 to the top of [1, 2, 3, 4]; another screen meanwhile put 4 before 2.
+		const saved = await putOrder({
+			ordered: [3, 1, 2, 4],
+			seen: [1, 2, 3, 4],
+			moved: 3,
+			put,
+			fresh: async () => [1, 4, 2, 3]
+		});
+		expect(saved).toEqual([3, 1, 4, 2]);
+		expect(put).toHaveBeenLastCalledWith([3, 1, 4, 2], [1, 4, 2, 3]);
+	});
+	it('a refusal of the very order we saw is not retried', async () => {
 		const put = vi.fn(async () => {
 			throw new Error('no right');
 		});
 		await expect(
-			putOrder({ ordered: [2, 1], moved: 2, put, fresh: async () => [1, 2] })
+			putOrder({ ordered: [2, 1], seen: [1, 2], moved: 2, put, fresh: async () => [1, 2] })
 		).rejects.toThrow('no right');
 		expect(put).toHaveBeenCalledTimes(1);
+	});
+	it('«stale» is retried even when the order read back is the one we saw (it settled meanwhile)', async () => {
+		const put = vi.fn(async () => {});
+		put.mockRejectedValueOnce(stale());
+		const saved = await putOrder({
+			ordered: [2, 1],
+			seen: [1, 2],
+			moved: 2,
+			put,
+			fresh: async () => [1, 2]
+		});
+		expect(saved).toEqual([2, 1]);
+		expect(put).toHaveBeenLastCalledWith([2, 1], [1, 2]);
 	});
 	it('a second refusal is thrown', async () => {
 		const put = vi.fn(async () => {
 			throw new Error('again');
 		});
 		await expect(
-			putOrder({ ordered: [2, 1], moved: 2, put, fresh: async () => [1, 2, 9] })
+			putOrder({ ordered: [2, 1], seen: [1, 2], moved: 2, put, fresh: async () => [1, 2, 9] })
 		).rejects.toThrow('again');
 		expect(put).toHaveBeenCalledTimes(2);
 	});

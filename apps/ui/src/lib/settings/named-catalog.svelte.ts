@@ -19,7 +19,8 @@ export interface NamedApi<T extends NamedItem, N, P> {
 	usage: () => Promise<CatalogUsage[]>;
 	add: (value: N) => Promise<T>;
 	update: (id: number, patch: P) => Promise<T>;
-	reorder: (orderedIds: number[]) => Promise<void>;
+	/** `seenIds`: the order the new one was made from. */
+	reorder: (orderedIds: number[], seenIds?: number[]) => Promise<void>;
 }
 
 /** The text of a refusal: the known codes of the server in words, anything else as the server says. */
@@ -141,6 +142,7 @@ export function createNamedCatalog<T extends NamedItem, N, P>(
 			try {
 				const saved = await putOrder({
 					ordered: order,
+					seen: before.map((i) => i.id),
 					moved: movedId(activeIds, mergeOrder(activeIds, visibleIds)),
 					put: api.reorder,
 					fresh: async () => sorted(await api.list()).map((i) => i.id)

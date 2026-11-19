@@ -37,9 +37,14 @@ export const createStatus = (body: NewStatus) => request<Status>('POST', '/statu
 export const updateStatus = (id: number, patch: StatusPatch) =>
 	request<Status>('PATCH', `/statuses/${id}`, { body: patch });
 
-/** The new order of ALL the statuses, archived ones included. */
-export const reorderStatuses = (orderedIds: number[]) =>
-	request<void>('PUT', '/statuses/order', { body: { ordered_ids: orderedIds } });
+/**
+ * The new order of ALL the statuses, archived ones included; `seenIds` — the order it was made from (the
+ * server refuses with `stale` when another screen has changed it meanwhile).
+ */
+export const reorderStatuses = (orderedIds: number[], seenIds?: number[]) =>
+	request<void>('PUT', '/statuses/order', {
+		body: { ordered_ids: orderedIds, seen_ids: seenIds }
+	});
 
 export const createServicePoint = (name: string) =>
 	request<ServicePoint>('POST', '/service-points', { body: { name } });
@@ -47,8 +52,10 @@ export const createServicePoint = (name: string) =>
 export const updateServicePoint = (id: number, patch: ServicePointPatch) =>
 	request<ServicePoint>('PATCH', `/service-points/${id}`, { body: patch });
 
-export const reorderServicePoints = (orderedIds: number[]) =>
-	request<void>('PUT', '/service-points/order', { body: { ordered_ids: orderedIds } });
+export const reorderServicePoints = (orderedIds: number[], seenIds?: number[]) =>
+	request<void>('PUT', '/service-points/order', {
+		body: { ordered_ids: orderedIds, seen_ids: seenIds }
+	});
 
 /** The values of a dictionary; with `archived` also the hidden ones (intake asks without it). */
 export const listDictionary = (kind: DictionaryKind, archived = false) =>
@@ -63,9 +70,11 @@ export const dictionaryUsage = (kind: DictionaryKind) =>
 export const deleteDictionaryItem = (id: number) =>
 	request<void>('DELETE', `/dictionary-items/${id}`);
 
-/** The new order of ALL the values of the kind, archived ones included. */
-export const reorderDictionary = (kind: DictionaryKind, orderedIds: number[]) =>
-	request<void>('PUT', `/dictionaries/${kind}/order`, { body: { ordered_ids: orderedIds } });
+/** The new order of ALL the values of the kind, archived ones included; `seenIds` as for the statuses. */
+export const reorderDictionary = (kind: DictionaryKind, orderedIds: number[], seenIds?: number[]) =>
+	request<void>('PUT', `/dictionaries/${kind}/order`, {
+		body: { ordered_ids: orderedIds, seen_ids: seenIds }
+	});
 
 export const renameDictionaryItem = (id: number, body: DictionaryRename) =>
 	request<RewriteResult>('POST', `/dictionary-items/${id}/rename`, { body });

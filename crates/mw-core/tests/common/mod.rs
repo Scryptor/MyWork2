@@ -812,3 +812,23 @@ pub fn vpatch(value: &str) -> mw_core::DictionaryItemPatch {
         ..Default::default()
     }
 }
+
+/// Значение справочника в обход `Core` (без проверки дублей, со своим `sort_order`) — как из MyWork 2.
+pub async fn insert_dictionary_item_directly(
+    core: &Core,
+    kind: mw_domain::dictionary::DictionaryKind,
+    value: &str,
+    sort_order: i32,
+) -> i64 {
+    mw_db::entity::dictionary_item::ActiveModel {
+        id: sea_orm::NotSet,
+        kind: Set(kind.as_str().to_owned()),
+        value: Set(value.to_owned()),
+        sort_order: Set(sort_order),
+        archived: Set(false),
+    }
+    .insert(core.db())
+    .await
+    .unwrap()
+    .id
+}

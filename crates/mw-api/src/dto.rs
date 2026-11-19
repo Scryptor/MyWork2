@@ -146,6 +146,12 @@ pub struct AboutInfo {
 pub struct ReorderRequest {
     /// Номера записей в новом порядке; должны совпадать с текущим набором.
     pub ordered_ids: Vec<i64>,
+    /// Порядок, который видел экран (все номера); если его тем временем изменили, ошибка
+    /// `ordered_ids: stale`, а чужое перемещение не теряется. Можно не передавать.
+    #[serde(default)]
+    #[ts(optional)]
+    #[schema(nullable = false)]
+    pub seen_ids: Option<Vec<i64>>,
 }
 
 /// Значение справочника.

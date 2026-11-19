@@ -207,8 +207,9 @@ export function createCatalog(api: CatalogApi = realApi) {
 			try {
 				const saved = await putOrder({
 					ordered: order,
+					seen: before.map((i) => i.id),
 					moved: movedId(activeIds, fullActive),
-					put: (ids) => api.reorder(kind, ids),
+					put: (ids, seen) => api.reorder(kind, ids, seen),
 					fresh: async () => sorted(await api.list(kind, true)).map((i) => i.id)
 				});
 				if (saved !== order) await refresh();

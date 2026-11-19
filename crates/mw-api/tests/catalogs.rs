@@ -695,3 +695,65 @@ async fn dictionary_rename_refusals_and_defaults() {
         );
     }
 }
+
+/// Перестановка со взглядом экрана (`seen_ids`): порядок изменили тем временем — 422 `stale`.
+#[tokio::test]
+async fn reorder_with_a_stale_view_is_refused() {
+    for t in apis(Listen::Network).await {
+        let admin = t.admin_token().await;
+        let list = t
+            .get("/api/v1/statuses?include_archived=true", Some(&admin))
+            .await
+            .body;
+        let seen: Vec<i64> = list
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|s| s["id"].as_i64().unwrap())
+            .collect();
+        let mut first = seen.clone();
+        first.rotate_right(1);
+        let r = t
+            .send(
+                Method::PUT,
+                "/api/v1/statuses/order",
+                Some(&admin),
+                Some(json!({ "ordered_ids": first, "seen_ids": seen })),
+            )
+            .await;
+        assert_eq!(r.status, 204, "{}: {}", t.label, r.body);
+        let mut second = seen.clone();
+        second.swap(0, 1);
+        let r = t
+            .send(
+                Method::PUT,
+                "/api/v1/statuses/order",
+                Some(&admin),
+                Some(json!({ "ordered_ids": second, "seen_ids": seen })),
+            )
+            .await;
+        assert_eq!(
+            (r.status, &r.body["fields"]),
+            (
+                422,
+                &json!([{
+                    "field": "ordered_ids",
+                    "code": "stale",
+                    "message": "Порядок тем временем изменили: обновите список и повторите"
+                }])
+            ),
+            "{}",
+            t.label
+        );
+        // Без `seen_ids` — как раньше.
+        let r = t
+            .send(
+                Method::PUT,
+                "/api/v1/statuses/order",
+                Some(&admin),
+                Some(json!({ "ordered_ids": second })),
+            )
+            .await;
+        assert_eq!(r.status, 204, "{}", t.label);
+    }
+}

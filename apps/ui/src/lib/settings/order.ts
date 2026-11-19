@@ -1,6 +1,9 @@
-// Saving a drag order when somebody else has added a value meanwhile. The server takes only an exact list of
-// all the ids, so a stale list is refused; then the list is read again, the move is made again on the fresh
-// list (the moved id next to the same neighbour, unknown ids stay where the server has them) and sent once more.
+// Saving a drag order when somebody else has changed the list meanwhile. The server takes only an exact list of
+// all the ids, together with the order it was made from: a list with other ids, or an order another screen has
+// changed since, is refused. Then the list is read again, the move is made again on the fresh list (the moved
+// id next to the same neighbour, the rest where the server has them — so the other move is kept) and sent once
+// more.
+import { ApiError } from '#lib/api/client.js';
 
 /** The one id whose move turns `before` into `after`, or `null` when it is not a single move. */
 export function movedId(before: number[], after: number[]): number | null {
@@ -32,18 +35,24 @@ export function reapplyMove(fresh: number[], intended: number[], moved: number):
 	return rest;
 }
 
+/** The server said the order it has is not the one the move was made from (`ordered_ids: stale`). */
+const isStale = (e: unknown) =>
+	e instanceof ApiError && (e.body?.fields.some((f) => f.code === 'stale') ?? false);
+
 /**
- * Sends `ordered`; when the server refuses and the list of the server has other ids than we knew, sends the
- * move again on the fresh list. Answers the order that was saved; throws the refusal when it was not about that.
+ * Sends `ordered`, made from `seen`; when the server refuses and its list is not `seen` any more (other ids, or
+ * another order), or it says the order was stale (it may have settled by the time it is read), sends the move
+ * again on the fresh list. Answers the order that was saved; throws the refusal when it was not about that.
  */
 export async function putOrder(opts: {
 	ordered: number[];
+	seen: number[];
 	moved: number | null;
-	put: (ids: number[]) => Promise<void>;
+	put: (ids: number[], seen: number[]) => Promise<void>;
 	fresh: () => Promise<number[]>;
 }): Promise<number[]> {
 	try {
-		await opts.put(opts.ordered);
+		await opts.put(opts.ordered, opts.seen);
 		return opts.ordered;
 	} catch (first) {
 		if (opts.moved === null) throw first;
@@ -53,10 +62,10 @@ export async function putOrder(opts: {
 		} catch {
 			throw first;
 		}
-		const known = new Set(opts.ordered);
-		if (fresh.length === opts.ordered.length && fresh.every((x) => known.has(x))) throw first;
+		const same = fresh.length === opts.seen.length && fresh.every((x, i) => x === opts.seen[i]);
+		if (same && !isStale(first)) throw first;
 		const again = reapplyMove(fresh, opts.ordered, opts.moved);
-		await opts.put(again);
+		await opts.put(again, fresh);
 		return again;
 	}
 }

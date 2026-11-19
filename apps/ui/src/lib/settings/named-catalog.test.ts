@@ -73,10 +73,18 @@ describe('createNamedCatalog', () => {
 		const { c, api } = make();
 		await c.load();
 		expect(await c.reorder([3, 1, 2])).toBeNull();
-		expect(api.reorder).toHaveBeenCalledWith([3, 1, 2, 4]);
+		expect(api.reorder).toHaveBeenCalledWith([3, 1, 2, 4], [1, 2, 3, 4]);
 		expect(c.active.map((r) => r.id)).toEqual([3, 1, 2]);
+		// The server has the new order now: a refusal of the order we saw is not retried.
+		api.list.mockResolvedValue(
+			[st(3, 'C'), st(1, 'A'), st(2, 'B'), st(4, 'Old', true)].map((x, i) => ({
+				...x,
+				sort_order: i
+			}))
+		);
 		api.reorder.mockRejectedValueOnce(new Error('boom'));
 		expect(await c.reorder([1, 2, 3])).not.toBeNull();
+		expect(api.reorder).toHaveBeenCalledTimes(2);
 		expect(c.active.map((r) => r.id)).toEqual([3, 1, 2]);
 	});
 
@@ -104,6 +112,23 @@ describe('createNamedCatalog', () => {
 		]);
 		expect(await c.reorder([3, 1, 2])).toBeNull();
 		expect(api.reorder).toHaveBeenCalledTimes(2);
-		expect(api.reorder).toHaveBeenLastCalledWith([3, 1, 2, 4, 5]);
+		expect(api.reorder).toHaveBeenLastCalledWith([3, 1, 2, 4, 5], [1, 2, 3, 4, 5]);
+	});
+
+	it('another screen moved a status meanwhile: our move is made on top of theirs', async () => {
+		const { c, api } = make();
+		await c.load();
+		api.reorder.mockRejectedValueOnce(new Error('stale'));
+		// The other screen put C first; the set is the same.
+		api.list.mockResolvedValue([
+			{ ...st(3, 'C'), sort_order: 0 },
+			st(1, 'A'),
+			st(2, 'B'),
+			st(4, 'Old', true)
+		]);
+		// We move B before A.
+		expect(await c.reorder([2, 1, 3])).toBeNull();
+		expect(api.reorder).toHaveBeenCalledTimes(2);
+		expect(api.reorder).toHaveBeenLastCalledWith([3, 2, 1, 4], [3, 1, 2, 4]);
 	});
 });

@@ -105,10 +105,10 @@ async fn reorder_requires_full_permutation() -> Result<(), CoreError> {
             .rev()
             .collect();
         assert_validation(
-            t.core.reorder_statuses(&admin(), &ids[1..]).await,
+            t.core.reorder_statuses(&admin(), &ids[1..], None).await,
             &[("ordered_ids", "invalid")],
         );
-        t.core.reorder_statuses(&admin(), &ids).await?;
+        t.core.reorder_statuses(&admin(), &ids, None).await?;
         assert_eq!(t.core.list_statuses(true).await?[0].name, "Выдан");
         assert_eq!(count_audit(&t.core, "statuses.reordered").await, 1);
     }
@@ -231,7 +231,7 @@ async fn status_not_found_and_forbidden() -> Result<(), CoreError> {
             .map(|s| s.id)
             .collect();
         assert!(matches!(
-            t.core.reorder_statuses(&clerk, &ids).await,
+            t.core.reorder_statuses(&clerk, &ids, None).await,
             Err(CoreError::Forbidden(Permission::SettingsManage))
         ));
     }
@@ -284,7 +284,7 @@ async fn reorder_rejects_duplicated_ids() -> Result<(), CoreError> {
             .collect();
         ids[1] = ids[0];
         assert_validation(
-            t.core.reorder_statuses(&admin(), &ids).await,
+            t.core.reorder_statuses(&admin(), &ids, None).await,
             &[("ordered_ids", "invalid")],
         );
 
@@ -293,7 +293,7 @@ async fn reorder_rejects_duplicated_ids() -> Result<(), CoreError> {
         ids[1] = ids[0];
         assert_validation(
             t.core
-                .reorder_dictionary(&admin(), DictionaryKind::Color, &ids)
+                .reorder_dictionary(&admin(), DictionaryKind::Color, &ids, None)
                 .await,
             &[("ordered_ids", "invalid")],
         );
@@ -303,7 +303,7 @@ async fn reorder_rejects_duplicated_ids() -> Result<(), CoreError> {
         ids[0] = brand;
         assert_validation(
             t.core
-                .reorder_dictionary(&admin(), DictionaryKind::Color, &ids)
+                .reorder_dictionary(&admin(), DictionaryKind::Color, &ids, None)
                 .await,
             &[("ordered_ids", "invalid")],
         );
@@ -311,11 +311,13 @@ async fn reorder_rejects_duplicated_ids() -> Result<(), CoreError> {
         let a = t.core.create_service_point(&admin(), "А").await?;
         let b = t.core.create_service_point(&admin(), "Б").await?;
         assert_validation(
-            t.core.reorder_service_points(&admin(), &[a.id, a.id]).await,
+            t.core
+                .reorder_service_points(&admin(), &[a.id, a.id], None)
+                .await,
             &[("ordered_ids", "invalid")],
         );
         assert_validation(
-            t.core.reorder_service_points(&admin(), &[a.id]).await,
+            t.core.reorder_service_points(&admin(), &[a.id], None).await,
             &[("ordered_ids", "invalid")],
         );
         let _ = b;
@@ -329,7 +331,7 @@ async fn dictionary_reorder_changes_list_order() -> Result<(), CoreError> {
         let items = t.core.list_dictionary(DictionaryKind::Color, false).await?;
         let ids: Vec<i64> = items.iter().map(|i| i.id).rev().collect();
         t.core
-            .reorder_dictionary(&admin(), DictionaryKind::Color, &ids)
+            .reorder_dictionary(&admin(), DictionaryKind::Color, &ids, None)
             .await?;
         let after: Vec<i64> = t
             .core
@@ -343,7 +345,7 @@ async fn dictionary_reorder_changes_list_order() -> Result<(), CoreError> {
         let clerk = actor_with(&[Permission::OrdersCreate]);
         assert!(matches!(
             t.core
-                .reorder_dictionary(&clerk, DictionaryKind::Color, &ids)
+                .reorder_dictionary(&clerk, DictionaryKind::Color, &ids, None)
                 .await,
             Err(CoreError::Forbidden(Permission::SettingsManage))
         ));
@@ -494,12 +496,12 @@ async fn service_point_validation_not_found_and_forbidden() -> Result<(), CoreEr
         ));
         assert!(matches!(
             t.core
-                .reorder_service_points(&clerk, &[p.id, other.id])
+                .reorder_service_points(&clerk, &[p.id, other.id], None)
                 .await,
             Err(CoreError::Forbidden(Permission::SettingsManage))
         ));
         t.core
-            .reorder_service_points(&admin(), &[other.id, p.id])
+            .reorder_service_points(&admin(), &[other.id, p.id], None)
             .await?;
         let order: Vec<i64> = t
             .core
@@ -634,6 +636,106 @@ async fn status_color_must_be_a_palette_name() -> Result<(), CoreError> {
             )
             .await?;
         assert_eq!(renamed.color, "#123456", "{}", t.label);
+    }
+    Ok(())
+}
+
+/// Перестановка с порядком, который видел экран (`seen`): если его тем временем переставили с другого
+/// экрана, отказ `stale` вместо молчаливой потери чужого перемещения. Равные `sort_order` — в любом
+/// порядке; без `seen` — как раньше.
+#[tokio::test]
+async fn reorder_refuses_an_order_changed_since_it_was_seen() -> Result<(), CoreError> {
+    for t in cores().await {
+        let seen: Vec<i64> = t
+            .core
+            .list_statuses(true)
+            .await?
+            .iter()
+            .map(|s| s.id)
+            .collect();
+        // Первый экран переносит последний статус в начало.
+        let mut first = seen.clone();
+        first.rotate_right(1);
+        t.core
+            .reorder_statuses(&admin(), &first, Some(&seen))
+            .await?;
+        // Второй, видевший прежний порядок, меняет местами первые два — отказ.
+        let mut second = seen.clone();
+        second.swap(0, 1);
+        assert_validation(
+            t.core
+                .reorder_statuses(&admin(), &second, Some(&seen))
+                .await,
+            &[("ordered_ids", "stale")],
+        );
+        let now: Vec<i64> = t
+            .core
+            .list_statuses(true)
+            .await?
+            .iter()
+            .map(|s| s.id)
+            .collect();
+        assert_eq!(now, first, "{}", t.label);
+        // С новым порядком — принимается; без `seen` — тоже.
+        let mut again = now.clone();
+        again.swap(1, 2);
+        t.core
+            .reorder_statuses(&admin(), &again, Some(&now))
+            .await?;
+        t.core.reorder_statuses(&admin(), &seen, None).await?;
+
+        let a = t.core.create_service_point(&admin(), "А").await?;
+        let b = t.core.create_service_point(&admin(), "Б").await?;
+        let points = [a.id, b.id];
+        t.core
+            .reorder_service_points(&admin(), &[b.id, a.id], Some(&points))
+            .await?;
+        // Тот же порядок, что уже стоит, — принимается без проверки; другой со старым взглядом — нет.
+        t.core
+            .reorder_service_points(&admin(), &[b.id, a.id], Some(&points))
+            .await?;
+        assert_validation(
+            t.core
+                .reorder_service_points(&admin(), &[a.id, b.id], Some(&points))
+                .await,
+            &[("ordered_ids", "stale")],
+        );
+
+        // Справочник: значения с равным `sort_order` (из MyWork 2) — в любом порядке.
+        let k = DictionaryKind::Color;
+        let x = common::insert_dictionary_item_directly(&t.core, k, "Охра", 100).await;
+        let y = common::insert_dictionary_item_directly(&t.core, k, "Бирюза", 100).await;
+        let listed: Vec<i64> = t
+            .core
+            .list_dictionary(k, true)
+            .await?
+            .iter()
+            .map(|i| i.id)
+            .collect();
+        let mut by_id = listed.clone();
+        let (px, py) = (
+            by_id.iter().position(|v| *v == x).unwrap(),
+            by_id.iter().position(|v| *v == y).unwrap(),
+        );
+        by_id.swap(px, py);
+        let mut wanted = listed.clone();
+        wanted.reverse();
+        t.core
+            .reorder_dictionary(&admin(), k, &wanted, Some(&by_id))
+            .await?;
+        assert_validation(
+            t.core
+                .reorder_dictionary(&admin(), k, &listed, Some(&listed))
+                .await,
+            &[("ordered_ids", "stale")],
+        );
+        // Набор, которого нет, — тоже устаревший взгляд.
+        assert_validation(
+            t.core
+                .reorder_dictionary(&admin(), k, &listed, Some(&listed[1..]))
+                .await,
+            &[("ordered_ids", "stale")],
+        );
     }
     Ok(())
 }

@@ -97,7 +97,7 @@ describe('createCatalog', () => {
 		const sent = c.reorder([3, 1, 2]);
 		expect(c.active.map((r) => r.id)).toEqual([3, 1, 2]);
 		expect(await sent).toBeNull();
-		expect(api.reorder).toHaveBeenCalledWith('brand', [3, 1, 2, 4]);
+		expect(api.reorder).toHaveBeenCalledWith('brand', [3, 1, 2, 4], [1, 2, 3, 4]);
 	});
 
 	it('returns the old order when the server refuses', async () => {
@@ -120,14 +120,14 @@ describe('createCatalog', () => {
 		]);
 		expect(await c.reorder([3, 1, 2])).toBeNull();
 		expect(api.reorder).toHaveBeenCalledTimes(2);
-		expect(api.reorder).toHaveBeenLastCalledWith('brand', [3, 1, 2, 4, 5]);
+		expect(api.reorder).toHaveBeenLastCalledWith('brand', [3, 1, 2, 4, 5], [1, 2, 3, 4, 5]);
 	});
 
 	it('reorders the filtered rows inside their own slots', async () => {
 		const c = await loaded();
 		c.query = 'a';
 		await c.reorder([3, 2, 1].filter((id) => id !== 2));
-		expect(api.reorder).toHaveBeenCalledWith('brand', [3, 2, 1, 4]);
+		expect(api.reorder).toHaveBeenCalledWith('brand', [3, 2, 1, 4], [1, 2, 3, 4]);
 	});
 
 	it('answers a duplicate and an empty value in words', async () => {
