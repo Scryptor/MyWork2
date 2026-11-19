@@ -1,5 +1,10 @@
 import { readStorage, writeStorage } from '#lib/design/storage.js';
 
+/**
+ * Decision: «Недавние» belong to the device, not to the user, and are not reset on signing out (only order
+ * numbers are kept; the orders themselves are asked for with the new user's rights, so what the next user
+ * may not see is not shown). The same holds for the chosen point and the column widths.
+ */
 /** Orders opened on this device, newest first: «Недавние» of Ctrl K. */
 export const RECENT_KEY = 'mw.recent';
 const MAX_RECENT = 8;

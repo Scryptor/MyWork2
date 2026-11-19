@@ -5,11 +5,13 @@ import { clearAttachmentCache } from '#lib/api/attachments.js';
 import { createEntityEditor } from '#lib/app/entity-editor.svelte.js';
 import { summary } from '#lib/app/summary.svelte.js';
 import { undo } from '#lib/app/undo.svelte.js';
+import { forgetDraft, INTAKE_DRAFT_KEY } from '#lib/intake/draft.js';
 import { orderPanel } from '#lib/orders/panel.svelte.js';
 import { savedViews } from '#lib/orders/saved-views.svelte.js';
 import { toast } from '#lib/ui/toast/toast.svelte.js';
 import {
 	discardQueues,
+	sessionEpoch,
 	hasUnsaved,
 	onSessionReset,
 	resetSession,
@@ -114,5 +116,59 @@ describe('resetSession', () => {
 		expect(savedViews.list).toEqual([]);
 		expect(sent).toEqual(['x']);
 		stop();
+	});
+});
+
+describe('the intake draft', () => {
+	it('an expired session (the reset of the login page) keeps it; signing out removes it', () => {
+		localStorage.setItem(INTAKE_DRAFT_KEY, '{"owner":5}');
+		resetSession();
+		expect(localStorage.getItem(INTAKE_DRAFT_KEY)).toBe('{"owner":5}');
+		forgetDraft();
+		expect(localStorage.getItem(INTAKE_DRAFT_KEY)).toBeNull();
+	});
+});
+
+describe('queued actions', () => {
+	it('an action still waiting when the session ends sends no request', async () => {
+		let release: () => void = () => {};
+		const slow = new Promise<void>((resolve) => (release = resolve));
+		type R = { id: number; version: number; name: string };
+		const ed = createEntityEditor<R, 'name'>({
+			initial: { id: 1, version: 1, name: 'a' },
+			fields: ['name'],
+			load: async () => ({ id: 1, version: 1, name: 'a' }),
+			save: async (p, v) => {
+				await slow;
+				return { id: 1, version: v + 1, name: p.name ?? '' };
+			}
+		});
+		ed.autosave.commit('name', 'b');
+		const action = vi.fn(async (v: number) => ({ id: 1, version: v + 1, name: 'x' }));
+		const before = sessionEpoch();
+		let settled = false;
+		void ed.run(action).then(() => (settled = true));
+		// The action waits behind the save; the user signs out meanwhile.
+		resetSession();
+		expect(sessionEpoch()).toBe(before + 1);
+		release();
+		await new Promise((r) => setTimeout(r, 20));
+		expect(action).not.toHaveBeenCalled();
+		expect(settled).toBe(false);
+		ed.dispose();
+	});
+
+	it('an action of the same session still runs', async () => {
+		type R = { id: number; version: number; name: string };
+		const ed = createEntityEditor<R, 'name'>({
+			initial: { id: 1, version: 1, name: 'a' },
+			fields: ['name'],
+			load: async () => ({ id: 1, version: 1, name: 'a' }),
+			save: async (p, v) => ({ id: 1, version: v + 1, name: p.name ?? '' })
+		});
+		const action = vi.fn(async (v: number) => ({ id: 1, version: v + 1, name: 'x' }));
+		await ed.run(action);
+		expect(action).toHaveBeenCalledOnce();
+		ed.dispose();
 	});
 });

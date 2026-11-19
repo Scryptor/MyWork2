@@ -1,6 +1,4 @@
 import { onSessionReset } from '#lib/app/session-reset.js';
-import { removeStorage } from '#lib/design/storage.js';
-import { INTAKE_DRAFT_KEY } from './draft.js';
 
 export interface IntakePrefill {
 	/** Intake for this client (from the client's card). */
@@ -55,13 +53,13 @@ class Intake {
 	}
 
 	/**
-	 * The user signed out: the sheet closes, a waiting order is called off, the draft (a client's data)
-	 * is not left on the device for the next user.
+	 * The session ended: the sheet closes, a waiting order is called off. The draft stays on the device:
+	 * an expired session keeps it for the same user (`claimDraft` hides it from another one); only
+	 * signing out removes it (`forgetDraft`).
 	 */
 	reset(): void {
 		this.callOff();
 		this.close();
-		removeStorage(INTAKE_DRAFT_KEY);
 	}
 
 	close(): void {

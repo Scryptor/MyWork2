@@ -3,7 +3,7 @@
 // own fields and requests; each open record gets one editor.
 /* eslint-disable svelte/prefer-svelte-reactivity -- maps and sets here are replaced whole in $state.raw */
 import { ApiError } from '#lib/api/client.js';
-import { trackQueue } from '#lib/app/session-reset.js';
+import { sessionEpoch, trackQueue } from '#lib/app/session-reset.js';
 import { createAutosave, type Autosave, type SaveState } from '#lib/orders/autosave.js';
 import { mergeRemote, sameValue } from '#lib/orders/merge.js';
 
@@ -311,17 +311,27 @@ export function createEntityEditor<T extends Versioned, F extends keyof T>(
 			return true;
 		},
 		async run(action) {
+			// A session that ends while the action waits takes it along: no request in the next one's name.
+			const epoch = sessionEpoch();
 			// What was typed goes first; a failed save shows in the indicator, the action is still tried.
 			await inner.flush().catch(() => {});
-			return serial(async () => {
-				try {
-					return apply(await action(record.version));
-				} catch (e) {
-					if (!isConflict(e)) throw e;
-					await resolveConflict();
-					return apply(await action(record.version));
-				}
-			});
+			const ended = Symbol('session ended');
+			try {
+				return await serial(async () => {
+					if (sessionEpoch() !== epoch) throw ended;
+					try {
+						return apply(await action(record.version));
+					} catch (e) {
+						if (!isConflict(e)) throw e;
+						await resolveConflict();
+						return apply(await action(record.version));
+					}
+				});
+			} catch (e) {
+				// Nobody waits for the answer any more: neither a result nor a notice for the next user.
+				if (e === ended) return new Promise<T>(() => {});
+				throw e;
+			}
 		},
 		dispose() {
 			untrack();

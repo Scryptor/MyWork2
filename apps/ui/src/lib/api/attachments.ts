@@ -30,6 +30,8 @@ const MAX_CACHED = 200;
 /** Insertion order is recency order: a hit moves the entry to the end, eviction takes the first. */
 const cache = new Map<string, string>();
 const pending = new Map<string, Promise<string>>();
+/** Counts the clears: a picture fetched for an earlier user must not enter the cache of the next one. */
+let generation = 0;
 
 /**
  * A `blob:` address of an attachment's picture. The files need the token, so an `<img src>` cannot point
@@ -46,9 +48,15 @@ export function attachmentUrl(id: number, variant: AttachmentVariant): Promise<s
 	}
 	const running = pending.get(key);
 	if (running) return running;
+	const mine = generation;
 	const promise = requestBlob(`/attachments/${id}/${variant}`)
 		.then((blob) => {
 			const url = URL.createObjectURL(blob);
+			// Cleared meanwhile (signed out): the caller of that time gets it, nobody after.
+			if (mine !== generation) {
+				setTimeout(() => URL.revokeObjectURL(url), 0);
+				return url;
+			}
 			cache.set(key, url);
 			while (cache.size > MAX_CACHED) {
 				const oldest = cache.keys().next().value as string;
@@ -57,7 +65,9 @@ export function attachmentUrl(id: number, variant: AttachmentVariant): Promise<s
 			}
 			return url;
 		})
-		.finally(() => pending.delete(key));
+		.finally(() => {
+			if (pending.get(key) === promise) pending.delete(key);
+		});
 	pending.set(key, promise);
 	return promise;
 }
@@ -80,6 +90,7 @@ export function clearAttachmentCache(): void {
 	for (const url of cache.values()) URL.revokeObjectURL(url);
 	cache.clear();
 	pending.clear();
+	generation += 1;
 }
 
 onSessionReset(clearAttachmentCache);

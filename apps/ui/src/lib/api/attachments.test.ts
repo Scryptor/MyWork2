@@ -30,6 +30,22 @@ afterEach(() => {
 });
 
 describe('attachmentUrl', () => {
+	it('a picture still on its way when the cache is cleared does not enter the next cache', async () => {
+		let answer: (r: Response) => void = () => {};
+		const fetchFn = stubFetch(() => new Promise<Response>((resolve) => (answer = resolve)));
+		const first = attachmentUrl(7, 'thumb');
+		// The user signs out while the picture is loading.
+		clearAttachmentCache();
+		answer(new Response('first user'));
+		const url = await first;
+		await new Promise((r) => setTimeout(r, 0));
+		// The address of the first user's picture is revoked, and not served to the next user.
+		expect(revoked).toContain(url);
+		fetchFn.mockImplementation(async () => new Response('second user'));
+		const next = await attachmentUrl(7, 'thumb');
+		expect(next).not.toBe(url);
+		expect(fetchFn).toHaveBeenCalledTimes(2);
+	});
 	it('fetches once and serves the second request from the cache', async () => {
 		const fetchFn = stubFetch(() => new Response('img'));
 		const a = await attachmentUrl(1, 'thumb');

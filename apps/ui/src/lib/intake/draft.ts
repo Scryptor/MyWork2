@@ -9,6 +9,7 @@ import type { OrderListItem } from '$api/OrderListItem';
 import type { Status } from '$api/Status';
 import type { WarrantyTerm } from '$api/WarrantyTerm';
 import { parseLocalDateTime, type LocalDateTime } from '#lib/format/date.js';
+import { removeStorage } from '#lib/design/storage.js';
 import { phoneDigits, phoneKey } from '#lib/format/phone.js';
 import { normalizeSearch } from '#lib/format/search.js';
 import type { IntakePrefill } from './intake.svelte.js';
@@ -28,6 +29,11 @@ export interface AcceptedMark {
 
 /** The form of a new order as typed so far; money in kopecks. */
 export interface IntakeDraft {
+	/**
+	 * The user who began the draft; null in a draft of before this field (it is claimed by the first user
+	 * who opens it) and without sign-in. A draft of another user is not offered (`claimDraft`).
+	 */
+	owner: number | null;
 	/**
 	 * Made with the draft and kept with it: the photos wait on the server under it, and it is the key of
 	 * the attempt (`request_key`), so «Принять» sent again gets the same order. A new draft, a new key.
@@ -109,6 +115,7 @@ export function newDraftKey(): string {
 /** Master and warranty from the settings, the status is the first of kind «Диагностика». */
 export function emptyDraft(settings: AppSettings, statuses: readonly Status[]): IntakeDraft {
 	return {
+		owner: null,
 		key: newDraftKey(),
 		clientId: null,
 		newClient: false,
@@ -198,6 +205,25 @@ function readPhones(o: Stored): ClientPhone[] {
 	return phones.length > 0 ? phones : [blankPhone()];
 }
 
+/**
+ * The stored draft as `userId` may see it: another user's draft is dropped (null), one without an owner
+ * (stored before owners were kept) is claimed once, one of their own stays as it is. Without a user
+ * (no sign-in) nothing is checked.
+ */
+export function claimDraft(raw: string | null, userId: number | null): string | null {
+	if (raw === null || userId === null) return raw;
+	const o = readRecord(raw);
+	if (o === null) return raw;
+	const owner = positiveId(o.owner);
+	if (owner === null) return JSON.stringify({ ...o, owner: userId });
+	return owner === userId ? raw : null;
+}
+
+/** The draft of this device is removed: the user signed out, nobody else may see a client's data. */
+export function forgetDraft(): void {
+	removeStorage(INTAKE_DRAFT_KEY);
+}
+
 /** Never throws: anything missing or of a wrong type is the empty draft's value. */
 export function parseDraft(
 	raw: string | null,
@@ -211,6 +237,7 @@ export function parseDraft(
 	// A draft of 5.1 has no key: it gets the new one.
 	const key = typeof o.key === 'string' && KEY_PATTERN.test(o.key) ? o.key : base.key;
 	return {
+		owner: positiveId(o.owner),
 		key,
 		clientId: positiveId(o.clientId),
 		newClient: o.newClient === true,

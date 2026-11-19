@@ -5,6 +5,7 @@ import { item, STATUSES } from '#lib/app/fixtures.test-helper.js';
 import {
 	acceptedAnswer,
 	attemptOf,
+	claimDraft,
 	emptyDraft,
 	intakeStatuses,
 	joinChips,
@@ -595,5 +596,30 @@ describe('an earlier «Принять» of the draft that may have made the orde
 		// Sent with a name only: a client found by a phone typed later is another one.
 		const named = filled({ phones: [{ phone: '', note: '' }], fullName: 'Тестов' });
 		expect(startsAnotherOrder({ ...named, attempt: attemptOf(named) }, client(5, '1'))).toBe(true);
+	});
+});
+
+describe('claimDraft', () => {
+	const draftOf = (owner?: number) =>
+		JSON.stringify({ fullName: 'ТЕСТОВ', ...(owner === undefined ? {} : { owner }) });
+
+	it("another user's draft is dropped", () => {
+		expect(claimDraft(draftOf(5), 6)).toBeNull();
+	});
+	it("the same user's draft stays as it is", () => {
+		const raw = draftOf(5);
+		expect(claimDraft(raw, 5)).toBe(raw);
+	});
+	it('a draft from before owners is kept once and gets the owner', () => {
+		const claimed = claimDraft(draftOf(), 5)!;
+		expect(JSON.parse(claimed)).toMatchObject({ fullName: 'ТЕСТОВ', owner: 5 });
+		// Claimed: now it is not for anyone else.
+		expect(claimDraft(claimed, 6)).toBeNull();
+	});
+	it('nothing stored, no sign-in, or an unreadable draft: left to the parser', () => {
+		expect(claimDraft(null, 5)).toBeNull();
+		expect(claimDraft(draftOf(5), null)).toBe(draftOf(5));
+		expect(claimDraft('{oops', 5)).toBe('{oops');
+		expect(parseDraft(draftOf(5), {} as AppSettings, STATUSES).owner).toBe(5);
 	});
 });

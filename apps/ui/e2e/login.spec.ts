@@ -135,6 +135,10 @@ test('signing out with an unsaved edit on the order card goes to login', async (
 	const dialog = page.getByRole('dialog', { name: 'Есть несохранённые правки' });
 	await expect(dialog).toBeVisible();
 	await expect(page).toHaveURL(/\/orders\//);
+	// «Сохранить» tries again; the send still fails: the window says so and stays.
+	await dialog.getByRole('button', { name: 'Сохранить' }).click();
+	await expect(dialog.getByRole('alert')).toHaveText('Не удалось сохранить — проверьте связь');
+	await expect(page).toHaveURL(/\/orders\//);
 	await dialog.getByRole('button', { name: 'Выйти без сохранения' }).click();
 	await expect(page).toHaveURL(/\/login$/);
 	await expect(page.getByRole('button', { name: 'Войти' })).toBeVisible();

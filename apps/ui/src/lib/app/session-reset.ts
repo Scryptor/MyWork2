@@ -17,6 +17,10 @@ export interface TrackedQueue {
 /** How long signing out waits for the queues to empty. */
 export const SETTLE_TIMEOUT_MS = 5000;
 
+let epoch = 0;
+/** Counts the sessions: work queued under one must not run under the next. */
+export const sessionEpoch = (): number => epoch;
+
 const queues = new Set<TrackedQueue>();
 const resets = new Set<() => void>();
 
@@ -62,6 +66,7 @@ export function discardQueues(): void {
 
 /** The session ends: queues are emptied, every singleton goes back to its start. */
 export function resetSession(): void {
+	epoch += 1;
 	discardQueues();
 	for (const reset of [...resets]) reset();
 }

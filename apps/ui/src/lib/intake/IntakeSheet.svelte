@@ -33,6 +33,7 @@
 		acceptedAnswer,
 		attemptOf,
 		emptyDraft,
+		claimDraft,
 		INTAKE_DRAFT_KEY,
 		intakeStatuses,
 		lateAnswer,
@@ -146,7 +147,12 @@
 	});
 
 	function begin() {
-		const stored = parseDraft(readStorage(INTAKE_DRAFT_KEY), app.settings, app.statuses);
+		// A draft of another user (the device was passed on) is not offered, and goes.
+		const claimed = claimDraft(readStorage(INTAKE_DRAFT_KEY), app.me.user_id);
+		if (claimed === null) removeStorage(INTAKE_DRAFT_KEY);
+		else writeStorage(INTAKE_DRAFT_KEY, claimed);
+		const stored = parseDraft(claimed, app.settings, app.statuses);
+		stored.owner = app.me.user_id;
 		const next = withPrefill(stored, intake.prefill, app.settings, app.statuses);
 		written = JSON.stringify(next);
 		// A draft already accepted is replaced at once, not at the first key: it is not offered again.

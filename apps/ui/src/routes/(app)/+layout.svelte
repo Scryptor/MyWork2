@@ -43,6 +43,7 @@
 	import ScanChoiceDialog from '#lib/app/ScanChoiceDialog.svelte';
 	import { ATTENTION_KEYS, summary } from '#lib/app/summary.svelte.js';
 	import { undo } from '#lib/app/undo.svelte.js';
+	import { forgetDraft } from '#lib/intake/draft.js';
 	import { clientHref } from '#lib/clients/view.js';
 	import { registerHotkey } from '#lib/design/hotkeys.svelte.js';
 	import { layers } from '#lib/design/layers.svelte.js';
@@ -87,13 +88,17 @@
 	// left in memory is reset (the screens are gone by then, so none reads a reset singleton).
 	let unsavedOpen = $state(false);
 	let unsavedBusy = $state(false);
+	let unsavedFailed = $state(false);
 	let leaving = false;
 	async function signOut() {
 		if (leaving) return;
 		leaving = true;
 		try {
 			if (await settleQueues()) await finishSignOut();
-			else unsavedOpen = true;
+			else {
+				unsavedFailed = false;
+				unsavedOpen = true;
+			}
 		} finally {
 			leaving = false;
 		}
@@ -107,14 +112,17 @@
 		clearToken();
 		await goto(resolve('/login'));
 		resetSession();
+		// Only signing out takes the draft of the intake away; an expired session keeps it.
+		forgetDraft();
 	}
 	async function saveAndSignOut() {
 		unsavedBusy = true;
+		unsavedFailed = false;
 		try {
 			if (await settleQueues()) {
 				unsavedOpen = false;
 				await finishSignOut();
-			}
+			} else unsavedFailed = true;
 		} finally {
 			unsavedBusy = false;
 		}
@@ -381,6 +389,7 @@
 <UnsavedLogoutDialog
 	bind:open={unsavedOpen}
 	busy={unsavedBusy}
+	failed={unsavedFailed}
 	onsave={() => void saveAndSignOut()}
 	onleave={() => void leaveUnsaved()}
 />
