@@ -1,5 +1,5 @@
 import type { AuditEntry } from '$api/AuditEntry';
-import type { PageQuery } from '$api/PageQuery';
+import type { HistoryQuery } from '$api/HistoryQuery';
 import { describe, expect, it, vi } from 'vitest';
 import {
 	createCardHistory,
@@ -31,59 +31,123 @@ function journal(count: number) {
 			const top = all[0]?.id ?? 0;
 			all = [...Array.from({ length: n }, (_, i) => entry(top + n - i)), ...all];
 		},
-		orderHistory: vi.fn(async (_id: number, p: PageQuery) => {
+		orderHistory: vi.fn(async (_id: number, p: HistoryQuery) => {
+			const older = p.before_id === undefined ? all : all.filter((e) => e.id < p.before_id!);
 			const offset = p.offset ?? 0;
-			return { items: all.slice(offset, offset + (p.limit ?? 50)), total: all.length };
+			return { items: older.slice(offset, offset + (p.limit ?? 50)), total: all.length };
 		})
 	};
 }
 
 describe('createCardHistory', () => {
-	it('shows the first page and the newest entries, then pages on', async () => {
+	it('one request opens the history: the newest page of the journal serves both lists', async () => {
 		const api = journal(120);
 		const h = createCardHistory(api);
 		await h.refresh(7);
-		expect(api.orderHistory).toHaveBeenCalledWith(7, { limit: HISTORY_PAGE });
-		expect(api.orderHistory).toHaveBeenCalledWith(7, { limit: TIMELINE_PAGE, offset: 0 });
+		expect(api.orderHistory).toHaveBeenCalledTimes(1);
+		expect(api.orderHistory).toHaveBeenCalledWith(7, { limit: TIMELINE_PAGE });
 		expect(h.entries.map((e) => e.id).slice(0, 2)).toEqual([120, 119]);
-		expect(h.entries).toHaveLength(50);
+		expect(h.entries).toHaveLength(HISTORY_PAGE);
 		expect(h.timeline).toHaveLength(120);
 		expect(h.timelineCut).toBeNull();
 		expect(h.hasMore).toBe(true);
 
 		await h.more();
-		expect(api.orderHistory).toHaveBeenLastCalledWith(7, { limit: 50, offset: 50 });
+		expect(api.orderHistory).toHaveBeenLastCalledWith(7, { limit: 50, before_id: 71 });
 		await h.more();
 		expect(h.entries).toHaveLength(120);
 		expect(h.entries.at(-1)?.id).toBe(1);
 		expect(h.hasMore).toBe(false);
 		await h.more();
-		expect(api.orderHistory).toHaveBeenCalledTimes(4);
+		expect(api.orderHistory).toHaveBeenCalledTimes(3);
 	});
 
-	it('the timeline pages until the whole journal is there: the intake is the oldest entry', async () => {
+	it('every new version costs one request and reads only what is new', async () => {
+		const api = journal(60);
+		const h = createCardHistory(api);
+		await h.refresh(7);
+		await h.more();
+		api.orderHistory.mockClear();
+		api.add(2);
+		await h.refresh(7);
+		expect(api.orderHistory).toHaveBeenCalledTimes(1);
+		expect(h.entries).toHaveLength(62);
+		expect(h.entries.slice(0, 3).map((e) => e.id)).toEqual([62, 61, 60]);
+		expect(h.hasMore).toBe(false);
+	});
+
+	it('paging goes by the last id: 500 new entries meanwhile do not repeat a page', async () => {
+		const api = journal(120);
+		const h = createCardHistory(api);
+		await h.refresh(7);
+		expect(h.entries).toHaveLength(50);
+		api.add(500);
+		await h.more();
+		const ids = h.entries.map((e) => e.id);
+		expect(new Set(ids).size).toBe(ids.length);
+		expect(h.entries).toHaveLength(100);
+		expect(ids.slice(-1)[0]).toBe(21);
+		expect(ids.slice(0, 1)[0]).toBe(120);
+	});
+
+	it('the timeline pages by id until the whole journal is there: the intake is the oldest entry', async () => {
 		const api = journal(1200);
 		const h = createCardHistory(api);
 		await h.refresh(7);
-		const timelineCalls = api.orderHistory.mock.calls
-			.map(([, p]) => p)
-			.filter((p) => p.limit === TIMELINE_PAGE);
-		expect(timelineCalls).toEqual([
-			{ limit: TIMELINE_PAGE, offset: 0 },
-			{ limit: TIMELINE_PAGE, offset: 500 },
-			{ limit: TIMELINE_PAGE, offset: 1000 }
+		expect(api.orderHistory.mock.calls.map(([, p]) => p)).toEqual([
+			{ limit: TIMELINE_PAGE },
+			{ limit: TIMELINE_PAGE, before_id: 701 },
+			{ limit: TIMELINE_PAGE, before_id: 201 }
 		]);
 		expect(h.timeline).toHaveLength(1200);
 		expect(h.timeline.at(-1)?.action).toBe('order.created');
 		expect(h.timelineCut).toBeNull();
 
-		// A new version asks only for the newest entries again.
 		api.orderHistory.mockClear();
 		api.add(1);
 		await h.refresh(7);
-		expect(api.orderHistory).toHaveBeenCalledTimes(2);
+		expect(api.orderHistory).toHaveBeenCalledTimes(1);
 		expect(h.timeline).toHaveLength(1201);
 		expect(h.timeline[0]?.id).toBe(1201);
+	});
+
+	it('a failed next page says so and «Повторить» continues; the first page stays', async () => {
+		const api = journal(120);
+		const h = createCardHistory(api);
+		await h.refresh(7);
+		api.orderHistory.mockRejectedValueOnce(new Error('offline'));
+		await h.more();
+		expect(h.moreFailed).toBe(true);
+		expect(h.failed).toBe(false);
+		expect(h.entries).toHaveLength(50);
+		expect(h.hasMore).toBe(true);
+		await h.more();
+		expect(h.moreFailed).toBe(false);
+		expect(h.entries).toHaveLength(100);
+	});
+
+	it('a failed next page of the timeline keeps what came and a refresh goes on from there', async () => {
+		const api = journal(1200);
+		const h = createCardHistory(api);
+		api.orderHistory.mockImplementation(async (_id, p) => {
+			if (p.before_id === 201) throw new Error('offline');
+			const all = Array.from({ length: 1200 }, (_, i) => entry(1200 - i));
+			const older = p.before_id === undefined ? all : all.filter((e) => e.id < p.before_id!);
+			return { items: older.slice(0, p.limit ?? 50), total: 1200 };
+		});
+		await h.refresh(7);
+		expect(h.timelineFailed).toBe(true);
+		expect(h.failed).toBe(false);
+		expect(h.timeline).toHaveLength(1000);
+		api.orderHistory.mockImplementation(async (_id, p) => {
+			const all = Array.from({ length: 1200 }, (_, i) => entry(1200 - i));
+			const older = p.before_id === undefined ? all : all.filter((e) => e.id < p.before_id!);
+			return { items: older.slice(0, p.limit ?? 50), total: 1200 };
+		});
+		await h.refresh(7);
+		expect(h.timelineFailed).toBe(false);
+		expect(h.timeline).toHaveLength(1200);
+		expect(h.timeline.at(-1)?.action).toBe('order.created');
 	});
 
 	it('a journal longer than the limit shows the newest part and says so', async () => {
@@ -94,19 +158,6 @@ describe('createCardHistory', () => {
 		expect(h.timeline).toHaveLength(1000);
 		expect(h.timelineCut).toBe(1000);
 		expect(h.timeline.some((e) => e.action === 'order.created')).toBe(false);
-	});
-
-	it('a new version puts its entries on top and keeps the pages shown', async () => {
-		const api = journal(60);
-		const h = createCardHistory(api);
-		await h.refresh(7);
-		await h.more();
-		expect(h.entries).toHaveLength(60);
-		api.add(2);
-		await h.refresh(7);
-		expect(h.entries).toHaveLength(62);
-		expect(h.entries.slice(0, 3).map((e) => e.id)).toEqual([62, 61, 60]);
-		expect(h.hasMore).toBe(false);
 	});
 
 	it('another order starts over; a failure with nothing shown says so', async () => {

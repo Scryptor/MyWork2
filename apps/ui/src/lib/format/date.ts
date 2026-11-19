@@ -99,3 +99,11 @@ export function formatDate(value: string): string {
 	const t = parseLocalDateTime(value);
 	return t ? dotted(t) : value;
 }
+
+/** «2026-03-07» of a moment: the day as a date field and the server write it. */
+export function isoDay(t: LocalDateTime): string {
+	return `${t.year}-${p2(t.month)}-${p2(t.day)}`;
+}
+
+/** The first moment of a day «2026-03-07», as the server takes a local time. */
+export const startOfDay = (day: string): string => `${day}T00:00:00`;

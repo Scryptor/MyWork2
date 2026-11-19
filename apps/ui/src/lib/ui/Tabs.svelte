@@ -9,7 +9,8 @@
 	}: {
 		value: string;
 		items: { value: string; label: string; count?: number }[];
-		content: Snippet<[string]>;
+		/** Without it only the tab list is drawn: the panes are the page's own (one markup for any width). */
+		content?: Snippet<[string]>;
 	} = $props();
 </script>
 
@@ -22,11 +23,13 @@
 			</Tabs.Trigger>
 		{/each}
 	</Tabs.List>
-	{#each items as item (item.value)}
-		<Tabs.Content value={item.value} class="mw-tab-panel">
-			{@render content(item.value)}
-		</Tabs.Content>
-	{/each}
+	{#if content}
+		{#each items as item (item.value)}
+			<Tabs.Content value={item.value} class="mw-tab-panel">
+				{@render content(item.value)}
+			</Tabs.Content>
+		{/each}
+	{/if}
 </Tabs.Root>
 
 <style>

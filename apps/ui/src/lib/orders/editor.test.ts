@@ -141,6 +141,38 @@ describe('createOrderEditor', () => {
 		ed.dispose();
 	});
 
+	it('leaving over an undecided dispute asks: «Остаться» keeps it, «Отбросить и перейти» drops it', async () => {
+		const server = fakeServer(order(7, { malfunction: 'Не включается' }));
+		const ed = createOrderEditor(server.current, { api: server.api });
+		server.elsewhere({ malfunction: 'Чужое' });
+		ed.autosave.edit('malfunction', 'Моё');
+		await ed.autosave.flush().catch(() => {});
+		await settle();
+		expect(ed.conflicts.size).toBe(1);
+
+		const stay = vi.fn(async () => false);
+		await expect(ed.leave(stay)).resolves.toBe(false);
+		expect(stay).toHaveBeenCalledTimes(1);
+		expect(ed.conflicts.size).toBe(1);
+
+		const go = vi.fn(async () => true);
+		await expect(ed.leave(go)).resolves.toBe(true);
+		expect(ed.conflicts.size).toBe(0);
+		expect(ed.unsaved).toBe(false);
+		ed.dispose();
+	});
+
+	it('leaving with nothing disputed does not ask', async () => {
+		const server = fakeServer(order(7));
+		const ed = createOrderEditor(server.current, { api: server.api });
+		ed.autosave.edit('malfunction', 'Новое');
+		const ask = vi.fn(async () => true);
+		await expect(ed.leave(ask)).resolves.toBe(true);
+		expect(ask).not.toHaveBeenCalled();
+		expect(server.current.malfunction).toBe('Новое');
+		ed.dispose();
+	});
+
 	it('«Оставить моё» sends own value with the new version', async () => {
 		const server = fakeServer(order(7, { work_done: '' }));
 		const ed = createOrderEditor(server.current, { api: server.api });

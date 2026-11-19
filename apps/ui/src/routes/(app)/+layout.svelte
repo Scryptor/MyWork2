@@ -51,6 +51,7 @@
 	import { intake } from '#lib/intake/intake.svelte.js';
 	import IntakeSheet from '#lib/intake/IntakeSheet.svelte';
 	import { onOrderChanged } from '#lib/orders/events.js';
+	import DisputeDialog from '#lib/orders/DisputeDialog.svelte';
 	import OrderPanel from '#lib/orders/OrderPanel.svelte';
 	import { orderPanel } from '#lib/orders/panel.svelte.js';
 	import AppShell from '#lib/ui/shell/AppShell.svelte';
@@ -323,6 +324,7 @@
 </div>
 
 <OrderPanel />
+<DisputeDialog />
 
 <IntakeSheet />
 

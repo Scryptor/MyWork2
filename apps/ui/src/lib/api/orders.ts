@@ -8,7 +8,7 @@ import type { OrderPage } from '$api/OrderPage';
 import type { OrderPatch } from '$api/OrderPatch';
 import type { OrderSummary } from '$api/OrderSummary';
 import type { OrderValueField } from '$api/OrderValueField';
-import type { PageQuery } from '$api/PageQuery';
+import type { HistoryQuery } from '$api/HistoryQuery';
 import type { StatusChange } from '$api/StatusChange';
 import { request } from './client.js';
 
@@ -43,7 +43,7 @@ export const orderValues = (
 	signal?: AbortSignal
 ) => request<string[]>('GET', '/orders/values', { query: { field, query, brand }, signal });
 
-export const orderHistory = (id: number, page?: PageQuery) =>
+export const orderHistory = (id: number, page?: HistoryQuery) =>
 	request<AuditPage>('GET', `/orders/${id}/history`, { query: { ...page } });
 
 export const acceptWarrantyCase = (id: number, version: number, c: NewWarrantyCase) =>

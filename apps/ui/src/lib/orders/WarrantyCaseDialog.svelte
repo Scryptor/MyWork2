@@ -8,6 +8,7 @@
 	import { ApiError, errorMessage } from '#lib/api/client.js';
 	import { serverClock } from '#lib/api/server-clock.svelte.js';
 	import { submitShortcut } from '#lib/design/hotkeys.svelte.js';
+	import { isoDay, startOfDay } from '#lib/format/date.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import Button from '#lib/ui/Button.svelte';
 	import Callout from '#lib/ui/Callout.svelte';
@@ -30,11 +31,7 @@
 	const IDS = { complaint: 'warranty-complaint', at: 'warranty-date' } as const;
 	type Key = keyof typeof IDS;
 
-	const p2 = (n: number) => String(n).padStart(2, '0');
-	function today(): string {
-		const n = serverClock.now();
-		return `${n.year}-${p2(n.month)}-${p2(n.day)}`;
-	}
+	const today = () => isoDay(serverClock.now());
 
 	let complaint = $state('');
 	let date = $state<string | null>(null);
@@ -84,7 +81,7 @@
 		failure = null;
 		const c: NewWarrantyCase = { complaint: complaint.trim() };
 		// Today is «now» on the server; another day is that day.
-		if (date !== null && date !== today()) c.at = `${date}T00:00:00`;
+		if (date !== null && date !== today()) c.at = startOfDay(date);
 		try {
 			await onaccept(c);
 		} catch (e) {

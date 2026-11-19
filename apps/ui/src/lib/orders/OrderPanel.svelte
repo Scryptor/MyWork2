@@ -31,6 +31,7 @@
 	import { closeEditor, OrderActions } from './actions.svelte.js';
 	import { createOrderEditor, type OrderEditor } from './editor.svelte.js';
 	import { onOrderChanged } from './events.js';
+	import { dispute } from './dispute.svelte.js';
 	import OrderDialogs from './OrderDialogs.svelte';
 	import OrderFields from './OrderFields.svelte';
 	import OrderHistory from './OrderHistory.svelte';
@@ -168,7 +169,7 @@
 			const ed = editor;
 			if (!ed) return true;
 			const active = document.activeElement;
-			const ok = await ed.flush();
+			const ok = await ed.leave(() => dispute.ask(ed.order.id));
 			if (ok && active instanceof HTMLElement && active.id && body?.contains(active)) {
 				refocusId = active.id;
 			}

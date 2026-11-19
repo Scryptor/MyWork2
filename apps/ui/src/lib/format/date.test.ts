@@ -82,3 +82,13 @@ describe('formatDay', () => {
 		);
 	});
 });
+
+describe('local days', () => {
+	it('isoDay and startOfDay write a day as the server takes it', async () => {
+		const { isoDay, startOfDay } = await import('./date.js');
+		expect(isoDay({ year: 2026, month: 3, day: 7, hour: 9, minute: 5, second: 1 })).toBe(
+			'2026-03-07'
+		);
+		expect(startOfDay('2026-03-07')).toBe('2026-03-07T00:00:00');
+	});
+});

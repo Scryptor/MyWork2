@@ -85,6 +85,12 @@ export interface EntityEditor<T extends Versioned, F extends keyof T> extends Sa
 	receive(r: T): void;
 	/** Saves everything; false when a save failed or a conflict waits for a choice. */
 	flush(): Promise<boolean>;
+	/**
+	 * Before the record is left: saves everything. A dispute still undecided (a field changed here and
+	 * elsewhere) is put to `ask`: true drops own changes and lets go, false stays. Without a dispute a
+	 * failed save stays too. Resolves to whether the record may be left.
+	 */
+	leave(ask: () => Promise<boolean>): Promise<boolean>;
 	/** A server action on the newest version: what is typed goes first; one retry after a conflict. */
 	run(action: (version: number) => Promise<T>): Promise<T>;
 	dispose(): void;
@@ -296,6 +302,12 @@ export function createEntityEditor<T extends Versioned, F extends keyof T>(
 				}
 			}
 			return conflicts.size === 0;
+		},
+		async leave(ask) {
+			if (await this.flush()) return true;
+			if (conflicts.size === 0 || !(await ask())) return false;
+			this.drop();
+			return true;
 		},
 		async run(action) {
 			// What was typed goes first; a failed save shows in the indicator, the action is still tried.

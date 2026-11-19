@@ -24,6 +24,7 @@
 	import { closeEditor, OrderActions, unsavedText } from '#lib/orders/actions.svelte.js';
 	import { createCardHistory } from '#lib/orders/card-history.svelte.js';
 	import { createOrderEditor, type OrderEditor } from '#lib/orders/editor.svelte.js';
+	import { dispute } from '#lib/orders/dispute.svelte.js';
 	import { onOrderChanged } from '#lib/orders/events.js';
 	import { historyItems, statusTimeline, warrantyCases } from '#lib/orders/history.js';
 	import OrderDialogs from '#lib/orders/OrderDialogs.svelte';
@@ -168,13 +169,6 @@
 		void version;
 		if (n !== undefined) untrack(() => void journal.refresh(n));
 	});
-	async function more() {
-		try {
-			await journal.more();
-		} catch {
-			toast.show({ message: t.historyFailed, tone: 'danger' });
-		}
-	}
 	const timeline = $derived(statusTimeline(journal.timeline));
 	const cases = $derived(warrantyCases(journal.timeline));
 
@@ -184,8 +178,10 @@
 	 */
 	async function saved(ed: OrderEditor): Promise<boolean> {
 		if (!ed.unsaved) return true;
-		const ok = await ed.flush();
-		if (!ok && editor === ed) toast.show({ message: unsavedText(ed), tone: 'danger' });
+		const ok = await ed.leave(() => dispute.ask(ed.order.id));
+		// A dispute left undecided was asked about in its own dialog.
+		if (!ok && editor === ed && ed.conflicts.size === 0)
+			toast.show({ message: unsavedText(ed), tone: 'danger' });
 		return ok;
 	}
 
@@ -273,61 +269,78 @@
 	{/if}
 {/snippet}
 
-{#snippet photos()}
-	{#if media}
-		<Section title={c.photos} region>
-			<OrderPhotos {media} readonly={!canEdit} />
-		</Section>
-		<Section title={c.files} region>
-			<OrderFiles {media} readonly={!canEdit} />
-		</Section>
-	{/if}
-{/snippet}
-
-{#snippet side(withMedia: boolean)}
+{#snippet side()}
 	<div class="side">
-		<Section title={c.statuses} region>
-			{#if journal.failed}
-				<p class="muted">{t.historyFailed}</p>
-			{:else}
-				<Timeline items={timeline} now={serverClock.now()} emptyText={t.historyEmpty} />
-				{@render cut()}
-			{/if}
-		</Section>
-		{#if withMedia}{@render photos()}{/if}
-		<Section title={c.warrantyCases} region>
-			{#if cases.length === 0}
-				<p class="muted">{c.noWarrantyCases}</p>
-			{:else}
-				<ul class="cases">
-					{#each cases as w (w.id)}
-						<li>
-							<time class="num muted" datetime={w.at}>{formatDate(w.at)}</time>
-							<span>{w.complaint}</span>
-						</li>
-					{/each}
-				</ul>
-			{/if}
-			{@render cut()}
-		</Section>
-		<Section title={c.changes} region>
-			{#if journal.failed}
-				<p class="muted">{t.historyFailed}</p>
-			{:else}
-				<Timeline
-					items={historyItems(journal.entries)}
-					now={serverClock.now()}
-					emptyText={t.historyEmpty}
-				/>
-				{#if journal.hasMore}
-					<div>
-						<Button size="sm" busy={journal.loadingMore} onclick={() => void more()}
-							>{c.showMore}</Button
-						>
-					</div>
+		<div hidden={!display.cardColumns && tab !== 'history'}>
+			<Section title={c.statuses} region>
+				{#if journal.failed}
+					<p class="muted">{t.historyFailed}</p>
+				{:else}
+					<Timeline items={timeline} now={serverClock.now()} emptyText={t.historyEmpty} />
+					{#if journal.timelineFailed}
+						<p class="muted">{c.timelineFailed}</p>
+						<div>
+							<Button size="sm" onclick={() => void journal.refresh(order?.id ?? 0)}
+								>{ru.common.retry}</Button
+							>
+						</div>
+					{/if}
+					{@render cut()}
 				{/if}
-			{/if}
-		</Section>
+			</Section>
+		</div>
+		{#if media}
+			<div hidden={!display.cardColumns && tab !== 'files'}>
+				<Section title={c.photos} region>
+					<OrderPhotos {media} readonly={!canEdit} />
+				</Section>
+			</div>
+			<div hidden={!display.cardColumns && tab !== 'files'}>
+				<Section title={c.files} region>
+					<OrderFiles {media} readonly={!canEdit} />
+				</Section>
+			</div>
+		{/if}
+		<div hidden={!display.cardColumns && tab !== 'history'}>
+			<Section title={c.warrantyCases} region>
+				{#if cases.length === 0}
+					<p class="muted">{c.noWarrantyCases}</p>
+				{:else}
+					<ul class="cases">
+						{#each cases as w (w.id)}
+							<li>
+								<time class="num muted" datetime={w.at}>{formatDate(w.at)}</time>
+								<span>{w.complaint}</span>
+							</li>
+						{/each}
+					</ul>
+				{/if}
+				{@render cut()}
+			</Section>
+		</div>
+		<div hidden={!display.cardColumns && tab !== 'history'}>
+			<Section title={c.changes} region>
+				{#if journal.failed}
+					<p class="muted">{t.historyFailed}</p>
+				{:else}
+					<Timeline
+						items={historyItems(journal.entries)}
+						now={serverClock.now()}
+						emptyText={t.historyEmpty}
+					/>
+					{#if journal.moreFailed}
+						<p class="muted">{c.moreFailed}</p>
+					{/if}
+					{#if journal.hasMore}
+						<div>
+							<Button size="sm" busy={journal.loadingMore} onclick={() => void journal.more()}
+								>{journal.moreFailed ? ru.common.retry : c.showMore}</Button
+							>
+						</div>
+					{/if}
+				{/if}
+			</Section>
+		</div>
 	</div>
 {/snippet}
 
@@ -370,25 +383,23 @@
 	</header>
 
 	{#if editor}
-		{#if display.cardColumns}
-			<div class="columns">
-				<div class="fields">{@render fields(editor)}</div>
-				<aside class="aside" aria-label={c.history}>{@render side(true)}</aside>
-			</div>
-		{:else}
-			{@const ed = editor}
-			<Tabs bind:value={tab} items={TABS}>
-				{#snippet content(v)}
-					{#if v === 'order'}
-						{@render fields(ed)}
-					{:else if v === 'files'}
-						<div class="side">{@render photos()}</div>
-					{:else}
-						{@render side(false)}
-					{/if}
-				{/snippet}
-			</Tabs>
+		<!-- One markup for any width: the card is not rebuilt (nor the focus lost) when the window
+		     crosses 1024px; only the tab list and the hiding of the parts change. -->
+		{#if !display.cardColumns}
+			<Tabs bind:value={tab} items={TABS} />
 		{/if}
+		<div class="layout" class:columns={display.cardColumns}>
+			<div class="fields" hidden={!display.cardColumns && tab !== 'order'}>
+				{@render fields(editor)}
+			</div>
+			<div
+				class="aside"
+				role={display.cardColumns ? 'complementary' : undefined}
+				aria-label={display.cardColumns ? c.history : undefined}
+			>
+				{@render side()}
+			</div>
+		</div>
 	{:else if notFound}
 		<EmptyState title={c.notFound(param)} description={c.notFoundHint}>
 			{#snippet actions()}
@@ -461,7 +472,7 @@
 	.grow {
 		flex: 1;
 	}
-	.columns {
+	.layout.columns {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr) minmax(18rem, 26rem);
 		align-items: start;

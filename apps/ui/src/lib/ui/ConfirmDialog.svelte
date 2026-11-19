@@ -15,6 +15,7 @@
 		title,
 		description,
 		confirmLabel,
+		cancelLabel = ru.common.cancel,
 		tone = 'danger',
 		onconfirm
 	}: {
@@ -22,6 +23,8 @@
 		title: string;
 		description: string;
 		confirmLabel: string;
+		/** «Отмена» by default. */
+		cancelLabel?: string;
 		tone?: 'danger' | 'primary';
 		onconfirm: () => void | Promise<void>;
 	} = $props();
@@ -76,7 +79,7 @@
 				<AlertDialog.Description class="mw-dialog-desc">{description}</AlertDialog.Description>
 			</div>
 			<div class="mw-dialog-foot">
-				<Button variant="secondary" disabled={busy} onclick={cancel}>{ru.common.cancel}</Button>
+				<Button variant="secondary" disabled={busy} onclick={cancel}>{cancelLabel}</Button>
 				<Button variant={tone} {busy} onclick={confirm}>{confirmLabel}</Button>
 			</div>
 			<!-- No tooltip here: an open bits-ui tooltip pauses the dialog's focus trap. -->

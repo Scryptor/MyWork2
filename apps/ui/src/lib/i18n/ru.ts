@@ -255,6 +255,11 @@ export const ru = {
 		historyEmpty: 'Пока нет записей',
 		historyFailed: 'Историю не удалось загрузить',
 		conflictTitle: 'Заказ изменили на другом компьютере',
+		disputeTitle: 'Есть несохранённый спор',
+		disputeText: (id: number) =>
+			`Заказ № ${id} изменили на другом компьютере, и спор по полям не решён. Если перейти, ваши значения этих полей пропадут.`,
+		disputeStay: 'Остаться',
+		disputeLeave: 'Отбросить и перейти',
 		conflictText:
 			'Что изменили только там, уже здесь. Отмеченные поля изменили и здесь, и там: выберите, что оставить.',
 		conflictField: (label: string) => `${label}: изменили на другом компьютере`,
@@ -387,6 +392,9 @@ export const ru = {
 		noWarrantyCases: 'Гарантийных случаев не было',
 		changes: 'История изменений',
 		showMore: 'Показать ещё',
+		moreFailed: 'Не удалось загрузить следующие записи',
+		timelineFailed:
+			'Статусы и гарантийные случаи показаны не полностью: часть истории не загрузилась',
 		/** Statuses and warranty cases of a very long journal: only its newest part. */
 		timelineCut: (entries: string) => `Показаны последние ${entries}`,
 		entryForms: ['запись', 'записи', 'записей'],

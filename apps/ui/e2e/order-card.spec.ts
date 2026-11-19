@@ -325,6 +325,28 @@ test('the whole history comes by pages of 50', async ({ page, request }) => {
 	await expect(history.getByRole('button', { name: 'Показать ещё' })).toHaveCount(0);
 });
 
+test('crossing 1024px does not rebuild the card: the focus stays in the field', async ({
+	page,
+	request
+}) => {
+	await page.setViewportSize({ width: 1200, height: 800 });
+	const o = await createOrder(request, { model: uniq('M') });
+	await openCard(page, o.id);
+	const field = cardOf(page).getByRole('textbox', { name: 'Неисправность' });
+	await field.fill('Не включается');
+	await expect(field).toBeFocused();
+	const handle = await field.elementHandle();
+	await page.setViewportSize({ width: 900, height: 800 });
+	await expect(cardOf(page).getByRole('tablist')).toBeVisible();
+	await expect(field).toBeFocused();
+	expect(await handle!.evaluate((el) => el.isConnected)).toBe(true);
+	await expect(field).toHaveValue('Не включается');
+	await page.setViewportSize({ width: 1200, height: 800 });
+	await expect(cardOf(page).getByRole('tablist')).toHaveCount(0);
+	await expect(field).toBeFocused();
+	expect(await handle!.evaluate((el) => el.isConnected)).toBe(true);
+});
+
 test.describe('narrower than 1024px', () => {
 	test.use({ viewport: { width: 900, height: 800 } });
 
