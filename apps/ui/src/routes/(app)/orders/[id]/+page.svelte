@@ -170,6 +170,10 @@
 		void version;
 		if (n !== undefined) untrack(() => void journal.refresh(n));
 	});
+	/** «Повторить» of the timeline: the history of the order shown; none while there is no order. */
+	function retryTimeline() {
+		if (order) void journal.refresh(order.id);
+	}
 	const timeline = $derived(statusTimeline(journal.timeline));
 	const cases = $derived(warrantyCases(journal.timeline));
 
@@ -283,9 +287,7 @@
 							{#if journal.timelineFailed}
 								<p class="muted">{c.timelineFailed}</p>
 								<div>
-									<Button size="sm" onclick={() => void journal.refresh(order?.id ?? 0)}
-										>{ru.common.retry}</Button
-									>
+									<Button size="sm" onclick={retryTimeline}>{ru.common.retry}</Button>
 								</div>
 							{/if}
 							{@render cut()}
