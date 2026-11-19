@@ -8,12 +8,13 @@ jobs:
   rust:
     name: rust (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install toolchain from rust-toolchain.toml
         shell: bash
         run: rustup toolchain install
@@ -32,6 +33,7 @@ jobs:
   postgres:
     name: postgres (ubuntu-latest)
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     services:
       postgres:
         image: postgres:17
@@ -47,7 +49,7 @@ jobs:
     env:
       MW_TEST_PG_URL: postgres://postgres:postgres@localhost:5432/postgres
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install toolchain from rust-toolchain.toml
         shell: bash
         run: rustup toolchain install
@@ -58,6 +60,7 @@ jobs:
   ui:
     name: ui (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -66,8 +69,8 @@ jobs:
       run:
         working-directory: apps/ui
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
@@ -78,28 +81,32 @@ jobs:
   ui-e2e:
     name: ui-e2e (ubuntu-latest)
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: apps/ui
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install toolchain from rust-toolchain.toml
         shell: bash
         run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
           cache-dependency-path: apps/ui/package-lock.json
       - run: npm ci
-      - run: npx playwright install --with-deps chromium webkit
+      - name: Install browsers (up to three attempts of 5 minutes)
+        shell: bash
+        timeout-minutes: 16
+        run: for i in 1 2 3; do timeout 300 npx playwright install --with-deps chromium webkit && exit 0; echo "retry $i"; done; exit 1
       - run: npm run test:e2e
       # Screenshots of the screen sweep (layout-<case>-<scene>.png) and the traces of failed tests: a person looks
       # at them, they are not compared with a reference.
       - name: Upload e2e results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ui-e2e-results
           path: apps/ui/test-results
