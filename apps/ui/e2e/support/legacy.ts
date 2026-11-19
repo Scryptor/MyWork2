@@ -1,36 +1,22 @@
 // A folder of MyWork 2 for the import tests. Only synthetic data: the folder is written by `make_fixture` of
-// `mw-legacy` (`mw_legacy::fixture`), never copied from a real base.
-// MW_E2E_FIXTURE_BIN: a ready binary (CI builds it with the server); without it it is built here once.
+// `mw-legacy` (`mw_legacy::fixture`), never copied from a real base. The binary is built before the tests by
+// `global-setup.ts` (or given by CI): MW_E2E_FIXTURE_BIN.
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 /** The administrator of the fixture's base (fictional; its password is stored as MyWork 2 does). */
 export const MW2_ADMIN_LOGIN = 'Ирина';
 export const MW2_ADMIN_PASSWORD = '1234';
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
-const exe = (name: string) => (process.platform === 'win32' ? `${name}.exe` : name);
-
-let built: string | undefined;
-
 function fixtureBinary(): string {
 	const ready = process.env.MW_E2E_FIXTURE_BIN;
-	if (ready) return path.resolve(ready);
-	if (built) return built;
-	const build = spawnSync(
-		'cargo',
-		['build', '-p', 'mw-legacy', '--features', 'fixtures', '--example', 'make_fixture'],
-		{ cwd: repoRoot, encoding: 'utf8', shell: process.platform === 'win32' }
-	);
-	if (build.status !== 0) throw new Error(`make_fixture did not build:\n${build.stderr}`);
-	const target = process.env.CARGO_TARGET_DIR
-		? path.resolve(process.env.CARGO_TARGET_DIR)
-		: path.join(repoRoot, 'target');
-	built = path.join(target, 'debug', 'examples', exe('make_fixture'));
-	return built;
+	if (!ready)
+		throw new Error(
+			'MW_E2E_FIXTURE_BIN is not set: e2e/support/global-setup.ts builds make_fixture'
+		);
+	return ready;
 }
 
 export interface LegacyFolder {

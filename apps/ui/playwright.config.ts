@@ -18,6 +18,8 @@ const server = (port: number, extra = '') => ({
 
 export default defineConfig({
 	testDir: 'e2e',
+	// Builds `make_fixture` once, before the tests (the import tests run it).
+	globalSetup: './e2e/support/global-setup.ts',
 	use: { baseURL: 'http://127.0.0.1:4173' },
 	webServer: [
 		server(4173),
