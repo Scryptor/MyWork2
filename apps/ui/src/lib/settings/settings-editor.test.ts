@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AppSettings } from '$api/AppSettings';
 import type { SettingsPatch } from '$api/SettingsPatch';
 import { ApiError } from '#lib/api/client.js';
+import { discardQueues, hasUnsaved, settleQueues } from '#lib/app/session-reset.js';
 import { createSettingsEditor, type SettingsEditor } from './settings-editor.svelte.js';
 
 const SERVER = {
@@ -160,5 +161,42 @@ describe('createSettingsEditor: a typed time zone and the state of the screen', 
 		editor.commit('timezone', 'Europe/Moscow');
 		await vi.advanceTimersByTimeAsync(700);
 		expect(editor.fieldsFailed).toBe(false);
+	});
+});
+
+describe('signing out', () => {
+	it('a settings edit in its pause goes before the token does', async () => {
+		make();
+		editor.edit('firm_name', 'Новое');
+		expect(hasUnsaved()).toBe(true);
+		await expect(settleQueues(1000)).resolves.toBe(true);
+		expect(save).toHaveBeenCalledWith({ firm_name: 'Новое' });
+		expect(hasUnsaved()).toBe(false);
+	});
+
+	it('a typed time zone not yet left goes too', async () => {
+		make();
+		editor.type('timezone', 'Europe/Moscow');
+		expect(hasUnsaved()).toBe(true);
+		await expect(settleQueues(1000)).resolves.toBe(true);
+		expect(save).toHaveBeenCalledWith({ timezone: 'Europe/Moscow' });
+	});
+
+	it('a save that fails is asked about; «Выйти без сохранения» gives the edit up', async () => {
+		make();
+		save.mockRejectedValue(new ApiError(0, 'network', 'Нет связи', null));
+		editor.edit('firm_name', 'Новое');
+		await expect(settleQueues(1000)).resolves.toBe(false);
+		discardQueues();
+		expect(hasUnsaved()).toBe(false);
+		expect(editor.value('firm_name', 'Сервис')).toBe('Сервис');
+	});
+
+	it('a disposed editor is no longer asked', async () => {
+		make();
+		editor.edit('firm_name', 'Новое');
+		editor.dispose();
+		expect(hasUnsaved()).toBe(false);
+		make();
 	});
 });

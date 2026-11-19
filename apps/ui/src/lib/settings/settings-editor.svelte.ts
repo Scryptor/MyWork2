@@ -4,6 +4,7 @@
 import type { AppSettings } from '$api/AppSettings';
 import type { SettingsPatch } from '$api/SettingsPatch';
 import { ApiError } from '#lib/api/client.js';
+import { trackQueue } from '#lib/app/session-reset.js';
 import { ru } from '#lib/i18n/ru.js';
 import { createAutosave, type SaveState } from '#lib/orders/autosave.js';
 
@@ -130,6 +131,32 @@ export function createSettingsEditor(opts: {
 		setError(field, undefined);
 	};
 
+	/** Text typed and not yet left goes into the queue too: signing out sends it. */
+	function commitAllTyped() {
+		const all = Object.entries(typed) as [SettingsField, SettingsPatch[SettingsField]][];
+		if (all.length === 0) return;
+		typed = {};
+		for (const [field, value] of all) inner.commit(field, value as never);
+	}
+
+	// Signing out sends what waits (an edit in its pause) under this user's token, or asks about it.
+	const untrack = trackQueue({
+		unsaved: () => Object.keys(inner.pending).length > 0 || Object.keys(typed).length > 0,
+		flush: async () => {
+			commitAllTyped();
+			try {
+				await inner.flush();
+			} catch {
+				return false;
+			}
+			return Object.keys(inner.pending).length === 0;
+		},
+		discard: () => {
+			typed = {};
+			inner.discard(...(Object.keys(inner.pending) as SettingsField[]));
+		}
+	});
+
 	return {
 		get canEdit() {
 			return opts.can();
@@ -203,6 +230,9 @@ export function createSettingsEditor(opts: {
 		pendingFields: () => Object.keys(inner.pending),
 		flush: () => inner.flush().catch(() => {}),
 		retry: () => inner.retry(),
-		dispose: () => inner.dispose()
+		dispose: () => {
+			untrack();
+			inner.dispose();
+		}
 	};
 }
