@@ -28,6 +28,8 @@ function stored(): string | null {
 }
 
 let held: string | null = typeof window === 'undefined' ? null : stored();
+/** The token is in the storage (false: the storage would not take it, it lives in memory only). */
+let kept = held !== null;
 let onLost: () => void = () => {};
 
 /** The token of this page's session; null: nobody is signed in here. */
@@ -42,8 +44,10 @@ export function setToken(token: string, remember: boolean): void {
 	held = token;
 	try {
 		(remember ? localStorage : sessionStorage).setItem(KEY, token);
+		kept = true;
 	} catch {
 		// storage is unavailable: the user will have to sign in again after a reload
+		kept = false;
 	}
 }
 
@@ -58,7 +62,7 @@ export function clearToken(): void {
 
 /** The storage no longer holds this page's token: another tab signed out or in as someone else. */
 export function sessionLost(): boolean {
-	return held !== null && stored() !== held;
+	return held !== null && kept && stored() !== held;
 }
 
 /**

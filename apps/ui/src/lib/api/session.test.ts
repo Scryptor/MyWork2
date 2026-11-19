@@ -79,4 +79,21 @@ describe('another tab', () => {
 		expect(getToken()).toBeNull();
 		expect(localStorage.getItem('mw.session')).toBe('b');
 	});
+
+	it('a storage that does not take the token keeps the session in memory, not lost', () => {
+		const lost = vi.fn();
+		setSessionLostHandler(lost);
+		const set = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+			throw new DOMException('full', 'QuotaExceededError');
+		});
+		try {
+			setToken('a', true);
+		} finally {
+			set.mockRestore();
+		}
+		expect(getToken()).toBe('a');
+		expect(sessionLost()).toBe(false);
+		window.dispatchEvent(new StorageEvent('storage', { key: 'mw.session' }));
+		expect(lost).not.toHaveBeenCalled();
+	});
 });
