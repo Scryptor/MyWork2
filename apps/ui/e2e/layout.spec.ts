@@ -265,6 +265,20 @@ async function serverSettingsScenes(
 	).toBeVisible();
 	await scene(page, c, 'dictionaries', bars, pending);
 
+	await page.goto('/settings/statuses');
+	await expect(page.getByRole('heading', { name: 'Статусы' })).toBeVisible();
+	await expect(
+		page.getByRole('main').getByRole('listitem').first().or(page.getByText('Статусов пока нет'))
+	).toBeVisible();
+	await scene(page, c, 'statuses', bars, pending);
+
+	await page.goto('/settings/points');
+	await expect(page.getByRole('heading', { name: 'Точки' })).toBeVisible();
+	await expect(
+		page.getByRole('main').getByRole('listitem').first().or(page.getByText('Точек пока нет'))
+	).toBeVisible();
+	await scene(page, c, 'points', bars, pending);
+
 	await page.goto('/settings/about');
 	await expect(page.getByRole('heading', { name: 'О программе' })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Скопировать' })).toBeVisible();

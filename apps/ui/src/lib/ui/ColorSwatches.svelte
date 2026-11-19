@@ -16,9 +16,21 @@
 	} = $props();
 
 	const name = $props.id();
+
+	function sync(changed: HTMLInputElement) {
+		const group = changed.closest('[role="radiogroup"]');
+		for (const input of group?.querySelectorAll<HTMLInputElement>('input[type="radio"]') ?? []) {
+			input.checked = input.value === value;
+		}
+	}
 </script>
 
-<div class="swatches" role="radiogroup" aria-label={label}>
+<div
+	class="swatches"
+	role="radiogroup"
+	aria-label={label}
+	aria-disabled={disabled ? 'true' : undefined}
+>
 	{#each STATUS_HUES as hue (hue)}
 		<label class="swatch st-{hue}" class:on={value === hue} class:disabled>
 			<input
@@ -28,7 +40,11 @@
 				{disabled}
 				checked={value === hue}
 				aria-label={ru.hues[hue]}
-				onchange={() => onchange(hue)}
+				onchange={(e) => {
+					onchange(hue);
+					// Controlled: the radio that was clicked shows `value`, which the parent may have kept.
+					sync(e.currentTarget);
+				}}
 			/>
 			<span class="dot" aria-hidden="true">
 				{#if value === hue}<Check size={14} />{/if}

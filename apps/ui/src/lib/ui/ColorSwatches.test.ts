@@ -13,12 +13,29 @@ describe('ColorSwatches', () => {
 		expect(within(group).getByRole('radio', { name: 'Серый' })).toBeChecked();
 	});
 
-	it('ArrowRight selects the next hue and reports it', async () => {
-		const onchange = vi.fn();
-		render(ColorSwatches, { value: 'gray', onchange, label: 'Цвет' });
+	it('ArrowRight reports the next hue; the parent that takes it shows it', async () => {
+		const onchange = vi.fn((hue: string) => void view.rerender({ value: hue as 'red' }));
+		const view = render(ColorSwatches, { value: 'gray', onchange, label: 'Цвет' });
 		screen.getByRole('radio', { name: 'Серый' }).focus();
 		await userEvent.keyboard('{ArrowRight}');
 		expect(onchange).toHaveBeenCalledWith('red');
 		expect(screen.getByRole('radio', { name: 'Красный' })).toBeChecked();
+	});
+
+	it('stays controlled: a parent that refuses keeps the old hue checked', async () => {
+		const onchange = vi.fn();
+		render(ColorSwatches, { value: 'gray', onchange, label: 'Цвет' });
+		await userEvent.click(screen.getByRole('radio', { name: 'Красный' }));
+		expect(onchange).toHaveBeenCalledWith('red');
+		expect(screen.getByRole('radio', { name: 'Серый' })).toBeChecked();
+		expect(screen.getByRole('radio', { name: 'Красный' })).not.toBeChecked();
+	});
+
+	it('disabled is shown on the group', () => {
+		render(ColorSwatches, { value: 'gray', onchange: vi.fn(), label: 'Цвет', disabled: true });
+		expect(screen.getByRole('radiogroup', { name: 'Цвет' })).toHaveAttribute(
+			'aria-disabled',
+			'true'
+		);
 	});
 });

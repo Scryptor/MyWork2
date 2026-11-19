@@ -1,7 +1,7 @@
 <script lang="ts" generics="T">
 	import GripVertical from '@lucide/svelte/icons/grip-vertical';
 	import type { Snippet } from 'svelte';
-	import { tick } from 'svelte';
+	import { onDestroy, tick } from 'svelte';
 	import { ru } from '#lib/i18n/ru.js';
 
 	let {
@@ -24,6 +24,10 @@
 	let list: HTMLElement | undefined = $state();
 	/** The row being dragged, how far it is from its place, and where it would land. */
 	let drag = $state<{ id: number; dy: number; to: number } | null>(null);
+
+	/** Ends the drag in progress without a drop (the list goes away in the middle of it). */
+	let abortDrag: (() => void) | null = null;
+	onDestroy(() => abortDrag?.());
 
 	const ids = $derived(items.map(key));
 
@@ -99,6 +103,7 @@
 			drag = { id, dy, to: target(startCenter + dy, id) };
 		};
 		const finish = (commit: boolean) => {
+			abortDrag = null;
 			window.removeEventListener('pointermove', move);
 			window.removeEventListener('pointerup', up);
 			window.removeEventListener('pointercancel', cancel);
@@ -108,6 +113,7 @@
 			announcement = ru.sortable.place(label(item), d.to + 1, ids.length);
 			onreorder(moved(ids, id, d.to));
 		};
+		abortDrag = () => finish(false);
 		const up = () => finish(true);
 		const cancel = () => finish(false);
 		window.addEventListener('pointermove', move);

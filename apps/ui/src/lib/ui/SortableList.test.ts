@@ -32,4 +32,23 @@ describe('SortableList', () => {
 		expect(screen.queryAllByRole('button')).toHaveLength(0);
 		expect(screen.getByText('Второй')).toBeInTheDocument();
 	});
+
+	it('unmounting in the middle of a drag removes the window listeners', async () => {
+		const add = vi.spyOn(window, 'addEventListener');
+		const remove = vi.spyOn(window, 'removeEventListener');
+		const { unmount } = render(Harness, {});
+		const handle = screen.getByRole('button', { name: 'Переместить „Первый“' });
+		handle.dispatchEvent(
+			new PointerEvent('pointerdown', { button: 0, bubbles: true, clientY: 10, pointerId: 1 })
+		);
+		const names = ['pointermove', 'pointerup', 'pointercancel'];
+		for (const n of names) expect(add.mock.calls.some((c) => c[0] === n)).toBe(true);
+		unmount();
+		for (const n of names) {
+			const added = add.mock.calls.find((c) => c[0] === n)![1];
+			expect(remove.mock.calls.some((c) => c[0] === n && c[1] === added)).toBe(true);
+		}
+		add.mockRestore();
+		remove.mockRestore();
+	});
 });

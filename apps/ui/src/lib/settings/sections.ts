@@ -1,6 +1,8 @@
 import BookOpen from '@lucide/svelte/icons/book-open';
+import CircleDot from '@lucide/svelte/icons/circle-dot';
 import Info from '@lucide/svelte/icons/info';
 import ListOrdered from '@lucide/svelte/icons/list-ordered';
+import MapPin from '@lucide/svelte/icons/map-pin';
 import Palette from '@lucide/svelte/icons/palette';
 import Settings2 from '@lucide/svelte/icons/settings-2';
 import type { Component } from 'svelte';
@@ -26,5 +28,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
 		icon: BookOpen,
 		href: 'settings/dictionaries'
 	},
+	{ id: 'statuses', label: ru.settings.statuses, icon: CircleDot, href: 'settings/statuses' },
+	{ id: 'points', label: ru.settings.points, icon: MapPin, href: 'settings/points' },
 	{ id: 'about', label: ru.settings.about, icon: Info, href: 'settings/about' }
 ];

@@ -159,6 +159,7 @@
 		align-items: center;
 		gap: var(--space-2);
 		min-height: var(--control-md);
+		flex-wrap: wrap;
 		min-width: 0;
 	}
 	.pick {
@@ -167,7 +168,7 @@
 		accent-color: var(--accent);
 	}
 	.text {
-		flex: 1;
+		flex: 1 1 8rem;
 		min-width: 0;
 		overflow-wrap: anywhere;
 		font-size: var(--text-md);
