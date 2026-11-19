@@ -296,3 +296,24 @@ async fn expired_intake_drafts_are_cleaned_up_at_start() {
         stop(tx, running, addr, label).await;
     }
 }
+
+#[tokio::test]
+async fn staging_left_by_an_interrupted_import_is_removed_at_start() {
+    for (label, db) in mw_db::testing::all_backends().await {
+        let dir = temp_dir(label);
+        let staging = dir.join("attachments/.import-20261111-090000");
+        std::fs::create_dir_all(staging.join("orders/1")).unwrap();
+        std::fs::write(staging.join("orders/1/photo.jpg"), b"x").unwrap();
+        std::fs::create_dir_all(dir.join("attachments/orders/2")).unwrap();
+        std::fs::write(dir.join("attachments/orders/2/kept.jpg"), b"y").unwrap();
+        let server = Server::start_with_db(&config(dir.clone()), db)
+            .await
+            .unwrap();
+        assert!(!staging.exists(), "{label}");
+        assert!(
+            dir.join("attachments/orders/2/kept.jpg").exists(),
+            "{label}"
+        );
+        drop(server);
+    }
+}

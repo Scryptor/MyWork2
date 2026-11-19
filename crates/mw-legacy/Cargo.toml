@@ -22,6 +22,8 @@ hex = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 tempfile = { workspace = true }
+ts-rs = { workspace = true }
+utoipa = { workspace = true }
 
 [features]
 # Код-генератор синтетической папки MyWork 2 (для тестов и примера).

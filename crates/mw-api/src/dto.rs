@@ -519,3 +519,21 @@ impl From<mw_core::Page<mw_core::AuditEntry>> for AuditPage {
         }
     }
 }
+
+/// Проверка папки MyWork 2 перед переносом.
+#[derive(Debug, Clone, Deserialize, TS, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct LegacyImportCheck {
+    /// Полный путь к папке MyWork 2 (или к файлу `baza.sqlite` в ней) на компьютере сервера.
+    pub path: String,
+}
+
+/// Запуск переноса из MyWork 2.
+#[derive(Debug, Clone, Deserialize, TS, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct LegacyImportStart {
+    /// Полный путь к папке MyWork 2 (или к файлу `baza.sqlite` в ней) на компьютере сервера.
+    pub path: String,
+    /// Заменить данные непустой базы (только SQLite; перед этим снимается копия).
+    pub replace: bool,
+}

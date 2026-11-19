@@ -180,6 +180,7 @@ async fn check_backend(
         attachments_dir: data.path().join("attachments"),
         backups_dir: data.path().join("backups"),
         replace: false,
+        progress: None,
     };
     let started = Instant::now();
     let report = match import_folder(core, &Actor::unrestricted("real_db"), &options).await {

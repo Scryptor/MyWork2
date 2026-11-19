@@ -1541,6 +1541,228 @@
         ]
       }
     },
+    "/api/v1/legacy-import": {
+      "post": {
+        "tags": [
+          "Импорт из MyWork 2"
+        ],
+        "summary": "Запуск переноса фоновой задачей; ход — `GET /legacy-import/current`. Одновременно идёт один\nимпорт: второй запуск — 409. Ошибка переноса приходит в ходе (`error`), а не ответом\n(права `settings_manage` и `users_manage`, только сервер на этом компьютере).",
+        "operationId": "start_legacy_import",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LegacyImportStart"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Импорт запущен",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportJob"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/legacy-import/check": {
+      "post": {
+        "tags": [
+          "Импорт из MyWork 2"
+        ],
+        "summary": "Проверка папки MyWork 2 без записи: что будет перенесено или что не так\n(права `settings_manage` и `users_manage`, только сервер на этом компьютере).",
+        "operationId": "check_legacy_folder",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LegacyImportCheck"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Итог проверки",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FolderCheck"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/legacy-import/current": {
+      "get": {
+        "tags": [
+          "Импорт из MyWork 2"
+        ],
+        "summary": "Ход текущего или последнего импорта с запуска сервера; `null` — импорта не было\n(права `settings_manage` и `users_manage`, только сервер на этом компьютере).",
+        "operationId": "current_legacy_import",
+        "responses": {
+          "200": {
+            "description": "Ход импорта",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ImportJob"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/legacy-imports": {
+      "get": {
+        "tags": [
+          "Импорт из MyWork 2"
+        ],
+        "summary": "Прошлые импорты, новые первыми (права `settings_manage` и `users_manage`).",
+        "operationId": "list_legacy_imports",
+        "responses": {
+          "200": {
+            "description": "Прошлые импорты",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LegacyImportItem"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/legacy-imports/{id}": {
+      "get": {
+        "tags": [
+          "Импорт из MyWork 2"
+        ],
+        "summary": "Отчёт прошлого импорта: итоги, группы предупреждений с номерами заказов, полный текст\n(права `settings_manage` и `users_manage`).",
+        "operationId": "get_legacy_import",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер импорта",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Отчёт импорта",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportReportView"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/openapi.json": {
       "get": {
         "tags": [
@@ -4456,6 +4678,205 @@
           }
         }
       },
+      "FileStats": {
+        "type": "object",
+        "description": "Сколько файлов перенесено.",
+        "required": [
+          "copied",
+          "bytes",
+          "missing"
+        ],
+        "properties": {
+          "bytes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Байт скопировано.",
+            "minimum": 0
+          },
+          "copied": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Скопировано.",
+            "minimum": 0
+          },
+          "missing": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Не найдены или не прочитаны.",
+            "minimum": 0
+          }
+        }
+      },
+      "FolderCheck": {
+        "type": "object",
+        "description": "Что нашлось в папке MyWork 2 или почему из неё нельзя перенести.",
+        "required": [
+          "ok",
+          "problem",
+          "schema_version",
+          "orders",
+          "clients",
+          "files",
+          "files_bytes"
+        ],
+        "properties": {
+          "clients": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Клиентов будет перенесено (с восстановленными из заказов).",
+            "minimum": 0
+          },
+          "files": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Файлов найдено для переноса.",
+            "minimum": 0
+          },
+          "files_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Их общий объём в байтах.",
+            "minimum": 0
+          },
+          "ok": {
+            "type": "boolean",
+            "description": "Папку можно переносить."
+          },
+          "orders": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Заказов будет перенесено.",
+            "minimum": 0
+          },
+          "problem": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Что не так, по-русски (только при `ok = false`)."
+          },
+          "schema_version": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Версия базы: «колонок в заказах — 32»."
+          }
+        }
+      },
+      "ImportJob": {
+        "type": "object",
+        "description": "Состояние импорта, запущенного из интерфейса (одна задача на сервер).",
+        "required": [
+          "stage",
+          "percent",
+          "error",
+          "import_id"
+        ],
+        "properties": {
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Импорт остановлен с ошибкой (текст по-русски); `stage` — этап, на котором это случилось."
+          },
+          "import_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Номер записи импорта, когда база уже записана (см. `GET /legacy-imports/{id}`)."
+          },
+          "percent": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Готовность этапа, 0–100.",
+            "minimum": 0
+          },
+          "stage": {
+            "$ref": "#/components/schemas/ImportStage"
+          }
+        }
+      },
+      "ImportReportView": {
+        "type": "object",
+        "description": "Отчёт прошлого импорта.",
+        "required": [
+          "id",
+          "imported_at",
+          "source_path",
+          "mode",
+          "orders",
+          "clients",
+          "users",
+          "files",
+          "groups",
+          "warnings_text"
+        ],
+        "properties": {
+          "clients": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Перенесено клиентов.",
+            "minimum": 0
+          },
+          "files": {
+            "$ref": "#/components/schemas/FileStats",
+            "description": "Файлы: скопировано, байт, не найдено."
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReportGroup"
+            },
+            "description": "Группы по кодам: сначала «требуют внимания», затем сведения, в порядке таблицы кодов."
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "imported_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/LegacyImportMode"
+          },
+          "orders": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Перенесено заказов.",
+            "minimum": 0
+          },
+          "source_path": {
+            "type": "string"
+          },
+          "users": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Перенесено пользователей.",
+            "minimum": 0
+          },
+          "warnings_text": {
+            "type": "string",
+            "description": "Полный текст отчёта, как в файле команды `import-legacy` (содержит данные клиентов)."
+          }
+        }
+      },
+      "ImportStage": {
+        "type": "string",
+        "description": "Этап импорта, по порядку.",
+        "enum": [
+          "reading",
+          "converting",
+          "copying",
+          "writing",
+          "placing",
+          "done"
+        ]
+      },
       "IssueRequirement": {
         "type": "string",
         "enum": [
@@ -4473,6 +4894,88 @@
           "in_service",
           "issued"
         ]
+      },
+      "LegacyImportCheck": {
+        "type": "object",
+        "description": "Проверка папки MyWork 2 перед переносом.",
+        "required": [
+          "path"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Полный путь к папке MyWork 2 (или к файлу `baza.sqlite` в ней) на компьютере сервера."
+          }
+        },
+        "additionalProperties": false
+      },
+      "LegacyImportItem": {
+        "type": "object",
+        "description": "Строка списка прошлых импортов.",
+        "required": [
+          "id",
+          "imported_at",
+          "source_path",
+          "mode",
+          "orders",
+          "warnings"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "imported_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/LegacyImportMode"
+          },
+          "orders": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Перенесено заказов.",
+            "minimum": 0
+          },
+          "source_path": {
+            "type": "string",
+            "description": "Папка MyWork 2, из которой перенесено."
+          },
+          "warnings": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Предупреждений «требуют внимания».",
+            "minimum": 0
+          }
+        }
+      },
+      "LegacyImportMode": {
+        "type": "string",
+        "description": "Как выполнен импорт.",
+        "enum": [
+          "into_empty",
+          "replace"
+        ]
+      },
+      "LegacyImportStart": {
+        "type": "object",
+        "description": "Запуск переноса из MyWork 2.",
+        "required": [
+          "path",
+          "replace"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Полный путь к папке MyWork 2 (или к файлу `baza.sqlite` в ней) на компьютере сервера."
+          },
+          "replace": {
+            "type": "boolean",
+            "description": "Заменить данные непустой базы (только SQLite; перед этим снимается копия)."
+          }
+        },
+        "additionalProperties": false
       },
       "LoginRequest": {
         "type": "object",
@@ -5582,6 +6085,42 @@
         },
         "additionalProperties": false
       },
+      "ReportGroup": {
+        "type": "object",
+        "description": "Группа предупреждений одного кода.",
+        "required": [
+          "code",
+          "severity",
+          "title",
+          "count",
+          "order_ids"
+        ],
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/WarningCode"
+          },
+          "count": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "order_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "Номера заказов, к которым относятся предупреждения группы, по возрастанию без повторов."
+          },
+          "severity": {
+            "$ref": "#/components/schemas/Severity"
+          },
+          "title": {
+            "type": "string",
+            "description": "Заголовок, как в текстовом отчёте."
+          }
+        }
+      },
       "RewriteResult": {
         "type": "object",
         "description": "Итог переименования или объединения.",
@@ -5830,6 +6369,14 @@
         },
         "additionalProperties": false
       },
+      "Severity": {
+        "type": "string",
+        "description": "Уровень предупреждения.",
+        "enum": [
+          "warning",
+          "info"
+        ]
+      },
       "Status": {
         "type": "object",
         "description": "Статус заказа.",
@@ -6030,6 +6577,54 @@
           }
         },
         "additionalProperties": false
+      },
+      "WarningCode": {
+        "type": "string",
+        "description": "Код предупреждения отчёта.",
+        "enum": [
+          "date_unparsed",
+          "date_month_first",
+          "received_at_missing",
+          "money_unparsed",
+          "amount_suspicious",
+          "flag_unrecognized",
+          "status_empty",
+          "issued_without_date",
+          "order_without_client",
+          "client_missing",
+          "client_empty",
+          "barcode_duplicate",
+          "barcode_invalid",
+          "phone_unusual",
+          "phone_no_digits",
+          "history_orphan",
+          "login_renamed",
+          "user_group_missing",
+          "user_password_invalid",
+          "users_manage_granted",
+          "config_section_ignored",
+          "setting_invalid",
+          "text_invalid_utf8",
+          "unknown_column",
+          "unknown_table",
+          "file_missing",
+          "file_unreadable",
+          "status_renamed",
+          "status_custom",
+          "phone_split",
+          "client_duplicates",
+          "barcode_generated",
+          "tracking_found",
+          "role_renamed",
+          "dictionary_placeholder_skipped",
+          "dictionary_default_kept",
+          "act_text_default_skipped",
+          "text_decoded_utf8",
+          "setting_preserved",
+          "stock_preserved",
+          "client_files_orphan",
+          "next_number"
+        ]
       },
       "WarrantyTerm": {
         "type": "object",

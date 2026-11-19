@@ -11,10 +11,17 @@ use sha2::{Digest, Sha256};
 use crate::LegacyError;
 use crate::convert::PlannedFile;
 use crate::folder::LegacyFolder;
+use crate::progress::{ImportStage, Progress, StepProgress};
 use crate::report::{FileStats, WarningCode, Warnings};
 
 /// Папки внутри `attachments`, которые занимает импорт.
 pub(crate) const IMPORT_DIRS: [&str; 3] = ["orders", "stock", "legacy"];
+
+/// Начало имени промежуточной папки: `attachments/.import-<время>`.
+const STAGING_PREFIX: &str = ".import-";
+
+/// Отметка в промежуточной папке: база уже записана, файлы этой папки нужны и при следующем запуске.
+const DATABASE_WRITTEN: &str = ".database-written";
 
 /// Промежуточная папка `attachments/.import-<время>` со скопированными файлами.
 #[derive(Debug)]
@@ -116,7 +123,26 @@ fn copy_hashing(from: &Path, to: &Path) -> Result<Copied, LegacyError> {
     })
 }
 
+/// Где лежит файл плана в старой папке; `None` — не найден или место назначения не внутри `attachments`.
+fn locate(folder: &LegacyFolder, file: &PlannedFile) -> Option<PathBuf> {
+    let found = file
+        .source
+        .to_str()
+        .and_then(|relative| folder.find_file(relative))?;
+    is_plain_relative(&file.dest).then_some(found)
+}
+
+/// Сколько файлов плана найдено и их общий размер в байтах (только чтение).
+pub(crate) fn measure(folder: &LegacyFolder, files: &[PlannedFile]) -> (u64, u64) {
+    files
+        .iter()
+        .filter_map(|file| locate(folder, file))
+        .filter_map(|path| std::fs::metadata(path).ok())
+        .fold((0, 0), |(count, bytes), m| (count + 1, bytes + m.len()))
+}
+
 /// Копирует файлы в `attachments_dir/.import-<stamp>`; возвращает следы для базы и счётчики.
+/// Ход — этап `Copying` по числу файлов.
 ///
 /// Источник каждый раз заново ищется через `LegacyFolder::find_file`: путь не выходит за пределы старой папки.
 pub(crate) fn stage(
@@ -125,23 +151,25 @@ pub(crate) fn stage(
     attachments_dir: &Path,
     stamp: &str,
     warnings: &mut Warnings,
+    progress: Option<&Progress>,
 ) -> Result<(Staging, Vec<ImportedLegacyRow>, FileStats), LegacyError> {
     std::fs::create_dir_all(attachments_dir).map_err(io_error(format!(
         "Не удалось создать папку {}",
         attachments_dir.display()
     )))?;
-    let mut dir = attachments_dir.join(format!(".import-{stamp}"));
+    let mut dir = attachments_dir.join(format!("{STAGING_PREFIX}{stamp}"));
     let mut n = 1;
     while dir.exists() {
         n += 1;
-        dir = attachments_dir.join(format!(".import-{stamp}-{n}"));
+        dir = attachments_dir.join(format!("{STAGING_PREFIX}{stamp}-{n}"));
     }
     std::fs::create_dir(&dir).map_err(io_error(format!(
         "Не удалось создать папку {}",
         dir.display()
     )))?;
     let staging = Staging { dir, armed: true };
-    match copy_all(folder, files, &staging, warnings) {
+    let mut step = StepProgress::new(progress, ImportStage::Copying, files.len());
+    match copy_all(folder, files, &staging, warnings, &mut step) {
         Ok((rows, stats)) => Ok((staging, rows, stats)),
         Err(e) => {
             staging.abort();
@@ -155,17 +183,15 @@ fn copy_all(
     files: &[PlannedFile],
     staging: &Staging,
     warnings: &mut Warnings,
+    step: &mut StepProgress,
 ) -> Result<(Vec<ImportedLegacyRow>, FileStats), LegacyError> {
     let mut rows = Vec::new();
     let mut stats = FileStats::default();
     let mut used = BTreeSet::new();
     for file in files {
+        step.step();
         let shown = file.source.display().to_string();
-        let found = file
-            .source
-            .to_str()
-            .and_then(|relative| folder.find_file(relative));
-        let (Some(from), true) = (found, is_plain_relative(&file.dest)) else {
+        let Some(from) = locate(folder, file) else {
             warnings.push(
                 WarningCode::FileMissing,
                 "file",
@@ -288,8 +314,12 @@ impl Staging {
         previous: Option<&Path>,
         warnings: &mut Warnings,
     ) -> Result<(), LegacyError> {
-        // База уже записана: промежуточную папку после этого не удаляем, пока файлы не на месте.
+        // База уже записана: промежуточную папку после этого не удаляем, пока файлы не на месте,
+        // и уборка при запуске сервера её тоже не трогает.
         self.armed = false;
+        if let Err(e) = std::fs::write(self.dir.join(DATABASE_WRITTEN), b"") {
+            tracing::warn!(error = %e, "отметка промежуточной папки не записана");
+        }
         if let Some(previous) = previous {
             for name in IMPORT_DIRS {
                 let old = attachments_dir.join(name);
@@ -331,6 +361,43 @@ impl Staging {
     }
 }
 
+/// Итог уборки промежуточных папок.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct StagingCleanup {
+    /// Удалены: импорт оборвался до записи базы.
+    pub removed: Vec<PathBuf>,
+    /// Оставлены: база записана, а файлы не поставлены на место (или удалить не удалось).
+    pub kept: Vec<PathBuf>,
+}
+
+/// Убирает промежуточные папки `attachments/.import-*`, оставшиеся после оборванного импорта
+/// (вызывается при запуске сервера). Папку импорта, уже записанного в базу, не трогает: в ней
+/// файлы, на которые ссылается база.
+pub fn remove_abandoned_staging(attachments_dir: &Path) -> StagingCleanup {
+    let mut cleanup = StagingCleanup::default();
+    let Ok(entries) = std::fs::read_dir(attachments_dir) else {
+        return cleanup;
+    };
+    let mut found: Vec<PathBuf> = entries
+        .filter_map(Result::ok)
+        .filter(|e| e.file_name().to_string_lossy().starts_with(STAGING_PREFIX))
+        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+        .map(|e| e.path())
+        .collect();
+    found.sort();
+    for dir in found {
+        if dir.join(DATABASE_WRITTEN).exists() {
+            cleanup.kept.push(dir);
+        } else if let Err(e) = std::fs::remove_dir_all(&dir) {
+            tracing::warn!(error = %e, path = %dir.display(), "промежуточная папка не удалена");
+            cleanup.kept.push(dir);
+        } else {
+            cleanup.removed.push(dir);
+        }
+    }
+    cleanup
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -364,6 +431,7 @@ mod tests {
             attachments.path(),
             "20261111-090000",
             &mut w,
+            None,
         )
         .unwrap();
         assert_eq!((rows.len(), stats.copied, stats.missing), (2, 2, 0));
@@ -385,7 +453,7 @@ mod tests {
             planned("../outside", "orders/1/o.txt"),
         ];
         let (staging, rows, stats) =
-            stage(&folder, &files, attachments.path(), "x", &mut w).unwrap();
+            stage(&folder, &files, attachments.path(), "x", &mut w, None).unwrap();
         assert_eq!((stats.copied, stats.missing), (2, 2));
         assert_eq!(rows[1].raw["stored_as"], "attachments/orders/1/A (2).jpg");
         assert_eq!(w.list().len(), 2);
@@ -401,14 +469,16 @@ mod tests {
         let attachments = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(attachments.path().join("orders")).unwrap();
         let mut w = Warnings::default();
-        let (staging, _, _) = stage(&folder, &files, attachments.path(), "a", &mut w).unwrap();
+        let (staging, _, _) =
+            stage(&folder, &files, attachments.path(), "a", &mut w, None).unwrap();
         staging.commit(attachments.path(), None, &mut w).unwrap();
         assert!(attachments.path().join("orders/1/photo.jpg").exists());
         assert!(w.list().is_empty());
         assert!(!attachments.path().join(".import-a").exists());
 
         let attachments = tempfile::tempdir().unwrap();
-        let (staging, _, _) = stage(&folder, &files, attachments.path(), "b", &mut w).unwrap();
+        let (staging, _, _) =
+            stage(&folder, &files, attachments.path(), "b", &mut w, None).unwrap();
         std::fs::create_dir_all(attachments.path().join("orders/keep")).unwrap();
         std::fs::write(attachments.path().join("orders/keep/f"), b"x").unwrap();
         let err = staging
@@ -431,7 +501,8 @@ mod tests {
         let attachments = tempfile::tempdir().unwrap();
         let mut w = Warnings::default();
         let files = [planned("ClientFiles/1/1/photo.jpg", "orders/1/photo.jpg")];
-        let (staging, _, _) = stage(&folder, &files, attachments.path(), "c", &mut w).unwrap();
+        let (staging, _, _) =
+            stage(&folder, &files, attachments.path(), "c", &mut w, None).unwrap();
         drop(staging);
         assert_eq!(std::fs::read_dir(attachments.path()).unwrap().count(), 0);
     }

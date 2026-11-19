@@ -33,11 +33,11 @@ iana-time-zone = { workspace = true }
 chrono-tz = { workspace = true }
 url = { workspace = true }
 thiserror = { workspace = true }
-serde_json = { workspace = true }
 chrono = { workspace = true }
 
 [dev-dependencies]
 mw-legacy = { path = "../mw-legacy", features = ["fixtures"] }
+serde_json = { workspace = true }
 tempfile = { workspace = true }
 mw-db = { path = "../mw-db" }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "signal", "sync", "time", "io-util"] }

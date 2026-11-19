@@ -117,13 +117,27 @@ impl LegacyTable {
 }
 
 /// Краткая сводка по схеме старой базы.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SchemaSummary {
     pub catalog_columns: usize,
     /// Колонки `Catalog` из полного набора (32), которых в этой базе нет.
     pub missing_columns: Vec<String>,
     /// Таблицы и число строк.
     pub tables: Vec<(String, u64)>,
+}
+
+impl SchemaSummary {
+    /// Версия базы для людей: «колонок в заказах — 32», при нехватке — со списком недостающих.
+    pub fn version_text(&self) -> String {
+        let mut out = format!("колонок в заказах — {}", self.catalog_columns);
+        if !self.missing_columns.is_empty() {
+            out.push_str(&format!(
+                " (нет колонок: {})",
+                self.missing_columns.join(", ")
+            ));
+        }
+        out
+    }
 }
 
 #[derive(Debug, Clone)]

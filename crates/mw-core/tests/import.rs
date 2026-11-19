@@ -288,6 +288,54 @@ async fn import_needs_settings_and_users_rights() {
     }
 }
 
+#[tokio::test]
+async fn past_imports_are_listed_and_read_with_the_summary_in_the_report() {
+    use mw_core::{ImportSummary, LegacyImportMode};
+    for t in cores().await {
+        assert!(
+            t.core
+                .list_legacy_imports(&admin())
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        let s = t
+            .core
+            .import_bundle(&admin(), sample_bundle(), ImportMode::IntoEmpty)
+            .await
+            .unwrap();
+        let list = t.core.list_legacy_imports(&admin()).await.unwrap();
+        assert_eq!(list.len(), 1, "{}", t.label);
+        let r = &list[0];
+        assert_eq!(
+            (r.id, r.source_path.as_str(), r.mode),
+            (s.import_id, "fixture/MyWork2", LegacyImportMode::IntoEmpty)
+        );
+        assert_eq!(r.imported_at, t.core.now());
+        // Отчёт пакета остаётся как был, к нему добавляется сводка записанного.
+        assert_eq!(r.report["warnings"], serde_json::json!([]));
+        let summary: ImportSummary = serde_json::from_value(r.report["summary"].clone()).unwrap();
+        assert_eq!(summary, s);
+        assert_eq!(
+            &t.core.legacy_import(&admin(), s.import_id).await.unwrap(),
+            r
+        );
+        assert!(matches!(
+            t.core.legacy_import(&admin(), s.import_id + 100).await,
+            Err(CoreError::NotFound { .. })
+        ));
+        let weak = actor_with(&[Permission::SettingsManage]);
+        assert!(matches!(
+            t.core.list_legacy_imports(&weak).await,
+            Err(CoreError::Forbidden(Permission::UsersManage))
+        ));
+        assert!(matches!(
+            t.core.legacy_import(&weak, s.import_id).await,
+            Err(CoreError::Forbidden(Permission::UsersManage))
+        ));
+    }
+}
+
 async fn file_sqlite_core(path: &std::path::Path) -> Core {
     let db = mw_db::connect(&mw_db::sqlite_url(path)).await.unwrap();
     mw_db::migrate(&db).await.unwrap();

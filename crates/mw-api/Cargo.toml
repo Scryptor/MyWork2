@@ -11,6 +11,7 @@ workspace = true
 [dependencies]
 mw-core = { path = "../mw-core" }
 mw-domain = { path = "../mw-domain" }
+mw-legacy = { path = "../mw-legacy" }
 axum = { workspace = true }
 axum-extra = { workspace = true }
 utoipa = { workspace = true }
@@ -26,6 +27,7 @@ tower = { workspace = true }
 tower-http = { workspace = true }
 
 [dev-dependencies]
+mw-legacy = { path = "../mw-legacy", features = ["fixtures"] }
 mw-db = { path = "../mw-db" }
 mw-core = { path = "../mw-core", features = ["testing"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

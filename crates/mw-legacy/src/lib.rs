@@ -1,13 +1,17 @@
 //! Чтение копии базы и папки MyWork 2 и перенос их в MyWork 3.
 
+mod check;
 mod convert;
 mod error;
 mod files;
 mod folder;
 mod parse;
+mod progress;
 mod report;
+mod report_files;
 mod source;
 mod text;
+mod view;
 
 #[cfg(feature = "fixtures")]
 pub mod fixture;
@@ -19,12 +23,17 @@ use std::path::{Path, PathBuf};
 
 use mw_core::{Actor, Core, DatabaseKind, ImportMode};
 
-pub use error::LegacyError;
+pub use check::{FolderCheck, check_folder};
+pub use error::{LegacyError, StartedFrom, import_error_message};
+pub use files::{StagingCleanup, remove_abandoned_staging};
+pub use progress::{ImportJob, ImportStage, Progress};
 pub use report::{FileStats, ImportReport, Severity, Warning, WarningCode};
+pub use report_files::{REPORTS_DIR, write_report_files};
 pub use source::SchemaSummary;
+pub use view::{ImportReportView, LegacyImportItem, ReportGroup, import_item, report_view};
 
 /// Что и куда импортировать.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ImportOptions {
     /// Папка MyWork 2 (только чтение).
     pub source: PathBuf,
@@ -34,6 +43,36 @@ pub struct ImportOptions {
     pub backups_dir: PathBuf,
     /// Заменить уже имеющиеся данные (только SQLite), предварительно сняв копию.
     pub replace: bool,
+    /// Ход по этапам; `Done` приходит последним и только при успехе.
+    pub progress: Option<Progress>,
+}
+
+impl std::fmt::Debug for ImportOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ImportOptions")
+            .field("source", &self.source)
+            .field("attachments_dir", &self.attachments_dir)
+            .field("backups_dir", &self.backups_dir)
+            .field("replace", &self.replace)
+            .field("progress", &self.progress.is_some())
+            .finish()
+    }
+}
+
+impl ImportOptions {
+    fn emit(&self, stage: ImportStage, percent: u8) {
+        if let Some(progress) = &self.progress {
+            progress(stage, percent);
+        }
+    }
+}
+
+/// Ошибка `spawn_blocking`: задача файлового этапа не дошла до конца.
+fn interrupted(context: &str) -> impl FnOnce(tokio::task::JoinError) -> LegacyError {
+    move |e| LegacyError::Io {
+        context: context.to_owned(),
+        source: std::io::Error::other(e),
+    }
 }
 
 /// Свободная папка `backups_dir/<время>` (при совпадении времени — с суффиксом).
@@ -102,13 +141,18 @@ pub fn lies_inside_source(path: &Path, source: &Path) -> bool {
 
 /// Импортирует папку MyWork 2: читает, преобразует, копирует файлы через промежуточную папку,
 /// пишет пакет одной транзакцией и только после успеха ставит файлы на место.
+/// Файловые операции идут в `spawn_blocking`; ход — через `options.progress`.
 pub async fn import_folder(
     core: &Core,
     actor: &Actor,
     options: &ImportOptions,
 ) -> Result<ImportReport, LegacyError> {
+    options.emit(ImportStage::Reading, 0);
     core.check_import_rights(actor)?;
-    let folder = folder::scan_folder(&options.source)?;
+    let source = options.source.clone();
+    let folder = tokio::task::spawn_blocking(move || folder::scan_folder(&source))
+        .await
+        .map_err(interrupted("Чтение папки прервано"))??;
     for dir in [&options.attachments_dir, &options.backups_dir] {
         if lies_inside(dir, &folder.root) {
             return Err(LegacyError::InsideSource(dir.clone()));
@@ -116,6 +160,7 @@ pub async fn import_folder(
     }
     let db = source::read_database(&folder.db_file).await?;
     tracing::info!(tables = db.tables.len(), "импорт: старая база прочитана");
+    options.emit(ImportStage::Reading, 100);
 
     if options.replace && core.database_kind() != DatabaseKind::Sqlite {
         return Err(LegacyError::ReplaceUnsupported);
@@ -135,7 +180,14 @@ pub async fn import_folder(
 
     let started_at = core.now();
     let stamp = started_at.format("%Y%m%d-%H%M%S").to_string();
-    let mut conversion = convert::convert(&db, &folder, started_at);
+    options.emit(ImportStage::Converting, 0);
+    let mut conversion = tokio::task::spawn_blocking({
+        let folder = folder.clone();
+        move || convert::convert(&db, &folder, started_at)
+    })
+    .await
+    .map_err(interrupted("Разбор данных прерван"))?;
+    options.emit(ImportStage::Converting, 100);
     tracing::info!(
         orders = conversion.bundle.orders.len(),
         clients = conversion.bundle.clients.len(),
@@ -150,6 +202,7 @@ pub async fn import_folder(
         let folder = folder.clone();
         let planned = std::mem::take(&mut conversion.files);
         let mut warnings = std::mem::take(&mut conversion.warnings);
+        let progress = options.progress.clone();
         move || {
             let staged = files::stage(
                 &folder,
@@ -157,15 +210,14 @@ pub async fn import_folder(
                 &attachments_dir,
                 &stage_stamp,
                 &mut warnings,
+                progress.as_ref(),
             );
             staged.map(|(s, r, f)| (s, r, f, warnings))
         }
     })
     .await
-    .map_err(|e| LegacyError::Io {
-        context: "Копирование файлов прервано".to_owned(),
-        source: std::io::Error::other(e),
-    })??;
+    .map_err(interrupted("Копирование файлов прервано"))??;
+    options.emit(ImportStage::Copying, 100);
     tracing::info!(
         copied = file_stats.copied,
         missing = file_stats.missing,
@@ -173,19 +225,24 @@ pub async fn import_folder(
         "импорт: файлы скопированы в промежуточную папку"
     );
 
-    let mut bundle = conversion.bundle;
-    bundle.legacy_rows.extend(rows);
-    bundle.report = report::stored_report(&conversion.schema, warnings.list(), &file_stats);
-
     let backup = options
         .replace
         .then(|| backup_folder(&options.backups_dir, &stamp));
+    let mut bundle = conversion.bundle;
+    bundle.legacy_rows.extend(rows);
+    bundle.report = report::stored_report(
+        &conversion.schema,
+        warnings.list(),
+        &file_stats,
+        backup.as_deref(),
+    );
     let mode = match &backup {
         Some(dir) => ImportMode::Replace {
             backup_to: dir.join("mywork.db"),
         },
         None => ImportMode::IntoEmpty,
     };
+    options.emit(ImportStage::Writing, 0);
     let summary = match core.import_bundle(actor, bundle, mode).await {
         Ok(summary) => summary,
         Err(e) => {
@@ -200,6 +257,7 @@ pub async fn import_folder(
         history = summary.history,
         "импорт: данные записаны в базу"
     );
+    options.emit(ImportStage::Writing, 100);
 
     let mut report = ImportReport {
         started_at,
@@ -212,8 +270,19 @@ pub async fn import_folder(
     };
     let previous = report.backup.as_ref().map(|dir| dir.join("attachments"));
     let staging_path = staging.path().to_path_buf();
-    let mut after = report::Warnings::default();
-    let placed = staging.commit(&options.attachments_dir, previous.as_deref(), &mut after);
+    options.emit(ImportStage::Placing, 0);
+    let attachments_dir = options.attachments_dir.clone();
+    let placing = tokio::task::spawn_blocking(move || {
+        let mut after = report::Warnings::default();
+        let placed = staging.commit(&attachments_dir, previous.as_deref(), &mut after);
+        (placed, after)
+    })
+    .await;
+    // Задача установки не дошла до конца: база записана, файлы остались в промежуточной папке.
+    let (placed, mut after) = placing.unwrap_or_else(|e| {
+        let error = interrupted("Установка файлов прервана")(e);
+        (Err(error), report::Warnings::default())
+    });
     if let Err(e) = &placed {
         after.push(
             WarningCode::FileUnreadable,
@@ -233,6 +302,8 @@ pub async fn import_folder(
         });
     }
     tracing::info!("импорт: файлы поставлены на место");
+    options.emit(ImportStage::Placing, 100);
+    options.emit(ImportStage::Done, 100);
     Ok(report)
 }
 

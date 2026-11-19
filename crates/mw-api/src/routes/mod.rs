@@ -11,6 +11,7 @@ mod audit;
 mod auth;
 mod catalogs;
 mod clients;
+mod legacy_import;
 mod meta;
 mod orders;
 mod users;
@@ -95,4 +96,9 @@ pub(crate) fn api_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(users::list_roles, users::create_role))
         .routes(routes!(users::update_role))
         .routes(routes!(audit::list_audit))
+        .routes(routes!(legacy_import::check_legacy_folder))
+        .routes(routes!(legacy_import::start_legacy_import))
+        .routes(routes!(legacy_import::current_legacy_import))
+        .routes(routes!(legacy_import::list_legacy_imports))
+        .routes(routes!(legacy_import::get_legacy_import))
 }

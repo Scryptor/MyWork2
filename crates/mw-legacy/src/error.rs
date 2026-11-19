@@ -42,3 +42,29 @@ pub enum LegacyError {
         report: Box<ImportReport>,
     },
 }
+
+/// Откуда запущен импорт: от этого зависит подсказка в сообщении об ошибке.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StartedFrom {
+    /// Команда `mw-server import-legacy`.
+    Command,
+    /// Интерфейс программы.
+    Interface,
+}
+
+/// Сообщение об ошибке импорта; для непустой базы добавляет подсказку, как заменить данные.
+pub fn import_error_message(error: &LegacyError, from: StartedFrom) -> String {
+    match error {
+        LegacyError::TargetNotEmpty(_) => {
+            let replace = match from {
+                StartedFrom::Command => "запустите команду ещё раз с --replace",
+                StartedFrom::Interface => "перенесите данные с заменой",
+            };
+            format!(
+                "{error}. Импорт делается только в пустую базу. Чтобы заменить данные SQLite-базы, \
+                 {replace} (сначала будет сделана копия). Для PostgreSQL создайте новую пустую базу."
+            )
+        }
+        _ => error.to_string(),
+    }
+}

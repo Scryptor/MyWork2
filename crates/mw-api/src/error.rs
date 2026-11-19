@@ -123,6 +123,27 @@ impl ApiError {
         )
     }
 
+    /// Импорт по пути на диске сервера — только серверу на loopback (локальный режим, десктоп).
+    pub(crate) fn import_local_only() -> Self {
+        Self::new(
+            StatusCode::FORBIDDEN,
+            ErrorCode::Forbidden,
+            "Импорт по пути доступен только на этом компьютере",
+        )
+    }
+
+    pub(crate) fn import_running() -> Self {
+        Self::new(StatusCode::CONFLICT, ErrorCode::Conflict, "Импорт уже идёт")
+    }
+
+    pub(crate) fn no_data_dir() -> Self {
+        Self::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            ErrorCode::Unavailable,
+            "Папка данных сервера не задана",
+        )
+    }
+
     pub(crate) fn timed_out() -> Self {
         Self::new(
             StatusCode::SERVICE_UNAVAILABLE,

@@ -2,7 +2,7 @@
 
 use crate::config::{Config, ServerError};
 use mw_core::{Actor, Core, SystemClock};
-use mw_legacy::{ImportOptions, ImportReport, LegacyError, import_folder};
+use mw_legacy::{ImportOptions, ImportReport, LegacyError, StartedFrom, import_folder};
 use sea_orm::DatabaseConnection;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -19,16 +19,9 @@ pub struct ImportOutcome {
     pub open_mode: bool,
 }
 
-/// Сообщение об ошибке импорта; для непустой базы добавляет подсказку.
+/// Сообщение об ошибке импорта командой; для непустой базы добавляет подсказку про `--replace`.
 pub fn import_error_message(error: &LegacyError) -> String {
-    match error {
-        LegacyError::TargetNotEmpty(_) => format!(
-            "{error}. Импорт делается только в пустую базу. Чтобы заменить данные SQLite-базы, \
-             запустите команду ещё раз с --replace (сначала будет сделана копия). \
-             Для PostgreSQL создайте новую пустую базу."
-        ),
-        _ => error.to_string(),
-    }
+    mw_legacy::import_error_message(error, StartedFrom::Command)
 }
 
 /// Проверяет до подключения к базе, что папка данных и файл SQLite лежат вне старой папки MyWork 2:
@@ -64,6 +57,7 @@ pub async fn run_import_with_db(
         attachments_dir: config.data_dir.join("attachments"),
         backups_dir: config.data_dir.join("backups"),
         replace,
+        progress: None,
     };
     match import_folder(&core, &actor, &options).await {
         Ok(report) => match write_reports(config, &core, &report) {
@@ -102,78 +96,11 @@ pub async fn run_import_with_db(
     }
 }
 
+/// Файлы отчёта в `data_dir/import-reports` (общий код с импортом из интерфейса).
 fn write_reports(
     config: &Config,
     core: &Core,
     report: &ImportReport,
-) -> Result<(PathBuf, PathBuf), ServerError> {
-    let dir = config.data_dir.join("import-reports");
-    let stamp = core.now().format("%Y%m%d-%H%M%S").to_string();
-    let json =
-        serde_json::to_string_pretty(&report.to_json()).map_err(|error| ServerError::Io {
-            context: "не удалось подготовить отчёт JSON".into(),
-            source: std::io::Error::other(error),
-        })?;
-    write_report_files(&dir, &stamp, &report.full_text(), &json)
-}
-
-/// Пишет `mywork2-<stamp>.txt/.json` в `dir`; занятое имя получает суффикс `-2`, `-3`…
-fn write_report_files(
-    dir: &Path,
-    stamp: &str,
-    text: &str,
-    json: &str,
-) -> Result<(PathBuf, PathBuf), ServerError> {
-    std::fs::create_dir_all(dir).map_err(|source| ServerError::Io {
-        context: format!("не удалось создать папку {}", dir.display()),
-        source,
-    })?;
-    let mut n = 1;
-    loop {
-        let base = if n == 1 {
-            format!("mywork2-{stamp}")
-        } else {
-            format!("mywork2-{stamp}-{n}")
-        };
-        let text_path = dir.join(format!("{base}.txt"));
-        let json_path = dir.join(format!("{base}.json"));
-        if text_path.exists() || json_path.exists() {
-            n += 1;
-            continue;
-        }
-        write_new(&text_path, text)?;
-        write_new(&json_path, json)?;
-        return Ok((text_path, json_path));
-    }
-}
-
-fn write_new(path: &Path, content: &str) -> Result<(), ServerError> {
-    use std::io::Write;
-    let io = |source| ServerError::Io {
-        context: format!("не удалось записать отчёт {}", path.display()),
-        source,
-    };
-    let mut file = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(path)
-        .map_err(io)?;
-    file.write_all(content.as_bytes()).map_err(io)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn same_stamp_gets_numbered_names() {
-        let dir = tempfile::tempdir().unwrap();
-        let (t1, _) = write_report_files(dir.path(), "20260101-000000", "t", "{}").unwrap();
-        let (t2, j2) = write_report_files(dir.path(), "20260101-000000", "t", "{}").unwrap();
-        let (t3, _) = write_report_files(dir.path(), "20260101-000000", "t", "{}").unwrap();
-        assert!(t1.ends_with("mywork2-20260101-000000.txt"));
-        assert!(t2.ends_with("mywork2-20260101-000000-2.txt"));
-        assert!(j2.ends_with("mywork2-20260101-000000-2.json"));
-        assert!(t3.ends_with("mywork2-20260101-000000-3.txt"));
-    }
+) -> Result<(PathBuf, PathBuf), LegacyError> {
+    mw_legacy::write_report_files(&config.data_dir, core.now(), report)
 }

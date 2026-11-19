@@ -94,6 +94,7 @@ impl Server {
             validate_ui_dir(dir)?;
         }
         migrate(&db, None).await?;
+        remove_abandoned_staging(config);
         let core = Core::open(db.clone(), Arc::new(SystemClock), &system_timezone(config))
             .await?
             .with_attachments_dir(config.data_dir.clone());
@@ -164,6 +165,23 @@ impl Server {
         }
         tracing::info!("сервер остановлен");
         result
+    }
+}
+
+/// Убирает промежуточные папки импорта, оборванного до записи базы (закрыли программу, упал сервер).
+fn remove_abandoned_staging(config: &Config) {
+    let cleanup = mw_legacy::remove_abandoned_staging(&config.data_dir.join("attachments"));
+    for dir in &cleanup.removed {
+        tracing::info!(
+            "удалена промежуточная папка прерванного импорта: {}",
+            dir.display()
+        );
+    }
+    for dir in &cleanup.kept {
+        tracing::warn!(
+            "промежуточная папка импорта оставлена (база уже записана, файлы не поставлены на место): {}",
+            dir.display()
+        );
     }
 }
 

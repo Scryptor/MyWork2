@@ -4,23 +4,29 @@ use std::path::{Path, PathBuf};
 
 use chrono::NaiveDateTime;
 use mw_core::ImportSummary;
-use serde::{Serialize, Serializer};
+use serde::{Deserialize, Serialize, Serializer};
 use serde_json::{Value, json};
 
 use crate::source::SchemaSummary;
 
 /// Уровень предупреждения.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum Severity {
+    /// Требует внимания.
     Warning,
+    /// Сведения.
     Info,
 }
 
 macro_rules! warning_codes {
     ($( $variant:ident => ($code:literal, $severity:ident, $title:literal) ),+ $(,)?) => {
         /// Код предупреждения отчёта.
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+        #[derive(
+            Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema,
+        )]
         #[serde(rename_all = "snake_case")]
         pub enum WarningCode {
             $( $variant, )+
@@ -93,7 +99,7 @@ warning_codes! {
 }
 
 /// Одно предупреждение отчёта.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Warning {
     pub code: WarningCode,
     /// `Catalog`, `ClientsMap`, `StatesMap`, `HistoryBD`, `Users`, `GroupDostup`, `Stock`, `Config.ini`, `file`.
@@ -134,9 +140,13 @@ impl Warnings {
 }
 
 /// Сколько файлов перенесено.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema,
+)]
 pub struct FileStats {
+    /// Скопировано.
     pub copied: u64,
+    /// Байт скопировано.
     pub bytes: u64,
     /// Не найдены или не прочитаны.
     pub missing: u64,
@@ -150,7 +160,6 @@ pub struct ImportReport {
     #[serde(serialize_with = "path_text")]
     pub source: PathBuf,
     pub schema: SchemaSummary,
-    #[serde(serialize_with = "summary_json")]
     pub summary: ImportSummary,
     pub files: FileStats,
     /// Папка `backups/<время>` с `mywork.db` и `attachments/`; только при замене.
@@ -174,34 +183,20 @@ fn backup_text<S: Serializer>(p: &Option<PathBuf>, s: S) -> Result<S::Ok, S::Err
     }
 }
 
-fn summary_json<S: Serializer>(m: &ImportSummary, s: S) -> Result<S::Ok, S::Error> {
-    json!({
-        "import_id": m.import_id,
-        "statuses": m.statuses,
-        "service_points": m.service_points,
-        "dictionary_items": m.dictionary_items,
-        "roles": m.roles,
-        "users": m.users,
-        "clients": m.clients,
-        "client_phones": m.client_phones,
-        "orders": m.orders,
-        "deleted_orders": m.deleted_orders,
-        "tracking_numbers": m.tracking_numbers,
-        "history": m.history,
-        "legacy_rows": m.legacy_rows,
-        "next_order_id": m.next_order_id,
-        "next_client_id": m.next_client_id,
-    })
-    .serialize(s)
-}
-
-/// Часть отчёта, известная до записи в базу (пишется в `legacy_imports.report`).
+/// Часть отчёта, известная до записи в базу (пишется в `legacy_imports.report`; сводку `summary`
+/// добавляет `Core::import_bundle`).
 pub(crate) fn stored_report(
     schema: &SchemaSummary,
     warnings: &[Warning],
     files: &FileStats,
+    backup: Option<&Path>,
 ) -> Value {
-    json!({ "schema": schema, "files": files, "warnings": warnings })
+    json!({
+        "schema": schema,
+        "files": files,
+        "warnings": warnings,
+        "backup": backup.map(|p| p.to_string_lossy()),
+    })
 }
 
 fn megabytes(bytes: u64) -> String {
@@ -222,16 +217,7 @@ impl ImportReport {
     pub fn summary_text(&self) -> String {
         let m = &self.summary;
         let mut out = String::from("Импорт из MyWork 2 завершён.\n");
-        out.push_str(&format!(
-            "Версия базы: колонок в заказах — {}",
-            self.schema.catalog_columns
-        ));
-        if !self.schema.missing_columns.is_empty() {
-            out.push_str(&format!(
-                " (нет колонок: {})",
-                self.schema.missing_columns.join(", ")
-            ));
-        }
+        out.push_str(&format!("Версия базы: {}", self.schema.version_text()));
         out.push_str("\n\nПеренесено:\n");
         let lines: [(&str, u64); 11] = [
             ("заказов", m.orders),
@@ -315,6 +301,24 @@ mod tests {
             );
         }
     }
+    #[test]
+    fn openapi_and_typescript_use_the_same_codes() {
+        use ts_rs::TS;
+        let codes: Vec<&str> = WarningCode::ALL.iter().map(|c| c.as_str()).collect();
+        let schema =
+            serde_json::to_value(<WarningCode as utoipa::PartialSchema>::schema()).unwrap();
+        assert_eq!(schema["enum"], serde_json::json!(codes));
+        let union = codes
+            .iter()
+            .map(|c| format!("\"{c}\""))
+            .collect::<Vec<_>>()
+            .join(" | ");
+        assert_eq!(
+            WarningCode::decl(&ts_rs::Config::new()),
+            format!("type WarningCode = {union};")
+        );
+    }
+
     #[test]
     fn codes_are_unique_and_levels_follow_the_table() {
         let mut seen = std::collections::BTreeSet::new();

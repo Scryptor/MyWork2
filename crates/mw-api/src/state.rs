@@ -7,6 +7,7 @@ use std::sync::Arc;
 use axum::body::Bytes;
 use chrono::Duration;
 use mw_core::Core;
+use mw_legacy::{ImportJob, ImportStage};
 
 use crate::auth::{ACCOUNT_FAILURE_LIMIT, FAILURE_WINDOW_SECS, IP_FAILURE_LIMIT};
 use crate::limiter::LoginLimiter;
@@ -55,6 +56,61 @@ pub(crate) struct AppState {
     pub(crate) openapi_json: Bytes,
     /// Ограничители неудачных попыток входа и смены пароля.
     pub(crate) limits: Arc<Limits>,
+    /// Импорт из MyWork 2, запущенный из интерфейса.
+    pub(crate) import: Arc<ImportJobs>,
+}
+
+/// Импорт из MyWork 2 из интерфейса: одна задача на сервер; последний итог хранится до нового запуска.
+#[derive(Default)]
+pub(crate) struct ImportJobs {
+    current: std::sync::Mutex<Option<ImportJob>>,
+}
+
+impl ImportJobs {
+    fn lock(&self) -> std::sync::MutexGuard<'_, Option<ImportJob>> {
+        self.current.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Ход текущего или последнего импорта.
+    pub(crate) fn current(&self) -> Option<ImportJob> {
+        self.lock().clone()
+    }
+
+    /// Начинает новый импорт; `None`, если прежний ещё идёт.
+    pub(crate) fn try_start(&self) -> Option<ImportJob> {
+        let mut current = self.lock();
+        if current.as_ref().is_some_and(ImportJob::is_running) {
+            return None;
+        }
+        let job = ImportJob::started();
+        *current = Some(job.clone());
+        Some(job)
+    }
+
+    /// Ход по этапам. «Готово» ставит только `finish`: вместе с номером импорта.
+    pub(crate) fn progress(&self, stage: ImportStage, percent: u8) {
+        if stage == ImportStage::Done {
+            return;
+        }
+        if let Some(job) = self.lock().as_mut().filter(|job| job.is_running()) {
+            job.stage = stage;
+            job.percent = percent;
+        }
+    }
+
+    /// Итог: номер записанного импорта и ошибка (её нет — импорт готов).
+    pub(crate) fn finish(&self, import_id: Option<i64>, error: Option<String>) {
+        if let Some(job) = self.lock().as_mut().filter(|job| job.is_running()) {
+            job.import_id = import_id;
+            match error {
+                Some(error) => job.error = Some(error),
+                None => {
+                    job.stage = ImportStage::Done;
+                    job.percent = 100;
+                }
+            }
+        }
+    }
 }
 
 /// Ограничители по учётной записи (логину или пользователю) и по адресу клиента.

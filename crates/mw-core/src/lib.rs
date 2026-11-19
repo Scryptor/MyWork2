@@ -44,7 +44,7 @@ pub use error::CoreError;
 pub use import::{
     DatabaseKind, ImportBundle, ImportMode, ImportSummary, ImportTarget, ImportedClient,
     ImportedHistory, ImportedLegacyRow, ImportedOrder, ImportedSettings, ImportedUser,
-    LegacyTarget,
+    LegacyImportMode, LegacyImportRecord, LegacyTarget,
 };
 pub use orders::{
     ClientRef, IssuedFilter, NewOrder, NewWarrantyCase, Order, OrderFilter, OrderListItem,

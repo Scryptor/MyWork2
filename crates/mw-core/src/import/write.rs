@@ -739,11 +739,7 @@ impl Core {
         expect_count::<legacy_row::Entity>(tx, "следы", b.legacy_rows.len() as u64).await?;
         expect_count::<legacy_import::Entity>(tx, "импорты", 1).await?;
 
-        // Последним: `setval` в PostgreSQL не откатывается вместе с транзакцией.
-        set_next_id(tx, IdTable::Orders, b.next_order_id).await?;
-        set_next_id(tx, IdTable::Clients, b.next_client_id).await?;
-
-        Ok(ImportSummary {
+        let summary = ImportSummary {
             import_id,
             statuses: b.statuses.len() as u64,
             service_points: b.service_points.len() as u64,
@@ -759,6 +755,24 @@ impl Core {
             legacy_rows: b.legacy_rows.len() as u64,
             next_order_id: b.next_order_id,
             next_client_id: b.next_client_id,
-        })
+        };
+        // Сводка записанного — в отчёт импорта: по ней строится список прошлых импортов.
+        let mut report = b.report.clone();
+        if let Value::Object(map) = &mut report {
+            let value = serde_json::to_value(&summary).map_err(|e| bad(format!("сводка: {e}")))?;
+            map.insert("summary".to_owned(), value);
+        }
+        legacy_import::ActiveModel {
+            id: Set(import_id),
+            report: Set(report.to_string()),
+            ..Default::default()
+        }
+        .update(tx)
+        .await?;
+
+        // Последним: `setval` в PostgreSQL не откатывается вместе с транзакцией.
+        set_next_id(tx, IdTable::Orders, b.next_order_id).await?;
+        set_next_id(tx, IdTable::Clients, b.next_client_id).await?;
+        Ok(summary)
     }
 }

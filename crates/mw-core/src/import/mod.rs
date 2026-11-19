@@ -1,8 +1,13 @@
-//! Импорт из MyWork 2: типы пакета и запись в одной транзакции (`Core::import_bundle`).
+//! Импорт из MyWork 2: типы пакета и запись в одной транзакции (`Core::import_bundle`),
+//! список и чтение прошлых импортов (`Core::list_legacy_imports`, `Core::legacy_import`).
 //!
-//! Пакет собирает крейт `mw-legacy`; это не типы API (TypeScript и OpenAPI для них не выводятся).
+//! Пакет собирает крейт `mw-legacy`; это не типы API (TypeScript и OpenAPI для них не выводятся),
+//! кроме `LegacyImportMode`.
 
+mod reports;
 mod write;
+
+pub use reports::{LegacyImportMode, LegacyImportRecord};
 
 use std::path::PathBuf;
 
@@ -187,12 +192,12 @@ pub struct ImportBundle {
     pub legacy_rows: Vec<ImportedLegacyRow>,
     pub next_order_id: i64,
     pub next_client_id: i64,
-    /// Пишется в `legacy_imports.report`.
+    /// Пишется в `legacy_imports.report`; объект получает ещё ключ `summary` — `ImportSummary` записанного.
     pub report: serde_json::Value,
 }
 
 /// Итог импорта: сколько чего записано.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ImportSummary {
     pub import_id: i64,
     pub statuses: u64,
