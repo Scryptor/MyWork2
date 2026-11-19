@@ -17,7 +17,8 @@
 		onconfirm
 	}: {
 		open: boolean;
-		rows: { id: number; label: string; count: number }[];
+		/** `count: null` — not known. */
+		rows: { id: number; label: string; count: number | null }[];
 		/** «в 3 заказах» / «у 2 клиентов». */
 		countLabel: (n: number) => string;
 		/** «в заказах» / «у клиентов»: in «Заменить и …». */
@@ -39,7 +40,7 @@
 			// The most used value stays; the first one among equals.
 			keep =
 				rows.reduce<(typeof rows)[number] | null>(
-					(best, r) => (best === null || r.count > best.count ? r : best),
+					(best, r) => (best === null || (r.count ?? -1) > (best.count ?? -1) ? r : best),
 					null
 				)?.id ?? null;
 			everywhere = true;
@@ -77,7 +78,7 @@
 			<label class="option">
 				<input type="radio" name="{uid}-keep" value={r.id} bind:group={keep} />
 				<span class="name">{r.label}</span>
-				<span class="count">{countLabel(r.count)}</span>
+				{#if r.count !== null}<span class="count">{countLabel(r.count)}</span>{/if}
 			</label>
 		{/each}
 	</fieldset>

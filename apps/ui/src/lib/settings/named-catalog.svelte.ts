@@ -4,7 +4,7 @@
 import type { CatalogUsage } from '$api/CatalogUsage';
 import { ApiError, errorMessage } from '#lib/api/client.js';
 import { ru } from '#lib/i18n/ru.js';
-import { mergeOrder, type CatalogRow } from './catalog.svelte.js';
+import { mergeOrder, usageCounts, type CatalogRow } from './catalog.svelte.js';
 import { movedId, putOrder } from './order.js';
 
 export interface NamedItem {
@@ -39,7 +39,7 @@ export function createNamedCatalog<T extends NamedItem, N, P>(
 	changed: () => Promise<unknown> | void = () => {}
 ) {
 	let items = $state.raw<T[]>([]);
-	let counts = $state.raw<Record<number, number>>({});
+	let counts = $state.raw<Record<number, number> | null>({});
 	let loading = $state(true);
 	let loadError = $state<string | null>(null);
 	let seq = 0;
@@ -50,14 +50,14 @@ export function createNamedCatalog<T extends NamedItem, N, P>(
 		id: i.id,
 		label: i.name,
 		archived: i.archived,
-		count: counts[i.id] ?? 0
+		count: counts === null ? null : (counts[i.id] ?? 0)
 	});
 
 	async function read(mine: number) {
-		const [list, usage] = await Promise.all([api.list(), api.usage().catch(() => [])]);
+		const [list, usage] = await Promise.all([api.list(), api.usage().catch(() => null)]);
 		if (mine !== seq) return;
 		items = sorted(list);
-		counts = Object.fromEntries(usage.map((u) => [u.id, u.count]));
+		counts = usageCounts(usage);
 		loadError = null;
 	}
 
@@ -122,7 +122,8 @@ export function createNamedCatalog<T extends NamedItem, N, P>(
 		get rows(): CatalogRow[] {
 			return [...items.filter((i) => !i.archived), ...items.filter((i) => i.archived)].map(row);
 		},
-		countOf: (id: number) => counts[id] ?? 0,
+		/** `null` when the counts are not known. */
+		countOf: (id: number): number | null => (counts === null ? null : (counts[id] ?? 0)),
 		load,
 		refresh,
 		act,

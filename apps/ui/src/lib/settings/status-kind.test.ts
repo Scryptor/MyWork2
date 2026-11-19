@@ -32,6 +32,13 @@ describe('kindChangeWarning', () => {
 		expect(kindChangeWarning('ready', 'open', 11)).toBe('11 заказов сменят вид на „Открыт“');
 	});
 
+	it('with the count unknown it always warns, without a number', () => {
+		expect(kindChangeWarning('open', 'issued', null)).toBe(
+			'Не удалось узнать, сколько заказов в статусе. Все они сменят вид на „Выдан“'
+		);
+		expect(kindChangeWarning('open', 'open', null)).toBeNull();
+	});
+
 	it('a hint for every kind', () => {
 		expect(Object.keys(KIND_HINTS).sort()).toEqual(['diagnostics', 'issued', 'open', 'ready']);
 		expect(KIND_HINTS.open).toBe('заказ в работе');

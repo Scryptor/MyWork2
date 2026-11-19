@@ -45,7 +45,8 @@
 	let newError = $state<string | undefined>();
 	let removing = $state<number | null>(null);
 	let removeOpen = $state(false);
-	let renaming = $state<{ id: number; from: string; to: string; n: number } | null>(null);
+	/** `where`: «в 3 заказах», or «в заказах» when the count is not known. */
+	let renaming = $state<{ id: number; from: string; to: string; where: string } | null>(null);
 	let renameOpen = $state(false);
 	let mergeOpen = $state(false);
 
@@ -90,8 +91,10 @@
 	async function rename(id: number, label: string) {
 		const row = catalog.all.find((r) => r.id === id);
 		if (!row) return;
-		if (row.count > 0) {
-			renaming = { id, from: row.label, to: label, n: row.count };
+		// Not known how many records have it: ask, as for a value in use.
+		if (row.count === null || row.count > 0) {
+			const at = row.count === null ? where : countLabel(row.count);
+			renaming = { id, from: row.label, to: label, where: at };
 			renameOpen = true;
 			return;
 		}
@@ -250,7 +253,7 @@
 		bind:open={renameOpen}
 		from={renaming.from}
 		to={renaming.to}
-		where={countLabel(renaming.n)}
+		where={renaming.where}
 		onconfirm={renameEverywhere}
 	/>
 {/if}

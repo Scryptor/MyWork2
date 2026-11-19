@@ -13,9 +13,16 @@ export const STATUS_KINDS = Object.keys(t.kindNames) as StatusKind[];
 /**
  * The warning before the kind of a status is changed, or `null` when no order is in it.
  * «Выдан» and «Готов» matter most: reports, warranty and the ready lists follow the kind.
+ * An unknown count (`null`: the counts could not be read) always warns, without a number.
  */
-export function kindChangeWarning(from: StatusKind, to: StatusKind, count: number): string | null {
-	if (count <= 0 || from === to) return null;
+export function kindChangeWarning(
+	from: StatusKind,
+	to: StatusKind,
+	count: number | null
+): string | null {
+	if (from === to) return null;
+	if (count === null) return t.warnUnknown(t.kindNames[to]);
+	if (count <= 0) return null;
 	const what =
 		to === 'issued'
 			? t.warnToIssued

@@ -1,5 +1,6 @@
 // One dictionary of «Настройки → Справочники»: its values (archived ones too), how many orders use each,
 // and the actions on them. Every action answers with the text of a mistake or `null`; the screen shows it.
+import type { CatalogUsage } from '$api/CatalogUsage';
 import type { DictionaryItem } from '$api/DictionaryItem';
 import type { DictionaryKind } from '$api/DictionaryKind';
 import {
@@ -42,7 +43,13 @@ export interface CatalogRow {
 	id: number;
 	label: string;
 	archived: boolean;
-	count: number;
+	/** How many records use it; `null` — not known (the counts could not be read, or need a right). */
+	count: number | null;
+}
+
+/** The counts by id from the answer of the server; a failed reading leaves them unknown (`null`). */
+export function usageCounts(usage: CatalogUsage[] | null): Record<number, number> | null {
+	return usage === null ? null : Object.fromEntries(usage.map((u) => [u.id, u.count]));
 }
 
 export interface Rewritten {
@@ -73,7 +80,7 @@ function mistake(e: unknown): string {
 export function createCatalog(api: CatalogApi = realApi) {
 	let kind = $state<DictionaryKind>('device_type');
 	let items = $state.raw<DictionaryItem[]>([]);
-	let counts = $state.raw<Record<number, number>>({});
+	let counts = $state.raw<Record<number, number> | null>({});
 	let loading = $state(true);
 	let loadError = $state<string | null>(null);
 	let query = $state('');
@@ -85,15 +92,15 @@ export function createCatalog(api: CatalogApi = realApi) {
 		id: i.id,
 		label: i.value,
 		archived: i.archived,
-		count: counts[i.id] ?? 0
+		count: counts === null ? null : (counts[i.id] ?? 0)
 	});
 	const matches = (i: DictionaryItem) => !query.trim() || fold(i.value).includes(fold(query));
 
 	async function read(k: DictionaryKind, mine: number) {
-		const [list, usage] = await Promise.all([api.list(k, true), api.usage(k).catch(() => [])]);
+		const [list, usage] = await Promise.all([api.list(k, true), api.usage(k).catch(() => null)]);
 		if (mine !== seq) return;
 		items = sorted(list);
-		counts = Object.fromEntries(usage.map((u) => [u.id, u.count]));
+		counts = usageCounts(usage);
 		loadError = null;
 	}
 

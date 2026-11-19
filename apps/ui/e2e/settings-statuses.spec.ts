@@ -135,6 +135,34 @@ test('an archived status and point keep their orders: «В работе», the b
 	}
 });
 
+test('without the counts a change of kind still warns, and no count is shown', async ({
+	page,
+	request
+}) => {
+	const id = uniq();
+	const name = `Без счёта-${id}`;
+	try {
+		await request.post('/api/v1/statuses', { data: { name, kind: 'open', color: 'gray' } });
+		await page.route('**/api/v1/statuses/usage', (route) => route.abort('internetdisconnected'));
+		await openStatuses(page);
+		await expect(rowOf(page, name)).toBeVisible();
+		await expect(rowOf(page, name)).not.toContainText(/в \d+ заказ/);
+
+		const kind = rowOf(page, name).getByRole('combobox', { name: /^Вид статуса/ });
+		await kind.click();
+		await page.getByRole('option', { name: 'Выдан' }).click();
+		const dialog = page.getByRole('alertdialog', { name: `Сменить вид статуса „${name}“?` });
+		await expect(dialog).toContainText(
+			'Не удалось узнать, сколько заказов в статусе. Все они сменят вид на „Выдан“'
+		);
+		await dialog.getByRole('button', { name: 'Отмена' }).click();
+		await expect(dialog).toBeHidden();
+		await expect(kind).toHaveText('Открыт');
+	} finally {
+		await archiveAll(request, [id]);
+	}
+});
+
 test('the last «Выдан» cannot lose its kind', async ({ page }) => {
 	await openStatuses(page);
 	const kinds = page.getByRole('main').getByRole('combobox', { name: /^Вид статуса/ });

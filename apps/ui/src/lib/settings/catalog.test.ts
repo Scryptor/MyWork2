@@ -69,6 +69,20 @@ describe('createCatalog', () => {
 		expect(c.archived.map((r) => r.label)).toEqual(['Old']);
 	});
 
+	it('counts that cannot be read are unknown, not 0', async () => {
+		api.usage.mockRejectedValueOnce(new ApiError(403, 'forbidden', 'Нет права', null));
+		const c = await loaded();
+		expect(c.active.map((r) => [r.label, r.count])).toEqual([
+			['Alpha', null],
+			['Beta', null],
+			['Gamma', null]
+		]);
+		expect(c.loadError).toBeNull();
+		// The next reading that succeeds brings them back.
+		await c.refresh();
+		expect(c.active.map((r) => r.count)).toEqual([3, 0, 0]);
+	});
+
 	it('filters by the query without case; the archive too', async () => {
 		const c = await loaded();
 		c.query = ' ALP';

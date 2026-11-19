@@ -107,22 +107,24 @@
 			}
 			onselect={(v) => editor.commit('timezone', v)}
 		/>
-		<form
-			onsubmit={(e) => {
-				e.preventDefault();
-				void commitNext();
-			}}
-		>
-			<TextInput
-				label={t.nextOrder}
-				hint={t.nextOrderHint}
-				inputmode="numeric"
-				disabled={locked}
-				error={nextError}
-				bind:value={() => next, (v) => ((next = v), (nextError = undefined))}
-				onblur={() => void commitNext()}
-			/>
-		</form>
+		<!-- The counter is read only with «settings_manage»: without it there is nothing to show. -->
+		{#if !locked}
+			<form
+				onsubmit={(e) => {
+					e.preventDefault();
+					void commitNext();
+				}}
+			>
+				<TextInput
+					label={t.nextOrder}
+					hint={t.nextOrderHint}
+					inputmode="numeric"
+					error={nextError}
+					bind:value={() => next, (v) => ((next = v), (nextError = undefined))}
+					onblur={() => void commitNext()}
+				/>
+			</form>
+		{/if}
 		<TextInput
 			label={t.masterPercent}
 			inputmode="numeric"

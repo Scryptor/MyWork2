@@ -624,6 +624,9 @@ export const ru = {
 		],
 		warnChange: (kind: string) =>
 			[`сменит вид на „${kind}“`, `сменят вид на „${kind}“`, `сменят вид на „${kind}“`] as const,
+		/** The counts could not be read: the warning does not know how many orders are in the status. */
+		warnUnknown: (kind: string) =>
+			`Не удалось узнать, сколько заказов в статусе. Все они сменят вид на „${kind}“`,
 		changeTitle: (name: string) => `Сменить вид статуса „${name}“?`,
 		changeConfirm: 'Сменить вид',
 		lastIssued: 'Нужен хотя бы один статус вида „Выдан“',

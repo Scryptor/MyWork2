@@ -10,7 +10,8 @@
 	import IconButton from '#lib/ui/IconButton.svelte';
 	import SortableList from '#lib/ui/SortableList.svelte';
 
-	type Row = { id: number; label: string; archived: boolean; count: number };
+	/** `count: null` — not known: no count is shown and nothing is offered for deletion. */
+	type Row = { id: number; label: string; archived: boolean; count: number | null };
 
 	let {
 		rows,
@@ -91,7 +92,7 @@
 {/snippet}
 
 {#snippet tail(r: Row)}
-	<span class="count">{countLabel(r.count)}</span>
+	{#if r.count !== null}<span class="count">{countLabel(r.count)}</span>{/if}
 	{#if extra}{@render extra(r.id)}{/if}
 	{#if !readonly}
 		<span class="actions">

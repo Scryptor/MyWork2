@@ -1,10 +1,12 @@
-<!-- «О программе» (spec 6.8): the version, the database, the data folder, how many orders and clients. -->
+<!-- «О программе» (spec 6.8): the version, the database, the data folder, how many orders and clients.
+     The details need «settings_manage»; without it only the version the server reports is shown. -->
 <script lang="ts">
 	import Copy from '@lucide/svelte/icons/copy';
 	import { onMount } from 'svelte';
 	import type { AboutInfo } from '$api/AboutInfo';
 	import { getAbout } from '#lib/api/catalogs.js';
 	import { errorMessage } from '#lib/api/client.js';
+	import { app } from '#lib/app/context.svelte.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import Button from '#lib/ui/Button.svelte';
 	import Callout from '#lib/ui/Callout.svelte';
@@ -14,8 +16,10 @@
 	const t = ru.settings;
 	let about = $state<AboutInfo | null>(null);
 	let failure = $state<string | null>(null);
+	const readonly = !app.can('settings_manage');
 
 	onMount(async () => {
+		if (readonly) return;
 		try {
 			about = await getAbout();
 		} catch (e) {
@@ -35,7 +39,15 @@
 
 <h1 class="title">{t.about}</h1>
 
-{#if failure}
+{#if readonly}
+	<Callout tone="info">{t.readOnly}</Callout>
+	<Card>
+		<dl class="kv">
+			<dt>{t.version}</dt>
+			<dd>{app.server.version}</dd>
+		</dl>
+	</Card>
+{:else if failure}
 	<Callout tone="danger" title={t.loadFailed}>{failure}</Callout>
 {:else if about}
 	<Card>

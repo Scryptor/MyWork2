@@ -46,6 +46,18 @@ describe('createNamedCatalog', () => {
 		expect(c.archived.map((r) => r.label)).toEqual(['Old']);
 	});
 
+	it('counts that cannot be read are unknown, not 0', async () => {
+		const { c, api } = make();
+		api.usage.mockRejectedValueOnce(new Error('offline'));
+		await c.load();
+		expect(c.active.map((r) => r.count)).toEqual([null, null, null]);
+		expect(c.countOf(2)).toBeNull();
+		expect(c.loadError).toBeNull();
+		await c.refresh();
+		expect(c.countOf(2)).toBe(3);
+		expect(c.countOf(1)).toBe(0);
+	});
+
 	it('a change reloads and tells the program; a refusal gives the text of the mistake', async () => {
 		const { c, api, changed } = make();
 		await c.load();
