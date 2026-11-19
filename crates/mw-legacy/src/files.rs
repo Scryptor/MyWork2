@@ -23,7 +23,7 @@ pub(crate) const IMPORT_DIRS: [&str; 3] = ["orders", "stock", "legacy"];
 const STAGING_PREFIX: &str = ".import-";
 
 /// Отметка промежуточной папки (`StagingMark`): ставится перед записью базы.
-const MARK: &str = ".import-mark.json";
+pub(crate) const MARK: &str = ".import-mark.json";
 
 /// Ход и отмена копирования.
 #[derive(Clone, Default)]
@@ -42,12 +42,17 @@ impl Control {
 
 /// Отметка промежуточной папки. Без номера импорта — предварительная (перед записью базы): записана ли
 /// база, решает имя папки в отчёте последнего импорта (`staging`). С номером — база записана.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// Какие прежние папки унести в копию, решает только отметка, а не то, что сейчас на диске: после
+/// обрыва в `attachments` могли появиться файлы, загруженные уже после импорта.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 struct StagingMark {
-    /// Папки из `IMPORT_DIRS`, которые лежали в промежуточной папке перед установкой.
-    staged: Vec<String>,
     /// Папка копии `backups/<время>` при замене: прежние файлы уходят в её `attachments`.
     backup: Option<PathBuf>,
+    /// Прежние папки из `IMPORT_DIRS`, которые были на месте перед записью базы (только при замене).
+    previous: Vec<String>,
+    /// Из них уже унесены в копию; дописывается после каждого переноса.
+    moved: Vec<String>,
     import_id: Option<i64>,
 }
 
@@ -353,11 +358,25 @@ impl Staging {
         std::fs::remove_dir_all(&self.dir).ok();
     }
 
-    /// Предварительная отметка перед записью базы: какие папки лежат здесь и куда при замене уходят прежние.
-    pub(crate) fn mark_pending(&mut self, backup: Option<&Path>) -> Result<(), LegacyError> {
+    /// Предварительная отметка перед записью базы. При замене (`backup`) в ней — какие прежние папки
+    /// `attachments_dir` сейчас на месте: только их установка унесёт в копию.
+    pub(crate) fn mark_pending(
+        &mut self,
+        attachments_dir: &Path,
+        backup: Option<&Path>,
+    ) -> Result<(), LegacyError> {
+        let previous = match backup {
+            Some(_) => IMPORT_DIRS
+                .iter()
+                .filter(|name| attachments_dir.join(name).exists())
+                .map(|name| (*name).to_owned())
+                .collect(),
+            None => Vec::new(),
+        };
         let mark = StagingMark {
-            staged: present_dirs(&self.dir),
             backup: backup.map(Path::to_path_buf),
+            previous,
+            moved: Vec::new(),
             import_id: None,
         };
         write_mark(&self.dir, &mark)?;
@@ -365,45 +384,34 @@ impl Staging {
         Ok(())
     }
 
-    /// База записана: папку больше не удаляет `Drop`, в отметку пишется номер импорта.
+    /// База записана: папку больше не удаляет `Drop`, в отметку пишется номер импорта. Неудача записи
+    /// не мешает установке: её доведёт запуск сервера по предварительной отметке и имени папки в базе.
     pub(crate) fn mark_written(&mut self, import_id: i64) -> Result<(), LegacyError> {
         self.armed = false;
-        let mut mark = self.mark.clone().unwrap_or_else(|| StagingMark {
-            staged: present_dirs(&self.dir),
-            backup: None,
-            import_id: None,
-        });
+        let mut mark = self.mark.clone().unwrap_or_default();
         mark.import_id = Some(import_id);
         write_mark(&self.dir, &mark)?;
         self.mark = Some(mark);
         Ok(())
     }
 
-    /// Ставит файлы на место. С `previous` (папка копии) прежние `orders`, `stock` и `legacy` уходят туда.
+    /// Ставит файлы на место; при замене прежние `orders`, `stock` и `legacy` из отметки уходят в копию.
     /// Ошибка — файлы не поставлены (остаются в промежуточной папке); неудачная уборка — только предупреждение.
     pub(crate) fn commit(
         mut self,
         attachments_dir: &Path,
-        previous: Option<&Path>,
         warnings: &mut Warnings,
     ) -> Result<(), LegacyError> {
         // База уже записана: промежуточную папку после этого не удаляем, пока файлы не на месте.
         self.armed = false;
-        let staged = match &self.mark {
-            Some(mark) => mark.staged.clone(),
-            None => present_dirs(&self.dir),
-        };
-        place(&self.dir, attachments_dir, previous, &staged, warnings)
+        let mut mark = self.mark.take().unwrap_or_default();
+        place(&self.dir, attachments_dir, &mut mark, warnings)
     }
 }
 
-/// Какие из `IMPORT_DIRS` лежат в папке.
-fn present_dirs(dir: &Path) -> Vec<String> {
-    IMPORT_DIRS
-        .iter()
-        .filter(|name| dir.join(name).is_dir())
-        .map(|name| (*name).to_owned())
-        .collect()
+/// Есть ли что-то по этому пути (ссылка не раскрывается).
+fn present(path: &Path) -> bool {
+    std::fs::symlink_metadata(path).is_ok()
 }
 
 /// Пишет отметку через временный файл: оборванная запись не оставляет испорченную отметку.
@@ -439,35 +447,51 @@ fn missing_or_empty(path: &Path) -> bool {
     }
 }
 
-/// Ставит папки `staged` из промежуточной папки `dir` на место; годится и для продолжения оборванной
-/// установки. С `previous` (замена) прежняя папка уходит туда, пока на её место ещё ничего не поставлено:
-/// её новой копии ещё нет в `dir` (или её не было вовсе), а в `previous` такой папки ещё нет.
+/// Ставит папки из промежуточной папки `dir` на место; годится и для продолжения оборванной установки.
+///
+/// При замене в копию уходят только прежние папки, отмеченные в `mark.previous` и ещё не унесённые
+/// (`mark.moved` дописывается в отметку после каждого переноса). Отмеченной папки уже нет — она
+/// унесена до обрыва; в копии такая папка уже есть — ошибка, ничего не сливается.
 /// Папка ставится, только если на её месте ничего нет или пусто; иначе — ошибка, `dir` остаётся.
+/// Пустая папка в `dir` (файлы перенесены руками) пропускается. После установки сначала удаляется
+/// отметка, потом сама `dir`: если папку удалить не вышло, без отметки её уберёт следующий запуск.
 fn place(
     dir: &Path,
     attachments_dir: &Path,
-    previous: Option<&Path>,
-    staged: &[String],
+    mark: &mut StagingMark,
     warnings: &mut Warnings,
 ) -> Result<(), LegacyError> {
-    if let Some(previous) = previous {
-        for name in IMPORT_DIRS {
-            let old = attachments_dir.join(name);
-            let not_placed = dir.join(name).exists() || !staged.iter().any(|s| s == name);
-            if not_placed && old.exists() && !previous.join(name).exists() {
-                std::fs::create_dir_all(previous).map_err(io_error(format!(
+    if let Some(backup) = mark.backup.clone() {
+        let saved = backup.join("attachments");
+        for name in mark.previous.clone() {
+            if mark.moved.contains(&name) {
+                continue;
+            }
+            let old = attachments_dir.join(&name);
+            if present(&old) {
+                let to = saved.join(&name);
+                if present(&to) {
+                    return Err(LegacyError::AttachmentsNotEmpty(to));
+                }
+                std::fs::create_dir_all(&saved).map_err(io_error(format!(
                     "Не удалось создать папку {}",
-                    previous.display()
+                    saved.display()
                 )))?;
-                if let Some(note) = move_dir(&old, &previous.join(name))? {
+                if let Some(note) = move_dir(&old, &to)? {
                     cleanup_warning(warnings, &old, &note);
                 }
             }
+            mark.moved.push(name);
+            write_mark(dir, mark)?;
         }
     }
     for name in IMPORT_DIRS {
         let from = dir.join(name);
-        if !from.exists() {
+        if !from.is_dir() {
+            continue;
+        }
+        if std::fs::read_dir(&from).is_ok_and(|mut e| e.next().is_none()) {
+            std::fs::remove_dir(&from).ok();
             continue;
         }
         let target = attachments_dir.join(name);
@@ -481,6 +505,15 @@ fn place(
         if let Some(note) = move_dir(&from, &target)? {
             cleanup_warning(warnings, &from, &note);
         }
+    }
+    match std::fs::remove_file(dir.join(MARK)) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => cleanup_warning(
+            warnings,
+            dir,
+            &format!("Отметка промежуточной папки не удалена: {e}."),
+        ),
     }
     if let Err(e) = std::fs::remove_dir_all(dir) {
         cleanup_warning(
@@ -548,7 +581,7 @@ pub(crate) fn finish_staging(
                     && m.import_id.is_none_or(|id| id == l.id)
             })
         });
-        let Some(mark) = current else {
+        let Some(mut mark) = current.cloned() else {
             match std::fs::remove_dir_all(&dir) {
                 Ok(()) => cleanup.removed.push(dir),
                 Err(e) => {
@@ -558,15 +591,8 @@ pub(crate) fn finish_staging(
             }
             continue;
         };
-        let previous = mark.backup.as_ref().map(|b| b.join("attachments"));
         let mut notes = Warnings::default();
-        match place(
-            &dir,
-            attachments_dir,
-            previous.as_deref(),
-            &mark.staged,
-            &mut notes,
-        ) {
+        match place(&dir, attachments_dir, &mut mark, &mut notes) {
             Ok(()) => cleanup.placed.push(dir),
             Err(e) => {
                 tracing::warn!(error = %e, path = %dir.display(), "файлы прерванного импорта не поставлены на место");
@@ -667,7 +693,7 @@ mod tests {
             &Control::default(),
         )
         .unwrap();
-        staging.commit(attachments.path(), None, &mut w).unwrap();
+        staging.commit(attachments.path(), &mut w).unwrap();
         assert!(attachments.path().join("orders/1/photo.jpg").exists());
         assert!(w.list().is_empty());
         assert!(!attachments.path().join(".import-a").exists());
@@ -684,9 +710,7 @@ mod tests {
         .unwrap();
         std::fs::create_dir_all(attachments.path().join("orders/keep")).unwrap();
         std::fs::write(attachments.path().join("orders/keep/f"), b"x").unwrap();
-        let err = staging
-            .commit(attachments.path(), None, &mut w)
-            .unwrap_err();
+        let err = staging.commit(attachments.path(), &mut w).unwrap_err();
         assert!(matches!(err, LegacyError::AttachmentsNotEmpty(_)));
         // Файлы остались в промежуточной папке.
         assert!(
@@ -710,9 +734,24 @@ mod tests {
 
     fn mark(import_id: Option<i64>) -> StagingMark {
         StagingMark {
-            staged: vec!["orders".into()],
             backup: None,
+            previous: Vec::new(),
+            moved: Vec::new(),
             import_id,
+        }
+    }
+
+    fn write(path: PathBuf, text: &str) {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    }
+
+    fn replace_mark(att: &Path, previous: &[&str], moved: &[&str]) -> StagingMark {
+        StagingMark {
+            backup: Some(att.join("backup")),
+            previous: previous.iter().map(|s| (*s).to_owned()).collect(),
+            moved: moved.iter().map(|s| (*s).to_owned()).collect(),
+            import_id: Some(1),
         }
     }
 
@@ -751,43 +790,78 @@ mod tests {
     }
 
     #[test]
-    fn resumed_replace_moves_old_files_to_the_backup_only_once() {
+    fn replace_moves_only_the_old_folders_recorded_in_the_mark() {
+        // Перед записью базы были прежние `orders` и `legacy`; `stock` создан позже (загрузки).
         let att = tempfile::tempdir().unwrap();
-        let previous = att.path().join("backup/attachments");
-        // Прежние `orders` и `legacy` на месте, новые `orders` и `stock` ещё в промежуточной папке.
-        for (dir, file) in [("orders/1", "old.jpg"), ("legacy/ClientFiles", "old.txt")] {
-            std::fs::create_dir_all(att.path().join(dir)).unwrap();
-            std::fs::write(att.path().join(dir).join(file), b"old").unwrap();
-        }
-        let staging = att.path().join(".import-x");
-        for dir in ["orders/1", "stock/1"] {
-            std::fs::create_dir_all(staging.join(dir)).unwrap();
-            std::fs::write(staging.join(dir).join("new.jpg"), b"new").unwrap();
-        }
-        let staged = vec!["orders".to_owned(), "stock".to_owned()];
-        let mut w = Warnings::default();
-        place(&staging, att.path(), Some(&previous), &staged, &mut w).unwrap();
-        assert!(previous.join("orders/1/old.jpg").exists());
-        assert!(previous.join("legacy/ClientFiles/old.txt").exists());
-        assert!(
-            att.path().join("orders/1/new.jpg").exists()
-                && att.path().join("stock/1/new.jpg").exists()
-        );
-        assert!(!att.path().join("legacy").exists() && !staging.exists());
+        let att = att.path();
+        write(att.join("orders/1/old.jpg"), "old");
+        write(att.join("legacy/ClientFiles/old.txt"), "old");
+        write(att.join("stock/9/user.jpg"), "user");
+        let staging = att.join(".import-x");
+        write(staging.join("orders/1/new.jpg"), "new");
+        let mut m = replace_mark(att, &["orders", "legacy"], &[]);
+        write_mark(&staging, &m).unwrap();
+        place(&staging, att, &mut m, &mut Warnings::default()).unwrap();
+        let saved = att.join("backup/attachments");
+        assert!(saved.join("orders/1/old.jpg").exists());
+        assert!(saved.join("legacy/ClientFiles/old.txt").exists());
+        assert!(!saved.join("stock").exists() && att.join("stock/9/user.jpg").exists());
+        assert!(att.join("orders/1/new.jpg").exists() && !att.join("legacy").exists());
+        assert!(!staging.exists());
+    }
 
-        // Обрыв после установки `orders`: при продолжении новые `orders` в копию не уходят.
+    #[test]
+    fn resume_never_moves_folders_written_after_the_import() {
         let att = tempfile::tempdir().unwrap();
-        let previous = att.path().join("backup/attachments");
-        std::fs::create_dir_all(previous.join("orders/1")).unwrap();
-        std::fs::create_dir_all(att.path().join("orders/1")).unwrap();
-        std::fs::write(att.path().join("orders/1/new.jpg"), b"new").unwrap();
-        let staging = att.path().join(".import-y");
-        std::fs::create_dir_all(staging.join("stock/1")).unwrap();
-        std::fs::write(staging.join("stock/1/new.jpg"), b"new").unwrap();
-        place(&staging, att.path(), Some(&previous), &staged, &mut w).unwrap();
-        assert!(att.path().join("orders/1/new.jpg").exists());
-        assert!(!previous.join("orders/1/new.jpg").exists());
-        assert!(att.path().join("stock/1/new.jpg").exists() && !staging.exists());
+        let att = att.path();
+        let saved = att.join("backup/attachments");
+        // Прежние `orders` уже в копии (отмечено), после обрыва в `orders` появились загрузки.
+        write(saved.join("orders/1/old.jpg"), "old");
+        write(att.join("orders/5/upload.jpg"), "upload");
+        let staging = att.join(".import-x");
+        write(staging.join("orders/1/new.jpg"), "new");
+        let mut m = replace_mark(att, &["orders"], &["orders"]);
+        let r = place(&staging, att, &mut m, &mut Warnings::default());
+        assert!(
+            matches!(r, Err(LegacyError::AttachmentsNotEmpty(_))),
+            "{r:?}"
+        );
+        assert!(
+            att.join("orders/5/upload.jpg").exists() && staging.join("orders/1/new.jpg").exists()
+        );
+        assert!(!saved.join("orders/5").exists());
+
+        // Унесено в копию, а отметка не обновилась, и потом появились загрузки: копия не сливается.
+        let mut m = replace_mark(att, &["orders"], &[]);
+        let r = place(&staging, att, &mut m, &mut Warnings::default());
+        assert!(
+            matches!(r, Err(LegacyError::AttachmentsNotEmpty(_))),
+            "{r:?}"
+        );
+        assert!(att.join("orders/5/upload.jpg").exists() && !saved.join("orders/5").exists());
+
+        // Отмеченной прежней папки уже нет (унесена до обрыва): считается унесённой.
+        std::fs::remove_dir_all(att.join("orders")).unwrap();
+        let mut m = replace_mark(att, &["orders"], &[]);
+        place(&staging, att, &mut m, &mut Warnings::default()).unwrap();
+        assert!(att.join("orders/1/new.jpg").exists() && saved.join("orders/1/old.jpg").exists());
+    }
+
+    #[test]
+    fn placement_removes_the_mark_before_the_folder_and_skips_emptied_folders() {
+        let att = tempfile::tempdir().unwrap();
+        let att = att.path();
+        // Файлы перенесены руками: в промежуточной папке пустая `orders`, на месте — объединённая.
+        write(att.join("orders/1/merged.jpg"), "merged");
+        let staging = att.join(".import-x");
+        std::fs::create_dir_all(staging.join("orders")).unwrap();
+        write(staging.join("stock/1/new.jpg"), "new");
+        let mut m = mark(Some(1));
+        write_mark(&staging, &m).unwrap();
+        place(&staging, att, &mut m, &mut Warnings::default()).unwrap();
+        assert!(att.join("orders/1/merged.jpg").exists() && att.join("stock/1/new.jpg").exists());
+        assert!(!staging.exists());
+        assert_eq!(read_mark(&staging), Ok(None));
     }
 
     #[tokio::test]

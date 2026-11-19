@@ -193,7 +193,8 @@ async fn run_import(
         }
         Err(error) => {
             let message = mw_legacy::import_error_message(&error, StartedFrom::Interface);
-            tracing::warn!("импорт из интерфейса не удался: {message}");
+            // В лог — полный текст (с путём промежуточной папки), человеку — `message`.
+            tracing::warn!("импорт из интерфейса не удался: {error}");
             // База уже записана, файлы остались в промежуточной папке: отчёт всё равно нужен.
             let import_id = match error {
                 LegacyError::FilesNotPlaced { report, .. } => {

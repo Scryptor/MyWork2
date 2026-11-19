@@ -259,7 +259,7 @@ pub async fn import_folder(
         .replace
         .then(|| backup_folder(&options.backups_dir, &stamp));
     // Без предварительной отметки запуск сервера удалил бы папку, даже если база успеет записаться.
-    if let Err(e) = staging.mark_pending(backup.as_deref()) {
+    if let Err(e) = staging.mark_pending(&options.attachments_dir, backup.as_deref()) {
         staging.abort();
         return Err(e);
     }
@@ -311,33 +311,18 @@ pub async fn import_folder(
         backup,
         warnings: warnings.list().to_vec(),
     };
-    let previous = report.backup.as_ref().map(|dir| dir.join("attachments"));
     let staging_path = staging.path().to_path_buf();
-    // Отметка с номером импорта; если не записалась, файлы не ставим (папку доустановит запуск сервера
-    // по предварительной отметке и имени папки в отчёте).
+    // Отметка с номером импорта. Не записалась — установка всё равно идёт: если и она оборвётся,
+    // запуск сервера доведёт её по предварительной отметке и имени папки в отчёте импорта.
     if let Err(e) = staging.mark_written(report.summary.import_id) {
-        let mut note = report::Warnings::default();
-        note.push(
-            WarningCode::FileUnreadable,
-            "file",
-            &staging_path.display().to_string(),
-            "",
-            "",
-            &format!("Файлы не поставлены на место: {e}."),
-        );
-        report.warnings.extend(note.list().iter().cloned());
-        tracing::info!("импорт: отметка промежуточной папки не записана, файлы не поставлены");
-        return Err(LegacyError::FilesNotPlaced {
-            staging: staging_path,
-            report: Box::new(report),
-        });
+        tracing::warn!("импорт: отметка промежуточной папки с номером импорта не записана: {e}");
     }
     options.emit(ImportStage::Writing, 100);
     options.emit(ImportStage::Placing, 0);
     let attachments_dir = options.attachments_dir.clone();
     let placing = tokio::task::spawn_blocking(move || {
         let mut after = report::Warnings::default();
-        let placed = staging.commit(&attachments_dir, previous.as_deref(), &mut after);
+        let placed = staging.commit(&attachments_dir, &mut after);
         (placed, after)
     })
     .await;
@@ -395,6 +380,54 @@ pub async fn finish_interrupted_imports(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Окончательная отметка не записалась (на месте её временного файла — папка): файлы всё равно
+    /// ставятся, по предварительной отметке и имени папки в базе их доустановил бы и запуск.
+    #[tokio::test]
+    async fn failed_final_mark_still_places_the_files() {
+        use std::sync::Arc;
+        for (label, db) in mw_db::testing::all_backends().await {
+            let core = Core::open(db, Arc::new(mw_core::SystemClock), "UTC")
+                .await
+                .unwrap();
+            let src = test_support::fixture(fixture::FixtureVersion::V32).await;
+            let data = tempfile::tempdir().unwrap();
+            let att = data.path().join("attachments");
+            let watched = att.clone();
+            let options = ImportOptions {
+                source: src.path().to_path_buf(),
+                attachments_dir: att.clone(),
+                backups_dir: data.path().join("backups"),
+                replace: false,
+                progress: Some(Arc::new(move |stage, percent| {
+                    if stage == ImportStage::Writing && percent == 0 {
+                        for entry in std::fs::read_dir(&watched).unwrap() {
+                            let dir = entry.unwrap().path();
+                            if dir
+                                .file_name()
+                                .unwrap()
+                                .to_string_lossy()
+                                .starts_with(".import-")
+                            {
+                                std::fs::create_dir(dir.join(format!("{}.tmp", files::MARK)))
+                                    .unwrap();
+                            }
+                        }
+                    }
+                })),
+                cancel: None,
+            };
+            let r = import_folder(&core, &Actor::unrestricted("Тест"), &options).await;
+            assert!(r.is_ok(), "{label}: {r:?}");
+            assert!(att.join("orders/1/photo.jpg").exists(), "{label}");
+            let left: Vec<_> = std::fs::read_dir(&att)
+                .unwrap()
+                .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+                .filter(|n| n.starts_with(".import"))
+                .collect();
+            assert!(left.is_empty(), "{label}: {left:?}");
+        }
+    }
 
     #[test]
     fn lies_inside_resolves_dotdot_in_missing_tail_and_fails_closed() {

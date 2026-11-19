@@ -317,9 +317,10 @@ async fn files_not_placed_gives_the_error_and_the_import_number() {
         let mut token = None;
         let job = wait_finished(&t, &mut token).await;
         let error = job["error"].as_str().expect("ошибка установки файлов");
-        assert!(
-            error.contains("файлы не поставлены на место"),
-            "{}: {error}",
+        assert_eq!(
+            error,
+            "Файлы не удалось поставить на место — перезапустите программу, она закончит перенос сама",
+            "{}",
             t.label
         );
         let id = job["import_id"].as_i64().expect("номер импорта");

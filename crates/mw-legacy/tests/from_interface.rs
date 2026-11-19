@@ -390,9 +390,27 @@ async fn staging_of_an_import_written_to_the_database_survives_cleanup() -> Res 
         // Висячая ссылка: базу записать можно, а поставить файлы на место — нет.
         std::os::unix::fs::symlink(data.path().join("nowhere"), att.join("orders"))?;
         let r = import_folder(&t.core, &admin(), &options(src.path(), data.path(), false)).await;
-        let Err(LegacyError::FilesNotPlaced { staging, .. }) = r else {
+        let Err(e @ LegacyError::FilesNotPlaced { .. }) = r else {
             panic!("{}: {r:?}", t.label);
         };
+        // Интерфейс не предлагает переносить файлы руками: перезапуск доустановит их сам.
+        assert_eq!(
+            import_error_message(&e, StartedFrom::Interface),
+            "Файлы не удалось поставить на место — перезапустите программу, она закончит перенос сама"
+        );
+        let LegacyError::FilesNotPlaced { staging, .. } = e else {
+            unreachable!()
+        };
+        assert!(
+            import_error_message(
+                &LegacyError::FilesNotPlaced {
+                    staging: staging.clone(),
+                    report: Box::new(dummy_report())
+                },
+                StartedFrom::Command
+            )
+            .contains(&staging.display().to_string())
+        );
         let cleanup = finish_interrupted_imports(&t.core, &att).await?;
         assert_eq!(cleanup.kept, std::slice::from_ref(&staging), "{}", t.label);
         assert!(cleanup.removed.is_empty() && cleanup.placed.is_empty());
@@ -407,6 +425,126 @@ async fn staging_of_an_import_written_to_the_database_survives_cleanup() -> Res 
             t.label
         );
         assert!(att.join("orders/1/photo.jpg").exists() && !staging.exists());
+    }
+    Ok(())
+}
+
+/// Отчёт без содержимого: для сообщения об ошибке нужен только путь.
+fn dummy_report() -> mw_legacy::ImportReport {
+    mw_legacy::ImportReport {
+        started_at: chrono::NaiveDateTime::default(),
+        source: "/old".into(),
+        schema: Default::default(),
+        summary: Default::default(),
+        files: Default::default(),
+        backup: None,
+        warnings: Vec::new(),
+    }
+}
+
+/// Пользователь загружает файл в заказ, пока программа работает после прерванной установки.
+async fn upload(core: &Core, order: i64) -> i64 {
+    core.add_order_attachment(&admin(), order, "после-импорта.txt", b"new".to_vec())
+        .await
+        .unwrap()
+        .id
+}
+
+/// Файл вложения на месте.
+async fn attachment_present(core: &Core, order: i64, id: i64) -> bool {
+    core.list_order_attachments(&admin(), order)
+        .await
+        .unwrap()
+        .iter()
+        .any(|a| a.id == id && !a.missing)
+}
+
+#[tokio::test]
+async fn uploads_after_an_interrupted_import_stay_in_place_at_start() -> Res {
+    for t in cores().await {
+        let (src, data) = (fixture_dir(V32).await, tempfile::tempdir()?);
+        let core = t
+            .core
+            .clone()
+            .with_attachments_dir(data.path().to_path_buf());
+        let att = data.path().join("attachments");
+        crash_at(
+            &core,
+            options(src.path(), data.path(), false),
+            ImportStage::Placing,
+        )
+        .await;
+        let id = upload(&core, 1).await;
+        let cleanup = finish_interrupted_imports(&core, &att).await?;
+        assert_eq!(cleanup.kept.len(), 1, "{}", t.label);
+        assert!(attachment_present(&core, 1, id).await, "{}", t.label);
+    }
+    // Замена (только SQLite): прежней `orders` не было, её создала загрузка — в копию она не уходит.
+    let (src, data) = (fixture_dir(V32).await, tempfile::tempdir()?);
+    let att = data.path().join("attachments");
+    let core = file_sqlite_core(&data.path().join("mw.sqlite"))
+        .await
+        .with_attachments_dir(data.path().to_path_buf());
+    core.create_order(&admin(), sample_new_order()).await?;
+    crash_at(
+        &core,
+        options(src.path(), data.path(), true),
+        ImportStage::Placing,
+    )
+    .await;
+    let id = upload(&core, 1).await;
+    let cleanup = finish_interrupted_imports(&core, &att).await?;
+    assert_eq!(cleanup.kept.len(), 1);
+    assert!(attachment_present(&core, 1, id).await);
+    let backups: Vec<_> = std::fs::read_dir(data.path().join("backups"))?
+        .map(|e| e.unwrap().path())
+        .collect();
+    assert_eq!(backups.len(), 1);
+    assert!(!backups[0].join("attachments/orders").exists());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn staging_left_after_placement_does_not_touch_user_folders_at_next_start() -> Res {
+    use std::os::unix::fs::PermissionsExt;
+    for t in cores().await {
+        let (src, data) = (fixture_dir(V32).await, tempfile::tempdir()?);
+        let core = t
+            .core
+            .clone()
+            .with_attachments_dir(data.path().to_path_buf());
+        let att = data.path().join("attachments");
+        crash_at(
+            &core,
+            options(src.path(), data.path(), false),
+            ImportStage::Placing,
+        )
+        .await;
+        let staging = staging_dirs(&att).remove(0);
+        // Папку, из которой нельзя удалить файл, не удалить целиком.
+        let locked = staging.join("locked");
+        std::fs::create_dir_all(&locked)?;
+        std::fs::write(locked.join("f"), b"x")?;
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o555))?;
+        let unlock = || std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755));
+        if std::fs::write(locked.join("probe"), b"").is_ok() {
+            unlock()?;
+            eprintln!("права папок не действуют (запуск от root): проверка пропущена");
+            return Ok(());
+        }
+        let first = finish_interrupted_imports(&core, &att).await?;
+        assert_eq!(first.placed, std::slice::from_ref(&staging), "{}", t.label);
+        assert!(staging.exists() && att.join("orders/1/photo.jpg").exists());
+        let id = upload(&core, 1).await;
+        let second = finish_interrupted_imports(&core, &att).await?;
+        assert!(second.placed.is_empty(), "{}: {second:?}", t.label);
+        assert!(att.join("orders/1/photo.jpg").exists() && att.join("stock/1/abc123.jpg").exists());
+        assert!(attachment_present(&core, 1, id).await, "{}", t.label);
+        unlock()?;
+        let third = finish_interrupted_imports(&core, &att).await?;
+        assert_eq!(third.removed, std::slice::from_ref(&staging), "{}", t.label);
+        assert!(attachment_present(&core, 1, id).await);
     }
     Ok(())
 }

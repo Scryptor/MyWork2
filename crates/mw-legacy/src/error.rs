@@ -67,6 +67,11 @@ pub fn import_error_message(error: &LegacyError, from: StartedFrom) -> String {
                  {replace} (сначала будет сделана копия). Для PostgreSQL создайте новую пустую базу."
             )
         }
+        // Интерфейс не предлагает переносить файлы руками: запуск сервера доустановит их сам.
+        LegacyError::FilesNotPlaced { .. } if from == StartedFrom::Interface => {
+            "Файлы не удалось поставить на место — перезапустите программу, она закончит перенос сама"
+                .to_owned()
+        }
         _ => error.to_string(),
     }
 }
