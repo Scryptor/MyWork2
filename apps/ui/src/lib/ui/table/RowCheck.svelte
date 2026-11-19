@@ -9,12 +9,15 @@
 		indeterminate = false,
 		label,
 		tabindex,
+		disabled = false,
 		onclick
 	}: {
 		checked: boolean;
 		indeterminate?: boolean;
 		label: string;
 		tabindex?: number;
+		/** The selection cannot change now (a bulk action runs). */
+		disabled?: boolean;
 		onclick: (e: MouseEvent) => void;
 	} = $props();
 
@@ -35,7 +38,15 @@
 </script>
 
 <span class="box">
-	<input bind:this={el} type="checkbox" {checked} {tabindex} aria-label={label} onclick={handle} />
+	<input
+		bind:this={el}
+		type="checkbox"
+		{checked}
+		{tabindex}
+		{disabled}
+		aria-label={label}
+		onclick={handle}
+	/>
 	<span class="mark" aria-hidden="true">
 		{#if indeterminate}<Minus size={14} />{:else if checked}<Check size={14} />{/if}
 	</span>
@@ -74,6 +85,12 @@
 	input:indeterminate + .mark {
 		background: var(--accent);
 		border-color: var(--accent);
+	}
+	input:disabled {
+		cursor: not-allowed;
+	}
+	input:disabled + .mark {
+		opacity: 0.5;
 	}
 	input:focus-visible + .mark {
 		outline: 2px solid var(--focus);

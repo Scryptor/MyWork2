@@ -221,6 +221,48 @@ describe('DataTable selection follows the data', () => {
 	});
 });
 
+describe('DataTable selection while a bulk action runs', () => {
+	function renderLocked(selected: Set<number>) {
+		return render(SelectionHarness, {
+			props: {
+				rows: ROWS,
+				columns: COLUMNS,
+				rowId: (r: unknown) => (r as Item).id,
+				storageKey: 'test-lock',
+				ariaLabel: 'Тест',
+				selectable: true,
+				selectionLocked: true,
+				selected
+			}
+		});
+	}
+
+	it('the checkboxes are off: a click, Shift+click, Space and «Выбрать все видимые» change nothing', async () => {
+		const view = renderLocked(new Set([2]));
+		const rows = await bodyRows();
+		const boxes = rows.map((r) => within(r).getByRole('checkbox', { name: 'Выбрать строку' }));
+		for (const box of boxes) expect(box).toBeDisabled();
+		const all = screen.getByRole('checkbox', { name: 'Выбрать все видимые' });
+		expect(all).toBeDisabled();
+		await userEvent.click(boxes[3]!);
+		await userEvent.click(all);
+		await userEvent.keyboard('{Shift>}');
+		await userEvent.click(within(rows[4]!).getByText('Строка 5'));
+		await userEvent.keyboard('{/Shift}');
+		const grid = screen.getByRole('grid');
+		grid.focus();
+		await userEvent.keyboard('{ArrowDown}{ }');
+		expect(screen.getByTestId('selected')).toHaveTextContent('2');
+		expect(screen.getByTestId('selected').textContent).toBe('2');
+
+		// The action is over: the rows can be picked again.
+		await view.rerender({ selectionLocked: false });
+		expect(boxes[3]).toBeEnabled();
+		await userEvent.click(boxes[3]!);
+		expect(screen.getByTestId('selected')).toHaveTextContent('2,4');
+	});
+});
+
 describe('DataTable asks for more once per rows array', () => {
 	const MANY: Item[] = Array.from({ length: 25 }, (_, i) => ({
 		id: i + 1,

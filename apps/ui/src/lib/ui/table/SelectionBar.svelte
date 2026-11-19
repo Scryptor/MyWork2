@@ -5,9 +5,16 @@
 	import { ru } from '#lib/i18n/ru.js';
 	import IconButton from '../IconButton.svelte';
 
-	/** Bulk actions for the selected rows; nothing is shown while nothing is selected. */
-	let { count, onclear, children }: { count: number; onclear: () => void; children?: Snippet } =
-		$props();
+	/**
+	 * Bulk actions for the selected rows; nothing is shown while nothing is selected. `locked`: an action
+	 * runs, the selection cannot be cleared until it ends.
+	 */
+	let {
+		count,
+		locked = false,
+		onclear,
+		children
+	}: { count: number; locked?: boolean; onclear: () => void; children?: Snippet } = $props();
 
 	// Thousands separated by a narrow no-break space, as in sums: «Выбрано 2 500».
 	const shown = $derived(groupDigits(String(count)));
@@ -17,7 +24,13 @@
 	<div class="bar" role="region" aria-label={ru.table.selection}>
 		<span class="count" aria-live="polite">{ru.table.selected} {shown}</span>
 		{#if children}<span class="actions">{@render children()}</span>{/if}
-		<IconButton label={ru.table.clearSelection} icon={X} size="sm" onclick={onclear} />
+		<IconButton
+			label={ru.table.clearSelection}
+			icon={X}
+			size="sm"
+			disabled={locked}
+			onclick={onclear}
+		/>
 	</div>
 {/if}
 

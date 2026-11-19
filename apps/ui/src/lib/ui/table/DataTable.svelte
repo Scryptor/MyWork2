@@ -29,6 +29,7 @@
 		sort = null,
 		onsortchange,
 		selectable = false,
+		selectionLocked = false,
 		selected = $bindable(new Set<RowId>()),
 		activeId = $bindable(null),
 		onopen,
@@ -48,6 +49,11 @@
 		sort?: SortState | null;
 		onsortchange?: (s: SortState) => void;
 		selectable?: boolean;
+		/**
+		 * A bulk action runs on the selected rows: the selection stays as it is until it ends (the
+		 * checkboxes are off), so nothing picked meanwhile is lost when the action clears it.
+		 */
+		selectionLocked?: boolean;
 		selected?: Set<RowId>;
 		/** The row under the keyboard cursor, the one open in a panel (`aria-current`, not a selection). */
 		activeId?: RowId | null;
@@ -250,15 +256,18 @@
 	const allSelected = $derived(rows.length > 0 && selectedHere === rows.length);
 
 	function toggle(id: RowId) {
+		if (selectionLocked) return;
 		selected = selected.has(id)
 			? new Set([...selected].filter((x) => x !== id))
 			: new Set([...selected, id]);
 		anchor = id;
 	}
 	function extendTo(id: RowId) {
+		if (selectionLocked) return;
 		selected = new Set([...selected, ...rangeSelect(rows.map(rowId), anchor ?? id, id)]);
 	}
 	function onSelectAll() {
+		if (selectionLocked) return;
 		const here = new Set(rows.map(rowId));
 		selected = allSelected
 			? new Set([...selected].filter((id) => !here.has(id)))
@@ -436,6 +445,7 @@
 							checked={allSelected}
 							indeterminate={!allSelected && selectedHere > 0}
 							label={ru.table.selectAll}
+							disabled={selectionLocked}
 							onclick={onSelectAll}
 						/>
 					</div>
@@ -512,6 +522,7 @@
 										checked={selected.has(id)}
 										label={ru.table.selectRow}
 										tabindex={-1}
+										disabled={selectionLocked}
 										onclick={(e) => onRowCheck(e, item.index)}
 									/>
 								</div>

@@ -487,6 +487,7 @@
 				sort={view.sort}
 				onsortchange={(sort) => change((v) => ({ ...v, sort }))}
 				selectable
+				selectionLocked={bulkBusy}
 				bind:selected
 				bind:activeId
 				onopen={(o) => openOrder(o.id)}
@@ -497,7 +498,11 @@
 			<div class="selection">
 				<!-- «Печать ▾» comes with plan 6. Without the right to edit orders only the count is shown. -->
 				{#if canEdit}
-					<SelectionBar count={selected.size} onclear={() => (selected = new Set())}>
+					<SelectionBar
+						count={selected.size}
+						locked={bulkBusy}
+						onclear={() => (selected = new Set())}
+					>
 						{@render bulkMenu(statusItems, ru.bulk.changeStatus, ru.bulk.status)}
 						{@render bulkMenu(masterItems, ru.bulk.changeMaster, ru.bulk.master)}
 						{@render bulkMenu(markItems, ru.bulk.changeMarks, ru.bulk.marks)}
