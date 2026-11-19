@@ -1,6 +1,7 @@
 use crate::admin::{create_admin, read_password};
 use crate::config::{Config, DEFAULT_LISTEN, ServerError, redact_database_url, validate_timezone};
 use crate::import::run_import_with_db;
+use crate::lock::{DataDirLock, LockError};
 use crate::paths::{os_data_dir, resolve_data_dir};
 use crate::server::{Server, connect_and_migrate, log_timezone, shutdown_signal, system_timezone};
 use clap::{Parser, Subcommand};
@@ -17,7 +18,8 @@ pub struct Cli {
     /// Адрес и порт, на которых слушает сервер.
     #[arg(long, env = "MW_LISTEN", default_value = DEFAULT_LISTEN)]
     pub listen: SocketAddr,
-    /// Папка данных (по умолчанию — папка данных ОС или `data` рядом с программой при `portable.txt`).
+    /// Папка данных (по умолчанию — `MyWork3` в папке данных ОС, у отладочной сборки — `MyWork3-dev`;
+    /// `data` рядом с программой при `portable.txt`).
     #[arg(long, env = "MW_DATA_DIR")]
     pub data_dir: Option<PathBuf>,
     /// Адрес базы данных (по умолчанию — SQLite-файл в папке данных).
@@ -115,7 +117,12 @@ impl Cli {
         let exe_dir = exe.as_deref().and_then(|path| path.parent());
         Ok(Config {
             listen: self.listen,
-            data_dir: resolve_data_dir(self.data_dir.clone(), exe_dir, os_data_dir())?,
+            data_dir: resolve_data_dir(
+                self.data_dir.clone(),
+                exe_dir,
+                os_data_dir(),
+                cfg!(debug_assertions),
+            )?,
             database_url: self.database_url.clone(),
             timezone: self.timezone.clone(),
             ui_dir: self.ui_dir.clone(),
@@ -140,10 +147,22 @@ async fn stdin_closed() {
     tracing::info!("стандартный ввод закрыт: родительский процесс завершился");
 }
 
+/// Замок папки данных на всё время команды: второй сервер или импорт на той же папке отказывают сразу,
+/// до базы (`lock`).
+fn lock_data_dir(config: &Config) -> Result<DataDirLock, ServerError> {
+    crate::lock::acquire(&config.data_dir).map_err(|error| match error {
+        LockError::Busy { .. } => ServerError::Config(format!(
+            "{error}: закройте её (программу MyWork или сервер mw-server) и повторите"
+        )),
+        LockError::Io { .. } => ServerError::Config(error.to_string()),
+    })
+}
+
 pub async fn run(cli: Cli) -> Result<(), ServerError> {
     let config = cli.config()?;
     match cli.command {
         None | Some(Command::Serve) => {
+            let _lock = lock_data_dir(&config)?;
             let server = Server::start(&config).await?;
             if cli.assume_setup {
                 server.core().assume_setup_done().await?;
@@ -174,7 +193,9 @@ pub async fn run(cli: Cli) -> Result<(), ServerError> {
             Ok(())
         }
         Some(Command::ImportLegacy { source, replace }) => {
+            // Сначала проверка старой папки: замок создаёт папку данных, а в старую папку ничего не пишется.
             crate::import::refuse_inside_source(&config, &source)?;
+            let _lock = lock_data_dir(&config)?;
             let db = connect_and_migrate(&config).await?;
             let result = run_import_with_db(&config, db.clone(), &source, replace).await;
             let _ = db.close().await;

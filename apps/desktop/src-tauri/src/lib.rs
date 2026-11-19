@@ -2,13 +2,13 @@
 //!
 //! Сервер (`mw-server`) слушает 127.0.0.1 и раздаёт интерфейс; окно открывает его адрес, и интерфейс
 //! говорит с сервером по HTTP, как в браузере. Через Tauri идут только выбор папки (`tauri-plugin-dialog`)
-//! и события окна. Одна копия на папку данных (`single`), закрытие окна останавливает сервер штатно.
+//! и события окна. Одна копия на папку данных (`mw_server::lock`), закрытие окна останавливает сервер штатно.
 
 pub mod launch;
 pub mod navigation;
-pub mod single;
 
 use mw_server::LogGuard;
+use mw_server::lock::{self, DataDirLock, LockError};
 use navigation::Navigation;
 use std::collections::HashMap;
 use std::io::Write;
@@ -34,7 +34,7 @@ const CRASH_FILE: &str = "crash.txt";
 /// То, что живёт, пока работает программа; отпускается по порядку в `RunEvent::Exit`.
 struct Desktop {
     running: Mutex<Option<launch::Running>>,
-    lock: Mutex<Option<single::DataDirLock>>,
+    lock: Mutex<Option<DataDirLock>>,
     log: Mutex<Option<LogGuard>>,
 }
 
@@ -69,7 +69,7 @@ pub fn run() {
         });
     // Замок — до журнала в файл и до сервера: вторая копия не пишет в общий журнал и не открывает базу.
     let (start, lock) = match data_dir {
-        Ok(data_dir) => match single::acquire(&data_dir) {
+        Ok(data_dir) => match lock::acquire(&data_dir) {
             Ok(lock) => (
                 Start::Ready {
                     log_dir: data_dir.join("logs"),
@@ -77,7 +77,7 @@ pub fn run() {
                 },
                 Some(lock),
             ),
-            Err(single::LockError::Busy(dir)) => (Start::Busy(dir), None),
+            Err(LockError::Busy { dir, .. }) => (Start::Busy(dir), None),
             Err(e) => (Start::Failed(e.to_string(), None), None),
         },
         Err(e) => (Start::Failed(e, None), None),

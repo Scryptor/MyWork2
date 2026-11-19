@@ -1,4 +1,6 @@
-//! Одна копия программы на папку данных: файл-замок `<данные>/mywork.lock`, взятый на всё время работы.
+//! Один процесс на папку данных: файл-замок `<данные>/mywork.lock`, взятый на всё время работы. Его берут
+//! программа для компьютера и команды `serve` и `import-legacy`; `create-admin` — нет (одна короткая запись в
+//! базу), встроенный `Server` сам его не берёт (его берёт тот, кто сервер поднимает).
 //! Замок держит ОС (`flock` / `LockFileEx`): он снимается и при аварийном завершении процесса.
 
 use std::fs::{File, OpenOptions, TryLockError};
@@ -17,9 +19,13 @@ pub struct DataDirLock {
 /// Почему замок не взят.
 #[derive(Debug, thiserror::Error)]
 pub enum LockError {
-    /// Папку данных уже занимает другая копия программы.
-    #[error("папку данных {} уже использует другая копия программы", .0.display())]
-    Busy(PathBuf),
+    /// Папку данных уже занимает другая копия программы (`pid` — если ОС дала прочитать файл-замок).
+    #[error(
+        "папку данных {} уже использует другая копия программы{}",
+        .dir.display(),
+        .pid.map(|pid| format!(" (процесс {pid})")).unwrap_or_default()
+    )]
+    Busy { dir: PathBuf, pid: Option<u32> },
     #[error("не удалось открыть файл-замок {}: {source}", .path.display())]
     Io {
         path: PathBuf,
@@ -46,7 +52,16 @@ pub fn acquire(data_dir: &Path) -> Result<DataDirLock, LockError> {
         .map_err(io_error)?;
     match file.try_lock() {
         Ok(()) => {}
-        Err(TryLockError::WouldBlock) => return Err(LockError::Busy(data_dir.to_path_buf())),
+        Err(TryLockError::WouldBlock) => {
+            // На Windows занятый замком файл не читается: тогда номера процесса нет.
+            let pid = std::fs::read_to_string(&path)
+                .ok()
+                .and_then(|text| text.trim().parse().ok());
+            return Err(LockError::Busy {
+                dir: data_dir.to_path_buf(),
+                pid,
+            });
+        }
         Err(TryLockError::Error(source)) => return Err(io_error(source)),
     }
     // Номер процесса — для человека, который смотрит в папку; замку он не нужен.
@@ -74,7 +89,17 @@ mod tests {
         let first = acquire(&data).unwrap();
         assert!(data.join(LOCK_FILE).is_file());
         match acquire(&data) {
-            Err(LockError::Busy(path)) => assert_eq!(path, data),
+            Err(error @ LockError::Busy { .. }) => {
+                let LockError::Busy { ref dir, pid } = error else {
+                    unreachable!()
+                };
+                assert_eq!(dir, &data);
+                if cfg!(unix) {
+                    assert_eq!(pid, Some(std::process::id()));
+                }
+                let text = error.to_string();
+                assert!(text.contains("уже использует другая копия"), "{text}");
+            }
             other => panic!("второй замок взят: {other:?}"),
         }
         drop(first);

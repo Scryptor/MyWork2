@@ -92,3 +92,78 @@ fn the_final_error_reaches_the_log_file() {
     assert!(text.contains("ERROR"), "{text}");
     assert!(text.contains("папка интерфейса не найдена"), "{text}");
 }
+
+/// Запускает `mw-server` на папке данных и ждёт выхода; ввод — `input`, затем закрывается (сервер,
+/// если всё же поднялся, по `--exit-on-stdin-close` завершается, а не зависает в тесте).
+fn run_on(dir: &std::path::Path, args: &[&std::ffi::OsStr], input: &str) -> std::process::Output {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_mw-server"))
+        .args([
+            "--timezone",
+            "UTC",
+            "--log-dir",
+            "none",
+            "--listen",
+            "127.0.0.1:0",
+        ])
+        .arg("--exit-on-stdin-close")
+        .arg("--data-dir")
+        .arg(dir)
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(input.as_bytes())
+        .unwrap();
+    child.wait_with_output().unwrap()
+}
+
+#[test]
+fn serve_and_import_refuse_a_data_folder_in_use_and_create_admin_does_not() {
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("data");
+    let old = tempfile::tempdir().unwrap();
+    let held = mw_server::lock::acquire(&data).unwrap();
+    let commands: [&[&std::ffi::OsStr]; 2] = [
+        &["serve".as_ref()],
+        &["import-legacy".as_ref(), old.path().as_os_str()],
+    ];
+    for args in commands {
+        let output = run_on(&data, args, "");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert_eq!(output.status.code(), Some(1), "{args:?}: {stderr}");
+        assert!(
+            stderr.contains("уже использует другая копия программы"),
+            "{args:?}: {stderr}"
+        );
+        assert!(
+            !data.join("mywork.db").exists(),
+            "{args:?}: база не открыта"
+        );
+    }
+    // Администратора можно создать и при работающей программе: это одна короткая запись в базу.
+    let output = run_on(
+        &data,
+        &["create-admin".as_ref(), "--login".as_ref(), "boss".as_ref()],
+        "test-password-1\n",
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    drop(held);
+    let output = run_on(
+        &data,
+        &["import-legacy".as_ref(), old.path().as_os_str()],
+        "",
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!stderr.contains("другая копия"), "замок отпущен: {stderr}");
+}

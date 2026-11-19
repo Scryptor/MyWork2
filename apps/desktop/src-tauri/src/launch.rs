@@ -1,6 +1,6 @@
 //! Встроенный сервер программы для компьютера: папка данных, адрес на 127.0.0.1, штатная остановка.
 
-use mw_server::{Config, DATA_DIR_NAME, Server, ServerError, os_data_dir};
+use mw_server::{Config, Server, ServerError, data_dir_name, os_data_dir, portable_data_dir};
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 use tokio::sync::oneshot;
@@ -10,31 +10,26 @@ use tokio::task::JoinHandle;
 pub const LOCAL_FILE: &str = "local.json";
 
 /// Файл рядом с программой, переводящий её в портативный режим (данные — в `data` рядом).
-pub const PORTABLE_FILE: &str = "portable.txt";
+pub use mw_server::PORTABLE_FILE;
 
 /// Папка данных программы этой сборки: см. `data_dir_for`.
 pub fn data_dir(exe_dir: &Path) -> Result<PathBuf, ServerError> {
     data_dir_for(exe_dir, os_data_dir(), cfg!(debug_assertions))
 }
 
-/// Папка данных: `data` рядом с программой при `portable.txt`; иначе в папке данных ОС — `MyWork3`, а у
-/// отладочной сборки (`dev`) — `MyWork3-dev`: сборка из рабочей копии может применить ещё не выпущенную
-/// миграцию, и установленная программа на такой базе больше бы не запустилась. Без папки ОС (нет `HOME` /
-/// `APPDATA`) — ошибка: молча писать рядом с программой или в текущую папку нельзя.
+/// Папка данных: `data` рядом с программой при `portable.txt` (кроме пакета macOS, см.
+/// `mw_server::portable_data_dir`); иначе в папке данных ОС — `mw_server::data_dir_name(dev)`: `MyWork3`, а у
+/// отладочной сборки (`dev`) — `MyWork3-dev`. Без папки ОС (нет `HOME` / `APPDATA`) — ошибка: молча писать
+/// рядом с программой или в текущую папку нельзя.
 pub fn data_dir_for(
     exe_dir: &Path,
     os_dir: Option<PathBuf>,
     dev: bool,
 ) -> Result<PathBuf, ServerError> {
-    if exe_dir.join(PORTABLE_FILE).exists() {
-        return Ok(exe_dir.join("data"));
+    if let Some(portable) = portable_data_dir(exe_dir) {
+        return Ok(portable);
     }
-    let name = if dev {
-        format!("{DATA_DIR_NAME}-dev")
-    } else {
-        DATA_DIR_NAME.to_string()
-    };
-    os_dir.map(|dir| dir.join(name)).ok_or_else(|| {
+    os_dir.map(|dir| dir.join(data_dir_name(dev))).ok_or_else(|| {
         ServerError::Config(format!(
             "не удалось определить папку данных: система не назвала свою папку (не заданы HOME / APPDATA). \
              Чтобы хранить данные рядом с программой, положите рядом с ней файл {PORTABLE_FILE}"
@@ -227,6 +222,23 @@ mod tests {
             data_dir(exe.path()).unwrap(),
             mw_server::os_data_dir().unwrap().join(name)
         );
+    }
+
+    #[test]
+    fn portable_txt_inside_a_macos_bundle_is_ignored_so_the_data_survives_replacing_the_program() {
+        let root = tempfile::tempdir().unwrap();
+        let exe = root
+            .path()
+            .join("MyWork.app")
+            .join("Contents")
+            .join("MacOS");
+        std::fs::create_dir_all(&exe).unwrap();
+        std::fs::write(exe.join(PORTABLE_FILE), "").unwrap();
+        assert_eq!(
+            data_dir_for(&exe, Some("/os".into()), false).unwrap(),
+            PathBuf::from("/os").join("MyWork3")
+        );
+        assert!(data_dir_for(&exe, None, false).is_err());
     }
 
     #[test]
