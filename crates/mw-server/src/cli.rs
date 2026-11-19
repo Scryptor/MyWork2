@@ -33,8 +33,12 @@ pub struct Cli {
     #[arg(long, global = true, value_name = "ПАПКА|none")]
     pub log_dir: Option<String>,
     /// Завершаться, когда закрыт стандартный ввод (родитель умер); для тестов и десктопа.
+    /// Если ввод уже закрыт или это /dev/null, сервер завершится сразу после запуска.
     #[arg(long, global = true, hide = true)]
     pub exit_on_stdin_close: bool,
+    /// Только для тестов: при запуске отметить программу настроенной, если отметки ещё нет.
+    #[arg(long, global = true, hide = true)]
+    pub assume_setup: bool,
     #[command(subcommand)]
     pub command: Option<Command>,
 }
@@ -53,6 +57,7 @@ impl std::fmt::Debug for Cli {
             .field("ui_dir", &self.ui_dir)
             .field("log_dir", &self.log_dir)
             .field("exit_on_stdin_close", &self.exit_on_stdin_close)
+            .field("assume_setup", &self.assume_setup)
             .field("command", &self.command)
             .finish()
     }
@@ -140,6 +145,9 @@ pub async fn run(cli: Cli) -> Result<(), ServerError> {
     match cli.command {
         None | Some(Command::Serve) => {
             let server = Server::start(&config).await?;
+            if cli.assume_setup {
+                server.core().assume_setup_done().await?;
+            }
             if cli.exit_on_stdin_close {
                 let stop = async {
                     tokio::select! {

@@ -44,6 +44,13 @@ async fn setup_flow() {
             .send(Method::POST, "/api/v1/setup", Some(&admin), Some(body()))
             .await;
         assert_eq!(again.status, 409, "{}", t.label);
+        assert_eq!(
+            again.body["message"],
+            json!("Программа уже настроена"),
+            "{} {:?}",
+            t.label,
+            again.body
+        );
     }
 }
 

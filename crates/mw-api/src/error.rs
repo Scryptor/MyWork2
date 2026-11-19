@@ -218,6 +218,11 @@ impl From<CoreError> for ApiError {
                     .collect();
                 e
             }
+            CoreError::AlreadySetUp => Self::new(
+                StatusCode::CONFLICT,
+                ErrorCode::Conflict,
+                "Программа уже настроена",
+            ),
             CoreError::Forbidden(p) => {
                 let mut e = Self::new(
                     StatusCode::FORBIDDEN,

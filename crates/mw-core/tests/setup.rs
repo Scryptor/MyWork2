@@ -93,8 +93,10 @@ async fn second_setup_conflicts_and_changes_nothing() -> Result<(), CoreError> {
             masters: vec!["Ольга".into()],
         };
         let err = t.core.run_setup(&admin(), again).await;
-        assert!(
-            matches!(err, Err(CoreError::Conflict { .. })),
+        assert!(matches!(err, Err(CoreError::AlreadySetUp)), "{}", t.label);
+        assert_eq!(
+            err.unwrap_err().to_string(),
+            "Программа уже настроена",
             "{}",
             t.label
         );
@@ -132,6 +134,64 @@ async fn setup_needs_the_settings_right_and_names() -> Result<(), CoreError> {
             "{}: ничего не записано",
             t.label
         );
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn setup_refuses_a_populated_database_without_the_mark() -> Result<(), CoreError> {
+    for t in cores().await {
+        let c = make_client(&t, "Клиент", &["+79001112233"]).await;
+        make_order_for(&t, c.id).await;
+        t.core
+            .update_settings(
+                &admin(),
+                mw_core::SettingsPatch {
+                    firm_name: Some("Старая фирма".into()),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        let err = t.core.run_setup(&admin(), request(&["Иван"])).await;
+        assert_eq!(
+            err.unwrap_err().to_string(),
+            "Программа уже настроена",
+            "{}",
+            t.label
+        );
+        assert_eq!(t.core.settings().firm_name, "Старая фирма", "{}", t.label);
+        assert!(
+            t.core.list_service_points(false).await?.is_empty(),
+            "{}",
+            t.label
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn assume_setup_marks_a_new_base_once_with_an_audit_entry() -> Result<(), CoreError> {
+    for t in cores().await {
+        assert!(t.core.setup_required().await?, "{}", t.label);
+        t.core.assume_setup_done().await?;
+        t.core.assume_setup_done().await?;
+        assert!(!t.core.setup_required().await?, "{}", t.label);
+        assert_eq!(
+            count_audit(&t.core, "setup.assumed").await,
+            1,
+            "{}",
+            t.label
+        );
+        assert!(
+            audit_json(&t.core, "setup.assumed")
+                .await
+                .contains("Отмечено: программа настроена (запуск для тестов)"),
+            "{}",
+            t.label
+        );
+        // Настоящая настройка после этого уже не нужна.
+        let err = t.core.run_setup(&admin(), request(&[])).await;
+        assert!(matches!(err, Err(CoreError::AlreadySetUp)), "{}", t.label);
     }
     Ok(())
 }

@@ -3,6 +3,15 @@ use mw_server::{Cli, init_logging, run};
 
 #[tokio::main]
 async fn main() {
+    // Код выхода возвращает `main_inner`: охранник журнала внутри неё успевает дописать файл,
+    // а `process::exit` его пропустил бы.
+    let code = main_inner().await;
+    if code != 0 {
+        std::process::exit(code);
+    }
+}
+
+async fn main_inner() -> i32 {
     let cli = Cli::parse();
     // Файл журнала — только у сервера; служебные команды пишут в вывод.
     let log_dir = match cli.config() {
@@ -15,15 +24,19 @@ async fn main() {
             Ok(guard) => (guard, Some(e)),
             Err(e) => {
                 eprintln!("Ошибка: {e}");
-                std::process::exit(1);
+                return 1;
             }
         },
     };
     if let Some(problem) = log_problem {
         tracing::warn!("журнал в файл отключён: {problem}");
     }
-    if let Err(e) = run(cli).await {
-        eprintln!("Ошибка: {e}");
-        std::process::exit(1);
+    match run(cli).await {
+        Ok(()) => 0,
+        Err(e) => {
+            tracing::error!("{e}");
+            eprintln!("Ошибка: {e}");
+            1
+        }
     }
 }

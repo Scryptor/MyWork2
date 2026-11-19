@@ -36,19 +36,48 @@ async fn setup_marked(conn: &impl ConnectionTrait) -> Result<bool, CoreError> {
         .is_some())
 }
 
+async fn setup_required_on(conn: &impl ConnectionTrait) -> Result<bool, CoreError> {
+    if setup_marked(conn).await? {
+        return Ok(false);
+    }
+    let used = order::Entity::find().count(conn).await? > 0
+        || client::Entity::find().count(conn).await? > 0
+        || legacy_import::Entity::find().count(conn).await? > 0;
+    Ok(!used)
+}
+
 impl Core {
     /// Нужна ли начальная настройка: нет отметки «настроено» и в базе нет заказов, клиентов и импортов.
     pub async fn setup_required(&self) -> Result<bool, CoreError> {
-        if setup_marked(&self.db).await? {
-            return Ok(false);
-        }
-        let used = order::Entity::find().count(&self.db).await? > 0
-            || client::Entity::find().count(&self.db).await? > 0
-            || legacy_import::Entity::find().count(&self.db).await? > 0;
-        Ok(!used)
+        setup_required_on(&self.db).await
     }
 
-    /// Начальная настройка одной транзакцией; повтор после отметки — `Conflict`.
+    /// Только для запуска тестов (`--assume-setup`): ставит отметку «настроено», если её нет,
+    /// с записью в журнале. Остальное в базе не меняет.
+    pub async fn assume_setup_done(&self) -> Result<(), CoreError> {
+        let tx = self.begin_write().await?;
+        if setup_marked(&tx).await? {
+            return Ok(());
+        }
+        put(&tx, SETUP_DONE_KEY, &json!(true)).await?;
+        write_audit(
+            &tx,
+            self.now(),
+            &Actor::unrestricted("Запуск для тестов"),
+            NewAuditEntry {
+                action: "setup.assumed",
+                order_id: None,
+                client_id: None,
+                summary: "Отмечено: программа настроена (запуск для тестов)".to_owned(),
+                details: None,
+            },
+        )
+        .await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    /// Начальная настройка одной транзакцией; повтор или непустая база — `AlreadySetUp`.
     pub async fn run_setup(&self, actor: &Actor, request: SetupRequest) -> Result<(), CoreError> {
         actor.require(Permission::SettingsManage)?;
         let firm_name = request.firm_name.trim().to_owned();
@@ -65,12 +94,9 @@ impl Core {
         }
 
         let tx = self.begin_write().await?;
-        if setup_marked(&tx).await? {
-            return Err(CoreError::Conflict {
-                entity: "setup",
-                id: 0,
-                current_version: 0,
-            });
+        // Отметка есть или в базе уже работали (старая база без отметки): настройка не нужна.
+        if !setup_required_on(&tx).await? {
+            return Err(CoreError::AlreadySetUp);
         }
         let points = service_point::Entity::find().all(&tx).await?;
         let point_key = normalize_search(&point_name);

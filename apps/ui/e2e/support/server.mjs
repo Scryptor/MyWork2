@@ -1,5 +1,6 @@
 // Starts a real mw-server for the e2e tests: it serves the built UI and the API from one origin.
-// Usage: node e2e/support/server.mjs --port 4173 [--admin]
+// Usage: node e2e/support/server.mjs --port 4173 [--admin] [--fresh]
+// By default the server starts as already set up (--assume-setup); --fresh keeps the base new.
 import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -14,10 +15,11 @@ const args = process.argv.slice(2);
 const portIndex = args.indexOf('--port');
 const port = portIndex >= 0 ? Number(args[portIndex + 1]) : NaN;
 if (!Number.isInteger(port) || port <= 0) {
-	console.error('usage: server.mjs --port <port> [--admin]');
+	console.error('usage: server.mjs --port <port> [--admin] [--fresh]');
 	process.exit(2);
 }
 const withAdmin = args.includes('--admin');
+const fresh = args.includes('--fresh');
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
 const uiDir = path.join(repoRoot, 'apps/ui/build');
@@ -116,6 +118,7 @@ const served = await run([
 	'--ui-dir',
 	uiDir,
 	'--exit-on-stdin-close',
+	...(fresh ? [] : ['--assume-setup']),
 	'serve'
 ]);
 await finish(served.code ?? (served.signal ? 1 : 0));

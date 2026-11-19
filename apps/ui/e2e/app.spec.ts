@@ -60,6 +60,13 @@ test('root opens the orders screen with the shell', async ({ page }) => {
 	await expect(page).toHaveURL(/\/orders$/);
 });
 
+test('the e2e server is started as already set up', async ({ request }) => {
+	const info = (await (await request.get('/api/v1/server-info')).json()) as {
+		setup_required: boolean;
+	};
+	expect(info.setup_required).toBe(false);
+});
+
 test('no connection at the start: the page says so, «Повторить» opens the program', async ({
 	page
 }) => {

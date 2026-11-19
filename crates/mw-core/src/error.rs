@@ -21,6 +21,8 @@ pub enum CoreError {
     Forbidden(Permission),
     #[error("неверный логин или пароль")]
     InvalidCredentials,
+    #[error("Программа уже настроена")]
+    AlreadySetUp,
     #[error("требуется вход в систему")]
     Unauthenticated,
     #[error("{0}")]
