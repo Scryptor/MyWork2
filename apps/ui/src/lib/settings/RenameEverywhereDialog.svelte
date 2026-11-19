@@ -55,7 +55,13 @@
 	});
 </script>
 
-<Dialog bind:open title={t.renameTitle(from, to)} description={t.renameDescription} size="sm">
+<Dialog
+	bind:open
+	title={t.renameTitle(from, to)}
+	description={t.renameDescription}
+	size="sm"
+	dismissible={!busy}
+>
 	<Checkbox bind:checked={everywhere} label={t.renameEverywhere(where)} disabled={busy} />
 	{#if error}<Callout tone="danger">{error}</Callout>{/if}
 	{#snippet footer()}

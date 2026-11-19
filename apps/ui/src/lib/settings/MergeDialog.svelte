@@ -64,7 +64,13 @@
 	});
 </script>
 
-<Dialog bind:open title={t.mergeTitle} description={t.mergeDescription} size="sm">
+<Dialog
+	bind:open
+	title={t.mergeTitle}
+	description={t.mergeDescription}
+	size="sm"
+	dismissible={!busy}
+>
 	<fieldset class="choice" disabled={busy}>
 		<legend>{t.mergeKeep}</legend>
 		{#each rows as r (r.id)}

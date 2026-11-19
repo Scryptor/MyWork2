@@ -17,6 +17,7 @@
 		position = 'center',
 		children,
 		footer,
+		dismissible = true,
 		onclose
 	}: {
 		open: boolean;
@@ -28,6 +29,8 @@
 		position?: 'center' | 'bottom';
 		children: Snippet;
 		footer?: Snippet;
+		/** `false` while a request runs: Esc, a click outside and «✕» leave the dialog open. */
+		dismissible?: boolean;
 		onclose?: () => void;
 	} = $props();
 
@@ -64,7 +67,11 @@
 		<Dialog.Overlay class="mw-scrim" />
 		<Dialog.Content
 			bind:ref={content}
-			onInteractOutside={keepOpenOnToasts}
+			escapeKeydownBehavior={dismissible ? 'close' : 'ignore'}
+			onInteractOutside={(e) => {
+				keepOpenOnToasts(e);
+				if (!dismissible) e.preventDefault();
+			}}
 			onCloseAutoFocus={focusReturn.closed}
 			class="mw-dialog {size} {position === 'bottom' ? 'bottom' : ''} {display.phone
 				? 'phone'
@@ -83,6 +90,7 @@
 				type="button"
 				class="mw-dialog-close"
 				aria-label={display.phone ? ru.common.back : ru.common.close}
+				disabled={!dismissible}
 				onclick={close}
 			>
 				<CloseIcon size={16} aria-hidden="true" />
