@@ -5,7 +5,7 @@
 	import { page } from '$app/state';
 	import { login } from '#lib/api/auth.js';
 	import { ApiError } from '#lib/api/client.js';
-	import { setToken } from '#lib/api/session.js';
+	import { adoptStored, setSessionFoundHandler, setToken } from '#lib/api/session.js';
 	import { safeNext } from '#lib/app/login.js';
 	import { resetSession } from '#lib/app/session-reset.js';
 	import '#lib/app/page-card.css';
@@ -15,8 +15,22 @@
 	import TextInput from '#lib/ui/TextInput.svelte';
 
 	// Nobody is signed in here: whatever the previous user left in memory (also after an expired session)
-	// is gone before the next one signs in.
-	onMount(resetSession);
+	// is gone before the next one signs in. Signing in in another tab signs this one in too: it goes on
+	// where it was going.
+	onMount(() => {
+		resetSession();
+		setSessionFoundHandler(() => {
+			if (adoptStored() !== null) void goToNext();
+		});
+		return () => setSessionFoundHandler(() => {});
+	});
+
+	function goToNext() {
+		const next = safeNext(page.url.searchParams.get('next'), page.url.origin);
+		// safeNext keeps only a path of this program.
+		// eslint-disable-next-line svelte/no-navigation-without-resolve
+		return goto(next, { replaceState: true });
+	}
 
 	let name = $state('');
 	let password = $state('');
@@ -44,11 +58,8 @@
 		busy = true;
 		try {
 			const session = await login({ login: name, password, device_label: '' });
-			setToken(session.token, remember);
-			const next = safeNext(page.url.searchParams.get('next'), page.url.origin);
-			// safeNext keeps only a path of this program.
-			// eslint-disable-next-line svelte/no-navigation-without-resolve
-			await goto(next, { replaceState: true });
+			setToken(session.token, remember, session.user.id);
+			await goToNext();
 		} catch (err) {
 			passwordError = failure(err);
 		} finally {

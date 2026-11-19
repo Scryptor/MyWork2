@@ -18,16 +18,18 @@ afterEach(() => {
 	setSessionLostHandler(() => {});
 });
 
-describe('a session another tab ended', () => {
-	it('sends nothing, not even under the token of that tab, and ends the session here', async () => {
+describe('a session another tab changed', () => {
+	const stored = (token: string, userId: number) => JSON.stringify({ token, user_id: userId });
+
+	it('another user: nothing is sent, not even under that tab’s token, and the session ends here', async () => {
 		const fn = stubFetch(200, {});
 		const lost = vi.fn();
 		const unauthenticated = vi.fn();
 		setSessionLostHandler(lost);
 		setUnauthenticatedHandler(unauthenticated);
-		setToken('a', true);
+		setToken('a', true, 7);
 		// Another tab signed out and in as someone else; this page has not heard of it yet.
-		localStorage.setItem('mw.session', 'b');
+		localStorage.setItem('mw.session', stored('b', 8));
 		await expect(request('PATCH', '/orders/1', { body: {} })).rejects.toMatchObject({
 			status: 401,
 			code: 'unauthenticated'
@@ -37,12 +39,24 @@ describe('a session another tab ended', () => {
 		// Not the handler of an expired session: it would take the other tab's token from the storage.
 		expect(unauthenticated).not.toHaveBeenCalled();
 		expect(getToken()).toBeNull();
-		expect(localStorage.getItem('mw.session')).toBe('b');
+		expect(localStorage.getItem('mw.session')).toBe(stored('b', 8));
+	});
+
+	it('the same user signed in again: the request goes with the new token', async () => {
+		const fn = stubFetch(200, {});
+		const lost = vi.fn();
+		setSessionLostHandler(lost);
+		setToken('a', true, 7);
+		localStorage.setItem('mw.session', stored('b', 7));
+		await request('PATCH', '/orders/1', { body: {} });
+		const init = (fn.mock.calls as unknown as [string, RequestInit][])[0]![1];
+		expect(new Headers(init.headers).get('Authorization')).toBe('Bearer b');
+		expect(lost).not.toHaveBeenCalled();
 	});
 
 	it('a page without a session sends no token, though another tab signed in', async () => {
 		const fn = stubFetch(200, {});
-		localStorage.setItem('mw.session', 'b');
+		localStorage.setItem('mw.session', stored('b', 8));
 		await request('GET', '/server-info');
 		const init = (fn.mock.calls as unknown as [string, RequestInit][])[0]![1];
 		expect(new Headers(init.headers).get('Authorization')).toBeNull();
@@ -101,7 +115,7 @@ describe('request', () => {
 	it('sends the bearer token and calls the 401 handler once', async () => {
 		const handler = vi.fn();
 		setUnauthenticatedHandler(handler);
-		setToken('tok', true);
+		setToken('tok', true, 1);
 		const fn = stubFetch(401, {
 			code: 'unauthenticated',
 			message: 'Войдите',

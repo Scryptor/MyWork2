@@ -9,7 +9,10 @@ export interface IntakePrefill {
 export const SUBMIT_TIMEOUT_MS = 30_000;
 
 export interface SubmitOptions {
-	/** What has to be done before the order goes (photos still uploading); the 30 s start after it. */
+	/**
+	 * What has to be done before the order goes (photos still uploading, deletions waiting); the 30 s
+	 * start after it. `false` stops the order: it is not sent, the sheet can be used again.
+	 */
 	ready?: () => Promise<unknown>;
 	timeoutMs?: number;
 }
@@ -80,7 +83,7 @@ class Intake {
 
 	/**
 	 * Sends an order once `ready` is done; null at once while another one is on its way, and null when it
-	 * was called off before it went. Without an answer in `timeoutMs` after it went the request is called
+	 * was called off before it went or `ready` said `false`. Without an answer in `timeoutMs` after it went the request is called
 	 * off through `signal`, and the sheet stops waiting even if it is not.
 	 */
 	async submit<T>(
@@ -96,7 +99,7 @@ class Intake {
 			this.uploading = true;
 			const off = new Promise<'off'>((resolve) => (this.#callOff = () => resolve('off')));
 			const done = ready().then(
-				() => 'ready' as const,
+				(r) => (r === false ? ('off' as const) : ('ready' as const)),
 				() => 'ready' as const
 			);
 			const outcome = await Promise.race([done, off]);

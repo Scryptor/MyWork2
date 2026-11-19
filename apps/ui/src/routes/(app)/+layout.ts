@@ -3,7 +3,7 @@ import type { ServerInfo } from '$api/ServerInfo';
 import { serverInfo, me } from '#lib/api/auth.js';
 import { ApiError } from '#lib/api/client.js';
 import { serverClock } from '#lib/api/server-clock.svelte.js';
-import { clearToken, getToken } from '#lib/api/session.js';
+import { clearToken, getToken, noteUser } from '#lib/api/session.js';
 import { app, readCatalogs, type AppData } from '#lib/app/context.svelte.js';
 import { failLoad } from '#lib/app/load-error.js';
 import { loginPath } from '#lib/app/login.js';
@@ -22,6 +22,8 @@ export const load: LayoutLoad = async ({ url }): Promise<AppData> => {
 	if (server.auth_required && !getToken()) redirect(307, loginPath(url.pathname + url.search));
 	try {
 		const [user, [statuses, points, settings]] = await Promise.all([me(), readCatalogs()]);
+		// Whose the session is: another tab's new token of the same user is taken up (`followStorage`).
+		noteUser(user.user_id);
 		const data: AppData = { server, me: user, statuses, points, settings };
 		app.set(data);
 		return data;

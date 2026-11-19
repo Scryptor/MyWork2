@@ -65,7 +65,7 @@ export function createCardHistory(
 				if (page.items.length < limit) timelineDone = true;
 			}
 		} catch {
-			// What came stays; «Повторить» asks again and goes on from the oldest entry shown.
+			// What came stays; «Повторить» asks again and goes on after the last page it read.
 			if (mine === seq) timelineFailed = true;
 		}
 	}
@@ -105,7 +105,7 @@ export function createCardHistory(
 		/**
 		 * On opening and after every new version: one request for the newest page of the journal. It
 		 * serves both lists; later it only adds the entries that are new (a gap of a whole page starts over).
-		 * The timeline then pages on by id up to `TIMELINE_MAX` entries.
+		 * The timeline then pages on after its last page read, up to `TIMELINE_MAX` entries.
 		 */
 		async refresh(id: number): Promise<void> {
 			if (id !== orderId) {
@@ -152,7 +152,7 @@ export function createCardHistory(
 			await extend(id, mine);
 		},
 
-		/** «Показать ещё» and «Повторить»: the next page after the oldest entry shown. */
+		/** «Показать ещё» and «Повторить»: the next page after the last page read. */
 		async more(): Promise<void> {
 			const id = orderId;
 			if (id === null || loadingMore || entriesDone) return;

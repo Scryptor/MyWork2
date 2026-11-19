@@ -2,7 +2,13 @@ import { expect, test, type APIRequestContext, type Page } from '@playwright/tes
 import type { AppSettings } from '$api/AppSettings';
 import type { AboutInfo } from '$api/AboutInfo';
 import type { ServerInfo } from '$api/ServerInfo';
-import { createOrder, E2E_ADMIN_LOGIN, E2E_ADMIN_PASSWORD, uniq } from './support/api';
+import {
+	createOrder,
+	E2E_ADMIN_LOGIN,
+	E2E_ADMIN_PASSWORD,
+	sessionToken,
+	uniq
+} from './support/api';
 
 // «Настройки»: «Внешний вид» is kept on this computer and applies at once; «Общие», «Заказы» and «О программе»
 // are the server's and are saved as they are edited.
@@ -305,11 +311,7 @@ test.describe('server settings', () => {
 			await page.getByRole('button', { name: 'Войти' }).click();
 			await expect(page).toHaveURL(/\/orders$/);
 		}
-		const token = signedIn
-			? await page.evaluate(
-					() => localStorage.getItem('mw.session') ?? sessionStorage.getItem('mw.session')
-				)
-			: null;
+		const token = signedIn ? await sessionToken(page) : null;
 		const api = await playwright.request.newContext({
 			baseURL: origin,
 			extraHTTPHeaders: token ? { Authorization: `Bearer ${token}` } : {}

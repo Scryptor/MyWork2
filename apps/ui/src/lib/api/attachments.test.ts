@@ -67,7 +67,7 @@ describe('attachmentUrl', () => {
 		expect(fetchFn).toHaveBeenCalledOnce();
 	});
 	it('keeps variants apart and sends the token', async () => {
-		setToken('tok', false);
+		setToken('tok', false, 1);
 		const fetchFn = stubFetch(() => new Response('img'));
 		await attachmentUrl(3, 'thumb');
 		await attachmentUrl(3, 'file');

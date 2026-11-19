@@ -472,15 +472,26 @@
 			photos !== null && (photos.photos.length > 0 || photos.error !== null || photos.loading);
 		// The form is inert until the answer (`intake.formLocked`): the field it was sent from loses focus.
 		const from = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+		// A deletion the server refused stops the order: its photo is back on the sheet, the user decides.
+		let deleteFailed = false;
 		const answer = await intake.submit(
 			(signal) => createOrder(toNewOrder(form, pointId, withPhotos()), signal),
 			{
 				ready:
-					photos === null ? undefined : () => Promise.all([photos.idle(), photos.flushDeletes()])
+					photos === null
+						? undefined
+						: async () => {
+								const [, deleted] = await Promise.all([photos.idle(), photos.flushDeletes()]);
+								deleteFailed = !deleted;
+								return deleted;
+							}
 			}
 		);
 		void refocus(from);
-		if (answer === null) return;
+		if (answer === null) {
+			if (deleteFailed && intake.isOpen) showError(t.photoDeleteFailed);
+			return;
+		}
 		if (!answer.ok) {
 			refused(answer.error, answer.current, answer.timedOut, form);
 			return;

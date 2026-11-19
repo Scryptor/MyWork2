@@ -710,6 +710,66 @@ test('a photo deleted just before «Принять» is not in the order, and it
 	).toBe(1);
 });
 
+test('a deletion refused at «Принять» stops it: the photo is back, «Принять» again takes it along', async ({
+	page,
+	request
+}) => {
+	await openIntake(page);
+	await phoneOf(page).fill(uniqPhone());
+	await fillDevice(page);
+	await malfunctionOf(page).fill(uniq('Разбит экран'));
+	await photoZoneOf(page)
+		.locator('input[type=file]')
+		.setInputFiles([png('keep.png', 43), png('stays.png', 44)]);
+	await expect(photoTilesOf(page)).toHaveCount(2);
+	const refused = (url: URL) => url.pathname.startsWith('/api/v1/attachments/');
+	await page.route(refused, (route) =>
+		route.request().method() === 'DELETE'
+			? route.fulfill({
+					status: 500,
+					json: {
+						code: 'internal',
+						message: 'Сбой',
+						fields: [],
+						current_version: null,
+						permission: null,
+						retry_after_secs: null
+					}
+				})
+			: route.fallback()
+	);
+	const orders: string[] = [];
+	page.on('request', (r) => {
+		if (r.method() === 'POST' && new URL(r.url()).pathname === '/api/v1/orders')
+			orders.push(r.url());
+	});
+	await sheetOf(page)
+		.getByRole('button', { name: /^Удалить фото: stays\./ })
+		.click();
+	await expect(photoTilesOf(page)).toHaveCount(1);
+	await sheetOf(page)
+		.getByRole('button', { name: /^Принять/ })
+		.click();
+	// The order does not go: the photo is back, the sheet says what to do.
+	await expect(
+		sheetOf(page).getByText('Не удалось удалить фото — уберите его ещё раз или примите с ним')
+	).toBeVisible();
+	await expect(sheetOf(page)).toBeVisible();
+	await expect(photoTilesOf(page)).toHaveCount(2);
+	expect(orders).toEqual([]);
+
+	// «Принять» again takes what is shown.
+	await page.unroute(refused);
+	await sheetOf(page)
+		.getByRole('button', { name: /^Принять/ })
+		.click();
+	const id = await acceptedNumber(page);
+	const photos = (await (await request.get(`/api/v1/orders/${id}/attachments`)).json()) as {
+		name: string;
+	}[];
+	expect(photos.map((p) => p.name.replace(/\..*$/, '')).sort()).toEqual(['keep', 'stays']);
+});
+
 test('N right after «Принять» opens the next intake, though suggestions were open in the sheet', async ({
 	page
 }) => {

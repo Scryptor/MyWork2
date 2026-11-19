@@ -1,7 +1,7 @@
 import type { ErrorBody } from '$api/ErrorBody';
 import type { ErrorCode } from '$api/ErrorCode';
 import { ru } from '#lib/i18n/ru.js';
-import { getToken, loseSession, sessionLost } from './session.js';
+import { followStorage, getToken, loseSession } from './session.js';
 
 type Scalar = string | number | boolean;
 export type Query = Record<string, Scalar | null | undefined | (string | number)[]>;
@@ -60,11 +60,12 @@ async function readBody(response: Response): Promise<unknown> {
 }
 
 /**
- * The headers of a request of this page's session. When another tab has ended that session (the
- * storage holds no token or another one) nothing is sent: the session ends here too.
+ * The headers of a request of this page's session, with what another tab did to it: a new token of the
+ * same user is taken up; when that tab ended the session (signed out, or in as another user) nothing is
+ * sent and the session ends here too.
  */
 function authHeaders(): Headers {
-	if (sessionLost()) {
+	if (followStorage()) {
 		loseSession();
 		throw new ApiError(401, 'unauthenticated', ru.auth.sessionChanged, null);
 	}

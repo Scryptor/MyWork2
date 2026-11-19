@@ -1,5 +1,5 @@
 import { deflateSync } from 'node:zlib';
-import type { APIRequestContext } from '@playwright/test';
+import type { APIRequestContext, Page } from '@playwright/test';
 import type { Attachment } from '$api/Attachment';
 import type { Client } from '$api/Client';
 import type { ClientPatch } from '$api/ClientPatch';
@@ -13,6 +13,22 @@ import type { Status } from '$api/Status';
 /** Test password of the administrator created by `server.mjs --admin` (fictional). */
 export const E2E_ADMIN_PASSWORD = 'e2e-test-password';
 export const E2E_ADMIN_LOGIN = 'e2e-admin';
+
+/**
+ * The token of the page's session as the program stores it (`mw.session`: `{ token, user_id }`, in
+ * the tab's own storage first); null when nobody is signed in.
+ */
+export async function sessionToken(page: Page): Promise<string | null> {
+	return page.evaluate(() => {
+		const raw = sessionStorage.getItem('mw.session') ?? localStorage.getItem('mw.session');
+		if (raw === null) return null;
+		try {
+			return (JSON.parse(raw) as { token: string }).token;
+		} catch {
+			return raw;
+		}
+	});
+}
 
 let counter = 0;
 

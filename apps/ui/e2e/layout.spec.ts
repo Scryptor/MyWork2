@@ -7,6 +7,7 @@ import {
 	E2E_ADMIN_LOGIN,
 	E2E_ADMIN_PASSWORD,
 	patchOrder,
+	sessionToken,
 	statusId,
 	uniq,
 	uniqPhone
@@ -493,7 +494,7 @@ for (const c of SCREEN_CASES) {
 				// Signed in: the user's menu in the top bar; a phone keeps it in «Ещё».
 				if (c.phone) await expect(bottomNav(page)).toBeVisible();
 				else await expect(page.getByRole('button', { name: /Администратор/ })).toBeVisible();
-				const token = await page.evaluate(() => localStorage.getItem('mw.session'));
+				const token = await sessionToken(page);
 				const created = await request.post('/api/v1/service-points', {
 					data: { name: `ТЦ «Галерея», 2 этаж, ${uniq('Обход')}` },
 					headers: { Authorization: `Bearer ${token}` }

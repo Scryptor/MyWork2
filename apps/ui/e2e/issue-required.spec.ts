@@ -10,7 +10,14 @@ import {
 } from '@playwright/test';
 import type { AppSettings } from '$api/AppSettings';
 import type { Order } from '$api/Order';
-import { createOrder, E2E_ADMIN_LOGIN, E2E_ADMIN_PASSWORD, statusId, uniq } from './support/api';
+import {
+	createOrder,
+	E2E_ADMIN_LOGIN,
+	E2E_ADMIN_PASSWORD,
+	sessionToken,
+	statusId,
+	uniq
+} from './support/api';
 
 // «Обязательно при выдаче» (spec 6.8): the setting is global and would stop other specs from issuing, so
 // this one runs on the server with the administrator (no other spec issues there), one engine at a time
@@ -72,9 +79,7 @@ async function withSetting(
 		await page.getByLabel('Пароль').fill(E2E_ADMIN_PASSWORD);
 		await page.getByRole('button', { name: 'Войти' }).click();
 		await expect(page).toHaveURL(/\/orders$/);
-		const token = await page.evaluate(
-			() => localStorage.getItem('mw.session') ?? sessionStorage.getItem('mw.session')
-		);
+		const token = await sessionToken(page);
 		api = await playwright.request.newContext({
 			baseURL: origin,
 			extraHTTPHeaders: token ? { Authorization: `Bearer ${token}` } : {}

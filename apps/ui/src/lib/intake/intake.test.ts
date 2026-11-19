@@ -178,4 +178,21 @@ describe('intake', () => {
 		req.resolve(2);
 		await expect(sent).resolves.toMatchObject({ ok: true, value: 2 });
 	});
+
+	it('a ready that says no stops the order: nothing is sent, the sheet can be used again', async () => {
+		intake.open();
+		const send = vi.fn(() => Promise.resolve(1));
+		await expect(intake.submit(send, { ready: async () => false })).resolves.toBeNull();
+		expect(send).not.toHaveBeenCalled();
+		expect(intake.submitting).toBe(false);
+		expect(intake.uploading).toBe(false);
+		expect(intake.formLocked).toBe(false);
+		expect(intake.isOpen).toBe(true);
+		// «Принять» again with what is shown goes.
+		await expect(intake.submit(send, { ready: async () => true })).resolves.toMatchObject({
+			ok: true,
+			value: 1
+		});
+		expect(send).toHaveBeenCalledOnce();
+	});
 });
