@@ -5,7 +5,7 @@ use axum::Router;
 use mw_api::ApiConfig;
 use mw_core::{Core, SystemClock};
 use sea_orm::DatabaseConnection;
-use std::future::Future;
+use std::future::{Future, IntoFuture};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -16,6 +16,8 @@ pub struct Server {
     db: DatabaseConnection,
     listener: TcpListener,
     router: Router,
+    /// Сколько после сигнала остановки ждать запросы, которые ещё идут.
+    grace: std::time::Duration,
 }
 
 /// Подключает базу и применяет миграции; сообщение ошибки не содержит адреса базы.
@@ -120,6 +122,7 @@ impl Server {
             db,
             listener,
             router,
+            grace: mw_api::REQUEST_TIMEOUT,
         })
     }
 
@@ -134,7 +137,18 @@ impl Server {
         &self.core
     }
 
-    /// Обслуживает запросы до сигнала `shutdown`, затем закрывает пул базы.
+    /// Сколько после сигнала остановки ждать запросы, которые ещё идут (по умолчанию —
+    /// `mw_api::REQUEST_TIMEOUT`); короче — для тестов.
+    pub fn with_shutdown_grace(mut self, grace: std::time::Duration) -> Server {
+        self.grace = grace;
+        self
+    }
+
+    /// Обслуживает запросы до сигнала `shutdown`, затем закрывает пул базы. После сигнала новые
+    /// соединения не принимаются, а запросы, которые ещё идут, получают `with_shutdown_grace` (30 с):
+    /// иначе остановка ждала бы без конца запрос без ограничения времени (проверку папки MyWork 2), и
+    /// закрытая программа держала бы папку данных. Фоновые задачи (`Core::wait_background`) это не
+    /// затрагивает.
     pub async fn serve(
         self,
         shutdown: impl Future<Output = ()> + Send + 'static,
@@ -144,18 +158,39 @@ impl Server {
             db,
             listener,
             router,
+            grace,
         } = self;
         let cleanup = spawn_draft_cleanup(core.clone());
-        let result = axum::serve(
+        let (signalled, on_signal) = tokio::sync::oneshot::channel::<()>();
+        let serving = axum::serve(
             listener,
             router.into_make_service_with_connect_info::<SocketAddr>(),
         )
-        .with_graceful_shutdown(shutdown)
-        .await
-        .map_err(|source| ServerError::Io {
-            context: "ошибка сервера".into(),
-            source,
-        });
+        .with_graceful_shutdown(async move {
+            shutdown.await;
+            let _ = signalled.send(());
+        })
+        .into_future();
+        let deadline = async move {
+            match on_signal.await {
+                Ok(()) => tokio::time::sleep(grace).await,
+                // Сервер завершился сам, без сигнала.
+                Err(_) => std::future::pending().await,
+            }
+        };
+        let result = tokio::select! {
+            served = serving => served.map_err(|source| ServerError::Io {
+                context: "ошибка сервера".into(),
+                source,
+            }),
+            () = deadline => {
+                tracing::warn!(
+                    "запросы не закончились за {} с после сигнала остановки: сервер останавливается без них",
+                    grace.as_secs()
+                );
+                Ok(())
+            }
+        };
         cleanup.abort();
         // Перенос файлов черновиков, начатый до остановки, доходит до конца раньше закрытия БД.
         // Импорт до начала записи в базу отменяется; срок `BACKGROUND_WAIT` действует только на это.

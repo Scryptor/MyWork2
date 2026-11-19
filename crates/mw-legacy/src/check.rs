@@ -121,6 +121,11 @@ async fn check(source: &Path, data_dir: &Path, replace: bool) -> Result<FolderCh
     if same_dir(source, data_dir) {
         return Err("Выбрана папка данных MyWork 3, а нужна папка MyWork 2".into());
     }
+    #[cfg(feature = "testing")]
+    {
+        let root = source.to_path_buf();
+        let _ = tokio::task::spawn_blocking(move || crate::testing::pause_check(&root)).await;
+    }
     let scan_source = source.to_path_buf();
     let folder = tokio::task::spawn_blocking(move || folder::scan_folder(&scan_source))
         .await

@@ -4,11 +4,10 @@ use mw_server::{Cli, init_logging, run};
 #[tokio::main]
 async fn main() {
     // Код выхода возвращает `main_inner`: охранник журнала внутри неё успевает дописать файл,
-    // а `process::exit` его пропустил бы.
+    // а `process::exit` его пропустил бы. Выход — `process::exit` и при успехе: рантайм при сбросе
+    // ждал бы без конца блокирующую работу запроса, оставленного остановкой (`Server::serve`).
     let code = main_inner().await;
-    if code != 0 {
-        std::process::exit(code);
-    }
+    std::process::exit(code);
 }
 
 async fn main_inner() -> i32 {

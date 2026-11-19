@@ -47,8 +47,8 @@ use state::{AppState, ImportJobs, Limits};
 pub const API_VERSION: u32 = 1;
 /// Размер страницы списков по умолчанию.
 pub const DEFAULT_PAGE_LIMIT: u64 = 50;
-/// Наибольшее время обработки запроса.
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+/// Наибольшее время обработки запроса; столько же остановка сервера ждёт запросы, которые ещё идут.
+pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 /// Наибольший размер тела запроса.
 const BODY_LIMIT: usize = 1 << 20;
 

@@ -394,3 +394,59 @@ async fn import_interrupted_before_placing_files_is_finished_at_start() {
         }
     }
 }
+
+/// Остановка не ждёт без конца запрос, который ещё идёт (проверка папки MyWork 2 не ограничена временем
+/// запроса): после сигнала у него `with_shutdown_grace` (в работе — 30 с), затем сервер останавливается,
+/// база закрывается, и замок папки отпускает тот, кто сервер поднял.
+#[tokio::test(flavor = "multi_thread")]
+async fn shutdown_gives_a_request_in_flight_a_deadline_on_every_backend() {
+    use mw_legacy::fixture::{FixtureOptions, FixtureVersion, write_fixture};
+    use std::time::Instant;
+
+    for (label, db) in mw_db::testing::all_backends().await {
+        let src = tempfile::tempdir().unwrap();
+        write_fixture(
+            src.path(),
+            &FixtureOptions {
+                version: FixtureVersion::V32,
+                extra_orders: 0,
+            },
+        )
+        .await
+        .unwrap();
+        let server = Server::start_with_db(&config(temp_dir(label)), db)
+            .await
+            .unwrap()
+            .with_shutdown_grace(Duration::from_millis(300));
+        let addr = server.local_addr();
+        let (tx, stopped) = tokio::sync::oneshot::channel::<()>();
+        let running = tokio::spawn(server.serve(async {
+            let _ = stopped.await;
+        }));
+        let mw_legacy::testing::Hold { reached, release } =
+            mw_legacy::testing::hold_check(src.path());
+        let body = serde_json::json!({ "path": src.path() }).to_string();
+        let request = tokio::spawn(async move {
+            http(addr, "POST", "/api/v1/legacy-import/check", Some(&body)).await
+        });
+        tokio::time::timeout(Duration::from_secs(10), reached)
+            .await
+            .expect("проверка не началась")
+            .unwrap();
+
+        let started = Instant::now();
+        tx.send(()).unwrap();
+        tokio::time::timeout(Duration::from_secs(10), running)
+            .await
+            .expect("остановка ждёт запрос без конца")
+            .unwrap()
+            .unwrap();
+        let took = started.elapsed();
+        assert!(took >= Duration::from_millis(250), "{label}: {took:?}");
+        assert!(took < Duration::from_secs(5), "{label}: {took:?}");
+        assert!(TcpStream::connect(addr).await.is_err(), "{label}");
+        // Проверка отпускается; её соединение уже закрыто.
+        drop(release);
+        request.abort();
+    }
+}
