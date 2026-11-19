@@ -70,6 +70,56 @@ test('a duplicate in another case is refused, counts and rename follow the order
 	expect((await fetchOrder(request, order.id)).brand).toBe(`Beta-${id}`);
 });
 
+test('while a rename runs, Esc and a click outside do not close its window', async ({
+	page,
+	request
+}) => {
+	const id = uniq();
+	await addDictionaryItem(request, 'brand', `Slow-${id}`);
+	await createOrder(request, { brand: `Slow-${id}` });
+	await openBrands(page);
+	await expect(rowOf(page, `Slow-${id}`)).toContainText('в 1 заказе');
+
+	// The answer waits until the test lets it go.
+	let release!: () => void;
+	const held = new Promise<void>((r) => (release = r));
+	let arrived!: () => void;
+	const sent = new Promise<void>((r) => (arrived = r));
+	await page.route('**/api/v1/dictionary-items/*/rename', async (route) => {
+		arrived();
+		await held;
+		await route.continue();
+	});
+
+	await rowOf(page, `Slow-${id}`)
+		.getByRole('button', { name: `Slow-${id}`, exact: true })
+		.click();
+	const edit = page.getByRole('textbox', { name: `Значение „Slow-${id}“` });
+	await edit.fill(`Fast-${id}`);
+	await edit.press('Enter');
+	const dialog = page.getByRole('dialog', { name: `Переименовать „Slow-${id}“ в „Fast-${id}“` });
+	await dialog.getByRole('button', { name: 'Переименовать' }).click();
+	await sent;
+
+	// A dismissible dialog would close a frame or two later: wait for them, then look.
+	const frames = () =>
+		page.evaluate(
+			() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null))))
+		);
+	await page.keyboard.press('Escape');
+	await frames();
+	await expect(dialog).toHaveAttribute('data-state', 'open');
+	await page.mouse.click(5, 5);
+	await frames();
+	await expect(dialog).toHaveAttribute('data-state', 'open');
+	await expect(dialog.getByRole('button', { name: 'Отмена' })).toBeDisabled();
+
+	release();
+	await expect(dialog).toBeHidden();
+	await expect(page.getByText('Переименовано, изменено 1 заказ')).toBeVisible();
+	await expect(rowOf(page, `Fast-${id}`)).toContainText('в 1 заказе');
+});
+
 test('an unused value is deleted after confirmation; Esc cancels an edit', async ({ page }) => {
 	const id = uniq();
 	await openBrands(page);
