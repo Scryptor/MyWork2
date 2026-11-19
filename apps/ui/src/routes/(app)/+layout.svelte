@@ -24,7 +24,7 @@
 	import { ApiError, errorMessage, setUnauthenticatedHandler } from '#lib/api/client.js';
 	import { getClient, listClients } from '#lib/api/clients.js';
 	import { getOrder, listOrders, ordersByBarcode } from '#lib/api/orders.js';
-	import { clearToken } from '#lib/api/session.js';
+	import { clearToken, setSessionLostHandler } from '#lib/api/session.js';
 	import AppSidebar, { ATTENTION_ICONS } from '#lib/app/AppSidebar.svelte';
 	import AppTopBar from '#lib/app/AppTopBar.svelte';
 	import ChangePasswordDialog from '#lib/app/ChangePasswordDialog.svelte';
@@ -82,6 +82,19 @@
 		});
 		return () => setUnauthenticatedHandler(() => {});
 	});
+
+	// Another tab signed out, or in as someone else: this tab's session is over. Its edits are given up
+	// (the token they belong to is closed, and the next one is not this user's), its screens go.
+	$effect(() => {
+		setSessionLostHandler(() => void sessionEnded());
+		return () => setSessionLostHandler(() => {});
+	});
+	async function sessionEnded() {
+		discardQueues();
+		await goto(resolve(loginPath(here())));
+		resetSession();
+		toast.show({ message: ru.auth.sessionChanged });
+	}
 
 	// Signing out (spec 6.11): the edits still on their way go first, under this user's token; what cannot
 	// be sent in 5 s is asked about. Then the token goes, the login page opens, and everything the user

@@ -472,7 +472,8 @@ export const ru = {
 		loginRequired: 'Введите логин',
 		passwordRequired: 'Введите пароль',
 		invalidCredentials: 'Неверный логин или пароль',
-		tooManyAttempts: (secs: number) => `Слишком много попыток. Повторите через ${secs} с`
+		tooManyAttempts: (secs: number) => `Слишком много попыток. Повторите через ${secs} с`,
+		sessionChanged: 'В другой вкладке выполнен выход или вход. Войдите снова'
 	},
 	password: {
 		title: 'Смена пароля',

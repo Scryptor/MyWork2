@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, apiUrl, errorMessage, request, setUnauthenticatedHandler } from './client.js';
-import { clearToken, setToken } from './session.js';
+import { clearToken, getToken, setSessionLostHandler, setToken } from './session.js';
 
 function stubFetch(status: number, body: unknown) {
 	const fn = vi.fn(
@@ -13,7 +13,40 @@ function stubFetch(status: number, body: unknown) {
 afterEach(() => {
 	vi.unstubAllGlobals();
 	clearToken();
+	localStorage.clear();
 	setUnauthenticatedHandler(() => {});
+	setSessionLostHandler(() => {});
+});
+
+describe('a session another tab ended', () => {
+	it('sends nothing, not even under the token of that tab, and ends the session here', async () => {
+		const fn = stubFetch(200, {});
+		const lost = vi.fn();
+		const unauthenticated = vi.fn();
+		setSessionLostHandler(lost);
+		setUnauthenticatedHandler(unauthenticated);
+		setToken('a', true);
+		// Another tab signed out and in as someone else; this page has not heard of it yet.
+		localStorage.setItem('mw.session', 'b');
+		await expect(request('PATCH', '/orders/1', { body: {} })).rejects.toMatchObject({
+			status: 401,
+			code: 'unauthenticated'
+		});
+		expect(fn).not.toHaveBeenCalled();
+		expect(lost).toHaveBeenCalledOnce();
+		// Not the handler of an expired session: it would take the other tab's token from the storage.
+		expect(unauthenticated).not.toHaveBeenCalled();
+		expect(getToken()).toBeNull();
+		expect(localStorage.getItem('mw.session')).toBe('b');
+	});
+
+	it('a page without a session sends no token, though another tab signed in', async () => {
+		const fn = stubFetch(200, {});
+		localStorage.setItem('mw.session', 'b');
+		await request('GET', '/server-info');
+		const init = (fn.mock.calls as unknown as [string, RequestInit][])[0]![1];
+		expect(new Headers(init.headers).get('Authorization')).toBeNull();
+	});
 });
 
 describe('apiUrl', () => {

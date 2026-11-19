@@ -255,3 +255,72 @@ test('an edit goes out before signing out, and the next user sees nothing of the
 	await page.waitForTimeout(1500);
 	expect(writes).toEqual([]);
 });
+
+test('signing out and in as another user in one tab sends the other tab to the login, with nothing sent', async ({
+	page,
+	context,
+	playwright
+}) => {
+	await page.goto('/orders');
+	await signIn(page);
+	await expect(page).toHaveURL(/\/orders$/);
+	const token = (await page.evaluate(() => localStorage.getItem('mw.session'))) as string;
+	const second = await makeSecondUser(playwright, token);
+	const api = await playwright.request.newContext({
+		baseURL: 'http://127.0.0.1:4174',
+		extraHTTPHeaders: { Authorization: `Bearer ${token}` }
+	});
+	const o = await createOrder(api, { model: uniq('M') });
+	await api.dispose();
+
+	// The other tab of the same browser: the same remembered session, the card of the order.
+	const other = await context.newPage();
+	const writes: { url: string; auth: string }[] = [];
+	other.on('request', (r) => {
+		if (r.method() !== 'GET')
+			writes.push({ url: r.url(), auth: r.headers()['authorization'] ?? '' });
+	});
+	await other.goto(`/orders/${o.id}`);
+	const work = other.getByRole('main').getByRole('textbox', { name: 'Выполненные работы' });
+	await expect(work).toBeVisible();
+	// An edit that cannot go now (no connection) waits in the queue of that tab.
+	const order = (url: URL) => url.pathname === `/api/v1/orders/${o.id}`;
+	await other.route(order, (route) =>
+		route.request().method() === 'PATCH' ? route.abort('internetdisconnected') : route.continue()
+	);
+	await work.fill(uniq('Замена'));
+	await expect(other.getByRole('main').getByText('Не сохранено')).toBeVisible();
+
+	// This tab signs out, and another user signs in here.
+	await page.getByRole('button', { name: /Администратор/ }).click();
+	await page.getByRole('menuitem', { name: 'Выйти' }).click();
+	await expect(page).toHaveURL(/\/login$/);
+	await page.getByLabel('Логин').fill(second.login);
+	await page.getByLabel('Пароль').fill(SECOND_PASSWORD);
+	await page.getByRole('button', { name: 'Войти' }).click();
+	await expect(page).toHaveURL(/\/orders$/);
+	const secondToken = await page.evaluate(() => localStorage.getItem('mw.session'));
+	expect(secondToken).not.toBeNull();
+
+	// The other tab asks to sign in: the first user's screens and edits are gone there.
+	await expect(other).toHaveURL(/\/login/);
+	await expect(other.getByRole('button', { name: 'Войти' })).toBeVisible();
+	await expect(other.getByRole('textbox', { name: 'Выполненные работы' })).toHaveCount(0);
+	await expect(other.getByRole('status', { name: 'Уведомления' })).toContainText(
+		'В другой вкладке выполнен выход или вход'
+	);
+	// The connection is back: nothing of the first user goes out under the second one.
+	await other.unroute(order);
+	await other.waitForTimeout(1500);
+	expect(writes.filter((w) => w.auth === `Bearer ${secondToken}`)).toEqual([]);
+	const reader = await playwright.request.newContext({
+		baseURL: 'http://127.0.0.1:4174',
+		extraHTTPHeaders: { Authorization: `Bearer ${secondToken}` }
+	});
+	const history = (await (await reader.get(`/api/v1/orders/${o.id}/history`)).json()) as {
+		items: { user_name: string }[];
+	};
+	expect(history.items.every((e) => e.user_name !== second.display)).toBe(true);
+	await reader.dispose();
+	await other.close();
+});
