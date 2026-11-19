@@ -55,7 +55,7 @@ pub async fn run_import_with_db(
     let options = ImportOptions {
         source: source.to_path_buf(),
         attachments_dir: config.data_dir.join("attachments"),
-        backups_dir: config.data_dir.join("backups"),
+        backups_dir: mw_legacy::backups_dir(&config.data_dir),
         replace,
         progress: None,
         cancel: None,

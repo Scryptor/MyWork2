@@ -100,7 +100,7 @@ pub(super) async fn start_legacy_import(
         ImportOptions {
             source,
             attachments_dir: data_dir.join("attachments"),
-            backups_dir: data_dir.join("backups"),
+            backups_dir: mw_legacy::backups_dir(&data_dir),
             replace: body.replace,
             progress: None,
             cancel: Some(state.core.shutdown_token()),

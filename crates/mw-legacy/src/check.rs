@@ -149,7 +149,7 @@ async fn check(source: &Path, data_dir: &Path, replace: bool) -> Result<FolderCh
     let db = source::read_database(&folder.db_file)
         .await
         .map_err(|e| e.to_string())?;
-    let backups = data_dir.join("backups");
+    let backups = crate::backups_dir(data_dir);
     tokio::task::spawn_blocking(move || {
         // Время подстановок не влияет на числа.
         let conversion = convert::convert(&db, &folder, chrono::NaiveDateTime::default());

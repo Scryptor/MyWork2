@@ -36,6 +36,15 @@ pub use report_files::{REPORTS_DIR, write_report_files};
 pub use source::SchemaSummary;
 pub use view::{ImportReportView, LegacyImportItem, ReportGroup, import_item, report_view};
 
+/// Папка копий перед заменой в папке данных (`<папка данных>/backups`); при замене в ней появляется
+/// `<время>/`. Одна для импорта командой и из интерфейса и для проверки папки, которая её называет.
+pub const BACKUPS_DIR: &str = "backups";
+
+/// `<папка данных>/backups` — см. `BACKUPS_DIR`.
+pub fn backups_dir(data_dir: &Path) -> PathBuf {
+    data_dir.join(BACKUPS_DIR)
+}
+
 /// Что и куда импортировать.
 #[derive(Clone)]
 pub struct ImportOptions {
@@ -394,7 +403,7 @@ mod tests {
             let options = ImportOptions {
                 source: src.path().to_path_buf(),
                 attachments_dir: att.clone(),
-                backups_dir: data.path().join("backups"),
+                backups_dir: backups_dir(data.path()),
                 replace: false,
                 progress: Some(Arc::new(move |stage, percent| {
                     if stage == ImportStage::Writing && percent == 0 {
