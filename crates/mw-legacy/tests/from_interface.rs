@@ -430,6 +430,7 @@ async fn staging_of_an_import_written_to_the_database_survives_cleanup() -> Res 
 }
 
 /// Отчёт без содержимого: для сообщения об ошибке нужен только путь.
+#[cfg(unix)]
 fn dummy_report() -> mw_legacy::ImportReport {
     mw_legacy::ImportReport {
         started_at: chrono::NaiveDateTime::default(),
