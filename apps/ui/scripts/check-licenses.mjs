@@ -3,6 +3,7 @@ import { execSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { spdxAllowed } from './spdx.mjs';
 
 const ALLOWED = new Set([
 	'MIT',
@@ -32,29 +33,15 @@ function isFontPackage(packageName) {
 }
 
 /**
- * @param {string} part
- * @param {string} packageName
- */
-function partAllowed(part, packageName) {
-	const id = part.trim();
-	if (id === 'OFL-1.1') return isFontPackage(packageName);
-	return ALLOWED.has(id);
-}
-
-/**
- * SPDX-выражение: `OR` проходит по любой ветке, ветка с `AND` — только если разрешены все части.
+ * SPDX-выражение (`spdx.mjs`): `AND` сильнее `OR`, скобки соблюдаются; OFL-1.1 — только у шрифтов.
  * @param {string} license
  * @param {string} packageName
  * @returns {boolean}
  */
 export function isAllowed(license, packageName) {
-	const expression = String(license ?? '')
-		.replace(/[()]/g, ' ')
-		.trim();
-	if (!expression) return false;
-	return expression
-		.split(/\s+OR\s+/)
-		.some((branch) => branch.split(/\s+AND\s+/).every((part) => partAllowed(part, packageName)));
+	return spdxAllowed(license, (id) =>
+		id === 'OFL-1.1' ? isFontPackage(packageName) : ALLOWED.has(id)
+	);
 }
 
 /** @param {{ license?: string | { type?: string }, licenses?: Array<string | { type?: string }> }} manifest */

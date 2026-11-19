@@ -1,9 +1,11 @@
 // Лицензии того, что входит в программу для компьютера: обычные зависимости workspace `src-tauri` (без
 // зависимостей сборки и процедурных макросов) на всех трёх ОС. Разрешены лицензии из AGENTS.md; SPDX-выражение
-// проходит, если одна из его веток `OR` разрешена целиком (так проходят двойные лицензии с MIT или Apache).
+// разбирает общий с интерфейсом `apps/ui/scripts/spdx.mjs` (`AND` сильнее `OR`, скобки, `WITH`), так двойные
+// лицензии с MIT или Apache проходят, а `GPL-3.0 AND (MIT OR Apache-2.0)` — нет.
 import { execFileSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { spdxAllowed } from '../../ui/scripts/spdx.mjs';
 
 const TARGETS = [
 	'x86_64-pc-windows-msvc',
@@ -29,19 +31,11 @@ const ALLOWED = new Set([
 ]);
 
 /**
- * @param {string} license SPDX-выражение (`/` старых манифестов — то же, что `OR`)
+ * @param {string | undefined} license SPDX-выражение (`/` старых манифестов — то же, что `OR`)
  * @returns {boolean}
  */
 export function isAllowed(license) {
-	const expression = String(license ?? '')
-		.replace(/[()]/g, ' ')
-		.replace(/\s*\/\s*/g, ' OR ')
-		.replace(/\s+/g, ' ')
-		.trim();
-	if (!expression) return false;
-	return expression
-		.split(/ OR /)
-		.some((branch) => branch.split(/ AND /).every((part) => ALLOWED.has(part.trim())));
+	return spdxAllowed(license, (id) => ALLOWED.has(id));
 }
 
 /** Строки `имя версия|лицензия` обычных зависимостей для одной цели. */
