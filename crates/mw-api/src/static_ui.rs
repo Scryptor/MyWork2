@@ -13,6 +13,7 @@ use axum::extract::Request;
 use axum::http::{HeaderValue, Method, header};
 use axum::response::{IntoResponse, Response};
 use tower::ServiceExt;
+use tower_http::services::fs::ServeFileSystemResponseBody;
 use tower_http::services::{ServeDir, ServeFile};
 
 use crate::error::ApiError;
@@ -54,17 +55,9 @@ async fn serve(files: Files, req: Request) -> Response {
     let in_app = path == "/_app" || path.starts_with("/_app/");
     let req = req.map(Body::new);
     let mut resp = if in_app {
-        let result: Result<_, Infallible> = files.assets.oneshot(req).await;
-        match result {
-            Ok(resp) => resp.map(Body::new),
-            Err(never) => match never {},
-        }
+        serve_with(files.assets, req).await
     } else {
-        let result: Result<_, Infallible> = files.spa.oneshot(req).await;
-        match result {
-            Ok(resp) => resp.map(Body::new),
-            Err(never) => match never {},
-        }
+        serve_with(files.spa, req).await
     };
     if path.starts_with(IMMUTABLE_PREFIX) && resp.status().is_success() {
         resp.headers_mut().insert(
@@ -73,4 +66,19 @@ async fn serve(files: Files, req: Request) -> Response {
         );
     }
     resp
+}
+
+/// Ответ службы раздачи файлов; ошибки у неё не бывает.
+async fn serve_with<S>(service: S, req: Request) -> Response
+where
+    S: tower::Service<
+            Request,
+            Response = Response<ServeFileSystemResponseBody>,
+            Error = Infallible,
+        >,
+{
+    match service.oneshot(req).await {
+        Ok(resp) => resp.map(Body::new),
+        Err(never) => match never {},
+    }
 }
