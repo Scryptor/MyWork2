@@ -156,6 +156,10 @@ export const ru = {
 		noName: 'Без имени',
 		number: (id: number) => `клиент № ${id}`,
 		loadFailed: 'Не удалось открыть клиента',
+		/** The server does not say where a merge went: no link. */
+		gone: 'Клиент удалён или объединён',
+		goneHint:
+			'Такого клиента больше нет. Если его объединили с другим, его заказы у оставшегося клиента',
 		fullName: 'ФИО',
 		phones: 'Телефоны',
 		phone: 'Телефон',
@@ -213,6 +217,13 @@ export const ru = {
 		stale: 'Клиента изменили, пока вы выбирали. Проверьте и объедините снова',
 		done: 'Клиенты объединены',
 		failed: (message: string) => `Клиенты не объединены: ${message}`,
+		/** More numbers than a client may have: the user leaves some out before the merge. */
+		phonesTooMany: (total: number, max: number) =>
+			`Телефонов вместе ${total}, а у клиента их может быть не больше ${max}. Снимите флажки у лишних номеров`,
+		phonesGroup: 'Телефоны после объединения',
+		phoneKeep: (phone: string) => `Оставить номер ${phone}`,
+		phonesLeft: (kept: number, max: number) => `Останется ${kept} из ${max}`,
+		trimFailed: (message: string) => `Номера не сняты, клиенты не объединены: ${message}`,
 		pickerTitle: 'Объединить с…',
 		pickerClient: 'Клиент',
 		pickerPlaceholder: 'ФИО или телефон',
@@ -341,6 +352,7 @@ export const ru = {
 			'Телефон подключается к компьютеру по сети. Включите режим хоста в настройках «Сеть» — он появится в следующих версиях',
 		/** The server keeps no more in a draft. */
 		photoLimit: 'При приёме можно добавить не больше 10 фото',
+		photosSending: 'Заказ принимается — фото сейчас не добавить',
 		photosAccepted: 'Заказ уже принят — фото добавьте в нём',
 		photosUnanswered: 'Пока неясно, принят ли заказ, фото не добавить — нажмите «Принять» ещё раз',
 		work: 'Работа и деньги',
@@ -371,6 +383,8 @@ export const ru = {
 		accept: 'Принять',
 		receiver: (name: string) => `Приёмщик: ${name}`,
 		accepted: (id: number) => `Принят № ${id}`,
+		/** The server had the order from an earlier attempt: nothing new was made. */
+		alreadyAccepted: (id: number) => `Заказ № ${id} уже был принят`,
 		accepting: 'Принимаю…',
 		/** «Принять» waits for the photos still on their way. */
 		uploadingPhotos: 'Загружаю фото…',

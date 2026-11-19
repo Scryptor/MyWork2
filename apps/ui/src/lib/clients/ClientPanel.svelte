@@ -11,7 +11,7 @@
 	import type { Client } from '$api/Client';
 	import type { ClientListItem } from '$api/ClientListItem';
 	import { listDictionary } from '#lib/api/catalogs.js';
-	import { errorMessage } from '#lib/api/client.js';
+	import { ApiError, errorMessage } from '#lib/api/client.js';
 	import { getClient, similarClients } from '#lib/api/clients.js';
 	import { app } from '#lib/app/context.svelte.js';
 	import { isSignIn } from '#lib/app/login.js';
@@ -58,7 +58,7 @@
 		/** Every answer of the server about the client: the list catches up. */
 		onchanged?: (c: Client) => void;
 		/** «Объединить с…» / «Объединить с этим»: the clients to merge (this one and the other). */
-		onmerge?: (ids: number[]) => void;
+		onmerge?: (ids: number[], counts?: Record<number, number>) => void;
 	} = $props();
 
 	const t = ru.client;
@@ -66,6 +66,8 @@
 	/** The client shown, one editor per client; another client gets a new one. */
 	let editor = $state.raw<ClientEditor | null>(null);
 	let loadError = $state<string | null>(null);
+	/** The client is not there: deleted, or merged into another. Asking again cannot help. */
+	let gone = $state(false);
 	let sources = $state.raw<string[]>([]);
 	let similar = $state.raw<ClientListItem[]>([]);
 
@@ -107,11 +109,15 @@
 		if (id === null) {
 			swap(null);
 			loadError = null;
+			gone = false;
 			return;
 		}
 		if (editor?.client.id === id) return;
 		loadError = null;
+		gone = false;
 		similar = [];
+		// The client before is not shown while the next one loads.
+		swap(null);
 		try {
 			const c = await getClient(id);
 			if (mine !== token) return;
@@ -119,6 +125,7 @@
 		} catch (e) {
 			if (mine !== token) return;
 			swap(null);
+			gone = e instanceof ApiError && e.code === 'not_found';
 			loadError = errorMessage(e);
 		}
 	}
@@ -254,7 +261,10 @@
 										>
 									</button>
 									{#if canMerge}
-										<Button size="sm" variant="ghost" onclick={() => onmerge?.([client.id, s.id])}
+										<Button
+											size="sm"
+											variant="ghost"
+											onclick={() => onmerge?.([client.id, s.id], { [s.id]: s.orders_count })}
 											>{t.mergeWithThis}</Button
 										>
 									{/if}
@@ -277,6 +287,9 @@
 				/>
 				<ClientOrders clientId={client.id} onopen={openOrder} />
 			{/key}
+		{:else if gone}
+			<!-- The server does not say where a merge went: the client is deleted or merged, no link. -->
+			<Callout tone="info" title={t.gone}>{t.goneHint}</Callout>
 		{:else if loadError}
 			<Callout tone="danger" title={t.loadFailed}>
 				{loadError}
@@ -313,7 +326,7 @@
 	<MergePicker
 		bind:open={picking}
 		clientId={client.id}
-		onpick={(id) => onmerge?.([client.id, id])}
+		onpick={(id, count) => onmerge?.([client.id, id], { [id]: count })}
 	/>
 {/if}
 

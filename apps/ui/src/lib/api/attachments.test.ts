@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { clearAttachmentCache, attachmentUrl, uploadOrderAttachment } from './attachments.js';
+import {
+	clearAttachmentCache,
+	attachmentUrl,
+	MAX_ORIGINAL_BYTES,
+	uploadOrderAttachment
+} from './attachments.js';
 import { clearToken, setToken } from './session.js';
 
 let seq = 0;
@@ -99,6 +104,46 @@ describe('attachmentUrl', () => {
 		await attachmentUrl(201, 'thumb');
 		expect(revoked).toEqual([second]);
 		expect(revoked).not.toContain(first);
+	});
+});
+
+describe('attachmentUrl limits of the originals', () => {
+	const MB = 1024 * 1024;
+	const big = (mb: number) => new Response(new Uint8Array(mb * MB));
+
+	it('keeps originals by their volume: 100 MB, the oldest go first with their addresses revoked', async () => {
+		expect(MAX_ORIGINAL_BYTES).toBe(100 * MB);
+		stubFetch(() => big(40));
+		const a = await attachmentUrl(1, 'file');
+		const b = await attachmentUrl(2, 'file');
+		expect(revoked).toEqual([]);
+		// 120 MB do not fit: the oldest is revoked, the other two stay.
+		await attachmentUrl(3, 'file');
+		expect(revoked).toEqual([a]);
+		await attachmentUrl(4, 'file');
+		expect(revoked).toEqual([a, b]);
+	});
+
+	it('originals do not push thumbnails out, and thumbnails do not push originals out', async () => {
+		stubFetch((url) => (url.endsWith('/file') ? big(40) : new Response('t')));
+		const original = await attachmentUrl(1, 'file');
+		for (let id = 1; id <= 201; id++) await attachmentUrl(id, 'thumb');
+		// 200 thumbnails at most: one thumbnail went, the original stays.
+		expect(revoked).toHaveLength(1);
+		expect(revoked).not.toContain(original);
+		await attachmentUrl(2, 'file');
+		await attachmentUrl(3, 'file');
+		// Only the original that is least recent goes, no thumbnail.
+		expect(revoked).toHaveLength(2);
+		expect(revoked[1]).toBe(original);
+	});
+
+	it('an original over the whole volume is still served, alone in the cache', async () => {
+		stubFetch(() => big(120));
+		const url = await attachmentUrl(1, 'file');
+		expect(url).toMatch(/^blob:/);
+		expect(revoked).toEqual([]);
+		expect(await attachmentUrl(1, 'file')).toBe(url);
 	});
 });
 

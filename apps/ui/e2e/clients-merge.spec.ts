@@ -171,3 +171,64 @@ test('four clients scroll sideways on a narrow screen and the field labels stay 
 	const last = dialog.getByRole('radio', { name: /^Оставить клиента/ }).last();
 	await expect(last).toBeInViewport();
 });
+
+test('the dialog takes the counts of orders from the list: no request per client', async ({
+	page,
+	request
+}) => {
+	const marker = uniq('c');
+	const { a } = await twins(request, marker);
+	await page.goto(`/clients?q=${marker}&dup=1`);
+	await expect(gridOf(page).getByRole('row').filter({ hasText: marker })).toHaveCount(2);
+	const asked: string[] = [];
+	page.on('request', (r) => {
+		if (r.url().includes('/api/v1/orders') && r.url().includes('client_id=')) asked.push(r.url());
+	});
+	await gridOf(page).getByRole('checkbox', { name: 'Выбрать все видимые' }).click();
+	await page.getByRole('button', { name: 'Объединить', exact: true }).click();
+	const dialog = mergeOf(page);
+	await expect(dialog.getByRole('radio', { name: `Оставить клиента № ${a.id}` })).toBeChecked();
+	await expect(dialog.getByText(/Останется: .* · 2 заказа · /)).toBeVisible();
+	expect(asked).toEqual([]);
+});
+
+test('more than 10 phones together: the dialog says so and the extra ones are unchecked before the merge', async ({
+	page,
+	request
+}) => {
+	const marker = uniq('t');
+	const phones = (n: number) => Array.from({ length: n }, () => ({ phone: uniqPhone(), note: '' }));
+	const a = await createClient(request, {
+		full_name: `Многотелефонный ${marker}`,
+		phones: phones(6)
+	});
+	const b = await createClient(request, {
+		full_name: `Многотелефонный ${marker}`,
+		phones: phones(6)
+	});
+	await page.goto(`/clients?q=${marker}`);
+	await expect(gridOf(page).getByRole('row').filter({ hasText: marker })).toHaveCount(2);
+	await gridOf(page).getByRole('checkbox', { name: 'Выбрать все видимые' }).click();
+	await page.getByRole('button', { name: 'Объединить', exact: true }).click();
+	const dialog = mergeOf(page);
+	await expect(
+		dialog.getByText(/Телефонов вместе 12, а у клиента их может быть не больше 10/)
+	).toBeVisible();
+	const merge = dialog.getByRole('button', { name: 'Объединить', exact: true });
+	await expect(merge).toBeDisabled();
+	const boxes = dialog
+		.getByRole('group', { name: 'Телефоны после объединения' })
+		.getByRole('checkbox');
+	await expect(boxes).toHaveCount(12);
+	await boxes.nth(10).uncheck();
+	await expect(merge).toBeDisabled();
+	await expect(dialog.getByText('Останется 11 из 10')).toBeVisible();
+	await boxes.nth(11).uncheck();
+	await expect(dialog.getByText('Останется 10 из 10')).toBeVisible();
+	await expect(merge).toBeEnabled();
+	await merge.click();
+	await confirmOf(page).getByRole('button', { name: 'Объединить' }).click();
+	await expect(toastsOf(page)).toContainText('Клиенты объединены');
+	const kept = await fetchClient(request, Math.min(a.id, b.id));
+	expect(kept.phones).toHaveLength(10);
+});

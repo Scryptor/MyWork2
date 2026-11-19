@@ -8,6 +8,8 @@ export interface ToastOptions {
 	action?: { label: string; run: () => void | Promise<void> };
 	/** Milliseconds on screen, 6000 by default. */
 	duration?: number;
+	/** Called once when the toast is gone, however it went (timer, button, pushed out, cleared). */
+	onclose?: () => void;
 }
 
 export type ToastItem = ToastOptions & { id: string };
@@ -22,6 +24,7 @@ interface Meta {
 	left: number | null;
 	startedAt: number;
 	handle: ReturnType<typeof setTimeout> | undefined;
+	onclose: (() => void) | undefined;
 }
 
 let items = $state.raw<ToastItem[]>([]);
@@ -40,6 +43,7 @@ function forget(id: string): void {
 	const m = meta.get(id);
 	if (m?.handle !== undefined) clearTimeout(m.handle);
 	meta.delete(id);
+	m?.onclose?.();
 }
 
 /**
@@ -66,7 +70,8 @@ export const toast = {
 				undo: false,
 				left: Number.isFinite(ms) && ms > 0 ? ms : null,
 				startedAt: 0,
-				handle: undefined
+				handle: undefined,
+				onclose: o.onclose
 			};
 			meta.set(id, m);
 			if (!paused) arm(id, m);
@@ -81,8 +86,8 @@ export const toast = {
 		});
 	},
 
-	undoable(message: string, undo: () => void | Promise<void>): string {
-		const id = toast.show({ message, action: { label: ru.common.undo, run: undo } });
+	undoable(message: string, undo: () => void | Promise<void>, onclose?: () => void): string {
+		const id = toast.show({ message, action: { label: ru.common.undo, run: undo }, onclose });
 		const m = meta.get(id);
 		if (m) m.undo = true;
 		return id;

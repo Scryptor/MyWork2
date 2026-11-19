@@ -183,3 +183,70 @@ test('an upload goes on after moving to the next order and tells which order it 
 	).json()) as Attachment[];
 	expect(list).toHaveLength(1);
 });
+
+/** An order with two photos, its card open: the tiles are the photos. */
+async function cardWithTwoPhotos(page: Page, request: Parameters<typeof createOrder>[0]) {
+	const o = await createOrder(request, { model: uniq('У') });
+	await uploadPhoto(request, o.id, tinyPng(21), 'one.png');
+	await uploadPhoto(request, o.id, tinyPng(22), 'two.png');
+	await openCard(page, o.id);
+	await expect(tilesOf(cardOf(page))).toHaveCount(2);
+	return o;
+}
+const onServer = async (request: Parameters<typeof createOrder>[0], id: number): Promise<number> =>
+	((await (await request.get(`/api/v1/orders/${id}/attachments`)).json()) as Attachment[]).length;
+
+async function deleteFirstPhoto(page: Page) {
+	await tilesOf(cardOf(page)).first().click();
+	const viewer = page.getByRole('dialog', { name: 'Просмотр фото' });
+	await viewer.getByRole('button', { name: 'Удалить', exact: true }).click();
+	await page.keyboard.press('Escape');
+	await expect(viewer).toBeHidden();
+}
+
+test('a deleted photo waits 6 s for «Отменить»; then the request goes', async ({
+	page,
+	request
+}) => {
+	await page.clock.install();
+	const o = await cardWithTwoPhotos(page, request);
+	await deleteFirstPhoto(page);
+	await expect(tilesOf(cardOf(page))).toHaveCount(1);
+	await expect(toastsOf(page).getByText('Фото удалено')).toBeVisible();
+	await expect(toastsOf(page).getByRole('button', { name: 'Отменить' })).toBeVisible();
+	// Still on the server while the toast is on screen.
+	expect(await onServer(request, o.id)).toBe(2);
+	await page.clock.fastForward(6500);
+	await expect.poll(() => onServer(request, o.id)).toBe(1);
+	await expect(tilesOf(cardOf(page))).toHaveCount(1);
+});
+
+test('«Отменить» brings the photo back and no DELETE is sent', async ({ page, request }) => {
+	await page.clock.install();
+	const deletes: string[] = [];
+	page.on('request', (r) => {
+		if (r.method() === 'DELETE' && r.url().includes('/attachments/')) deletes.push(r.url());
+	});
+	const o = await cardWithTwoPhotos(page, request);
+	await deleteFirstPhoto(page);
+	await expect(tilesOf(cardOf(page))).toHaveCount(1);
+	await toastsOf(page).getByRole('button', { name: 'Отменить' }).click();
+	await expect(tilesOf(cardOf(page))).toHaveCount(2);
+	await page.clock.fastForward(10_000);
+	await page.waitForTimeout(300);
+	expect(deletes).toEqual([]);
+	expect(await onServer(request, o.id)).toBe(2);
+});
+
+test('leaving the page sends the waiting deletion at once (keepalive)', async ({
+	page,
+	request
+}) => {
+	const o = await cardWithTwoPhotos(page, request);
+	await deleteFirstPhoto(page);
+	await expect(tilesOf(cardOf(page))).toHaveCount(1);
+	expect(await onServer(request, o.id)).toBe(2);
+	// A real page unload: `pagehide` sends the request before the 6 s are over.
+	await page.goto('/orders');
+	await expect.poll(() => onServer(request, o.id)).toBe(1);
+});

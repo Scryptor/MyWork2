@@ -21,14 +21,15 @@
 		open: boolean;
 		/** The client of the panel: not offered. */
 		clientId: number;
-		onpick: (otherId: number) => void;
+		/** The other client, with the number of their orders the search has already shown. */
+		onpick: (otherId: number, ordersCount: number) => void;
 	} = $props();
 
 	const t = ru.merge;
 	let text = $state('');
-	let found = $state.raw<{ value: string; hint?: string; id: number }[]>([]);
+	let found = $state.raw<{ value: string; hint?: string; id: number; count: number }[]>([]);
 	/** Every label offered so far and its client: a label typed or picked is known even after a new search. */
-	let known = $state.raw(new Map<string, number>());
+	let known = $state.raw(new Map<string, { id: number; count: number }>());
 	const picked = $derived(known.get(text) ?? null);
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	let token = 0;
@@ -59,10 +60,14 @@
 						.filter((c) => c.id !== clientId)
 						.map((c) => ({
 							id: c.id,
+							count: c.orders_count,
 							value: `${displayName(c.full_name) || ru.client.noName} · ${ru.client.number(c.id)}`,
 							hint: phonesText(c.phones) || undefined
 						}));
-					known = new Map([...known, ...found.map((f) => [f.value, f.id] as const)]);
+					known = new Map([
+						...known,
+						...found.map((f) => [f.value, { id: f.id, count: f.count }] as const)
+					]);
 				},
 				() => {
 					// No suggestions without an answer.
@@ -78,9 +83,9 @@
 
 	function next() {
 		if (picked === null) return;
-		const id = picked;
+		const { id, count } = picked;
 		open = false;
-		onpick(id);
+		onpick(id, count);
 	}
 	$effect(() => {
 		if (open && picked !== null) return submitShortcut(next);

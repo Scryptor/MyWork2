@@ -10,7 +10,7 @@ import type { OrderSummary } from '$api/OrderSummary';
 import type { OrderValueField } from '$api/OrderValueField';
 import type { HistoryQuery } from '$api/HistoryQuery';
 import type { StatusChange } from '$api/StatusChange';
-import { request } from './client.js';
+import { request, requestWithHeaders } from './client.js';
 
 export const listOrders = (q: OrderListQuery, signal?: AbortSignal) =>
 	request<OrderPage>('GET', '/orders', { query: q, signal });
@@ -27,8 +27,14 @@ export const changeStatus = (id: number, version: number, change: StatusChange) 
 export const issueOrder = (id: number, version: number) =>
 	request<Order>('POST', `/orders/${id}/issue`, { query: { version } });
 
-export const createOrder = (n: NewOrder, signal?: AbortSignal) =>
-	request<Order>('POST', '/orders', { body: n, signal });
+/** `replayed`: the server answered an attempt that had already made this order (`X-MW-Replayed: 1`). */
+export async function createOrder(
+	n: NewOrder,
+	signal?: AbortSignal
+): Promise<{ order: Order; replayed: boolean }> {
+	const { data, headers } = await requestWithHeaders<Order>('POST', '/orders', { body: n, signal });
+	return { order: data, replayed: headers.get('X-MW-Replayed') === '1' };
+}
 
 export const ordersByBarcode = (code: string) =>
 	request<OrderListItem[]>('GET', '/orders/by-barcode', { query: { code } });

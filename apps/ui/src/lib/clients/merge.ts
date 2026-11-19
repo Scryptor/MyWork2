@@ -4,6 +4,9 @@ import type { ClientPhone } from '$api/ClientPhone';
 import type { MergeClients } from '$api/MergeClients';
 import { phoneKey } from '#lib/format/phone.js';
 
+/** How many phones a client may have: the server's `MAX_CLIENT_PHONES`. */
+export const MAX_CLIENT_PHONES = 10;
+
 /** A client with the number of their orders (the target is the one with more). */
 export type MergeClient = Client & { orders_count: number };
 
@@ -65,6 +68,32 @@ export function mergedPhones(clients: readonly Client[], targetId: number): Clie
 		}
 	}
 	return out;
+}
+
+/** The joined numbers without those the user unchecked (`dropped`: their `phoneKey`s). */
+export function keptMergedPhones(
+	clients: readonly Client[],
+	targetId: number,
+	dropped: ReadonlySet<string>
+): ClientPhone[] {
+	return mergedPhones(clients, targetId).filter((p) => !dropped.has(phoneKey(p.phone)));
+}
+
+/**
+ * The merge takes every number of every client: to leave some out they go from their clients first.
+ * The clients that have unchecked numbers, with the numbers they keep.
+ */
+export function phonesToTrim(
+	clients: readonly Client[],
+	dropped: ReadonlySet<string>
+): { id: number; version: number; phones: ClientPhone[] }[] {
+	return clients
+		.filter((c) => c.phones.some((p) => dropped.has(phoneKey(p.phone))))
+		.map((c) => ({
+			id: c.id,
+			version: c.version,
+			phones: c.phones.filter((p) => !dropped.has(phoneKey(p.phone)))
+		}));
 }
 
 /** The choice after the clients were read again: values the user picked stay while their client is there. */

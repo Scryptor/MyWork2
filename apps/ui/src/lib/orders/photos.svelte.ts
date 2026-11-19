@@ -11,6 +11,7 @@ import {
 	uploadOrderAttachment
 } from '#lib/api/attachments.js';
 import { ApiError, errorMessage } from '#lib/api/client.js';
+import { undo } from '#lib/app/undo.svelte.js';
 import { countLabel } from '#lib/format/plural.js';
 import { ru } from '#lib/i18n/ru.js';
 import { toast } from '#lib/ui/toast/toast.svelte.js';
@@ -23,7 +24,8 @@ export interface MediaApi<K = number> {
 	list: (owner: K) => Promise<Attachment[]>;
 	upload: (owner: K, file: File) => Promise<Attachment>;
 	caption: (id: number, caption: string) => Promise<Attachment>;
-	remove: (id: number) => Promise<void>;
+	/** `keepalive`: sent as the page is left. */
+	remove: (id: number, keepalive?: boolean) => Promise<void>;
 }
 
 const orderApi: MediaApi<number> = {
@@ -62,6 +64,26 @@ export function limitPhotos(
 	return files.slice(0, fit);
 }
 
+/**
+ * What may be added to a draft: the room (`max` photos in all) and the moments when nothing may be
+ * (`locked` says why). «Повторить» of a failed upload asks it again, as the file was only picked then.
+ */
+export interface DraftGuard {
+	max: number;
+	/** Shown when there is no room. */
+	limitMessage: string;
+	/** Why nothing may be added now; null when it may. */
+	locked: () => string | null;
+}
+
+/** Deletions waiting for their toast to go: the page being left sends them at once. */
+// eslint-disable-next-line svelte/prefer-svelte-reactivity -- bookkeeping, nothing renders it
+const waiting = new Set<(keepalive: boolean) => Promise<void>>();
+if (typeof window !== 'undefined')
+	window.addEventListener('pagehide', () => {
+		for (const commit of [...waiting]) void commit(true);
+	});
+
 /** What an instance that was left says about itself: whose uploads these are. */
 interface Detached {
 	/** A message about the owner the user has left. */
@@ -70,7 +92,7 @@ interface Detached {
 	added: (what: string) => string;
 }
 
-function createMedia<K>(owner: K, api: MediaApi<K>, left?: Detached) {
+function createMedia<K>(owner: K, api: MediaApi<K>, left?: Detached, guard?: DraftGuard) {
 	let attachments = $state.raw<Attachment[]>([]);
 	let pending = $state.raw<PendingUpload[]>([]);
 	let loading = $state(false);
@@ -82,6 +104,8 @@ function createMedia<K>(owner: K, api: MediaApi<K>, left?: Detached) {
 	let seq = 0;
 	/** The owner is no longer shown: uploads go on and tell about themselves by toasts. */
 	let detached = false;
+	/** The owner is gone for good (another draft, cancelled): nothing goes to it any more. */
+	let retired = false;
 	let added = { photo: 0, file: 0 };
 	/** Uploaded while the list was on its way: the list does not know them yet. */
 	let arrived: Attachment[] = [];
@@ -116,7 +140,7 @@ function createMedia<K>(owner: K, api: MediaApi<K>, left?: Detached) {
 			toast.show({
 				message: about(ru.media.uploadOffline(file.name)),
 				tone: 'danger',
-				action: { label: ru.common.retry, run: () => add([file]) }
+				action: { label: ru.common.retry, run: () => retry(file) }
 			});
 			return;
 		}
@@ -125,6 +149,25 @@ function createMedia<K>(owner: K, api: MediaApi<K>, left?: Detached) {
 			message: about(ru.media.uploadFailed(file.name, why || ru.api.failed)),
 			tone: 'danger'
 		});
+	}
+
+	/** «Повторить»: the file goes again if the owner still takes it, as when it was first picked. */
+	function retry(file: File): Promise<void> {
+		if (retired) return Promise.resolve();
+		const why = guard?.locked();
+		if (why) {
+			toast.show({ message: why });
+			return Promise.resolve();
+		}
+		if (guard) {
+			const here = attachments.filter((a) => a.kind === 'photo').length;
+			const coming = pending.filter((p) => p.photo).length;
+			if (file.type.startsWith('image/') && here + coming >= guard.max) {
+				toast.show({ message: guard.limitMessage });
+				return Promise.resolve();
+			}
+		}
+		return add([file]);
 	}
 
 	async function send(file: File, tile: PendingUpload): Promise<void> {
@@ -157,6 +200,11 @@ function createMedia<K>(owner: K, api: MediaApi<K>, left?: Detached) {
 	function detach(): void {
 		detached = true;
 		if (pending.length === 0) added = { photo: 0, file: 0 };
+	}
+
+	/** The owner is left for good: late retries do nothing. */
+	function retire(): void {
+		retired = true;
 	}
 
 	/** Resolves once the list and the uploads queued so far are done or have failed. */
@@ -192,21 +240,47 @@ function createMedia<K>(owner: K, api: MediaApi<K>, left?: Detached) {
 		}
 	}
 
-	async function remove(id: number): Promise<void> {
+	/**
+	 * The tile goes at once; «Фото удалено · Отменить» for 6 s. The request goes when the toast is gone
+	 * (or the page is left, with `keepalive`); «Отменить» puts the tile back without any request.
+	 */
+	function remove(id: number): Promise<void> {
 		const index = attachments.findIndex((a) => a.id === id);
 		const before = attachments[index];
-		if (!before) return;
+		if (!before) return Promise.resolve();
 		attachments = attachments.filter((a) => a.id !== id);
-		try {
-			await api.remove(id);
-			toast.show({
-				message: about(before.kind === 'file' ? ru.media.fileDeleted : ru.media.photoDeleted)
-			});
-		} catch (e) {
+		let settled = false;
+		const restore = () => {
+			if (attachments.some((a) => a.id === id)) return;
 			const at = Math.min(index, attachments.length);
 			attachments = [...attachments.slice(0, at), before, ...attachments.slice(at)];
-			toast.show({ message: about(errorMessage(e)), tone: 'danger' });
-		}
+		};
+		const commit = async (keepalive: boolean): Promise<void> => {
+			if (settled) return;
+			settled = true;
+			waiting.delete(commit);
+			try {
+				await (keepalive ? api.remove(id, true) : api.remove(id));
+			} catch (e) {
+				// Already gone is what was wanted.
+				if (e instanceof ApiError && e.status === 404) return;
+				restore();
+				toast.show({ message: about(errorMessage(e)), tone: 'danger' });
+			}
+		};
+		waiting.add(commit);
+		undo.push(
+			about(before.kind === 'file' ? ru.media.fileDeleted : ru.media.photoDeleted),
+			async () => {
+				if (settled) return;
+				settled = true;
+				waiting.delete(commit);
+				restore();
+			},
+			// The button and Ctrl/⌘+Z dismiss the toast first and undo right after: the undo wins.
+			() => queueMicrotask(() => void commit(false))
+		);
+		return Promise.resolve();
 	}
 
 	void reload();
@@ -230,6 +304,7 @@ function createMedia<K>(owner: K, api: MediaApi<K>, left?: Detached) {
 		add,
 		idle,
 		detach,
+		retire,
 		caption,
 		remove,
 		reload
@@ -250,6 +325,10 @@ export function createOrderMedia(orderId: number, api: MediaApi<number> = orderA
  * The photos of an intake draft, kept on the server under its key until the order is accepted. The sheet
  * keeps the instance while closed: uploads go on and show again at the next opening.
  */
-export function createDraftMedia(key: string, api: MediaApi<string> = draftApi): Media {
-	return createMedia(key, api);
+export function createDraftMedia(
+	key: string,
+	api: MediaApi<string> = draftApi,
+	guard?: DraftGuard
+): Media {
+	return createMedia(key, api, undefined, guard);
 }

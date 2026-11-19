@@ -42,6 +42,7 @@
 		newDraftKey,
 		parseDraft,
 		photoLock,
+		readRecord,
 		startsAnotherOrder,
 		toNewOrder,
 		withPrefill,
@@ -49,7 +50,7 @@
 		type RequiredKey
 	} from './draft.js';
 	import IntakeAside from './IntakeAside.svelte';
-	import IntakePhotos from './IntakePhotos.svelte';
+	import IntakePhotos, { MAX_INTAKE_PHOTOS } from './IntakePhotos.svelte';
 	import { intake } from './intake.svelte.js';
 
 	const t = ru.intake;
@@ -123,6 +124,9 @@
 	 */
 	let media = $state.raw<Media | null>(null);
 	let mediaKey = '';
+	/** Keys whose photos need no deletion: sent with an order, or deleted already. */
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- bookkeeping, nothing renders it
+	const settled = new Set<string>();
 	let serverErrors = $state.raw<Partial<Record<FieldKey, string>>>({});
 	/** Money fields holding text that is not an amount: the order is not accepted until they are fixed. */
 	let wrongMoney = $state<Record<MoneyKey, boolean>>({
@@ -148,7 +152,8 @@
 
 	function begin() {
 		// A draft of another user (the device was passed on) is not offered, and goes.
-		const claimed = claimDraft(readStorage(INTAKE_DRAFT_KEY), app.me.user_id);
+		const raw = readStorage(INTAKE_DRAFT_KEY);
+		const claimed = claimDraft(raw, app.me.user_id);
 		if (claimed === null) removeStorage(INTAKE_DRAFT_KEY);
 		else writeStorage(INTAKE_DRAFT_KEY, claimed);
 		const stored = parseDraft(claimed, app.settings, app.statuses);
@@ -163,7 +168,40 @@
 		serverErrors = {};
 		wrongMoney = { estimateFrom: false, estimateTo: false, prepayment: false };
 		loadDictionaries();
+		// The draft of this device was replaced (another client, a draft accepted or of another user, or
+		// the page was loaded again meanwhile): its photos go now, not in a day.
+		const before = storedKey(raw);
+		if (before !== null && before !== draft.key) {
+			if (stored.acceptedAs !== null) settled.add(before);
+			release(before);
+		}
 		photosOf(draft.key);
+	}
+
+	/** The key of a stored draft, if it has one. */
+	function storedKey(json: string | null): string | null {
+		if (json === null) return null;
+		const key = (readRecord(json) as { key?: unknown } | null)?.key;
+		return typeof key === 'string' && key !== '' ? key : null;
+	}
+
+	/**
+	 * The photos of a draft that is left for good go from the server, once the uploads on their way are
+	 * done; no more are added to it. Without a connection the server removes them itself a day later.
+	 */
+	function release(key: string) {
+		const photos = media !== null && mediaKey === key ? media : null;
+		photos?.retire();
+		if (settled.has(key)) return;
+		settled.add(key);
+		void (photos?.idle() ?? Promise.resolve()).then(() => discardDraft(key)).catch(() => {});
+	}
+
+	/** Why photos cannot be added to the draft now (for «Повторить» of a failed upload); null if they can. */
+	function photosBlocked(): string | null {
+		if (intake.submitting) return t.photosSending;
+		const why = photoLock(draft);
+		return why === 'accepted' ? t.photosAccepted : why === 'unanswered' ? t.photosUnanswered : null;
 	}
 
 	/** The photos of the draft with this key, read again from the server. */
@@ -172,12 +210,21 @@
 			void media.reload();
 			return;
 		}
-		media = createDraftMedia(key);
+		media?.retire();
+		media = createDraftMedia(key, undefined, {
+			max: MAX_INTAKE_PHOTOS,
+			limitMessage: t.photoLimit,
+			locked: photosBlocked
+		});
 		mediaKey = key;
 	}
 
 	/** The draft becomes another one (another client, an attempt the server refuses): a new key. */
 	function renew() {
+		const old = draft.key;
+		// An accepted draft's photos are the order's now.
+		if (draft.acceptedAs !== null) settled.add(old);
+		release(old);
 		draft.key = newDraftKey();
 		draft.attempt = null;
 		draft.acceptedAs = null;
@@ -299,9 +346,7 @@
 	function cancel() {
 		// Still waiting for its photos: the order is not sent.
 		intake.callOff();
-		const key = draft.key;
-		const photos = media;
-		void (photos?.idle() ?? Promise.resolve()).then(() => discardDraft(key)).catch(() => {});
+		release(draft.key);
 		discard();
 		intake.close();
 	}
@@ -434,7 +479,9 @@
 			refused(answer.error, answer.current, answer.timedOut, form);
 			return;
 		}
-		const order: Order = answer.value;
+		const { order, replayed } = answer.value;
+		// The photos of the draft went with the order.
+		settled.add(form.key);
 		emitOrderChanged(order, 'created');
 		if (!answer.current) {
 			settleLate(sent, order);
@@ -453,7 +500,7 @@
 		await tick();
 		const id = order.id;
 		toast.show({
-			message: t.accepted(id),
+			message: replayed ? t.alreadyAccepted(id) : t.accepted(id),
 			tone: 'success',
 			action: { label: t.open, run: () => void orderPanel.open(id) }
 		});

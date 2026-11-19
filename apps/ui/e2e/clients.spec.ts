@@ -390,3 +390,98 @@ test.describe('on a phone', () => {
 		await expect(page).toHaveURL(new RegExp(`client=${o.client_id}`));
 	});
 });
+
+test('a client that is gone says so, with no «Повторить»', async ({ page }) => {
+	await page.goto('/clients?client=987654321');
+	const panel = page.getByRole('dialog');
+	await expect(panel.getByText('Клиент удалён или объединён')).toBeVisible();
+	await expect(panel.getByRole('button', { name: 'Повторить' })).toHaveCount(0);
+});
+
+test('a client merged into another says so at its old address', async ({ page, request }) => {
+	const phone = uniqPhone();
+	const a = await createClient(request, { full_name: clientName(), phones: [{ phone, note: '' }] });
+	const b = await createClient(request, { full_name: clientName(), phones: [{ phone, note: '' }] });
+	const response = await request.post('/api/v1/clients/merge', {
+		data: {
+			target_id: a.id,
+			target_version: a.version,
+			sources: [{ id: b.id, version: b.version }],
+			full_name: a.full_name,
+			address: '',
+			note: '',
+			source: '',
+			blacklisted: false
+		}
+	});
+	expect(response.ok()).toBe(true);
+	await page.goto(`/clients?client=${b.id}`);
+	const panel = page.getByRole('dialog');
+	await expect(panel.getByText('Клиент удалён или объединён')).toBeVisible();
+	await expect(panel.getByRole('button', { name: 'Повторить' })).toHaveCount(0);
+});
+
+test('the panel does not show the client before while the next one loads', async ({
+	page,
+	request
+}) => {
+	const marker = uniq('s');
+	const first = `Первая ${marker}`;
+	const second = `Вторая ${marker}`;
+	await createClient(request, { full_name: first });
+	const b = await createClient(request, { full_name: second });
+	await page.goto(`/clients?q=${marker}`);
+	await rowsOf(page, first).getByText(first).click();
+	await expect(panelOf(page, first).getByRole('textbox', { name: 'ФИО' })).toHaveValue(first);
+	let release: () => void = () => {};
+	const gate = new Promise<void>((resolve) => (release = resolve));
+	await page.route(`**/api/v1/clients/${b.id}`, async (route) => {
+		await gate;
+		await route.fallback();
+	});
+	await rowsOf(page, second).getByText(second).click();
+	await expect(page).toHaveURL(new RegExp(`client=${b.id}`));
+	// Loading: no field of the first client is on screen.
+	await expect(page.getByRole('dialog').locator('[aria-busy="true"]')).toBeVisible();
+	await expect(page.getByRole('textbox', { name: 'ФИО' })).toHaveCount(0);
+	release();
+	await expect(panelOf(page, second).getByRole('textbox', { name: 'ФИО' })).toHaveValue(second);
+});
+
+test('an order accepted counts in its client row without reading the list again', async ({
+	page,
+	request
+}) => {
+	const name = clientName();
+	await createClient(request, { full_name: name });
+	await page.goto(`/clients?q=${encodeURIComponent(name)}`);
+	await expect(rowsOf(page, name)).toHaveCount(1);
+	const headers = await gridOf(page).getByRole('columnheader').allInnerTexts();
+	const column = headers.findIndex((h) => /Заказы/.test(h));
+	expect(column).toBeGreaterThan(-1);
+	const cell = rowsOf(page, name).getByRole('gridcell').nth(column);
+	await expect(cell).toHaveText('0');
+	await rowsOf(page, name).getByText(name).click();
+	await panelOf(page, name).getByRole('button', { name: 'Новый заказ' }).click();
+	const sheet = sheetOf(page);
+	for (const [label, value] of [
+		[/^Тип устройства/, 'Телефон'],
+		[/^Бренд/, 'Тест'],
+		[/^Модель/, 'Модель 1']
+	] as const) {
+		const box = sheet.getByRole('combobox', { name: label });
+		await box.click();
+		await box.fill(value);
+	}
+	const malfunction = sheet.getByRole('textbox', { name: /^Неисправность/ });
+	await malfunction.click();
+	await malfunction.fill(uniq('Не включается'));
+	const lists: string[] = [];
+	page.on('request', (r) => {
+		if (new URL(r.url()).pathname === '/api/v1/clients') lists.push(r.url());
+	});
+	await sheet.getByRole('button', { name: /^Принять/ }).click();
+	await expect(toastsOf(page).getByText(/^Принят № \d+$/)).toBeVisible();
+	await expect(cell).toHaveText('1');
+	expect(lists).toEqual([]);
+});

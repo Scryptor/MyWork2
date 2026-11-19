@@ -22,29 +22,60 @@ export const discardDraft = (key: string) =>
 export const updateAttachmentCaption = (id: number, caption: string) =>
 	request<Attachment>('PATCH', `/attachments/${id}`, { body: { caption } });
 
-export const deleteAttachment = (id: number) => request<void>('DELETE', `/attachments/${id}`);
+/** `keepalive`: the page is being left, the request still goes. */
+export const deleteAttachment = (id: number, keepalive = false) =>
+	request<void>('DELETE', `/attachments/${id}`, { keepalive });
 
 export type AttachmentVariant = 'thumb' | 'file';
 
-const MAX_CACHED = 200;
-/** Insertion order is recency order: a hit moves the entry to the end, eviction takes the first. */
-const cache = new Map<string, string>();
+/** Thumbnails are small: counted. */
+const MAX_THUMBS = 200;
+/** Originals vary from kilobytes to many megabytes: counted by volume. */
+export const MAX_ORIGINAL_BYTES = 100 * 1024 * 1024;
+
+interface Entry {
+	url: string;
+	size: number;
+}
+/** One cache per kind. Insertion order is recency order: a hit moves the entry to the end, eviction takes the first. */
+const caches: Record<AttachmentVariant, Map<string, Entry>> = {
+	thumb: new Map(),
+	file: new Map()
+};
 const pending = new Map<string, Promise<string>>();
 /** Counts the clears: a picture fetched for an earlier user must not enter the cache of the next one. */
 let generation = 0;
 
+function evict(variant: AttachmentVariant): void {
+	const cache = caches[variant];
+	const over = () => {
+		if (variant === 'thumb') return cache.size > MAX_THUMBS;
+		let total = 0;
+		for (const e of cache.values()) total += e.size;
+		// An original over the whole volume stays alone: the screen showing it still needs the address.
+		return total > MAX_ORIGINAL_BYTES && cache.size > 1;
+	};
+	while (over()) {
+		const oldest = cache.keys().next().value as string;
+		URL.revokeObjectURL(cache.get(oldest)!.url);
+		cache.delete(oldest);
+	}
+}
+
 /**
  * A `blob:` address of an attachment's picture. The files need the token, so an `<img src>` cannot point
- * at the API itself. Answers are cached (200 at most, the least recently used go first and their
- * addresses are revoked); concurrent requests for one picture share a single fetch; failures are not kept.
+ * at the API itself. Answers are cached: 200 thumbnails and 100 MB of originals, apart from each other;
+ * the least recently used go first and their addresses are revoked. Concurrent requests for one picture
+ * share a single fetch; failures are not kept.
  */
 export function attachmentUrl(id: number, variant: AttachmentVariant): Promise<string> {
 	const key = `${id}:${variant}`;
+	const cache = caches[variant];
 	const hit = cache.get(key);
 	if (hit !== undefined) {
 		cache.delete(key);
 		cache.set(key, hit);
-		return Promise.resolve(hit);
+		return Promise.resolve(hit.url);
 	}
 	const running = pending.get(key);
 	if (running) return running;
@@ -57,12 +88,8 @@ export function attachmentUrl(id: number, variant: AttachmentVariant): Promise<s
 				setTimeout(() => URL.revokeObjectURL(url), 0);
 				return url;
 			}
-			cache.set(key, url);
-			while (cache.size > MAX_CACHED) {
-				const oldest = cache.keys().next().value as string;
-				URL.revokeObjectURL(cache.get(oldest)!);
-				cache.delete(oldest);
-			}
+			cache.set(key, { url, size: blob.size });
+			evict(variant);
 			return url;
 		})
 		.finally(() => {
@@ -87,8 +114,10 @@ export async function downloadAttachment(a: Attachment): Promise<void> {
 
 /** Drops every cached picture of the user who signed out (and in tests). */
 export function clearAttachmentCache(): void {
-	for (const url of cache.values()) URL.revokeObjectURL(url);
-	cache.clear();
+	for (const cache of Object.values(caches)) {
+		for (const e of cache.values()) URL.revokeObjectURL(e.url);
+		cache.clear();
+	}
 	pending.clear();
 	generation += 1;
 }

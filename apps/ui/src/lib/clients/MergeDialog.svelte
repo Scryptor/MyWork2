@@ -5,10 +5,11 @@
 	import { untrack } from 'svelte';
 	import type { Client } from '$api/Client';
 	import { ApiError, errorMessage } from '#lib/api/client.js';
-	import { getClient, mergeClients } from '#lib/api/clients.js';
+	import { getClient, mergeClients, updateClient } from '#lib/api/clients.js';
 	import { listOrders } from '#lib/api/orders.js';
 	import { submitShortcut } from '#lib/design/hotkeys.svelte.js';
 	import { countLabel, displayName, formatPhone, plural } from '#lib/format/index.js';
+	import { phoneKey } from '#lib/format/phone.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import Button from '#lib/ui/Button.svelte';
 	import Callout from '#lib/ui/Callout.svelte';
@@ -19,7 +20,10 @@
 	import {
 		defaultChoice,
 		keepChoice,
+		keptMergedPhones,
+		MAX_CLIENT_PHONES,
 		mergedPhones,
+		phonesToTrim,
 		toMergeRequest,
 		type MergeChoice,
 		type MergeClient,
@@ -29,11 +33,14 @@
 	let {
 		open = $bindable(false),
 		ids,
+		counts = {},
 		onmerged
 	}: {
 		open: boolean;
 		/** The clients to merge (2..=10); the dialog reads them itself: it needs their versions. */
 		ids: number[];
+		/** The numbers of orders the list already knows (by client): only the others are asked for. */
+		counts?: Record<number, number>;
 		/** The kept client, as the server returned them. */
 		onmerged: (c: Client) => void;
 	} = $props();
@@ -46,11 +53,16 @@
 	let loadError = $state<string | null>(null);
 	let stale = $state(false);
 	let confirming = $state(false);
+	/** The numbers the user unchecked (`phoneKey`s): they are left out of the merged client. */
+	let dropped = $state.raw(new Set<string>());
 	let token = 0;
 
-	async function readAll(): Promise<MergeClient[]> {
+	/** Numbers of orders from the list; a client changed meanwhile is read again with a fresh count. */
+	async function readAll(known: Record<number, number>): Promise<MergeClient[]> {
 		return Promise.all(
 			ids.map(async (id) => {
+				const have = known[id];
+				if (have !== undefined) return { ...(await getClient(id)), orders_count: have };
 				const [c, orders] = await Promise.all([
 					getClient(id),
 					listOrders({ client_id: id, limit: 1 })
@@ -64,7 +76,7 @@
 		const mine = ++token;
 		loadError = null;
 		try {
-			const read = await readAll();
+			const read = await readAll(keep ? {} : counts);
 			if (mine !== token) return;
 			const previous = choice;
 			clients = read;
@@ -82,6 +94,7 @@
 			choice = null;
 			stale = false;
 			confirming = false;
+			dropped = new Set();
 			void load(false);
 		});
 		return () => {
@@ -114,9 +127,20 @@
 	}
 
 	const request = $derived(clients && choice ? toMergeRequest(choice, clients) : null);
+	/** Every number of the clients joined; more than a client may have: some have to be left out. */
+	const joined = $derived(clients && choice ? mergedPhones(clients, choice.targetId) : []);
+	const kept = $derived(joined.filter((p) => !dropped.has(phoneKey(p.phone))));
+	const tooMany = $derived(kept.length > MAX_CLIENT_PHONES);
+	function keepPhone(phone: string, keep: boolean) {
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity -- a copy that replaces the raw state
+		const next = new Set(dropped);
+		if (keep) next.delete(phoneKey(phone));
+		else next.add(phoneKey(phone));
+		dropped = next;
+	}
 	const summary = $derived.by(() => {
 		if (!clients || !choice || !request) return '';
-		const phones = mergedPhones(clients, choice.targetId);
+		const phones = keptMergedPhones(clients, choice.targetId, dropped);
 		const orders = clients.reduce((sum, c) => sum + c.orders_count, 0);
 		return [
 			`${t.stays}: ${displayName(request.full_name) || ru.client.noName}`,
@@ -135,11 +159,36 @@
 	}
 
 	async function merge() {
-		if (!request) return;
+		if (!request || !clients || tooMany) return;
 		try {
-			const kept = await mergeClients(request);
+			let sent = request;
+			// The numbers left out go from their clients first: the merge takes every number there is.
+			const trims = phonesToTrim(clients, dropped);
+			if (trims.length > 0) {
+				try {
+					// eslint-disable-next-line svelte/prefer-svelte-reactivity -- local, nothing renders it
+					const versions = new Map<number, number>();
+					for (const trim of trims) {
+						const saved = await updateClient(trim.id, trim.version, { phones: trim.phones });
+						versions.set(trim.id, saved.version);
+					}
+					sent = {
+						...request,
+						target_version: versions.get(request.target_id) ?? request.target_version,
+						sources: request.sources.map((s) => ({
+							...s,
+							version: versions.get(s.id) ?? s.version
+						}))
+					};
+				} catch (e) {
+					if (e instanceof ApiError && e.status === 409) throw e;
+					toast.show({ message: t.trimFailed(errorMessage(e)), tone: 'danger' });
+					return;
+				}
+			}
+			const merged = await mergeClients(sent);
 			open = false;
-			onmerged(kept);
+			onmerged(merged);
 		} catch (e) {
 			if (e instanceof ApiError && e.status === 409) {
 				stale = true;
@@ -205,6 +254,25 @@
 					{/each}
 				</div>
 			</div>
+			{#if joined.length > MAX_CLIENT_PHONES}
+				<Callout tone="danger" title={t.phonesTooMany(joined.length, MAX_CLIENT_PHONES)}>
+					<div role="group" aria-label={t.phonesGroup} class="keep-phones">
+						{#each joined as p (phoneKey(p.phone))}
+							<label class="keep-phone">
+								<input
+									type="checkbox"
+									aria-label={t.phoneKeep(formatPhone(p.phone))}
+									checked={!dropped.has(phoneKey(p.phone))}
+									onchange={(e) => keepPhone(p.phone, e.currentTarget.checked)}
+								/>
+								<span class="num">{formatPhone(p.phone)}</span>
+								{#if p.note}<span class="muted">{p.note}</span>{/if}
+							</label>
+						{/each}
+					</div>
+					<p class="left" aria-live="polite">{t.phonesLeft(kept.length, MAX_CLIENT_PHONES)}</p>
+				</Callout>
+			{/if}
 			<p class="summary" aria-live="polite">{summary}</p>
 		</div>
 	{:else if loadError}
@@ -223,7 +291,7 @@
 
 	{#snippet footer()}
 		<Button onclick={() => (open = false)}>{ru.common.cancel}</Button>
-		<Button variant="primary" disabled={!request} onclick={() => (confirming = true)}
+		<Button variant="primary" disabled={!request || tooMany} onclick={() => (confirming = true)}
 			>{t.action}</Button
 		>
 	{/snippet}
@@ -246,6 +314,19 @@
 	}
 	.scroll {
 		overflow-x: auto;
+	}
+	.keep-phones {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-1) var(--space-4);
+	}
+	.keep-phone {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-1-5);
+	}
+	.left {
+		margin: var(--space-1) 0 0;
 	}
 	.grid {
 		display: grid;

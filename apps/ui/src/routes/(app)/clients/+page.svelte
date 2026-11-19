@@ -119,10 +119,10 @@
 			});
 		}
 	});
-	// A new order changes the counts and the last order of its client: the rows come again.
+	// A new order changes the count and the last order of its client: that row only, no page is read again.
 	$effect(() =>
-		onOrderChanged((_o, change) => {
-			if (change === 'created') list.load(query);
+		onOrderChanged((o, change) => {
+			if (change === 'created') list.orderCreated(o);
 		})
 	);
 	const filtered = $derived(view.query.trim() !== '' || view.duplicates);
@@ -148,10 +148,18 @@
 	// The merge: the clients are read afresh by the dialog; the panel's own edits are saved before.
 	const MERGE_MAX = 10;
 	let mergeIds = $state.raw<number[]>([]);
+	let mergeCounts = $state.raw<Record<number, number>>({});
 	let mergeOpen = $state(false);
 	const canMerge = $derived(app.can('clients_merge'));
-	async function startMerge(ids: number[]) {
+	async function startMerge(ids: number[], counts: Record<number, number> = {}) {
 		if (panel && !(await panel.leave())) return;
+		// The counts of orders come from the list rows (or from the search that found the client).
+		const known = { ...counts };
+		for (const id of ids) {
+			const row = list.rows.find((r) => r.id === id);
+			if (known[id] === undefined && row) known[id] = row.orders_count;
+		}
+		mergeCounts = known;
 		mergeIds = ids;
 		mergeOpen = true;
 	}
@@ -337,10 +345,10 @@
 	}}
 	onopenclient={(id) => void openClient(id)}
 	onchanged={(c) => list.replace(c)}
-	onmerge={(ids) => void startMerge(ids)}
+	onmerge={(ids, counts) => void startMerge(ids, counts)}
 />
 
-<MergeDialog bind:open={mergeOpen} ids={mergeIds} onmerged={merged} />
+<MergeDialog bind:open={mergeOpen} ids={mergeIds} counts={mergeCounts} onmerged={merged} />
 
 <style>
 	.clients {

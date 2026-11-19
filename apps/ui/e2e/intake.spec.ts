@@ -2,6 +2,7 @@ import { expect, test, type APIRequestContext, type Page } from '@playwright/tes
 import type { DictionaryItem } from '$api/DictionaryItem';
 import type { OrderPage } from '$api/OrderPage';
 import {
+	createClient,
 	createOrder,
 	deleteOrder,
 	fetchOrder,
@@ -546,7 +547,10 @@ test('«Принять» again after no answer gets the order the server made, n
 
 	await page.keyboard.press(`${await mod(page)}+Enter`);
 	await expect(sheetOf(page)).toBeHidden();
-	const id = await acceptedNumber(page);
+	// The server had the order from the first attempt: the toast says so (X-MW-Replayed).
+	const replayed = toastsOf(page).getByText(/^Заказ № \d+ уже был принят$/);
+	await expect(replayed).toBeVisible();
+	const id = Number((await replayed.textContent())?.replace(/\D/g, ''));
 	late.letGo();
 	expect(late.posts()).toBe(2);
 	expect(await ordersWith(request, marker)).toBe(1);
@@ -817,4 +821,88 @@ test('typing right after opening keeps the caret in WebKit', async ({ page }) =>
 	await expect(sheetOf(page)).toBeVisible();
 	await page.keyboard.type('8921');
 	await expect(phoneOf(page)).toHaveValue('8921');
+});
+
+const draftKey = (page: Page) =>
+	page.evaluate(
+		() =>
+			(JSON.parse(localStorage.getItem('mw.intake.draft') ?? '{}') as { key?: string }).key ?? ''
+	);
+const photosOnServer = async (request: APIRequestContext, key: string) =>
+	((await (await request.get(`/api/v1/intake-drafts/${key}/attachments`)).json()) as unknown[])
+		.length;
+
+test("a draft replaced by another client's intake loses its photos at once, after a reload too", async ({
+	page,
+	request
+}) => {
+	await openIntake(page);
+	await photoZoneOf(page)
+		.locator('input[type=file]')
+		.setInputFiles([png('old.png', 31)]);
+	await expect(photoTilesOf(page)).toHaveCount(1);
+	const key = await draftKey(page);
+	expect(key).not.toBe('');
+	expect(await photosOnServer(request, key)).toBe(1);
+	await page.keyboard.press('Escape');
+	await expect(sheetOf(page)).toBeHidden();
+
+	// The page is loaded again (the draft waits in the storage), then the intake of another client.
+	const name = `Клиентова ${uniq('k')}`;
+	const c = await createClient(request, { full_name: name });
+	await page.goto(`/clients?client=${c.id}`);
+	await page.getByRole('dialog', { name }).getByRole('button', { name: 'Новый заказ' }).click();
+	await expect(sheetOf(page)).toBeVisible();
+	await expect(photoTilesOf(page)).toHaveCount(0);
+	await expect.poll(() => photosOnServer(request, key)).toBe(0);
+});
+
+test('«Повторить» of a failed upload keeps the limit of ten photos', async ({ page, request }) => {
+	await openIntake(page);
+	let fail = true;
+	let posts = 0;
+	await page.route('**/api/v1/intake-drafts/*/attachments?*', async (route) => {
+		if (route.request().method() !== 'POST') return route.fallback();
+		posts += 1;
+		if (fail) return route.abort('failed');
+		await route.fallback();
+	});
+	await photoZoneOf(page)
+		.locator('input[type=file]')
+		.setInputFiles([png('late.png', 40)]);
+	const toast = toastsOf(page).filter({ hasText: 'late.png' });
+	await expect(toast).toContainText('нет связи с сервером');
+	// The ten places are filled meanwhile.
+	fail = false;
+	await photoZoneOf(page)
+		.locator('input[type=file]')
+		.setInputFiles(Array.from({ length: 10 }, (_, i) => png(`p${i}.png`, 50 + i)));
+	await expect(photoTilesOf(page)).toHaveCount(10);
+	const before = posts;
+	await toast.getByRole('button', { name: 'Повторить' }).click();
+	await expect(
+		toastsOf(page).getByText('При приёме можно добавить не больше 10 фото')
+	).toBeVisible();
+	await page.waitForTimeout(200);
+	expect(posts).toBe(before);
+	await expect(photoTilesOf(page)).toHaveCount(10);
+	expect(await photosOnServer(request, await draftKey(page))).toBe(10);
+});
+
+test('an order the server already had says «уже был принят», not «Принят»', async ({ page }) => {
+	await openIntake(page);
+	await phoneOf(page).fill(uniqPhone());
+	await fillByHand(page, uniq('Разбит экран'));
+	// The answer of an earlier attempt: the same order, marked as a replay.
+	await page.route('**/api/v1/orders', async (route) => {
+		if (route.request().method() !== 'POST') return route.fallback();
+		const response = await route.fetch();
+		await route.fulfill({ response, headers: { ...response.headers(), 'x-mw-replayed': '1' } });
+	});
+	await sheetOf(page)
+		.getByRole('button', { name: /^Принять/ })
+		.click();
+	await expect(toastsOf(page).getByText(/^Заказ № \d+ уже был принят$/)).toBeVisible();
+	await expect(toastsOf(page).getByText(/^Принят № \d+$/)).toHaveCount(0);
+	await expect(sheetOf(page)).toBeHidden();
 });

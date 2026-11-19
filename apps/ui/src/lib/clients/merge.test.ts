@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { client } from '#lib/app/fixtures.test-helper.js';
+import { phoneKey } from '#lib/format/phone.js';
 import {
 	defaultChoice,
 	keepChoice,
+	keptMergedPhones,
+	MAX_CLIENT_PHONES,
 	mergedPhones,
+	phonesToTrim,
 	toMergeRequest,
 	type MergeClient
 } from './merge.js';
@@ -100,5 +104,39 @@ describe('keepChoice', () => {
 		expect(keepChoice(chosen, list)).toEqual(chosen);
 		const without = [mc(1, 0), mc(3, 0)];
 		expect(keepChoice(chosen, without)).toEqual(defaultChoice(without));
+	});
+});
+
+describe('the limit of phones', () => {
+	const many = (from: number, n: number) =>
+		Array.from({ length: n }, (_, i) => ({
+			phone: `7900${String(from + i).padStart(7, '0')}`,
+			note: ''
+		}));
+	const a = mc(1, 0, { version: 3, phones: many(1, 6) });
+	const b = mc(2, 0, { version: 5, phones: [...many(100, 3), ...many(1, 1)] });
+
+	it('is the 10 of the server', () => {
+		expect(MAX_CLIENT_PHONES).toBe(10);
+	});
+
+	it('joined numbers without the unchecked ones', () => {
+		expect(mergedPhones([a, b], 1)).toHaveLength(9);
+		const all = mergedPhones([a, b], 1);
+		const key = (n: number) => phoneKey(all[n]!.phone);
+		expect(keptMergedPhones([a, b], 1, new Set([key(0), key(6)]))).toEqual(
+			all.filter((_, i) => i !== 0 && i !== 6)
+		);
+	});
+
+	it('says which clients have to be saved without the unchecked numbers first', () => {
+		const all = mergedPhones([a, b], 1);
+		// A number both have (…0001) goes from both; a number of b only goes from b.
+		const trims = phonesToTrim([a, b], new Set([phoneKey(all[0]!.phone), phoneKey(all[6]!.phone)]));
+		expect(trims.map((t) => [t.id, t.version, t.phones.length])).toEqual([
+			[1, 3, 5],
+			[2, 5, 2]
+		]);
+		expect(phonesToTrim([a, b], new Set())).toEqual([]);
 	});
 });

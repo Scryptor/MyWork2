@@ -70,7 +70,7 @@ async function send(
 	method: Method,
 	path: string,
 	query: Query | undefined,
-	init: { headers: Headers; body?: BodyInit; signal?: AbortSignal }
+	init: { headers: Headers; body?: BodyInit; signal?: AbortSignal; keepalive?: boolean }
 ): Promise<Response> {
 	try {
 		return await fetch(apiUrl(path, query), { method, ...init });
@@ -96,20 +96,35 @@ async function fail(response: Response, method: Method, path: string): Promise<n
 	);
 }
 
-export async function request<T>(
+/** Like `request`, with the answer's headers. */
+export async function requestWithHeaders<T>(
 	method: Method,
 	path: string,
-	opts: { query?: Query; body?: unknown; signal?: AbortSignal } = {}
-): Promise<T> {
+	opts: { query?: Query; body?: unknown; signal?: AbortSignal; keepalive?: boolean } = {}
+): Promise<{ data: T; headers: Headers }> {
 	const headers = authHeaders();
 	let body: string | undefined;
 	// The server takes changing requests only as JSON, an empty one too (a page of another site cannot
 	// send that without CORS).
 	if (method !== 'GET') headers.set('Content-Type', 'application/json');
 	if (opts.body !== undefined && method !== 'GET') body = JSON.stringify(opts.body);
-	const response = await send(method, path, opts.query, { headers, body, signal: opts.signal });
+	// `keepalive`: the request outlives the page (a deletion sent as the page is left).
+	const response = await send(method, path, opts.query, {
+		headers,
+		body,
+		signal: opts.signal,
+		keepalive: opts.keepalive
+	});
 	if (!response.ok) return fail(response, method, path);
-	return (await readBody(response)) as T;
+	return { data: (await readBody(response)) as T, headers: response.headers };
+}
+
+export async function request<T>(
+	method: Method,
+	path: string,
+	opts: { query?: Query; body?: unknown; signal?: AbortSignal; keepalive?: boolean } = {}
+): Promise<T> {
+	return (await requestWithHeaders<T>(method, path, opts)).data;
 }
 
 /** Sends a file as raw bytes (`application/octet-stream`: the one non-JSON type the server takes). */

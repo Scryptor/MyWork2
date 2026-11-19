@@ -27,6 +27,17 @@ describe('apiUrl', () => {
 	});
 });
 
+describe('request keepalive', () => {
+	it('passes keepalive to fetch only when asked', async () => {
+		const fn = stubFetch(204, undefined);
+		await request('DELETE', '/attachments/1', { keepalive: true });
+		await request('DELETE', '/attachments/2');
+		const calls = fn.mock.calls as unknown as [string, RequestInit][];
+		expect(calls[0]![1].keepalive).toBe(true);
+		expect(calls[1]![1].keepalive).toBeFalsy();
+	});
+});
+
 describe('request', () => {
 	it('throws ApiError with the server body', async () => {
 		stubFetch(409, {

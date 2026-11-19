@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { listClients, mergeClients, similarClients, updateClient } from './clients.js';
-import { changeStatus, orderValues, listOrders } from './orders.js';
+import { changeStatus, createOrder, orderValues, listOrders } from './orders.js';
 
 function stubFetch() {
 	const fn = vi.fn(async () => new Response('{}', { status: 200 }));
@@ -60,4 +60,13 @@ it('edits a client with its version; similar and merge have their own paths', as
 	expect(call(fn)[0]).toBe(
 		'/api/v1/clients?query=%D0%B8%D0%B2&sort=orders_count&descending=true&limit=100&offset=0'
 	);
+});
+
+it('createOrder tells a replayed answer (X-MW-Replayed: 1) from a first one', async () => {
+	const answer = (headers: Record<string, string>) =>
+		vi.fn(async () => new Response('{"id":5}', { status: 201, headers }));
+	vi.stubGlobal('fetch', answer({}));
+	await expect(createOrder({} as never)).resolves.toEqual({ order: { id: 5 }, replayed: false });
+	vi.stubGlobal('fetch', answer({ 'X-MW-Replayed': '1' }));
+	await expect(createOrder({} as never)).resolves.toEqual({ order: { id: 5 }, replayed: true });
 });

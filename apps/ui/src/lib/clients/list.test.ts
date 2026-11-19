@@ -2,7 +2,7 @@ import type { ClientListQuery } from '$api/ClientListQuery';
 import type { ClientPage } from '$api/ClientPage';
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '#lib/api/client.js';
-import { client, clientListItem } from '#lib/app/fixtures.test-helper.js';
+import { client, clientListItem, order } from '#lib/app/fixtures.test-helper.js';
 import { PAGE_SIZE, createClientList } from './list.svelte.js';
 
 interface Call {
@@ -113,5 +113,25 @@ describe('createClientList', () => {
 		const now = list.rows;
 		list.replace(client(42));
 		expect(list.rows).toBe(now);
+	});
+
+	it('an order accepted counts in its client row only: no page is asked again', async () => {
+		const { calls, fetchPage } = fakeServer();
+		const list = createClientList(fetchPage);
+		list.load({});
+		const row = clientListItem(7, { orders_count: 3, last_order_at: '2026-11-15T10:24:00' });
+		calls[0]!.answer({ items: [clientListItem(6), row], total: 2 });
+		await flush();
+		const before = list.rows;
+		list.orderCreated(order(900, { client_id: 7, received_at: '2026-11-19T09:00:00' }));
+		expect(calls).toHaveLength(1);
+		expect(list.rows[1]).toEqual({ ...row, orders_count: 4, last_order_at: '2026-11-19T09:00:00' });
+		expect(list.rows[0]).toBe(before[0]);
+		// A client that is not in the list is not added; the total stays.
+		const now = list.rows;
+		list.orderCreated(order(901, { client_id: 42 }));
+		expect(list.rows).toBe(now);
+		expect(list.total).toBe(2);
+		expect(calls).toHaveLength(1);
 	});
 });

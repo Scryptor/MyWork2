@@ -5,6 +5,7 @@ import { toast } from '#lib/ui/toast/toast.svelte.js';
 import {
 	createDraftMedia,
 	createOrderMedia,
+	type DraftGuard,
 	limitPhotos,
 	MAX_PHOTOS_PER_ADD,
 	type MediaApi
@@ -64,6 +65,7 @@ const tooLarge = (message: string) =>
 
 afterEach(() => {
 	for (const t of [...toast.items]) toast.dismiss(t.id);
+	vi.useRealTimers();
 });
 
 describe('createOrderMedia', () => {
@@ -129,25 +131,85 @@ describe('createOrderMedia', () => {
 		expect(m.photos.map((a) => a.name)).toEqual(['a.png']);
 	});
 
-	it('remove takes the tile away at once and the toast says «Фото удалено»', async () => {
-		const gate = deferred<undefined>();
-		const m = createOrderMedia(7, fakeApi({ remove: vi.fn(() => gate.promise) }));
+	it('remove takes the tile away at once; «Фото удалено» with «Отменить», the request goes after 6 s', async () => {
+		vi.useFakeTimers();
+		const api = fakeApi();
+		const m = createOrderMedia(7, api);
 		await m.reload();
-		const p = m.remove(1);
-		expect(m.photos).toEqual([]);
-		gate.resolve(undefined);
-		await p;
+		await m.remove(1);
 		expect(m.photos).toEqual([]);
 		expect(messages()).toEqual(['Фото удалено']);
+		expect(toast.items[0]?.action?.label).toBe('Отменить');
+		expect(api.remove).not.toHaveBeenCalled();
+		await vi.advanceTimersByTimeAsync(5900);
+		expect(api.remove).not.toHaveBeenCalled();
+		await vi.advanceTimersByTimeAsync(200);
+		expect(api.remove).toHaveBeenCalledOnce();
+		expect(api.remove).toHaveBeenCalledWith(1);
+		expect(m.photos).toEqual([]);
+	});
+
+	it('«Отменить» puts the photo back where it was, and no request is ever sent', async () => {
+		vi.useFakeTimers();
+		const api = fakeApi({
+			list: async () => [attachment(1), attachment(3), attachment(4)]
+		});
+		const m = createOrderMedia(7, api);
+		await m.reload();
+		await m.remove(3);
+		expect(m.photos.map((a) => a.id)).toEqual([1, 4]);
+		await toast.items[0]?.action?.run();
+		expect(m.photos.map((a) => a.id)).toEqual([1, 3, 4]);
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(api.remove).not.toHaveBeenCalled();
+	});
+
+	it('leaving the page sends the waiting requests at once with keepalive, and only once', async () => {
+		vi.useFakeTimers();
+		const api = fakeApi();
+		const m = createOrderMedia(7, api);
+		await m.reload();
+		await m.remove(1);
+		window.dispatchEvent(new Event('pagehide'));
+		expect(api.remove).toHaveBeenCalledOnce();
+		expect(api.remove).toHaveBeenCalledWith(1, true);
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(api.remove).toHaveBeenCalledOnce();
+	});
+
+	it('a toast that is gone (pushed out by others) sends the request: nothing is left to undo', async () => {
+		vi.useFakeTimers();
+		const api = fakeApi();
+		const m = createOrderMedia(7, api);
+		await m.reload();
+		await m.remove(1);
+		toast.dismiss(toast.items[0]!.id);
+		await vi.advanceTimersByTimeAsync(0);
+		expect(api.remove).toHaveBeenCalledOnce();
+	});
+
+	it('a photo the server no longer has is deleted all the same: no error', async () => {
+		vi.useFakeTimers();
+		const m = createOrderMedia(
+			7,
+			fakeApi({ remove: vi.fn().mockRejectedValue(new ApiError(404, 'not_found', 'Нет', null)) })
+		);
+		await m.reload();
+		await m.remove(1);
+		await vi.advanceTimersByTimeAsync(7000);
+		expect(m.photos).toEqual([]);
+		expect(messages()).toEqual([]);
 	});
 
 	it('a failed remove puts the tile back and tells the error', async () => {
+		vi.useFakeTimers();
 		const m = createOrderMedia(
 			7,
 			fakeApi({ remove: vi.fn().mockRejectedValue(new ApiError(500, 'internal', 'Сбой', null)) })
 		);
 		await m.reload();
 		await m.remove(1);
+		await vi.advanceTimersByTimeAsync(7000);
 		expect(m.photos.map((a) => a.id)).toEqual([1]);
 		expect(messages()).toEqual(['Сбой']);
 	});
@@ -205,6 +267,7 @@ describe('remove of a file', () => {
 		await m.reload();
 		await m.remove(2);
 		expect(messages()).toEqual(['Файл удалён']);
+		expect(toast.items[0]?.action?.label).toBe('Отменить');
 	});
 });
 
@@ -250,7 +313,6 @@ describe('createDraftMedia', () => {
 		expect(api.upload).toHaveBeenCalledWith('k-1', expect.any(File));
 		expect(m.photos.map((a) => a.name)).toEqual(['p1.png', 'a.png']);
 		await m.remove(1);
-		expect(api.remove).toHaveBeenCalledWith(1);
 		expect(messages()).toEqual(['Фото удалено']);
 	});
 
@@ -280,5 +342,97 @@ describe('createDraftMedia', () => {
 		await waiting;
 		expect(m.photos.map((a) => a.id)).toEqual([1, 5]);
 		expect(m.pending).toEqual([]);
+	});
+});
+
+describe('«Повторить» of a failed upload to a draft', () => {
+	const offline = () => new ApiError(0, 'network', 'Нет связи с сервером', null);
+	const guard = (over: Partial<DraftGuard> = {}): DraftGuard => ({
+		max: 10,
+		limitMessage: 'При приёме можно добавить не больше 10 фото',
+		locked: () => null,
+		...over
+	});
+	function draftApi(over: Partial<MediaApi<string>> = {}): MediaApi<string> {
+		let next = 300;
+		return {
+			list: vi.fn(async () => []),
+			upload: vi.fn(async (_key: string, f: File) =>
+				attachment(next++, { order_id: null, name: f.name })
+			),
+			caption: vi.fn(),
+			remove: vi.fn(async () => undefined),
+			...over
+		};
+	}
+
+	it('keeps the limit of ten: with the draft full again nothing is uploaded', async () => {
+		const upload = vi.fn().mockRejectedValueOnce(offline());
+		const ten = Array.from({ length: 10 }, (_, i) => attachment(i + 1, { order_id: null }));
+		let have: Attachment[] = [];
+		const api = draftApi({ upload, list: vi.fn(async () => have) });
+		const m = createDraftMedia('k', api, guard());
+		await m.reload();
+		await m.add([file('late.png')]);
+		const retry = toast.items[0]?.action;
+		expect(retry?.label).toBe('Повторить');
+		// Meanwhile the ten places were filled (another tab, the camera).
+		have = ten;
+		await m.reload();
+		await retry?.run();
+		expect(upload).toHaveBeenCalledTimes(1);
+		expect(messages()).toContain('При приёме можно добавить не больше 10 фото');
+	});
+
+	it('counts the photos on their way too', async () => {
+		const gate = deferred<Attachment>();
+		const upload = vi.fn().mockRejectedValueOnce(offline()).mockReturnValue(gate.promise);
+		const nine = Array.from({ length: 9 }, (_, i) => attachment(i + 1, { order_id: null }));
+		const m = createDraftMedia('k', draftApi({ upload, list: async () => nine }), guard());
+		await m.reload();
+		await m.add([file('late.png')]);
+		const retry = toast.items[0]?.action;
+		void m.add([file('other.png')]);
+		await retry?.run();
+		// 9 there + 1 on its way = ten: the retry has no room.
+		expect(upload).toHaveBeenCalledTimes(2);
+		expect(upload.mock.calls[1]![1].name).toBe('other.png');
+		gate.resolve(attachment(99));
+	});
+
+	it('uploads again when there is room', async () => {
+		const upload = vi
+			.fn()
+			.mockRejectedValueOnce(offline())
+			.mockImplementation(async (_k: string, f: File) => attachment(77, { name: f.name }));
+		const m = createDraftMedia('k', draftApi({ upload }), guard());
+		await m.reload();
+		await m.add([file('late.png')]);
+		await toast.items[0]?.action?.run();
+		expect(m.photos.map((a) => a.name)).toEqual(['late.png']);
+	});
+
+	it('is blocked while «Принять» is on its way, and says why', async () => {
+		let reason: string | null = null;
+		const upload = vi.fn().mockRejectedValueOnce(offline());
+		const m = createDraftMedia('k', draftApi({ upload }), guard({ locked: () => reason }));
+		await m.reload();
+		await m.add([file('late.png')]);
+		const retry = toast.items[0]?.action;
+		reason = 'Заказ принимается: фото добавить нельзя';
+		await retry?.run();
+		expect(upload).toHaveBeenCalledTimes(1);
+		expect(messages()).toContain('Заказ принимается: фото добавить нельзя');
+	});
+
+	it('does nothing for a draft that was left (another key, cancelled)', async () => {
+		const upload = vi.fn().mockRejectedValueOnce(offline());
+		const m = createDraftMedia('k', draftApi({ upload }), guard());
+		await m.reload();
+		await m.add([file('late.png')]);
+		const retry = toast.items[0]?.action;
+		m.retire();
+		await retry?.run();
+		expect(upload).toHaveBeenCalledTimes(1);
 	});
 });
