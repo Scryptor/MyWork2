@@ -1,14 +1,18 @@
+use std::collections::HashSet;
+
 use chrono_tz::Tz;
 use mw_db::entity::{service_point, setting};
+use mw_domain::dictionary::DictionaryKind;
 use mw_domain::permission::Permission;
+use mw_domain::search::normalize_search;
 use mw_domain::validation::FieldError;
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, Set};
+use sea_orm::{ColumnTrait, ConnectionTrait, DatabaseTransaction, EntityTrait, QueryFilter, Set};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::core::begin_write_on;
-use crate::{Actor, Core, CoreError, NewAuditEntry, write_audit};
+use crate::{Actor, Core, CoreError, EditVia, NewAuditEntry, write_audit};
 
 /// Настройки предприятия. Хранятся по строке на поле в таблице `settings` (ключ — имя поля,
 /// значение — JSON).
@@ -224,6 +228,59 @@ pub(crate) async fn put(
         .exec_without_returning(conn)
         .await?;
     Ok(())
+}
+
+/// Мастер и гарантия по умолчанию следуют за значением справочника: при переименовании или
+/// объединении настройка, совпадающая (по `normalize_search`) с одним из прежних значений `from`,
+/// получает значение `to` — в той же транзакции, с записью журнала. Возвращает новые настройки для
+/// кэша `Core` (его обновляют после фиксации) или `None`, если ничего не изменилось.
+pub(crate) async fn follow_dictionary_value(
+    tx: &DatabaseTransaction,
+    core: &Core,
+    actor: &Actor,
+    kind: DictionaryKind,
+    from: &HashSet<String>,
+    to: &str,
+) -> Result<Option<AppSettings>, CoreError> {
+    let (key, label) = match kind {
+        DictionaryKind::Master => ("default_master", "мастер по умолчанию"),
+        DictionaryKind::Warranty => ("default_warranty", "гарантия по умолчанию"),
+        _ => return Ok(None),
+    };
+    let current = load(tx).await?;
+    let value = match kind {
+        DictionaryKind::Master => &current.default_master,
+        _ => &current.default_warranty,
+    };
+    let key_of = normalize_search(value);
+    if value == to || key_of.is_empty() || !from.contains(&key_of) {
+        return Ok(None);
+    }
+    put(tx, key, &json!(to)).await?;
+    let via = EditVia::Dictionary;
+    write_audit(
+        tx,
+        core.now(),
+        actor,
+        NewAuditEntry {
+            action: "settings.updated",
+            order_id: None,
+            client_id: None,
+            summary: format!("Изменены настройки: {label}{}", via.suffix_ru()),
+            details: Some(json!({ key: to, "via": via.code() })),
+        },
+    )
+    .await?;
+    Ok(Some(load(tx).await?))
+}
+
+impl Core {
+    /// Кладёт в кэш настройки, прочитанные в уже зафиксированной транзакции.
+    pub(crate) fn cache_settings(&self, settings: Option<AppSettings>) {
+        if let Some(settings) = settings {
+            *self.settings.write().unwrap_or_else(|e| e.into_inner()) = settings;
+        }
+    }
 }
 
 /// Загружает настройки; если пояса ещё нет в БД, сохраняет системный (неверный → UTC).

@@ -165,6 +165,40 @@ async fn dictionary_usage_splits_lists_and_counts_order_once() -> Result<(), Cor
     Ok(())
 }
 
+/// Повторы с разным регистром (из MyWork 2) — у каждого тот же счёт, а не только у последнего.
+#[tokio::test]
+async fn dictionary_usage_credits_every_case_duplicate() -> Result<(), CoreError> {
+    use sea_orm::{ActiveModelTrait, NotSet, Set};
+    for t in cores().await {
+        let cover = item_id(&t.core, DictionaryKind::Completeness, "Чехол").await;
+        let lower = mw_db::entity::dictionary_item::ActiveModel {
+            id: NotSet,
+            kind: Set(DictionaryKind::Completeness.as_str().to_owned()),
+            value: Set("чехол".to_owned()),
+            sort_order: Set(100),
+            archived: Set(false),
+        }
+        .insert(t.core.db())
+        .await
+        .unwrap()
+        .id;
+        order_with(&t.core, |o| o.completeness = "Чехол, Зарядка".into()).await;
+        order_with(&t.core, |o| o.completeness = "ЧЕХОЛ".into()).await;
+        let got = t
+            .core
+            .dictionary_usage(&admin(), DictionaryKind::Completeness)
+            .await?;
+        let got: std::collections::HashMap<_, _> = usage(&got).into_iter().collect();
+        assert_eq!(
+            (got.get(&cover), got.get(&lower)),
+            (Some(&2), Some(&2)),
+            "{}",
+            t.label
+        );
+    }
+    Ok(())
+}
+
 /// Списки состояния, неисправностей и работ: каждое поле читается из своей колонки.
 #[tokio::test]
 async fn dictionary_usage_reads_condition_malfunction_and_work_done() -> Result<(), CoreError> {

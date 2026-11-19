@@ -5,11 +5,11 @@ mod common;
 use chrono::Duration;
 use common::{
     TestCore, actor_with, admin, assert_validation, audit_details, cores, count_audit, last_audit,
-    list_ids, phones, sample_new_order, sorted,
+    list_ids, phones, sample_new_order, setting_value, sorted,
 };
 use mw_core::{
     Core, CoreError, DictionaryMerge, DictionaryRename, NewClient, NewOrder, Order, OrderFilter,
-    OrderPatch, PageRequest,
+    OrderPatch, PageRequest, SettingsPatch,
 };
 use mw_db::entity::dictionary_item;
 use mw_domain::dictionary::DictionaryKind;
@@ -100,12 +100,14 @@ async fn rename_in_orders_edits_matching_orders_like_a_normal_edit() -> Result<(
             let last = last_audit(&t.core, before.id).await;
             assert_eq!(
                 (last.action.as_str(), last.summary.as_str()),
-                ("order.updated", "Изменено: бренд")
+                ("order.updated", "Изменено: бренд (из справочника)")
             );
+            let details = last.details.unwrap();
             assert_eq!(
-                last.details.unwrap()["changes"],
+                details["changes"],
                 json!({ "brand": [old, "Samsung Electronics"] })
             );
+            assert_eq!(details["via"], json!("dictionary"));
         }
         let history = t
             .core
@@ -150,6 +152,23 @@ async fn rename_in_orders_edits_matching_orders_like_a_normal_edit() -> Result<(
         )
         .await;
         assert_eq!(sorted(by_key), sorted(vec![upper.id, lower.id]));
+
+        // Обычная правка — без пометки справочника.
+        let edited = t
+            .core
+            .update_order(
+                &admin(),
+                apple.id,
+                apple.version,
+                OrderPatch {
+                    model: Some("iPhone".into()),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        let last = last_audit(&t.core, edited.id).await;
+        assert_eq!(last.summary, "Изменено: модель");
+        assert_eq!(last.details.unwrap().get("via"), None);
 
         // Панель с прежней версией получает обычный спор версий.
         let stale = t
@@ -413,8 +432,8 @@ async fn merge_client_sources_edits_clients() -> Result<(), CoreError> {
         assert_eq!(
             audit_details(&t.core, "client.updated").await,
             [
-                json!({ "source": "Интернет" }),
-                json!({ "source": "Интернет" })
+                json!({ "source": "Интернет", "via": "dictionary" }),
+                json!({ "source": "Интернет", "via": "dictionary" })
             ]
         );
         let usage = t
@@ -427,7 +446,7 @@ async fn merge_client_sources_edits_clients() -> Result<(), CoreError> {
 }
 
 #[tokio::test]
-async fn rename_recomputes_master_key_and_warranty_term() -> Result<(), CoreError> {
+async fn rename_recomputes_master_key_and_keeps_warranty_term() -> Result<(), CoreError> {
     for t in cores().await {
         let ivanov = t
             .core
@@ -457,24 +476,25 @@ async fn rename_recomputes_master_key_and_warranty_term() -> Result<(), CoreErro
         );
         assert!(list_ids(&t, master("иванов")).await.is_empty());
 
+        // Тот же срок другими словами: текст в заказах меняется, срок — нет.
         let w = item_id(&t.core, DictionaryKind::Warranty, "14 дней").await;
         let r = t
             .core
-            .rename_dictionary_item_everywhere(&admin(), w, rename("2 месяца", true))
+            .rename_dictionary_item_everywhere(&admin(), w, rename("2 недели", true))
             .await?;
         assert_eq!(r.records_changed, 1);
         let after = reload(&t, &o).await;
         assert_eq!(
             (after.warranty.as_str(), after.warranty_term, after.version),
-            ("2 месяца", Some(WarrantyTerm::months(2)), o.version + 2),
+            ("2 недели", Some(WarrantyTerm::days(14)), o.version + 2),
             "{}",
             t.label
         );
         let last = last_audit(&t.core, o.id).await;
-        assert_eq!(last.summary, "Изменено: гарантия");
+        assert_eq!(last.summary, "Изменено: гарантия (из справочника)");
         assert_eq!(
             last.details.unwrap()["changes"],
-            json!({ "warranty": ["14 дней", "2 месяца"] })
+            json!({ "warranty": ["14 дней", "2 недели"] })
         );
         let same = reload(&t, &other).await;
         assert_eq!(
@@ -638,6 +658,326 @@ async fn merge_rejects_bad_requests_and_both_need_settings_manage() -> Result<()
         assert_eq!(
             count_audit(&t.core, "dictionary.merged").await,
             0,
+            "{}",
+            t.label
+        );
+    }
+    Ok(())
+}
+
+/// Гарантия заказа — текст и выведенный из него срок: замена в заказах не меняет срок уже
+/// принятых (и выданных) заказов. Тот же срок другими словами — можно, другой срок — отказ.
+#[tokio::test]
+async fn warranty_in_orders_keeps_the_term_or_is_refused() -> Result<(), CoreError> {
+    for t in cores().await {
+        let thirty = item_id(&t.core, DictionaryKind::Warranty, "30 дней").await;
+        let o = order_with(&t, |o| o.warranty = "30 дней".into()).await;
+
+        assert_validation(
+            t.core
+                .rename_dictionary_item_everywhere(&admin(), thirty, rename("60 дней", true))
+                .await,
+            &[("value", "changes_term")],
+        );
+        let same = reload(&t, &o).await;
+        assert_eq!(
+            (same.warranty.as_str(), same.warranty_term, same.version),
+            ("30 дней", Some(WarrantyTerm::days(30)), o.version),
+            "{}",
+            t.label
+        );
+        assert_eq!(
+            item_id(&t.core, DictionaryKind::Warranty, "30 дней").await,
+            thirty,
+            "отказ откатывает и сам справочник"
+        );
+        assert_eq!(count_audit(&t.core, "dictionary.renamed").await, 0);
+
+        // Тот же срок: текст меняется в заказах, срок остаётся.
+        let r = t
+            .core
+            .rename_dictionary_item_everywhere(&admin(), thirty, rename("30 дн.", true))
+            .await?;
+        assert_eq!(r.records_changed, 1, "{}", t.label);
+        let after = reload(&t, &o).await;
+        assert_eq!(
+            (after.warranty.as_str(), after.warranty_term),
+            ("30 дн.", Some(WarrantyTerm::days(30)))
+        );
+
+        // Только справочник: заказы не трогаются, срок у них прежний.
+        let r = t
+            .core
+            .rename_dictionary_item_everywhere(&admin(), thirty, rename("60 дней", false))
+            .await?;
+        assert_eq!((r.item.value.as_str(), r.records_changed), ("60 дней", 0));
+        let kept = reload(&t, &after).await;
+        assert_eq!(
+            (kept.warranty.as_str(), kept.warranty_term, kept.version),
+            ("30 дн.", Some(WarrantyTerm::days(30)), after.version)
+        );
+
+        // Объединение — так же: источник с другим сроком в заказах не заменяется.
+        let year = item_id(&t.core, DictionaryKind::Warranty, "1 год").await;
+        let months = t
+            .core
+            .add_dictionary_item(&admin(), DictionaryKind::Warranty, "12 мес.")
+            .await?
+            .id;
+        let six = item_id(&t.core, DictionaryKind::Warranty, "6 месяцев").await;
+        let by_months = order_with(&t, |o| o.warranty = "12 мес.".into()).await;
+        let by_six = order_with(&t, |o| o.warranty = "6 месяцев".into()).await;
+        assert_validation(
+            t.core
+                .merge_dictionary_items(
+                    &admin(),
+                    DictionaryKind::Warranty,
+                    merge(year, &[months, six]),
+                )
+                .await,
+            &[("target_id", "changes_term")],
+        );
+        assert_eq!(reload(&t, &by_six).await.version, by_six.version);
+        assert_eq!(reload(&t, &by_months).await.version, by_months.version);
+        let r = t
+            .core
+            .merge_dictionary_items(&admin(), DictionaryKind::Warranty, merge(year, &[months]))
+            .await?;
+        assert_eq!(r.records_changed, 1, "{}", t.label);
+        let merged = reload(&t, &by_months).await;
+        assert_eq!(
+            (merged.warranty.as_str(), merged.warranty_term),
+            ("1 год", Some(WarrantyTerm::months(12)))
+        );
+    }
+    Ok(())
+}
+
+/// Мастер и гарантия по умолчанию следуют за значением справочника — при переименовании (в т. ч.
+/// простом) и объединении, с заменой в заказах или без неё; кэш `Core` обновляется сразу.
+#[tokio::test]
+async fn defaults_follow_rename_and_merge() -> Result<(), CoreError> {
+    for t in cores().await {
+        let ivanov = t
+            .core
+            .add_dictionary_item(&admin(), DictionaryKind::Master, "Иванов")
+            .await?
+            .id;
+        let other = t
+            .core
+            .add_dictionary_item(&admin(), DictionaryKind::Master, "Смирнов")
+            .await?
+            .id;
+        t.core
+            .update_settings(
+                &admin(),
+                SettingsPatch {
+                    default_master: Some("иванов".into()),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        let before = count_audit(&t.core, "settings.updated").await;
+
+        // Другое значение — настройка не трогается.
+        t.core
+            .rename_dictionary_item_everywhere(&admin(), other, rename("Смирнова", false))
+            .await?;
+        assert_eq!(t.core.settings().default_master, "иванов", "{}", t.label);
+        assert_eq!(count_audit(&t.core, "settings.updated").await, before);
+
+        t.core
+            .rename_dictionary_item_everywhere(&admin(), ivanov, rename("Петров", false))
+            .await?;
+        assert_eq!(t.core.settings().default_master, "Петров", "{}", t.label);
+        assert_eq!(
+            setting_value(&t.core, "default_master").await,
+            json!("Петров")
+        );
+        assert_eq!(count_audit(&t.core, "settings.updated").await, before + 1);
+        let d = audit_details(&t.core, "settings.updated").await;
+        assert_eq!(
+            d.last().unwrap(),
+            &json!({ "default_master": "Петров", "via": "dictionary" })
+        );
+
+        // Простое переименование (PATCH) — тоже.
+        t.core
+            .update_dictionary_item(&admin(), ivanov, common::vpatch("Сидоров"))
+            .await?;
+        assert_eq!(t.core.settings().default_master, "Сидоров");
+
+        // Объединение без замены в заказах: настройка получает значение цели.
+        let kuznetsov = t
+            .core
+            .add_dictionary_item(&admin(), DictionaryKind::Master, "Кузнецов")
+            .await?
+            .id;
+        t.core
+            .merge_dictionary_items(
+                &admin(),
+                DictionaryKind::Master,
+                DictionaryMerge {
+                    target_id: kuznetsov,
+                    source_ids: vec![ivanov],
+                    in_orders: false,
+                },
+            )
+            .await?;
+        assert_eq!(t.core.settings().default_master, "Кузнецов", "{}", t.label);
+
+        // Гарантия по умолчанию («30 дней» из умолчаний).
+        let thirty = item_id(&t.core, DictionaryKind::Warranty, "30 дней").await;
+        t.core
+            .rename_dictionary_item_everywhere(&admin(), thirty, rename("30 дн.", true))
+            .await?;
+        assert_eq!(t.core.settings().default_warranty, "30 дн.", "{}", t.label);
+        assert_eq!(
+            setting_value(&t.core, "default_warranty").await,
+            json!("30 дн.")
+        );
+
+        // Отказ (другой срок в заказах) не меняет и настройку.
+        order_with(&t, |o| o.warranty = "30 дн.".into()).await;
+        assert_validation(
+            t.core
+                .rename_dictionary_item_everywhere(&admin(), thirty, rename("60 дней", true))
+                .await,
+            &[("value", "changes_term")],
+        );
+        assert_eq!(t.core.settings().default_warranty, "30 дн.");
+        assert_eq!(
+            setting_value(&t.core, "default_warranty").await,
+            json!("30 дн.")
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn merge_without_in_orders_deletes_sources_and_leaves_orders() -> Result<(), CoreError> {
+    for t in cores().await {
+        let target = item_id(&t.core, DictionaryKind::Brand, "Samsung").await;
+        let lower = insert_item_directly(&t, DictionaryKind::Brand, "samsung").await;
+        let o = order_with(&t, |o| o.brand = "samsung".into()).await;
+        let r = t
+            .core
+            .merge_dictionary_items(
+                &admin(),
+                DictionaryKind::Brand,
+                DictionaryMerge {
+                    target_id: target,
+                    source_ids: vec![lower],
+                    in_orders: false,
+                },
+            )
+            .await?;
+        assert_eq!((r.item.id, r.records_changed), (target, 0), "{}", t.label);
+        let same = reload(&t, &o).await;
+        assert_eq!((same.brand.as_str(), same.version), ("samsung", o.version));
+        assert_eq!(count_audit(&t.core, "order.updated").await, 0);
+        let ids: Vec<i64> = t
+            .core
+            .list_dictionary(DictionaryKind::Brand, true)
+            .await?
+            .iter()
+            .map(|i| i.id)
+            .collect();
+        assert!(ids.contains(&target) && !ids.contains(&lower));
+        let d = &audit_details(&t.core, "dictionary.merged").await[0];
+        assert_eq!(
+            (&d["in_orders"], &d["records_changed"]),
+            (&json!(false), &json!(0))
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn merge_with_an_unknown_source_is_refused() -> Result<(), CoreError> {
+    for t in cores().await {
+        let k = DictionaryKind::Completeness;
+        let target = item_id(&t.core, k, "Чехол").await;
+        let charger = item_id(&t.core, k, "Зарядка").await;
+        assert_validation(
+            t.core
+                .merge_dictionary_items(&admin(), k, merge(target, &[charger, 999_999]))
+                .await,
+            &[("source_ids", "invalid")],
+        );
+        assert!(
+            t.core
+                .list_dictionary(k, true)
+                .await?
+                .iter()
+                .any(|i| i.id == charger),
+            "{}",
+            t.label
+        );
+        assert_eq!(count_audit(&t.core, "dictionary.merged").await, 0);
+    }
+    Ok(())
+}
+
+/// В полях-списках запятая разделяет значения: значение списка с запятой при переименовании
+/// разрезало бы элементы в заказах. Проверяется только новое значение.
+#[tokio::test]
+async fn list_values_refuse_a_comma_on_add_and_rename() -> Result<(), CoreError> {
+    for t in cores().await {
+        for kind in [
+            DictionaryKind::Completeness,
+            DictionaryKind::Condition,
+            DictionaryKind::Malfunction,
+            DictionaryKind::WorkDone,
+        ] {
+            assert_validation(
+                t.core
+                    .add_dictionary_item(&admin(), kind, "Чехол, зарядка")
+                    .await,
+                &[("value", "comma")],
+            );
+        }
+        let k = DictionaryKind::Completeness;
+        let cover = item_id(&t.core, k, "Чехол").await;
+        assert_validation(
+            t.core
+                .update_dictionary_item(&admin(), cover, common::vpatch("Чехол,стекло"))
+                .await,
+            &[("value", "comma")],
+        );
+        assert_validation(
+            t.core
+                .rename_dictionary_item_everywhere(&admin(), cover, rename("Чехол, стекло", true))
+                .await,
+            &[("value", "comma")],
+        );
+        // Не списки: запятая допустима.
+        t.core
+            .add_dictionary_item(&admin(), DictionaryKind::Brand, "Acme, Inc.")
+            .await?;
+        // Старое значение с запятой (из MyWork 2) не мешает: архивируется, переименовывается
+        // без запятой и вливается.
+        let legacy = insert_item_directly(&t, k, "Сумка, ремень").await;
+        t.core
+            .update_dictionary_item(
+                &admin(),
+                legacy,
+                mw_core::DictionaryItemPatch {
+                    archived: Some(true),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        t.core
+            .update_dictionary_item(&admin(), legacy, common::vpatch("Сумка"))
+            .await?;
+        let other = insert_item_directly(&t, k, "Сумка, плёнка").await;
+        t.core
+            .merge_dictionary_items(&admin(), k, merge(legacy, &[other]))
+            .await?;
+        assert_eq!(
+            count_audit(&t.core, "dictionary.merged").await,
+            1,
             "{}",
             t.label
         );

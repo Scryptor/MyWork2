@@ -135,6 +135,29 @@ pub(crate) struct NewAuditEntry {
     pub details: Option<serde_json::Value>,
 }
 
+/// Откуда пришла правка записи, если не из неё самой: пометка в журнале (`details.via` и
+/// приписка к сводке), чтобы в истории было видно, что заказ или клиента изменил не человек в карточке.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum EditVia {
+    /// Переименование или объединение значения справочника.
+    Dictionary,
+}
+
+impl EditVia {
+    pub(crate) fn code(self) -> &'static str {
+        match self {
+            Self::Dictionary => "dictionary",
+        }
+    }
+
+    /// Приписка к сводке записи журнала.
+    pub(crate) fn suffix_ru(self) -> &'static str {
+        match self {
+            Self::Dictionary => " (из справочника)",
+        }
+    }
+}
+
 /// Пишет в журнал через переданное соединение; вызывается внутри транзакции изменения.
 pub(crate) async fn write_audit(
     conn: &impl ConnectionTrait,

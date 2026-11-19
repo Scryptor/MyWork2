@@ -92,13 +92,18 @@ impl Core {
     ) -> Result<Vec<CatalogUsage>, CoreError> {
         actor.require(Permission::SettingsManage)?;
         let target = usage_target(kind);
-        let ids_by_key: HashMap<String, i64> = dictionary_item::Entity::find()
+        // Повторы с разным регистром (из MyWork 2) — один ключ на несколько значений: счёт у каждого.
+        let mut ids_by_key: HashMap<String, Vec<i64>> = HashMap::new();
+        for m in dictionary_item::Entity::find()
             .filter(dictionary_item::Column::Kind.eq(kind.as_str()))
             .all(&self.db)
             .await?
-            .into_iter()
-            .map(|m| (normalize_search(&m.value), m.id))
-            .collect();
+        {
+            ids_by_key
+                .entry(normalize_search(&m.value))
+                .or_default()
+                .push(m.id);
+        }
         let groups = group_counts(&self.db, target.table, target.column, |row| {
             row.try_get_by_index::<Option<String>>(0)
         })
@@ -114,7 +119,7 @@ impl Core {
             keys.sort();
             keys.dedup();
             for key in keys {
-                if let Some(id) = ids_by_key.get(&key) {
+                for id in ids_by_key.get(&key).into_iter().flatten() {
                     *totals.entry(*id).or_default() += count;
                 }
             }

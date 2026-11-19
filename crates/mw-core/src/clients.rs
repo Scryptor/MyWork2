@@ -18,7 +18,7 @@ use serde_json::{Map, Value, json};
 use crate::page::validate_page;
 use crate::search_index::client_search_text;
 use crate::sql::text_sort;
-use crate::{Actor, Core, CoreError, NewAuditEntry, Page, write_audit};
+use crate::{Actor, Core, CoreError, EditVia, NewAuditEntry, Page, write_audit};
 
 const ENTITY: &str = "клиент";
 
@@ -519,15 +519,15 @@ impl Core {
         actor.require_any(&[Permission::ClientsEdit, Permission::OrdersEdit])?;
         let tx = self.begin_write().await?;
         let (updated, _) = self
-            .update_client_in(&tx, actor, id, expected_version, patch)
+            .update_client_in(&tx, actor, id, expected_version, patch, None)
             .await?;
         tx.commit().await?;
         Ok(updated)
     }
 
     /// Правка клиента внутри открытой транзакции записи: всё, что делает `update_client`, кроме
-    /// проверки прав и фиксации (замена источника клиента из справочника идёт через неё же).
-    /// Возвращает клиента и признак, что запись изменилась.
+    /// проверки прав и фиксации (замена источника клиента из справочника идёт через неё же, с
+    /// пометкой `via`). Возвращает клиента и признак, что запись изменилась.
     pub(crate) async fn update_client_in(
         &self,
         tx: &DatabaseTransaction,
@@ -535,6 +535,7 @@ impl Core {
         id: i64,
         expected_version: i64,
         patch: ClientPatch,
+        via: Option<EditVia>,
     ) -> Result<(Client, bool), CoreError> {
         let current = find_live(tx, id)
             .await?
@@ -603,11 +604,15 @@ impl Core {
             });
         }
         let phones = validated.map_err(CoreError::Validation)?;
-        let summary = format!(
+        let mut summary = format!(
             "Изменён клиент «{}»: {}",
             display_name(&current.full_name, &current_phones),
             names.join(", ")
         );
+        if let Some(via) = via {
+            summary.push_str(via.suffix_ru());
+            changed.insert("via".to_owned(), json!(via.code()));
+        }
 
         let now = self.now();
         apply_client_fields(

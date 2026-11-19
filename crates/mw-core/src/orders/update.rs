@@ -13,7 +13,7 @@ use serde_json::{Map, Value, json};
 use super::types::{NewWarrantyCase, OrderPatch, warranty_columns};
 use crate::clients::find_live;
 use crate::search_index::{order_search_text, set_order_keys};
-use crate::{Actor, Core, CoreError, NewAuditEntry, Order, write_audit};
+use crate::{Actor, Core, CoreError, EditVia, NewAuditEntry, Order, write_audit};
 use mw_domain::search::normalize_search;
 
 const ENTITY: &str = "заказ";
@@ -74,7 +74,7 @@ impl Core {
         actor.require(Permission::OrdersEdit)?;
         let tx = self.begin_write().await?;
         let (updated, _) = self
-            .update_order_in(&tx, actor, id, expected_version, patch)
+            .update_order_in(&tx, actor, id, expected_version, patch, None)
             .await?;
         tx.commit().await?;
         Ok(updated)
@@ -82,7 +82,7 @@ impl Core {
 
     /// Правка заказа внутри открытой транзакции записи: всё, что делает `update_order`, кроме
     /// проверки права `orders_edit` и фиксации (замена значения справочника в заказах идёт через
-    /// неё же). Возвращает заказ и признак, что запись изменилась.
+    /// неё же, с пометкой `via`). Возвращает заказ и признак, что запись изменилась.
     pub(crate) async fn update_order_in(
         &self,
         tx: &DatabaseTransaction,
@@ -90,6 +90,7 @@ impl Core {
         id: i64,
         expected_version: i64,
         patch: OrderPatch,
+        via: Option<EditVia>,
     ) -> Result<(Order, bool), CoreError> {
         // Даты хранятся с точностью до секунды, как `Core::now()`.
         let patch = OrderPatch {
@@ -361,6 +362,12 @@ impl Core {
             .await?;
         check_affected(tx, res.rows_affected, id).await?;
 
+        let mut summary = format!("Изменено: {}", d.labels.join(", "));
+        let mut details = json!({ "changes": d.changes });
+        if let Some(via) = via {
+            summary.push_str(via.suffix_ru());
+            details["via"] = json!(via.code());
+        }
         write_audit(
             tx,
             now,
@@ -369,8 +376,8 @@ impl Core {
                 action: "order.updated",
                 order_id: Some(id),
                 client_id: Some(m.client_id),
-                summary: format!("Изменено: {}", d.labels.join(", ")),
-                details: Some(json!({ "changes": d.changes })),
+                summary,
+                details: Some(details),
             },
         )
         .await?;

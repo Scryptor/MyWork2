@@ -13,7 +13,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::dictionaries_rewrite::records_word;
+use crate::settings::follow_dictionary_value;
 use crate::statuses::check_permutation;
+use crate::usage::usage_target;
 use crate::{Actor, Core, CoreError, NewAuditEntry, write_audit};
 
 /// Значение справочника.
@@ -53,7 +55,8 @@ pub struct DictionaryRename {
     /// Новый текст значения.
     pub value: String,
     /// Заменить прежнее значение и в неудалённых заказах (для «Откуда узнали» — в клиентах);
-    /// сравнение без учёта регистра.
+    /// сравнение без учёта регистра. Гарантия: только если срок, выведенный из текста, у заказов не
+    /// меняется, иначе ошибка `value: changes_term`.
     pub in_orders: bool,
 }
 
@@ -66,7 +69,8 @@ pub struct DictionaryMerge {
     /// Значения того же справочника, которые удаляются: хотя бы одно, без цели.
     pub source_ids: Vec<i64>,
     /// Заменить значения источников значением цели и в неудалённых заказах (для «Откуда узнали» —
-    /// в клиентах); сравнение без учёта регистра.
+    /// в клиентах); сравнение без учёта регистра. Гарантия: только если срок, выведенный из текста,
+    /// у заказов не меняется, иначе ошибка `target_id: changes_term`.
     pub in_orders: bool,
 }
 
@@ -147,7 +151,10 @@ fn sorted_items(rows: Vec<dictionary_item::Model>) -> Result<Vec<DictionaryItem>
     Ok(items)
 }
 
+/// Новое значение: не пустое, без дубля в справочнике; в справочнике-списке — без запятой (она
+/// разделяет элементы списка в заказе).
 fn check_value(
+    kind: DictionaryKind,
     value: &str,
     others: &[dictionary_item::Model],
     own_id: Option<i64>,
@@ -155,6 +162,11 @@ fn check_value(
     let value = value.trim();
     if value.is_empty() {
         return Err(CoreError::Validation(vec![FieldError::required("value")]));
+    }
+    if usage_target(kind).list && value.contains(',') {
+        return Err(CoreError::Validation(vec![FieldError::new(
+            "value", "comma",
+        )]));
     }
     let key = normalize_search(value);
     if others
@@ -193,7 +205,7 @@ impl Core {
         actor.require_any(&[Permission::SettingsManage, Permission::OrdersCreate])?;
         let tx = self.begin_write().await?;
         let rows = kind_rows(&tx, kind).await?;
-        let value = check_value(value, &rows, None)?;
+        let value = check_value(kind, value, &rows, None)?;
         let sort_order = rows.iter().map(|r| r.sort_order).max().map_or(0, |m| m + 1);
         let model = dictionary_item::ActiveModel {
             id: NotSet,
@@ -234,7 +246,7 @@ impl Core {
         let renamed = match patch.value.as_deref() {
             Some(v) if v.trim() != current.value => {
                 let rows = kind_rows(&tx, kind).await?;
-                Some(check_value(v, &rows, Some(id))?)
+                Some(check_value(kind, v, &rows, Some(id))?)
             }
             Some(v) if v.trim().is_empty() => {
                 return Err(CoreError::Validation(vec![FieldError::required("value")]));
@@ -254,7 +266,17 @@ impl Core {
             active.archived = Set(a);
         }
         let model = active.update(&tx).await?;
+        let mut settings = None;
         if let Some(value) = renamed {
+            settings = follow_dictionary_value(
+                &tx,
+                self,
+                actor,
+                kind,
+                &value_keys([old.as_str()]),
+                &value,
+            )
+            .await?;
             write_audit(
                 &tx,
                 self.now(),
@@ -303,11 +325,13 @@ impl Core {
             .await?;
         }
         tx.commit().await?;
+        self.cache_settings(settings);
         to_item(model)
     }
 
     /// Переименование значения; при `in_orders` прежнее значение (элемент списка) заменяется новым
-    /// и в неудалённых записях — каждая как обычная правка. Всё в одной транзакции; ничего не
+    /// и в неудалённых записях — каждая как обычная правка (срок гарантии заказов не меняется).
+    /// Мастер и гарантия по умолчанию следуют за значением. Всё в одной транзакции; ничего не
     /// изменилось — ничего не пишется.
     pub async fn rename_dictionary_item_everywhere(
         &self,
@@ -319,10 +343,11 @@ impl Core {
         let tx = self.begin_write().await?;
         let (current, kind) = load_item(&tx, id).await?;
         let rows = kind_rows(&tx, kind).await?;
-        let value = check_value(&req.value, &rows, Some(id))?;
+        let value = check_value(kind, &req.value, &rows, Some(id))?;
         let old = current.value.clone();
+        let from = value_keys([old.as_str()]);
         let records_changed = if req.in_orders {
-            self.rewrite_dictionary_values(&tx, actor, kind, &value_keys([old.as_str()]), &value)
+            self.rewrite_dictionary_values(&tx, actor, kind, &from, &value, "value")
                 .await?
         } else {
             0
@@ -341,6 +366,7 @@ impl Core {
         } else {
             current
         };
+        let settings = follow_dictionary_value(&tx, self, actor, kind, &from, &value).await?;
         let mut summary = if renamed {
             format!(
                 "Справочник «{}»: «{old}» переименовано в «{value}»",
@@ -376,6 +402,7 @@ impl Core {
         )
         .await?;
         tx.commit().await?;
+        self.cache_settings(settings);
         Ok(RewriteResult {
             item: to_item(model)?,
             records_changed,
@@ -383,7 +410,8 @@ impl Core {
     }
 
     /// Объединение: источники удаляются, цель остаётся; при `in_orders` значения (элементы списка)
-    /// источников заменяются значением цели и в неудалённых записях — каждая как обычная правка.
+    /// источников заменяются значением цели и в неудалённых записях — каждая как обычная правка
+    /// (срок гарантии заказов не меняется). Мастер и гарантия по умолчанию следуют за значением.
     pub async fn merge_dictionary_items(
         &self,
         actor: &Actor,
@@ -414,13 +442,14 @@ impl Core {
             return Err(CoreError::Validation(errors));
         };
         let to = target.value.trim().to_owned();
+        let from = value_keys(sources.iter().map(|s| s.value.as_str()));
         let records_changed = if req.in_orders {
-            let from = value_keys(sources.iter().map(|s| s.value.as_str()));
-            self.rewrite_dictionary_values(&tx, actor, kind, &from, &to)
+            self.rewrite_dictionary_values(&tx, actor, kind, &from, &to, "target_id")
                 .await?
         } else {
             0
         };
+        let settings = follow_dictionary_value(&tx, self, actor, kind, &from, &to).await?;
         dictionary_item::Entity::delete_many()
             .filter(dictionary_item::Column::Id.is_in(source_ids))
             .exec(&tx)
@@ -468,6 +497,7 @@ impl Core {
         )
         .await?;
         tx.commit().await?;
+        self.cache_settings(settings);
         Ok(RewriteResult {
             item: to_item(target)?,
             records_changed,

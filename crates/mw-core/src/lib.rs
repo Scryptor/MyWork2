@@ -57,4 +57,4 @@ pub use settings::{AppSettings, SettingsPatch};
 pub use statuses::{NewStatus, Status, StatusPatch};
 pub use usage::CatalogUsage;
 
-pub(crate) use audit::{NewAuditEntry, write_audit};
+pub(crate) use audit::{EditVia, NewAuditEntry, write_audit};

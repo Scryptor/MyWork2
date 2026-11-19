@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 /// Ошибка валидации поля: имя поля и машинный код (`required`, `invalid`, `too_short`,
-/// `duplicate`, `out_of_range`, `estimate_range`, `deleted`, `last_admin`, `last_issued_status`).
+/// `duplicate`, `out_of_range`, `estimate_range`, `deleted`, `last_admin`, `last_issued_status`,
+/// `comma`, `changes_term`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
 pub struct FieldError {
     /// Имя поля запроса.
@@ -54,6 +55,10 @@ impl FieldError {
             "deleted" => "Запись удалена",
             "last_admin" => "Нельзя оставить программу без администратора",
             "last_issued_status" => "Нужен хотя бы один статус вида «Выдан»",
+            "comma" => "В списке запятая разделяет значения: введите одно значение без запятой",
+            "changes_term" => {
+                "Срок гарантии в заказах изменился бы: замените значение только в справочнике"
+            }
             "not_empty" => "База не пуста",
             "replace_unsupported" => "Замена возможна только для базы SQLite",
             _ => "Недопустимое значение",

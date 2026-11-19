@@ -597,3 +597,101 @@ async fn dictionary_rename_and_merge_endpoints() {
         assert_eq!(page["total"], json!(2), "{}: {page}", t.label);
     }
 }
+
+/// Отказы переименования называют причину: другой срок гарантии в заказах, запятая в списке.
+/// Мастер и гарантия по умолчанию следуют за переименованием.
+#[tokio::test]
+async fn dictionary_rename_refusals_and_defaults() {
+    for t in apis(Listen::Network).await {
+        let admin = t.admin_token().await;
+        // У заказа гарантия «30 дней» (как в new_order).
+        create_order(
+            &t,
+            &admin,
+            new_order("Пётр", "+7 921 000-00-11", "Samsung", "A52"),
+        )
+        .await;
+        let id_of = |items: &serde_json::Value, value: &str| {
+            items
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|i| i["value"] == value)
+                .map(|i| i["id"].as_i64().unwrap())
+                .unwrap()
+        };
+        let warranty = t
+            .get("/api/v1/dictionaries/warranty", Some(&admin))
+            .await
+            .body;
+        let thirty = id_of(&warranty, "30 дней");
+        let rename = format!("/api/v1/dictionary-items/{thirty}/rename");
+        let r = t
+            .send(
+                Method::POST,
+                &rename,
+                Some(&admin),
+                Some(json!({ "value": "60 дней", "in_orders": true })),
+            )
+            .await;
+        assert_eq!(
+            (r.status, &r.body["fields"]),
+            (
+                422,
+                &json!([{
+                    "field": "value",
+                    "code": "changes_term",
+                    "message": "Срок гарантии в заказах изменился бы: замените значение только в справочнике"
+                }])
+            ),
+            "{}: {}",
+            t.label,
+            r.body
+        );
+        let r = t
+            .send(
+                Method::POST,
+                &rename,
+                Some(&admin),
+                Some(json!({ "value": "60 дней", "in_orders": false })),
+            )
+            .await;
+        assert_eq!(
+            (r.status, &r.body["records_changed"]),
+            (200, &json!(0)),
+            "{}",
+            t.label
+        );
+        let settings = t.get("/api/v1/settings", Some(&admin)).await.body;
+        assert_eq!(
+            settings["default_warranty"],
+            json!("60 дней"),
+            "{}",
+            t.label
+        );
+
+        let completeness = t
+            .get("/api/v1/dictionaries/completeness", Some(&admin))
+            .await
+            .body;
+        let cover = id_of(&completeness, "Чехол");
+        let r = t
+            .send(
+                Method::PATCH,
+                &format!("/api/v1/dictionary-items/{cover}"),
+                Some(&admin),
+                Some(json!({ "value": "Чехол, стекло" })),
+            )
+            .await;
+        assert_eq!(
+            (
+                r.status,
+                &r.body["fields"][0]["field"],
+                &r.body["fields"][0]["code"]
+            ),
+            (422, &json!("value"), &json!("comma")),
+            "{}",
+            t.label
+        );
+    }
+}

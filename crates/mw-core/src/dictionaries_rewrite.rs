@@ -1,16 +1,20 @@
 //! Замена значения справочника в заказах и клиентах.
 //!
 //! Каждая изменённая запись проходит обычную правку (`update_order_in` / `update_client_in`):
-//! версия, `updated_at`, `search_text`, ключи, срок гарантии и журнал — те же, что при правке руками.
+//! версия, `updated_at`, `search_text`, ключи, срок гарантии и журнал — те же, что при правке руками,
+//! с пометкой «из справочника». Срок гарантии заказа при этом не меняется: замена, которая дала бы
+//! другой срок, отклоняется целиком.
 
 use std::collections::HashSet;
 
 use mw_domain::dictionary::DictionaryKind;
 use mw_domain::search::normalize_search;
+use mw_domain::validation::FieldError;
+use mw_domain::warranty::parse_warranty_term;
 use sea_orm::{ConnectionTrait, DatabaseTransaction, Statement};
 
 use crate::usage::usage_target;
-use crate::{Actor, ClientPatch, Core, CoreError, OrderPatch};
+use crate::{Actor, ClientPatch, Core, CoreError, EditVia, OrderPatch};
 
 /// Новый текст поля, если в нём есть значение с ключом из `from`; иначе `None`.
 ///
@@ -112,6 +116,8 @@ pub(crate) fn records_word(kind: DictionaryKind) -> &'static str {
 impl Core {
     /// Во всех неудалённых записях вида `kind` значения (элементы списка) с ключом из `from`
     /// заменяет на `to`; возвращает число изменённых записей. Неизменившиеся записи не трогает.
+    /// Гарантия: если у какого-нибудь заказа срок, выведенный из нового текста, отличается от
+    /// нынешнего, — ошибка `changes_term` у поля `term_field` (транзакцию откатывает вызывающий).
     pub(crate) async fn rewrite_dictionary_values(
         &self,
         tx: &DatabaseTransaction,
@@ -119,6 +125,7 @@ impl Core {
         kind: DictionaryKind,
         from: &HashSet<String>,
         to: &str,
+        term_field: &'static str,
     ) -> Result<u64, CoreError> {
         let target = usage_target(kind);
         // Имена берутся только из статической таблицы `usage_target`.
@@ -142,14 +149,23 @@ impl Core {
             if value == text {
                 continue;
             }
+            if kind == DictionaryKind::Warranty
+                && parse_warranty_term(&text) != parse_warranty_term(&value)
+            {
+                return Err(CoreError::Validation(vec![FieldError::new(
+                    term_field,
+                    "changes_term",
+                )]));
+            }
+            let via = Some(EditVia::Dictionary);
             let edited = match field_patch(kind, value) {
                 FieldPatch::Order(patch) => {
-                    self.update_order_in(tx, actor, id, version, *patch)
+                    self.update_order_in(tx, actor, id, version, *patch, via)
                         .await?
                         .1
                 }
                 FieldPatch::Client(patch) => {
-                    self.update_client_in(tx, actor, id, version, patch)
+                    self.update_client_in(tx, actor, id, version, patch, via)
                         .await?
                         .1
                 }
