@@ -7,9 +7,10 @@ use ts_rs::TS;
 use crate::{
     AboutInfo, AttachmentNameQuery, AuditListQuery, AuditPage, BarcodeQuery, CaptionPatch,
     ChangePasswordRequest, ClientListQuery, ClientPage, CurrentUser, DictionaryListQuery,
-    DictionaryValue, ErrorBody, IncludeArchived, LoginRequest, LoginResponse, NewServicePoint,
-    NextOrderNumber, OrderListQuery, OrderPage, OrderSummaryQuery, OrderValuesQuery, PageQuery,
-    PhoneQuery, ReorderRequest, ServerInfo, SetPasswordRequest, StatusChange, VersionParam,
+    DictionaryValue, ErrorBody, HistoryQuery, IncludeArchived, LoginRequest, LoginResponse,
+    NewServicePoint, NextOrderNumber, OrderListQuery, OrderPage, OrderSummaryQuery,
+    OrderValuesQuery, PageQuery, PhoneQuery, ReorderRequest, ServerInfo, SetPasswordRequest,
+    StatusChange, VersionParam,
 };
 
 /// Выгружает в `dir` TS-типы всех корневых типов API вместе с зависимостями
@@ -50,6 +51,7 @@ pub fn export_typescript(dir: &Path) -> Result<(), ts_rs::ExportError> {
     BarcodeQuery::export_all(&cfg)?;
     StatusChange::export_all(&cfg)?;
     PageQuery::export_all(&cfg)?;
+    HistoryQuery::export_all(&cfg)?;
     mw_core::NewWarrantyCase::export_all(&cfg)?;
     NextOrderNumber::export_all(&cfg)?;
     OrderPage::export_all(&cfg)?;

@@ -9,8 +9,8 @@ use mw_core::{
 use crate::DEFAULT_PAGE_LIMIT;
 use crate::auth::CurrentActor;
 use crate::dto::{
-    AuditPage, BarcodeQuery, NextOrderNumber, OrderListQuery, OrderPage, OrderSummaryQuery,
-    OrderValuesQuery, PageQuery, StatusChange, VersionParam,
+    AuditPage, BarcodeQuery, HistoryQuery, NextOrderNumber, OrderListQuery, OrderPage,
+    OrderSummaryQuery, OrderValuesQuery, StatusChange, VersionParam,
 };
 use crate::error::ApiError;
 use crate::extract::{Json, Path, Query};
@@ -260,21 +260,25 @@ pub(super) async fn issue_order(
     path = "/api/v1/orders/{id}/history",
     tag = "Заказы",
     security(("bearer" = [])),
-    params(("id" = i64, Path, description = "Номер заказа"), PageQuery),
+    params(("id" = i64, Path, description = "Номер заказа"), HistoryQuery),
     responses((status = 200, description = "Страница истории заказа", body = AuditPage))
 )]
 pub(super) async fn order_history(
     State(state): State<AppState>,
     CurrentActor(actor): CurrentActor,
     Path(id): Path<i64>,
-    Query(q): Query<PageQuery>,
+    Query(q): Query<HistoryQuery>,
 ) -> Result<Json<AuditPage>, ApiError> {
     let page = PageRequest {
         limit: q.limit.unwrap_or(DEFAULT_PAGE_LIMIT),
         offset: q.offset.unwrap_or(0),
     };
     Ok(Json(
-        state.core.order_history(&actor, id, page).await?.into(),
+        state
+            .core
+            .order_history_before(&actor, id, page, q.before_id)
+            .await?
+            .into(),
     ))
 }
 

@@ -29,7 +29,7 @@ pub use contract::export_typescript;
 pub use dto::{
     AboutInfo, AttachmentNameQuery, AuditListQuery, AuditPage, BarcodeQuery, CaptionPatch,
     ChangePasswordRequest, ClientListQuery, ClientPage, CurrentUser, DictionaryListQuery,
-    DictionaryValue, IncludeArchived, LoginRequest, LoginResponse, NewServicePoint,
+    DictionaryValue, HistoryQuery, IncludeArchived, LoginRequest, LoginResponse, NewServicePoint,
     NextOrderNumber, OrderListQuery, OrderPage, OrderSummaryQuery, OrderValuesQuery, PageQuery,
     PhoneQuery, ReorderRequest, ServerInfo, SetPasswordRequest, StatusChange, VersionParam,
 };

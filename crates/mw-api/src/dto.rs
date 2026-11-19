@@ -406,6 +406,20 @@ pub struct PageQuery {
     pub offset: Option<u64>,
 }
 
+/// Страница истории заказа: размер, смещение или курсор.
+#[derive(Debug, Clone, Default, Deserialize, TS, IntoParams)]
+#[serde(deny_unknown_fields)]
+#[ts(optional_fields)]
+#[into_params(parameter_in = Query)]
+pub struct HistoryQuery {
+    /// Размер страницы, 1..=500; по умолчанию 50.
+    pub limit: Option<u64>,
+    /// Сколько записей пропустить; по умолчанию 0.
+    pub offset: Option<u64>,
+    /// Только записи с номером меньше этого: курсор, не зависящий от новых записей сверху.
+    pub before_id: Option<i64>,
+}
+
 /// Следующий номер заказа.
 #[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[serde(deny_unknown_fields)]

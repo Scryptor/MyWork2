@@ -11,9 +11,21 @@ impl Core {
     /// нет заказа — «не найден».
     pub async fn order_history(
         &self,
+        actor: &Actor,
+        id: i64,
+        page: PageRequest,
+    ) -> Result<Page<AuditEntry>, CoreError> {
+        self.order_history_before(actor, id, page, None).await
+    }
+
+    /// То же, но только записи с номером меньше `before_id`: листание по курсору не повторяет
+    /// страницу, когда сверху успели прибавиться новые записи. `total` — всех записей заказа.
+    pub async fn order_history_before(
+        &self,
         _actor: &Actor,
         id: i64,
         page: PageRequest,
+        before_id: Option<i64>,
     ) -> Result<Page<AuditEntry>, CoreError> {
         validate_page(page.limit, page.offset)?;
         // Удалённый заказ, как и в `get_order`, отдаётся: в истории видно, кто его удалил.
@@ -25,6 +37,10 @@ impl Core {
         }
         let select = audit_log::Entity::find().filter(audit_log::Column::OrderId.eq(id));
         let total = select.clone().count(&self.db).await?;
+        let select = match before_id {
+            Some(b) => select.filter(audit_log::Column::Id.lt(b)),
+            None => select,
+        };
         let items = select
             .order_by_desc(audit_log::Column::At)
             .order_by_desc(audit_log::Column::Id)

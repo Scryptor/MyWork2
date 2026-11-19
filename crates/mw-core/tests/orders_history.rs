@@ -283,3 +283,71 @@ async fn history_of_a_deleted_order_shows_the_deletion() -> Result<(), CoreError
     }
     Ok(())
 }
+
+#[tokio::test]
+async fn order_history_pages_by_cursor_even_when_new_entries_arrive() -> Result<(), CoreError> {
+    for t in cores().await {
+        let o = t.core.create_order(&admin(), sample_new_order()).await?;
+        let mut version = o.version;
+        for n in 0..3 {
+            let o = t
+                .core
+                .update_order(
+                    &admin(),
+                    o.id,
+                    version,
+                    OrderPatch {
+                        master: Some(format!("Мастер {n}")),
+                        ..Default::default()
+                    },
+                )
+                .await?;
+            version = o.version;
+            t.clock.advance(Duration::minutes(1));
+        }
+        let first = t
+            .core
+            .order_history(
+                &admin(),
+                o.id,
+                PageRequest {
+                    limit: 2,
+                    offset: 0,
+                },
+            )
+            .await?;
+        let cursor = first.items[1].id;
+        // New entries on top do not move the cursor's page.
+        t.core
+            .update_order(
+                &admin(),
+                o.id,
+                version,
+                OrderPatch {
+                    master: Some("Новый".into()),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        let next = t
+            .core
+            .order_history_before(
+                &admin(),
+                o.id,
+                PageRequest {
+                    limit: 2,
+                    offset: 0,
+                },
+                Some(cursor),
+            )
+            .await?;
+        assert!(
+            next.items.iter().all(|e| e.id < cursor),
+            "{}: nothing at or after the cursor",
+            t.label
+        );
+        assert!(!next.items.is_empty(), "{}", t.label);
+        assert_eq!(next.items.last().unwrap().action, "order.created");
+    }
+    Ok(())
+}

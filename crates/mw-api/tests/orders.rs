@@ -505,3 +505,26 @@ async fn replayed_order_creation_is_marked() {
         assert_ne!(plain["id"], first.body["id"]);
     }
 }
+
+#[tokio::test]
+async fn history_before_id_gives_only_older_entries() {
+    for t in apis(Listen::Network).await {
+        let token = t.admin_token().await;
+        let (id, _) = order_ready_to_issue(&t, &token).await;
+        let all = t
+            .get(&format!("/api/v1/orders/{id}/history"), Some(&token))
+            .await;
+        let newest = all.body["items"][0]["id"].as_i64().unwrap();
+        let r = t
+            .get(
+                &format!("/api/v1/orders/{id}/history?before_id={newest}"),
+                Some(&token),
+            )
+            .await;
+        assert_eq!(r.status, 200, "{}: {}", t.label, r.body);
+        let items = r.body["items"].as_array().unwrap();
+        assert_eq!(items.len(), 1, "{}", t.label);
+        assert_eq!(items[0]["action"], json!("order.created"));
+        assert_eq!(r.body["total"], json!(2));
+    }
+}
