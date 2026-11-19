@@ -314,15 +314,23 @@ test.describe('server settings', () => {
 		try {
 			const next = async () =>
 				((await (await api.get('/api/v1/orders/next-number')).json()) as { next: number }).next;
-			const wanted = Math.max(900000, (await next()) + 1000);
+			// A jump of 1000 and more shows that the setting took effect; the window of 100 above it takes in the
+			// orders other specs create on this server meanwhile.
+			const wanted = (await next()) + 1000 + Math.floor(Math.random() * 1000);
 			await page.goto(`${origin}/settings/general`);
 			const field = page.getByRole('textbox', { name: 'Следующий номер заказа' });
 			await expect(field).toHaveValue(/^\d+$/);
 			await field.fill(String(wanted));
 			await field.press('Enter');
-			await expect(async () => expect(await next()).toBe(wanted)).toPass();
+			await expect
+				.poll(async () => {
+					const n = await next();
+					return n >= wanted && n < wanted + 100;
+				})
+				.toBe(true);
 			const order = await createOrder(api, { clientName: uniq('Номер') });
-			expect(order.id).toBe(wanted);
+			expect(order.id).toBeGreaterThanOrEqual(wanted);
+			expect(order.id).toBeLessThan(wanted + 100);
 
 			// An order has that number already: the server refuses, the field is as it was.
 			const shown = await field.inputValue();
