@@ -1592,7 +1592,7 @@
         "tags": [
           "Импорт из MyWork 2"
         ],
-        "summary": "Проверка папки MyWork 2 без записи: что будет перенесено или что не так\n(права `settings_manage` и `users_manage`, только сервер на этом компьютере).",
+        "summary": "Проверка папки MyWork 2 без записи: что будет перенесено или что не так. Без замены база должна быть\nпустой (иначе `replace_required` у SQLite), замена — только у SQLite. Время запроса не ограничено: на\nбольшой папке проверка долгая (права `settings_manage` и `users_manage`, только сервер на этом компьютере).",
         "operationId": "check_legacy_folder",
         "requestBody": {
           "content": {
@@ -4756,9 +4756,18 @@
           "orders",
           "clients",
           "files",
-          "files_bytes"
+          "files_bytes",
+          "replace_required",
+          "backups_dir"
         ],
         "properties": {
+          "backups_dir": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Куда при замене уйдёт копия нынешних данных (только при проверке с заменой)."
+          },
           "clients": {
             "type": "integer",
             "format": "int64",
@@ -4793,6 +4802,10 @@
               "null"
             ],
             "description": "Что не так, по-русски (только при `ok = false`)."
+          },
+          "replace_required": {
+            "type": "boolean",
+            "description": "В базе уже есть данные, и перенести можно только с заменой (SQLite): интерфейс предлагает её."
           },
           "schema_version": {
             "type": [

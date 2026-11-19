@@ -2,6 +2,7 @@
 
 use std::path::Path;
 
+use mw_core::{Core, CoreError, DatabaseKind, ImportTarget};
 use serde::{Deserialize, Serialize};
 
 use crate::error::LegacyError;
@@ -26,6 +27,11 @@ pub struct FolderCheck {
     pub files: u64,
     /// Их общий объём в байтах.
     pub files_bytes: u64,
+    /// В базе уже есть данные, и перенести можно только с заменой (SQLite): интерфейс предлагает её.
+    pub replace_required: bool,
+    /// Куда при замене уйдёт копия нынешних данных (только при проверке с заменой).
+    #[schema(required = true)]
+    pub backups_dir: Option<String>,
 }
 
 impl FolderCheck {
@@ -38,15 +44,62 @@ impl FolderCheck {
             clients: 0,
             files: 0,
             files_bytes: 0,
+            replace_required: false,
+            backups_dir: None,
         }
     }
+}
+
+/// Помеха со стороны базы MyWork 3, до чтения папки: без замены база должна быть пустой (в ней мог уже
+/// появиться администратор — `mw-server create-admin`), замена есть только у SQLite. `None` — помехи нет.
+pub async fn check_target(core: &Core, replace: bool) -> Result<Option<FolderCheck>, CoreError> {
+    let sqlite = core.database_kind() == DatabaseKind::Sqlite;
+    if replace {
+        return Ok((!sqlite).then(|| {
+            FolderCheck::problem(format!(
+                "{}: перенести можно только в новую пустую базу PostgreSQL",
+                LegacyError::ReplaceUnsupported
+            ))
+        }));
+    }
+    let target = core.import_target_state().await?;
+    if target.is_empty() {
+        return Ok(None);
+    }
+    let remedy = if sqlite {
+        "Перенести можно только с заменой: нынешние данные сохранятся копией"
+    } else {
+        "Перенести можно только в пустую базу: создайте новую пустую базу PostgreSQL"
+    };
+    Ok(Some(FolderCheck {
+        replace_required: sqlite,
+        ..FolderCheck::problem(format!(
+            "В базе MyWork 3 уже есть данные ({}). {remedy}",
+            existing(&target)
+        ))
+    }))
+}
+
+/// Что уже лежит в базе — только ненулевые числа (те же, что называет отказ импорта).
+fn existing(target: &ImportTarget) -> String {
+    [
+        ("клиенты", target.clients),
+        ("заказы", target.orders),
+        ("пользователи", target.users),
+        ("записи журнала", target.audit_entries),
+    ]
+    .into_iter()
+    .filter(|(_, count)| *count > 0)
+    .map(|(name, count)| format!("{name}: {count}"))
+    .collect::<Vec<_>>()
+    .join(", ")
 }
 
 /// Проверяет папку MyWork 2 (или файл `baza.sqlite` в ней) для переноса в папку данных `data_dir`:
 /// читает базу и файлы и считает, что будет перенесено. Ни в папку MyWork 2, ни в папку данных
 /// ничего не пишет (база читается из копии во временной папке). При переносе в пустую базу
 /// (`replace = false`) папки вложений `orders`, `stock` и `legacy` должны быть пусты, иначе это проблема;
-/// при замене прежние файлы уходят в копию.
+/// при замене прежние файлы уходят в копию (`backups_dir`). Состояние базы проверяет `check_target`.
 pub async fn check_folder(source: &Path, data_dir: &Path, replace: bool) -> FolderCheck {
     match check(source, data_dir, replace).await {
         Ok(found) => found,
@@ -91,6 +144,7 @@ async fn check(source: &Path, data_dir: &Path, replace: bool) -> Result<FolderCh
     let db = source::read_database(&folder.db_file)
         .await
         .map_err(|e| e.to_string())?;
+    let backups = data_dir.join("backups");
     tokio::task::spawn_blocking(move || {
         // Время подстановок не влияет на числа.
         let conversion = convert::convert(&db, &folder, chrono::NaiveDateTime::default());
@@ -103,6 +157,8 @@ async fn check(source: &Path, data_dir: &Path, replace: bool) -> Result<FolderCh
             clients: conversion.bundle.clients.len() as u64,
             files,
             files_bytes,
+            replace_required: false,
+            backups_dir: replace.then(|| backups.display().to_string()),
         }
     })
     .await

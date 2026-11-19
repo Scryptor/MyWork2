@@ -27,7 +27,7 @@ use std::path::{Path, PathBuf};
 use mw_core::{Actor, Core, DatabaseKind, ImportMode};
 use tokio_util::sync::CancellationToken;
 
-pub use check::{FolderCheck, check_folder};
+pub use check::{FolderCheck, check_folder, check_target};
 pub use error::{LegacyError, StartedFrom, import_error_message};
 pub use files::StagingCleanup;
 pub use progress::{ImportJob, ImportStage, Progress};

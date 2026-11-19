@@ -369,7 +369,9 @@ async fn check_names_an_occupied_attachments_folder_unless_replacing() {
                 Some(json!({ "path": path_of(&src), "replace": true })),
             )
             .await;
-        assert_eq!(r.body["ok"], json!(true), "{}: {}", t.label, r.body);
+        // Замена — только у SQLite (её прежние файлы уходят в копию); PostgreSQL отказывает в ней сразу.
+        let sqlite = t.core.database_kind() == mw_core::DatabaseKind::Sqlite;
+        assert_eq!(r.body["ok"], json!(sqlite), "{}: {}", t.label, r.body);
     }
 }
 
@@ -503,6 +505,86 @@ async fn import_needs_settings_and_users_rights() {
             let r = t.send(method, path, Some(&token), body).await;
             assert_eq!(r.status, 403, "{} {path}: {}", t.label, r.body);
             assert_eq!(r.body["permission"], "users_manage", "{path}");
+        }
+    }
+}
+
+/// Первый запуск на базе, где уже создан администратор (`mw-server create-admin`), а настройки ещё нет:
+/// проверка без замены сразу говорит, что перенести можно только с заменой (SQLite), и называет числа.
+#[tokio::test]
+async fn first_run_check_on_a_base_with_an_administrator_asks_for_replacing() {
+    for t in apis(Listen::Loopback).await {
+        t.create_admin_user("admin").await;
+        let token = t.login("admin").await;
+        let info = t.get("/api/v1/server-info", None).await;
+        assert_eq!(info.body["setup_required"], json!(true), "{}", t.label);
+        let sqlite = t.core.database_kind() == mw_core::DatabaseKind::Sqlite;
+        let src = fixture(0).await;
+
+        let r = t
+            .send(
+                Method::POST,
+                CHECK,
+                Some(&token),
+                Some(json!({ "path": path_of(&src) })),
+            )
+            .await;
+        assert_eq!(r.status, 200, "{}: {}", t.label, r.body);
+        assert_eq!(r.body["ok"], json!(false), "{}: {}", t.label, r.body);
+        assert_eq!(
+            r.body["replace_required"],
+            json!(sqlite),
+            "{}: {}",
+            t.label,
+            r.body
+        );
+        let problem = r.body["problem"].as_str().unwrap();
+        assert!(
+            problem.starts_with("В базе MyWork 3 уже есть данные (")
+                && problem.contains("пользователи: 1"),
+            "{}: {problem}",
+            t.label
+        );
+        assert!(
+            !problem.contains("клиенты") && !problem.contains("заказы"),
+            "{problem}"
+        );
+        if sqlite {
+            assert!(problem.contains("только с заменой"), "{problem}");
+        } else {
+            assert!(problem.contains("новую пустую базу"), "{problem}");
+        }
+
+        let r = t
+            .send(
+                Method::POST,
+                CHECK,
+                Some(&token),
+                Some(json!({ "path": path_of(&src), "replace": true })),
+            )
+            .await;
+        assert_eq!(r.status, 200, "{}: {}", t.label, r.body);
+        assert_eq!(r.body["replace_required"], json!(false), "{}", t.label);
+        if sqlite {
+            assert_eq!(r.body["ok"], json!(true), "{}: {}", t.label, r.body);
+            let backups = t.core.data_dir_path().unwrap().join("backups");
+            assert_eq!(
+                r.body["backups_dir"],
+                json!(backups.display().to_string()),
+                "{}",
+                t.label
+            );
+        } else {
+            // Замена — только для SQLite: PostgreSQL отказывает уже при проверке.
+            assert_eq!(r.body["ok"], json!(false), "{}: {}", t.label, r.body);
+            assert!(
+                r.body["problem"]
+                    .as_str()
+                    .unwrap()
+                    .contains("не поддерживается"),
+                "{}",
+                r.body
+            );
         }
     }
 }

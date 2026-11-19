@@ -34,8 +34,9 @@ fn local_import_allowed(state: &AppState, actor: &Actor) -> Result<PathBuf, ApiE
         .ok_or_else(ApiError::no_data_dir)
 }
 
-/// Проверка папки MyWork 2 без записи: что будет перенесено или что не так
-/// (права `settings_manage` и `users_manage`, только сервер на этом компьютере).
+/// Проверка папки MyWork 2 без записи: что будет перенесено или что не так. Без замены база должна быть
+/// пустой (иначе `replace_required` у SQLite), замена — только у SQLite. Время запроса не ограничено: на
+/// большой папке проверка долгая (права `settings_manage` и `users_manage`, только сервер на этом компьютере).
 #[utoipa::path(
     post,
     path = "/api/v1/legacy-import/check",
@@ -50,13 +51,12 @@ pub(super) async fn check_legacy_folder(
     Json(body): Json<LegacyImportCheck>,
 ) -> Result<Json<FolderCheck>, ApiError> {
     let data_dir = local_import_allowed(&state, &actor)?;
+    let replace = body.replace.unwrap_or(false);
+    if let Some(problem) = mw_legacy::check_target(&state.core, replace).await? {
+        return Ok(Json(problem));
+    }
     Ok(Json(
-        mw_legacy::check_folder(
-            FsPath::new(&body.path),
-            &data_dir,
-            body.replace.unwrap_or(false),
-        )
-        .await,
+        mw_legacy::check_folder(FsPath::new(&body.path), &data_dir, replace).await,
     ))
 }
 
