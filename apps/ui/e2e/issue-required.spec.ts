@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, statSync } from 'node:fs';
+import { mkdirSync, rmSync, statSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -17,16 +17,32 @@ import { createOrder, E2E_ADMIN_LOGIN, E2E_ADMIN_PASSWORD, statusId, uniq } from
 // (a lock folder), and puts the setting back in `finally`.
 const DEFAULT_SET = ['final_price', 'work_done', 'master'];
 const LOCK = join(tmpdir(), 'mw-e2e-issue-required.lock');
-const STALE_MS = 2 * 60_000;
-const WAIT_MS = 80_000;
+// The holder touches the lock while its test runs: a lock untouched this long belongs to a run that
+// died. Waiting lasts longer than that, so a dead lock is always taken away before the wait gives up.
+const TOUCH_MS = 5_000;
+const STALE_MS = 60_000;
+const WAIT_MS = 90_000;
 async function lock(): Promise<() => void> {
 	const until = Date.now() + WAIT_MS;
 	for (;;) {
 		try {
 			mkdirSync(LOCK);
-			return () => rmSync(LOCK, { recursive: true, force: true });
+			const alive = setInterval(() => {
+				try {
+					const now = new Date();
+					utimesSync(LOCK, now, now);
+				} catch {
+					// Taken away: the test ends anyway.
+				}
+			}, TOUCH_MS);
+			// The worker may end without the release (a test killed at its timeout): nothing keeps it.
+			alive.unref();
+			return () => {
+				clearInterval(alive);
+				rmSync(LOCK, { recursive: true, force: true });
+			};
 		} catch {
-			// A lock of a run that died is older than any test: take it away.
+			// A lock nobody touched for STALE_MS is of a run that died: take it away.
 			try {
 				if (Date.now() - statSync(LOCK).mtimeMs > STALE_MS)
 					rmSync(LOCK, { recursive: true, force: true });
@@ -83,7 +99,7 @@ test('the set of the settings is what the server checks and «Выдать» ask
 	page,
 	playwright
 }) => {
-	test.setTimeout(120_000);
+	test.setTimeout(WAIT_MS + 60_000);
 	await withSetting(page, playwright, async (api, origin) => {
 		const settings = async () => (await (await api.get('/api/v1/settings')).json()) as AppSettings;
 		const marker = uniq('M');
@@ -156,7 +172,7 @@ test('the set of the settings is what the server checks and «Выдать» ask
 });
 
 test('bulk issue skips an order that lacks what the set requires', async ({ page, playwright }) => {
-	test.setTimeout(120_000);
+	test.setTimeout(WAIT_MS + 60_000);
 	await withSetting(page, playwright, async (api, origin) => {
 		const set = await api.patch('/api/v1/settings', {
 			data: { issue_required: ['final_price', 'warranty'] }
