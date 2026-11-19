@@ -272,3 +272,81 @@ async fn archived_default_point_reads_as_none() -> Result<(), CoreError> {
     }
     Ok(())
 }
+
+/// «Обязательно при выдаче» — набор: хранится в порядке перечисления, тот же набор в другом
+/// порядке — правка без изменений (без записи и журнала).
+#[tokio::test]
+async fn issue_required_is_a_set_in_enum_order() -> Result<(), CoreError> {
+    use mw_domain::issue::IssueRequirement as R;
+    let set = |list: &[R]| SettingsPatch {
+        issue_required: Some(list.to_vec()),
+        ..Default::default()
+    };
+    for t in cores().await {
+        assert_eq!(
+            t.core.settings().issue_required,
+            vec![R::FinalPrice, R::WorkDone, R::Master],
+            "{}",
+            t.label
+        );
+        // Набор по умолчанию в другом порядке: ничего не меняется.
+        let same = t
+            .core
+            .update_settings(&admin(), set(&[R::Master, R::WorkDone, R::FinalPrice]))
+            .await?;
+        assert_eq!(
+            same.issue_required,
+            vec![R::FinalPrice, R::WorkDone, R::Master]
+        );
+        assert_eq!(
+            count_audit(&t.core, "settings.updated").await,
+            0,
+            "{}",
+            t.label
+        );
+
+        // Новый набор сохраняется в порядке перечисления; он же в другом порядке — снова ничего.
+        let saved = t
+            .core
+            .update_settings(&admin(), set(&[R::Warranty, R::Master]))
+            .await?;
+        assert_eq!(saved.issue_required, vec![R::Master, R::Warranty]);
+        assert_eq!(
+            t.core.settings().issue_required,
+            vec![R::Master, R::Warranty]
+        );
+        assert_eq!(count_audit(&t.core, "settings.updated").await, 1);
+        t.core
+            .update_settings(&admin(), set(&[R::Master, R::Warranty]))
+            .await?;
+        t.core
+            .update_settings(&admin(), set(&[R::Warranty, R::Master]))
+            .await?;
+        assert_eq!(count_audit(&t.core, "settings.updated").await, 1);
+
+        // Строка, записанная в другом порядке (раньше), читается как набор.
+        set_setting_directly(
+            &t.core,
+            "issue_required",
+            serde_json::json!(["warranty", "final_price"]),
+        )
+        .await;
+        let reopened = Core::open(t.core.db().clone(), t.clock.clone(), "UTC").await?;
+        assert_eq!(
+            reopened.settings().issue_required,
+            vec![R::FinalPrice, R::Warranty]
+        );
+        reopened
+            .update_settings(&admin(), set(&[R::Warranty, R::FinalPrice]))
+            .await?;
+        assert_eq!(count_audit(&reopened, "settings.updated").await, 1);
+        // Повторы по-прежнему отклоняются, в любом порядке.
+        assert_validation(
+            reopened
+                .update_settings(&admin(), set(&[R::Master, R::Warranty, R::Master]))
+                .await,
+            &[("issue_required", "invalid")],
+        );
+    }
+    Ok(())
+}

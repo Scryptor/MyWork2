@@ -68,5 +68,6 @@ issue_terms: string,
 timezone: string, 
 /**
  * Что должно быть заполнено в заказе перед выдачей: весь набор требований, пусто — ничего.
+ * Набор, всегда в порядке перечисления `IssueRequirement`.
  */
 issue_required: Array<IssueRequirement>, };

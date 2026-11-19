@@ -438,7 +438,7 @@ async fn default_set_blocks_missing_price_master_and_work() -> Result<(), CoreEr
     for t in cores().await {
         assert_eq!(
             t.core.settings().issue_required,
-            vec![R::FinalPrice, R::Master, R::WorkDone]
+            vec![R::FinalPrice, R::WorkDone, R::Master]
         );
         let o = order_with(&t, false, false, false, false).await?;
         let blocked = [

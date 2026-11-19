@@ -51,6 +51,7 @@ pub struct AppSettings {
     /// Часовой пояс предприятия (имя IANA).
     pub timezone: String,
     /// Что должно быть заполнено в заказе перед выдачей: весь набор требований, пусто — ничего.
+    /// Набор, всегда в порядке перечисления `IssueRequirement`.
     pub issue_required: Vec<IssueRequirement>,
 }
 
@@ -74,8 +75,8 @@ impl Default for AppSettings {
             timezone: "UTC".to_owned(),
             issue_required: vec![
                 IssueRequirement::FinalPrice,
-                IssueRequirement::Master,
                 IssueRequirement::WorkDone,
+                IssueRequirement::Master,
             ],
         }
     }
@@ -145,7 +146,7 @@ pub struct SettingsPatch {
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub timezone: Option<String>,
-    /// Что должно быть заполнено в заказе перед выдачей (без повторов).
+    /// Что должно быть заполнено в заказе перед выдачей (без повторов, порядок не важен).
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub issue_required: Option<Vec<IssueRequirement>>,
@@ -174,6 +175,13 @@ fn keep_differences(p: &mut SettingsPatch, c: &AppSettings) {
     keep(&mut p.issue_terms, &c.issue_terms);
     keep(&mut p.timezone, &c.timezone);
     keep(&mut p.issue_required, &c.issue_required);
+}
+
+/// «Обязательно при выдаче» — набор: в порядке перечисления, так что тот же набор в другом
+/// порядке равен сохранённому. Повторы остаются — их отклоняет проверка правки.
+fn in_enum_order(mut list: Vec<IssueRequirement>) -> Vec<IssueRequirement> {
+    list.sort_unstable();
+    list
 }
 
 pub(crate) fn parse_timezone(name: &str) -> Tz {
@@ -208,7 +216,14 @@ pub(crate) async fn load(conn: &impl ConnectionTrait) -> Result<AppSettings, Cor
         intake_terms: get(&rows, "intake_terms").unwrap_or(d.intake_terms),
         issue_terms: get(&rows, "issue_terms").unwrap_or(d.issue_terms),
         timezone: get(&rows, "timezone").unwrap_or(d.timezone),
-        issue_required: get(&rows, "issue_required").unwrap_or(d.issue_required),
+        // Записанное раньше в другом порядке или с повтором читается как набор.
+        issue_required: get::<Vec<IssueRequirement>>(&rows, "issue_required")
+            .map(|mut list| {
+                list.sort_unstable();
+                list.dedup();
+                list
+            })
+            .unwrap_or(d.issue_required),
     };
     // Точка по умолчанию, которая в архиве или которой нет, считается не выбранной.
     if let Some(id) = loaded.default_service_point_id {
@@ -402,6 +417,8 @@ impl Core {
         {
             *text = text.trim().to_owned();
         }
+
+        patch.issue_required = patch.issue_required.map(in_enum_order);
 
         let tx = self.begin_write().await?;
         let current = load(&tx).await?;
