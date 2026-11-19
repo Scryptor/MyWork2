@@ -286,35 +286,55 @@ test.describe('server settings', () => {
 		await expect(page.getByRole('textbox', { name: 'Валюта' })).toHaveValue(before);
 	});
 
+	// The counter only goes up and every order takes a number from it, so two browsers on one server would
+	// refuse each other's numbers. Each engine therefore has a server of its own: Chromium the open one,
+	// WebKit the one with the administrator.
 	test('«Следующий номер заказа» gives the next order its number; a number in use is refused', async ({
 		page,
-		request
-	}) => {
-		const response = await request.get('/api/v1/orders/next-number');
-		const current = ((await response.json()) as { next: number }).next;
-		// Both engines run this on one server: the second one must ask for more than the first got.
-		const wanted = Math.max(900000, current + 1000);
-		await page.goto('/settings/general');
-		const field = page.getByRole('textbox', { name: 'Следующий номер заказа' });
-		await expect(field).toHaveValue(/^\d+$/);
-		await field.fill(String(wanted));
-		await field.press('Enter');
-		await expect(page.getByText('Номер должен быть больше')).toHaveCount(0);
-		await expect(async () => {
-			const now = await request.get('/api/v1/orders/next-number');
-			expect(((await now.json()) as { next: number }).next).toBeGreaterThanOrEqual(wanted);
-		}).toPass();
-		const order = await createOrder(request, { clientName: uniq('Номер') });
-		expect(order.id).toBeGreaterThanOrEqual(wanted);
+		playwright
+	}, testInfo) => {
+		const signedIn = testInfo.project.name === 'webkit';
+		const origin = signedIn ? 'http://127.0.0.1:4174' : 'http://127.0.0.1:4173';
+		if (signedIn) {
+			await page.goto(`${origin}/login`);
+			await page.getByLabel('Логин').fill(E2E_ADMIN_LOGIN);
+			await page.getByLabel('Пароль').fill(E2E_ADMIN_PASSWORD);
+			await page.getByRole('button', { name: 'Войти' }).click();
+			await expect(page).toHaveURL(/\/orders$/);
+		}
+		const token = signedIn
+			? await page.evaluate(
+					() => localStorage.getItem('mw.session') ?? sessionStorage.getItem('mw.session')
+				)
+			: null;
+		const api = await playwright.request.newContext({
+			baseURL: origin,
+			extraHTTPHeaders: token ? { Authorization: `Bearer ${token}` } : {}
+		});
+		try {
+			const next = async () =>
+				((await (await api.get('/api/v1/orders/next-number')).json()) as { next: number }).next;
+			const wanted = Math.max(900000, (await next()) + 1000);
+			await page.goto(`${origin}/settings/general`);
+			const field = page.getByRole('textbox', { name: 'Следующий номер заказа' });
+			await expect(field).toHaveValue(/^\d+$/);
+			await field.fill(String(wanted));
+			await field.press('Enter');
+			await expect(async () => expect(await next()).toBe(wanted)).toPass();
+			const order = await createOrder(api, { clientName: uniq('Номер') });
+			expect(order.id).toBe(wanted);
 
-		// An order has that number already: the server refuses, the field is as it was.
-		const shown = await field.inputValue();
-		await field.fill('1');
-		await field.blur();
-		await expect(
-			page.getByText('Номер должен быть больше номеров существующих заказов')
-		).toBeVisible();
-		await expect(field).toHaveValue(shown);
+			// An order has that number already: the server refuses, the field is as it was.
+			const shown = await field.inputValue();
+			await field.fill('1');
+			await field.blur();
+			await expect(
+				page.getByText('Номер должен быть больше номеров существующих заказов')
+			).toBeVisible();
+			await expect(field).toHaveValue(shown);
+		} finally {
+			await api.dispose();
+		}
 	});
 
 	test('«О программе» shows the version the server reports', async ({ page, request }) => {

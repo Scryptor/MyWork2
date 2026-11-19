@@ -109,4 +109,13 @@ describe('createSettingsEditor', () => {
 		expect(editor.fieldError('firm_name')).toBeUndefined();
 		expect(editor.pendingFields()).toEqual(['ready_stale_days']);
 	});
+
+	it('a typed time zone is sent as it is: the server decides if it exists', async () => {
+		make();
+		save.mockRejectedValueOnce(validation('timezone', 'invalid'));
+		editor.edit('timezone', 'Mars/Olympus');
+		await vi.advanceTimersByTimeAsync(700);
+		expect(save).toHaveBeenCalledWith({ timezone: 'Mars/Olympus' });
+		expect(editor.fieldError('timezone')).toBe('Неизвестный часовой пояс');
+	});
 });

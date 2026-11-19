@@ -7,6 +7,7 @@
 	import { ru } from '#lib/i18n/ru.js';
 	import SaveNote from '#lib/settings/SaveNote.svelte';
 	import { createSettingsEditor } from '#lib/settings/settings-editor.svelte.js';
+	import { timezoneChoices } from '#lib/settings/timezones.js';
 	import Callout from '#lib/ui/Callout.svelte';
 	import Card from '#lib/ui/Card.svelte';
 	import Combobox from '#lib/ui/Combobox.svelte';
@@ -21,11 +22,7 @@
 	const s = $derived(app.settings);
 	const locked = $derived(!editor.canEdit);
 
-	const zones = $derived.by(() => {
-		const all = Intl.supportedValuesOf('timeZone');
-		const current = editor.value('timezone', s.timezone) ?? s.timezone;
-		return (all.includes(current) ? all : [current, ...all]).map((value) => ({ value }));
-	});
+	const zones = $derived(timezoneChoices(editor.value('timezone', s.timezone) ?? s.timezone));
 
 	// «Следующий номер заказа» is not a setting but a counter: it has its own request.
 	let next = $state('');
@@ -99,11 +96,14 @@
 		/>
 		<Combobox
 			label={t.timezone}
-			items={zones}
-			allowCustom={false}
+			items={zones.items}
+			allowCustom={zones.free}
 			disabled={locked}
 			error={editor.fieldError('timezone')}
-			bind:value={() => editor.value('timezone', s.timezone) ?? '', () => {}}
+			bind:value={
+				() => editor.value('timezone', s.timezone) ?? '',
+				(v) => zones.free && editor.edit('timezone', v)
+			}
 			onselect={(v) => editor.commit('timezone', v)}
 		/>
 		<form
