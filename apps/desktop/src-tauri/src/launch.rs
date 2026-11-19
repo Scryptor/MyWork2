@@ -2,6 +2,7 @@
 
 use mw_server::{Config, Server, ServerError, data_dir_name, os_data_dir, portable_data_dir};
 use std::net::{Ipv4Addr, SocketAddr};
+use std::ops::RangeInclusive;
 use std::path::{Path, PathBuf};
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
@@ -11,6 +12,13 @@ pub const LOCAL_FILE: &str = "local.json";
 
 /// Файл рядом с программой, переводящий её в портативный режим (данные — в `data` рядом).
 pub use mw_server::PORTABLE_FILE;
+
+/// Порт первого запуска — случайный отсюда, вне эфемерного диапазона ОС (49152–65535 на Windows и macOS,
+/// 32768–60999 на Linux): там порт берут исходящие соединения других программ, и запомненный адрес окна
+/// чаще оказывался бы занят.
+const FIRST_PORTS: RangeInclusive<u16> = 20000..=29999;
+/// Сколько случайных портов пробуется, прежде чем взять любой свободный (`:0`).
+const RANDOM_TRIES: usize = 8;
 
 /// Папка данных программы этой сборки: см. `data_dir_for`.
 pub fn data_dir(exe_dir: &Path) -> Result<PathBuf, ServerError> {
@@ -60,15 +68,15 @@ impl Running {
 }
 
 /// Поднимает сервер с SQLite в папке данных и интерфейсом из `ui_dir` на 127.0.0.1. Порт — прежний
-/// (из `local.json`), если он свободен, иначе любой свободный: у окна тот же адрес, а с ним и источник,
-/// к которому браузерное хранилище привязывает настройки вида, сохранённые виды и вход.
+/// (из `local.json`), если он свободен, иначе случайный из `FIRST_PORTS`, иначе любой свободный: у окна тот же
+/// адрес, а с ним и источник, к которому браузерное хранилище привязывает настройки вида, сохранённые виды и вход.
 pub async fn start(data_dir: &Path, ui_dir: &Path) -> Result<Running, ServerError> {
     let remembered = remembered_port(data_dir);
-    let server = match Server::start(&config(data_dir, ui_dir, remembered.unwrap_or(0))).await {
-        Err(ServerError::Io { source, .. })
-            if remembered.is_some() && port_taken(source.kind()) =>
-        {
-            tracing::info!("прежний порт занят, сервер возьмёт свободный");
+    let port = choose_port(remembered, random_number, port_is_free);
+    let server = match Server::start(&config(data_dir, ui_dir, port)).await {
+        // Порт заняли между проверкой и привязкой.
+        Err(ServerError::Io { source, .. }) if port != 0 && port_taken(source.kind()) => {
+            tracing::info!("порт {port} занят, сервер возьмёт любой свободный");
             Server::start(&config(data_dir, ui_dir, 0)).await?
         }
         started => started?,
@@ -86,6 +94,42 @@ pub async fn start(data_dir: &Path, ui_dir: &Path) -> Result<Running, ServerErro
         stop,
         serving,
     })
+}
+
+/// Порт для сервера: прежний, если свободен; иначе первый свободный из `RANDOM_TRIES` случайных в
+/// `FIRST_PORTS`; иначе `0` (любой свободный, его назовёт ОС).
+fn choose_port(
+    remembered: Option<u16>,
+    mut random: impl FnMut() -> u64,
+    mut free: impl FnMut(u16) -> bool,
+) -> u16 {
+    if let Some(port) = remembered
+        && free(port)
+    {
+        return port;
+    }
+    if remembered.is_some() {
+        tracing::info!("прежний порт занят, сервер возьмёт другой");
+    }
+    let span = u64::from(FIRST_PORTS.end() - FIRST_PORTS.start()) + 1;
+    (0..RANDOM_TRIES)
+        .filter_map(|_| u16::try_from(random() % span).ok())
+        .map(|offset| FIRST_PORTS.start() + offset)
+        .find(|&port| free(port))
+        .unwrap_or(0)
+}
+
+/// Свободен ли порт на 127.0.0.1: пробная привязка тут же отпускается.
+fn port_is_free(port: u16) -> bool {
+    std::net::TcpListener::bind((Ipv4Addr::LOCALHOST, port)).is_ok()
+}
+
+/// Случайное число без отдельной библиотеки: у каждого `RandomState` свои случайные ключи.
+fn random_number() -> u64 {
+    use std::hash::{BuildHasher, Hasher};
+    std::collections::hash_map::RandomState::new()
+        .build_hasher()
+        .finish()
 }
 
 fn config(data_dir: &Path, ui_dir: &Path, port: u16) -> Config {
@@ -241,6 +285,52 @@ mod tests {
         assert!(data_dir_for(&exe, None, false).is_err());
     }
 
+    /// Случайные числа по списку (по кругу).
+    fn numbers(list: &'static [u64]) -> impl FnMut() -> u64 {
+        let mut next = list.iter().cycle();
+        move || *next.next().unwrap()
+    }
+
+    #[test]
+    fn the_first_port_is_random_outside_the_ephemeral_range() {
+        let mut tried = Vec::new();
+        let port = choose_port(None, numbers(&[7, 10_003]), |port| {
+            tried.push(port);
+            true
+        });
+        assert_eq!(port, 20_007);
+        assert_eq!(tried, vec![20_007]);
+        // Числа любого размера дают порт из диапазона.
+        for n in [0, 9_999, 10_000, u64::MAX] {
+            let port = choose_port(None, move || n, |_| true);
+            assert!(FIRST_PORTS.contains(&port), "{n}: {port}");
+        }
+    }
+
+    #[test]
+    fn a_free_remembered_port_is_kept_and_a_taken_one_gives_a_random_one() {
+        let port = choose_port(Some(50_946), numbers(&[1]), |_| true);
+        assert_eq!(port, 50_946);
+        let mut tried = Vec::new();
+        let port = choose_port(Some(50_946), numbers(&[1, 2, 3]), |port| {
+            tried.push(port);
+            port == 20_003
+        });
+        assert_eq!(port, 20_003);
+        assert_eq!(tried, vec![50_946, 20_001, 20_002, 20_003]);
+    }
+
+    #[test]
+    fn when_every_random_port_is_taken_the_system_picks_one() {
+        let mut tried = 0;
+        let port = choose_port(Some(50_946), numbers(&[5]), |_| {
+            tried += 1;
+            false
+        });
+        assert_eq!(port, 0);
+        assert_eq!(tried, 1 + RANDOM_TRIES);
+    }
+
     #[test]
     fn without_a_folder_of_the_system_the_start_fails_clearly_instead_of_writing_beside_the_program()
      {
@@ -288,6 +378,11 @@ mod tests {
             running.url
         );
         assert!(running.url.ends_with('/'), "{}", running.url);
+        let port = addr_of(&running.url).port();
+        assert!(
+            FIRST_PORTS.contains(&port),
+            "первый порт — из {FIRST_PORTS:?}: {port}"
+        );
         assert!(data.join("mywork.db").is_file());
 
         let (status, body) = get(&running.url, "/api/v1/server-info").await;
