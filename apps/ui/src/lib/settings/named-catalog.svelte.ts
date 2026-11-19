@@ -37,7 +37,9 @@ export function mistake(e: unknown): string {
 
 export function createNamedCatalog<T extends NamedItem, N, P>(
 	api: NamedApi<T, N, P>,
-	changed: () => Promise<unknown> | void = () => {}
+	changed: () => Promise<unknown> | void = () => {},
+	/** Whether the counts may be asked for — the server gives them only to «settings_manage». */
+	withCounts: () => boolean = () => true
 ) {
 	let items = $state.raw<T[]>([]);
 	let counts = $state.raw<Record<number, number> | null>({});
@@ -55,7 +57,10 @@ export function createNamedCatalog<T extends NamedItem, N, P>(
 	});
 
 	async function read(mine: number) {
-		const [list, usage] = await Promise.all([api.list(), api.usage().catch(() => null)]);
+		const [list, usage] = await Promise.all([
+			api.list(),
+			withCounts() ? api.usage().catch(() => null) : null
+		]);
 		if (mine !== seq) return;
 		items = sorted(list);
 		counts = usageCounts(usage);

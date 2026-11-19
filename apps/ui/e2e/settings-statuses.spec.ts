@@ -198,24 +198,30 @@ test('without the counts a change of kind still warns, and no count is shown', a
 	}
 });
 
-test('the last «Выдан» cannot lose its kind', async ({ page }) => {
-	await openStatuses(page);
-	const kinds = page.getByRole('main').getByRole('combobox', { name: /^Вид статуса/ });
-	// The list is loaded before it is counted.
-	await expect(kinds.first()).toBeVisible();
-	const issued = page.getByRole('main').getByRole('listitem').filter({ hasText: 'заказ выдан' });
-	// Only if exactly one live status is «Выдан» does the refusal show; otherwise the change is just allowed.
-	test.skip((await issued.count()) !== 1, 'more than one «Выдан» status on this server');
-	const one = issued.getByRole('combobox', { name: /^Вид статуса/ });
-	await one.click();
-	await page.getByRole('option', { name: 'Открыт' }).click();
-	// Orders issued by other specs: the warning comes first, then the server refuses; with none, only the refusal.
-	const warn = page.getByRole('alertdialog');
-	const refusal = page.getByText('Нужен хотя бы один статус вида „Выдан“');
-	await expect(warn.or(refusal)).toBeVisible();
-	if (await warn.isVisible()) await warn.getByRole('button', { name: 'Сменить вид' }).click();
-	await expect(refusal).toBeVisible();
-	await expect(one).toHaveText('Выдан');
+test('the last «Выдан» cannot lose its kind', async ({ page, request }) => {
+	// Other specs may have made statuses of this kind; with a second «Выдан» the change would be allowed. So the
+	// extra ones go to the archive for the length of this test and come back at the end. The built-in is never touched.
+	const all = (await (await request.get('/api/v1/statuses')).json()) as Status[];
+	const extra = all.filter((s) => s.kind === 'issued' && s.name !== 'Выдан');
+	const archive = (list: Status[], archived: boolean) =>
+		Promise.all(list.map((s) => request.patch(`/api/v1/statuses/${s.id}`, { data: { archived } })));
+	await archive(extra, true);
+	try {
+		await openStatuses(page);
+		const one = page.getByRole('main').getByRole('combobox', { name: 'Вид статуса „Выдан“' });
+		await expect(one).toHaveText('Выдан');
+		await one.click();
+		await page.getByRole('option', { name: 'Открыт' }).click();
+		// Orders issued by other specs: the warning comes first, then the server refuses; with none, only the refusal.
+		const warn = page.getByRole('alertdialog');
+		const refusal = page.getByText('Нужен хотя бы один статус вида „Выдан“');
+		await expect(warn.or(refusal)).toBeVisible();
+		if (await warn.isVisible()) await warn.getByRole('button', { name: 'Сменить вид' }).click();
+		await expect(refusal).toBeVisible();
+		await expect(one).toHaveText('Выдан');
+	} finally {
+		await archive(extra, false);
+	}
 });
 
 test('dragging changes the order of the statuses and it survives a reload', async ({

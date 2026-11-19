@@ -13,6 +13,8 @@
 	{#if editor.error}
 		<span class="failed">{t.failed}: {editor.error.message}</span>
 		<Button size="sm" variant="ghost" onclick={() => editor.retry()}>{ru.common.retry}</Button>
+	{:else if editor.fieldsFailed}
+		<span class="failed">{t.checkFields}</span>
 	{:else if editor.state === 'saving'}
 		<span>{t.saving}</span>
 	{:else if editor.state === 'saved'}

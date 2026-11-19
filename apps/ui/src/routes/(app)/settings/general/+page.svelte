@@ -1,11 +1,11 @@
 <!-- «Общие» (spec 6.8): the name, the currency, the time zone, the next order number, the master's share. -->
 <script lang="ts">
-	import { onDestroy, onMount } from 'svelte';
-	import { ApiError, errorMessage } from '#lib/api/client.js';
+	import { onDestroy } from 'svelte';
 	import { getNextOrderNumber, setNextOrderNumber, updateSettings } from '#lib/api/catalogs.js';
 	import { app } from '#lib/app/context.svelte.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import SaveNote from '#lib/settings/SaveNote.svelte';
+	import { createNextOrder } from '#lib/settings/next-order.svelte.js';
 	import { createSettingsEditor } from '#lib/settings/settings-editor.svelte.js';
 	import { timezoneChoices } from '#lib/settings/timezones.js';
 	import Callout from '#lib/ui/Callout.svelte';
@@ -24,45 +24,16 @@
 
 	const zones = $derived(timezoneChoices(editor.value('timezone', s.timezone) ?? s.timezone));
 
-	// «Следующий номер заказа» is not a setting but a counter: it has its own request.
-	let next = $state('');
-	let nextServer: number | null = null;
-	let nextError = $state<string | undefined>();
-	let nextBusy = false;
-
-	onMount(async () => {
-		if (!app.can('settings_manage')) return;
-		try {
-			nextServer = (await getNextOrderNumber()).next;
-			next = String(nextServer);
-		} catch (e) {
-			nextError = errorMessage(e);
-		}
+	// «Следующий номер заказа» is not a setting but a counter: it has its own requests.
+	const nextOrder = createNextOrder({
+		can: () => app.can('settings_manage'),
+		get: getNextOrderNumber,
+		set: setNextOrderNumber
 	});
-
-	async function commitNext() {
-		const raw = next.trim();
-		if (!editor.canEdit || nextServer === null || nextBusy || raw === String(nextServer)) return;
-		if (!/^\d+$/.test(raw) || Number(raw) < 1) {
-			nextError = t.nextOrderNotNumber;
-			next = String(nextServer);
-			return;
-		}
-		nextBusy = true;
-		try {
-			await setNextOrderNumber(Number(raw));
-			nextServer = Number(raw);
-			// Not over what was typed meanwhile.
-			if (next.trim() === raw) next = String(nextServer);
-			nextError = undefined;
-		} catch (e) {
-			nextError =
-				e instanceof ApiError && e.code === 'validation' ? t.nextOrderTooSmall : errorMessage(e);
-			next = String(nextServer);
-		} finally {
-			nextBusy = false;
-		}
-	}
+	// The right may come after the screen is open: the number is read when it does.
+	$effect(() => {
+		if (editor.canEdit) void nextOrder.load();
+	});
 
 	onDestroy(() => {
 		void editor.flush().finally(() => editor.dispose());
@@ -103,25 +74,27 @@
 			error={editor.fieldError('timezone')}
 			bind:value={
 				() => editor.value('timezone', s.timezone) ?? '',
-				(v) => zones.free && editor.edit('timezone', v)
+				(v) => zones.free && editor.type('timezone', v)
 			}
 			onselect={(v) => editor.commit('timezone', v)}
+			onenter={() => editor.commitTyped('timezone')}
+			onblur={() => editor.commitTyped('timezone')}
 		/>
 		<!-- The counter is read only with «settings_manage»: without it there is nothing to show. -->
 		{#if !locked}
 			<form
 				onsubmit={(e) => {
 					e.preventDefault();
-					void commitNext();
+					void nextOrder.commit();
 				}}
 			>
 				<TextInput
 					label={t.nextOrder}
 					hint={t.nextOrderHint}
 					inputmode="numeric"
-					error={nextError}
-					bind:value={() => next, (v) => ((next = v), (nextError = undefined))}
-					onblur={() => void commitNext()}
+					error={nextOrder.error}
+					bind:value={() => nextOrder.text, (v) => (nextOrder.text = v)}
+					onblur={() => void nextOrder.commit()}
 				/>
 			</form>
 		{/if}

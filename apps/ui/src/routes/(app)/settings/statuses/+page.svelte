@@ -20,7 +20,7 @@
 	import CatalogRows from '#lib/settings/CatalogRows.svelte';
 	import { createNamedCatalog } from '#lib/settings/named-catalog.svelte.js';
 	import StatusColorButton from '#lib/settings/StatusColorButton.svelte';
-	import { KIND_HINTS, kindChangeWarning, STATUS_KINDS } from '#lib/settings/status-kind.js';
+	import { KIND_HINTS, startKindChange, STATUS_KINDS } from '#lib/settings/status-kind.js';
 	import Button from '#lib/ui/Button.svelte';
 	import Callout from '#lib/ui/Callout.svelte';
 	import Card from '#lib/ui/Card.svelte';
@@ -40,7 +40,8 @@
 			update: updateStatus,
 			reorder: reorderStatuses
 		},
-		() => app.refreshCatalogs()
+		() => app.refreshCatalogs(),
+		() => app.can('settings_manage')
 	);
 	const readonly = $derived(!app.can('settings_manage'));
 	const countLabel = (n: number) => ru.dictionaries.countIn(countOf(n, ru.dictionaries.inOrders));
@@ -51,34 +52,41 @@
 	const fail = (message: string) => toast.show({ message, tone: 'danger' });
 	const byId = (id: number) => catalog.items.find((s) => s.id === id);
 
-	/** A select that kept its old kind after a cancel or a refusal is drawn again from the data. */
-	let redraw = $state(0);
+	/**
+	 * A select that kept its old kind after a cancel or a refusal is drawn again from the data — that one only:
+	 * the other rows keep their selects (and the focus in them).
+	 */
+	let redraw = $state<Record<number, number>>({});
+	const redrawRow = (id: number) => (redraw = { ...redraw, [id]: (redraw[id] ?? 0) + 1 });
 
 	async function patch(id: number, p: StatusPatch) {
 		const error = await catalog.update(id, p);
-		if (error) fail(error);
-		redraw++;
+		if (error) {
+			fail(error);
+			redrawRow(id);
+		}
 	}
 
-	let changing = $state<{ id: number; name: string; from: StatusKind; to: StatusKind } | null>(
-		null
-	);
+	let changing = $state<ReturnType<typeof startKindChange> | null>(null);
 	let changeOpen = $state(false);
-	const warning = $derived(
-		changing ? kindChangeWarning(changing.from, changing.to, catalog.countOf(changing.id)) : null
-	);
 
 	$effect(() => {
-		if (!changeOpen) untrack(() => redraw++);
+		if (changeOpen) return;
+		untrack(() => {
+			if (!changing) return;
+			// Cancelled (a confirmed change has the new kind already: drawing it again changes nothing).
+			redrawRow(changing.id);
+		});
 	});
 
 	function pickKind(s: Status, to: StatusKind | null) {
 		if (!to || to === s.kind) return;
-		if (kindChangeWarning(s.kind, to, catalog.countOf(s.id)) === null) {
+		const next = startKindChange(s, to, catalog.countOf(s.id));
+		if (next.warning === null) {
 			void patch(s.id, { kind: to });
 			return;
 		}
-		changing = { id: s.id, name: s.name, from: s.kind, to };
+		changing = next;
 		changeOpen = true;
 	}
 
@@ -181,7 +189,7 @@
 								disabled={readonly}
 								onchange={(h) => void patch(s.id, { color: h })}
 							/>
-							{#key redraw}
+							{#key redraw[s.id] ?? 0}
 								<span class="kind">
 									<Select
 										label={t.kind}
@@ -204,7 +212,7 @@
 <ConfirmDialog
 	bind:open={changeOpen}
 	title={t.changeTitle(changing?.name ?? '')}
-	description={warning ?? ''}
+	description={changing?.warning ?? ''}
 	confirmLabel={t.changeConfirm}
 	tone="primary"
 	onconfirm={confirmKind}

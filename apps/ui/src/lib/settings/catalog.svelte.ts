@@ -80,7 +80,8 @@ function mistake(e: unknown): string {
 	return errorMessage(e);
 }
 
-export function createCatalog(api: CatalogApi = realApi) {
+/** `withCounts`: whether the counts may be asked for — the server gives them only to «settings_manage». */
+export function createCatalog(api: CatalogApi = realApi, withCounts: () => boolean = () => true) {
 	let kind = $state<DictionaryKind>('device_type');
 	let items = $state.raw<DictionaryItem[]>([]);
 	let counts = $state.raw<Record<number, number> | null>({});
@@ -100,7 +101,10 @@ export function createCatalog(api: CatalogApi = realApi) {
 	const matches = (i: DictionaryItem) => !query.trim() || fold(i.value).includes(fold(query));
 
 	async function read(k: DictionaryKind, mine: number) {
-		const [list, usage] = await Promise.all([api.list(k, true), api.usage(k).catch(() => null)]);
+		const [list, usage] = await Promise.all([
+			api.list(k, true),
+			withCounts() ? api.usage(k).catch(() => null) : null
+		]);
 		if (mine !== seq) return;
 		items = sorted(list);
 		counts = usageCounts(usage);

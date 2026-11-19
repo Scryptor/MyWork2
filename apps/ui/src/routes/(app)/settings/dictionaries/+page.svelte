@@ -28,7 +28,7 @@
 
 	const t = ru.dictionaries;
 	const KINDS = Object.keys(t.kindNames) as DictionaryKind[];
-	const catalog = createCatalog();
+	const catalog = createCatalog(undefined, () => app.can('settings_manage'));
 
 	const kind = $derived.by(() => {
 		const raw = page.url.searchParams.get('kind');
@@ -45,9 +45,8 @@
 	let newError = $state<string | undefined>();
 	let removing = $state<number | null>(null);
 	let removeOpen = $state(false);
-	/** `where`: «в 3 заказах», or «в заказах» when the count is not known. */
+	/** The rename that waits for the choice «и в заказах»; the window is open while it is set. `where`: «в 3 заказах». */
 	let renaming = $state<{ id: number; from: string; to: string; where: string } | null>(null);
-	let renameOpen = $state(false);
 	let mergeOpen = $state(false);
 
 	$effect(() => {
@@ -75,7 +74,8 @@
 
 	function pickKind(k: DictionaryKind | null) {
 		if (!k || k === kind) return;
-		void goto(resolve(`settings/dictionaries?kind=${k}`), { replace: true, reset: false });
+		const search = new URLSearchParams({ kind: k });
+		void goto(resolve(`settings/dictionaries?${search}`), { replace: true, reset: false });
 	}
 
 	const fail = (message: string) => toast.show({ message, tone: 'danger' });
@@ -102,7 +102,6 @@
 		if (row.count === null || row.count > 0) {
 			const at = row.count === null ? where : countLabel(row.count);
 			renaming = { id, from: row.label, to: label, where: at };
-			renameOpen = true;
 			return;
 		}
 		const error = await catalog.rename(id, label);
@@ -120,6 +119,15 @@
 			tone: 'success'
 		});
 		return null;
+	}
+
+	/** The value is renamed to itself: the orders whose spelling differs get the one of the dictionary. */
+	async function align(id: number) {
+		const row = catalog.all.find((r) => r.id === id);
+		if (!row) return;
+		const r = await catalog.renameEverywhere(id, row.label, true);
+		if (r.error) fail(r.error);
+		else toast.show({ message: t.aligned(countOf(r.changed, changedForms)), tone: 'success' });
 	}
 
 	async function merge(targetId: number, inOrders: boolean): Promise<string | null> {
@@ -240,6 +248,7 @@
 					{readonly}
 					onrename={(id, label) => void rename(id, label)}
 					onarchive={(id, a) => void archive(id, a)}
+					onalign={(id) => void align(id)}
 					ondelete={(id) => {
 						removing = id;
 						removeOpen = true;
@@ -261,7 +270,7 @@
 
 {#if renaming}
 	<RenameEverywhereDialog
-		bind:open={renameOpen}
+		bind:open={() => renaming !== null, (v) => !v && (renaming = null)}
 		from={renaming.from}
 		to={renaming.to}
 		where={renaming.where}

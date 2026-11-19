@@ -119,3 +119,46 @@ describe('createSettingsEditor', () => {
 		expect(editor.fieldError('timezone')).toBe('Неизвестный часовой пояс');
 	});
 });
+
+describe('createSettingsEditor: a typed time zone and the state of the screen', () => {
+	it('a time zone typed by hand waits for Enter or leaving the field, not for a pause', async () => {
+		make();
+		editor.type('timezone', 'Europe/Mos');
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(save).not.toHaveBeenCalled();
+		expect(editor.value('timezone', 'Europe/Moscow')).toBe('Europe/Mos');
+		editor.type('timezone', 'Europe/Minsk');
+		editor.commitTyped('timezone');
+		await vi.advanceTimersByTimeAsync(1);
+		await editor.flush();
+		expect(save).toHaveBeenCalledTimes(1);
+		expect(save).toHaveBeenCalledWith({ timezone: 'Europe/Minsk' });
+	});
+
+	it('leaving a typed field that was not changed sends nothing', async () => {
+		make();
+		editor.commitTyped('timezone');
+		await vi.advanceTimersByTimeAsync(2000);
+		expect(save).not.toHaveBeenCalled();
+	});
+
+	it('errors only of fields: the state is «error» with no failure of the whole', async () => {
+		make();
+		save.mockRejectedValueOnce(validation('timezone', 'invalid'));
+		editor.commit('timezone', 'Mars/Olympus');
+		await vi.advanceTimersByTimeAsync(700);
+		expect(editor.error).toBeNull();
+		expect(editor.state).toBe('error');
+		expect(editor.fieldsFailed).toBe(true);
+	});
+
+	it('no failure of fields once the wrong value is corrected', async () => {
+		make();
+		save.mockRejectedValueOnce(validation('timezone', 'invalid'));
+		editor.commit('timezone', 'Mars/Olympus');
+		await vi.advanceTimersByTimeAsync(700);
+		editor.commit('timezone', 'Europe/Moscow');
+		await vi.advanceTimersByTimeAsync(700);
+		expect(editor.fieldsFailed).toBe(false);
+	});
+});

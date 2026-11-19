@@ -83,6 +83,14 @@ describe('createCatalog', () => {
 		expect(c.active.map((r) => r.count)).toEqual([3, 0, 0]);
 	});
 
+	it('without the right to the counts they are not asked for at all', async () => {
+		const c = createCatalog(api, () => false);
+		await c.load('brand');
+		await c.refresh();
+		expect(api.usage).not.toHaveBeenCalled();
+		expect(c.active.map((r) => r.count)).toEqual([null, null, null]);
+	});
+
 	it('filters by the query without case; the archive too', async () => {
 		const c = await loaded();
 		c.query = ' ALP';
@@ -110,7 +118,7 @@ describe('createCatalog', () => {
 
 	it('a stale order is refused once: the move is made again on the fresh list', async () => {
 		const c = await loaded();
-		api.reorder.mockRejectedValueOnce(new ApiError(422, 'validation', 'Список изменился', null));
+		api.reorder.mockRejectedValueOnce(validation('ordered_ids', 'invalid'));
 		api.list.mockResolvedValue([
 			item(1, 'Alpha'),
 			item(2, 'Beta'),

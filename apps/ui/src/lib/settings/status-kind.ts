@@ -33,3 +33,21 @@ export function kindChangeWarning(
 					: t.warnChange(t.kindNames[to]);
 	return `${countLabel(count, t.orders)} ${plural(count, what)}`;
 }
+
+/**
+ * A kind change waiting for the confirmation. The warning is made once, from the count at the moment the window
+ * is opened: what the window says does not change when the list is read again behind it.
+ */
+export function startKindChange(
+	s: { id: number; name: string; kind: StatusKind },
+	to: StatusKind,
+	count: number | null
+) {
+	return {
+		id: s.id,
+		name: s.name,
+		from: s.kind,
+		to,
+		warning: kindChangeWarning(s.kind, to, count)
+	};
+}

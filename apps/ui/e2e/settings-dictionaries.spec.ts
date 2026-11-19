@@ -21,6 +21,33 @@ async function add(page: Page, value: string) {
 	await field.press('Enter');
 }
 
+test('«Привести написание в заказах» makes the orders spell the value as the dictionary does', async ({
+	page,
+	request
+}) => {
+	const id = uniq();
+	await addDictionaryItem(request, 'brand', `Delta-${id}`);
+	// Typed in another case and with a stray space: the same value for the program, another text in the order.
+	const order = await createOrder(request, { brand: `delta-${id} ` });
+	const kept = await createOrder(request, { brand: `Delta-${id}` });
+	await openBrands(page);
+	const row = rowOf(page, `Delta-${id}`);
+	await expect(row).toContainText('в 2 заказах');
+	await row.getByRole('button', { name: 'Привести написание в заказах' }).click();
+	await expect(page.getByText('Приведено: изменено 1 заказ')).toBeVisible();
+	expect((await fetchOrder(request, order.id)).brand).toBe(`Delta-${id}`);
+	const after = await fetchOrder(request, kept.id);
+	expect(after.brand).toBe(`Delta-${id}`);
+	expect(after.version).toBe(kept.version);
+	// A value that no order uses has nothing to align.
+	await addDictionaryItem(request, 'brand', `Epsilon-${id}`);
+	await page.reload();
+	await expect(rowOf(page, `Epsilon-${id}`)).toBeVisible();
+	await expect(
+		rowOf(page, `Epsilon-${id}`).getByRole('button', { name: 'Привести написание в заказах' })
+	).toHaveCount(0);
+});
+
 test('a duplicate in another case is refused, counts and rename follow the orders, merge keeps one', async ({
 	page,
 	request

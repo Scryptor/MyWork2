@@ -757,3 +757,70 @@ async fn reorder_with_a_stale_view_is_refused() {
         assert_eq!(r.status, 204, "{}", t.label);
     }
 }
+
+/// Тот же `seen_ids` для точек и справочников: свежий взгляд проходит, устаревший — 422 `stale`,
+/// без него — как раньше.
+#[tokio::test]
+async fn reorder_with_a_stale_view_is_refused_for_points_and_dictionaries() {
+    for t in apis(Listen::Network).await {
+        let admin = t.admin_token().await;
+        for name in ["Древлянка", "Центр", "Кукковка"] {
+            let r = t
+                .send(
+                    Method::POST,
+                    "/api/v1/service-points",
+                    Some(&admin),
+                    Some(json!({ "name": name })),
+                )
+                .await;
+            assert_eq!(r.status, 201, "{}", t.label);
+        }
+        for (list, order) in [
+            (
+                "/api/v1/service-points?include_archived=true",
+                "/api/v1/service-points/order",
+            ),
+            (
+                "/api/v1/dictionaries/brand?archived=true",
+                "/api/v1/dictionaries/brand/order",
+            ),
+        ] {
+            let seen: Vec<i64> = t
+                .get(list, Some(&admin))
+                .await
+                .body
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|s| s["id"].as_i64().unwrap())
+                .collect();
+            assert!(seen.len() >= 3, "{}: {order}", t.label);
+            let mut first = seen.clone();
+            first.rotate_right(1);
+            let put = |ordered: &[i64], seen: Option<&[i64]>| {
+                let mut body = json!({ "ordered_ids": ordered });
+                if let Some(seen) = seen {
+                    body["seen_ids"] = json!(seen);
+                }
+                t.send(Method::PUT, order, Some(&admin), Some(body))
+            };
+            let r = put(&first, Some(&seen)).await;
+            assert_eq!(r.status, 204, "{}: {order}: {}", t.label, r.body);
+            let mut second = seen.clone();
+            second.swap(0, 1);
+            let r = put(&second, Some(&seen)).await;
+            assert_eq!(
+                (r.status, &r.body["fields"][0]["code"]),
+                (422, &json!("stale")),
+                "{}: {order}",
+                t.label
+            );
+            // Взгляд свежий (после первой перестановки) — проходит.
+            let r = put(&second, Some(&first)).await;
+            assert_eq!(r.status, 204, "{}: {order}: {}", t.label, r.body);
+            // Без `seen_ids` — как раньше.
+            let r = put(&first, None).await;
+            assert_eq!(r.status, 204, "{}: {order}", t.label);
+        }
+    }
+}

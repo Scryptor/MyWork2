@@ -981,3 +981,48 @@ async fn list_values_refuse_a_comma_on_add_and_rename() -> Result<(), CoreError>
     }
     Ok(())
 }
+
+#[tokio::test]
+async fn same_value_rename_aligns_spelling_in_lists_and_in_clients() -> Result<(), CoreError> {
+    for t in cores().await {
+        // Список: «чехол» и «ЗАРЯДКА» приводятся к справочнику, чужие элементы и порядок остаются.
+        let w = order_with(&t, |o| o.completeness = "зарядка,  ЧЕХОЛ , кабель".into()).await;
+        let id = item_id(&t.core, DictionaryKind::Completeness, "Чехол").await;
+        let r = t
+            .core
+            .rename_dictionary_item_everywhere(&admin(), id, rename("Чехол", true))
+            .await?;
+        assert_eq!(r.records_changed, 1, "{}", t.label);
+        let after = reload(&t, &w).await;
+        assert_eq!(
+            (after.completeness.as_str(), after.version),
+            ("зарядка, Чехол, кабель", w.version + 1),
+            "{}",
+            t.label
+        );
+
+        // Клиенты («Откуда узнали»): один пробел внутри значения — тоже расхождение лишь написания.
+        let source = item_id(&t.core, DictionaryKind::ClientSource, "Авито").await;
+        let client = t
+            .core
+            .create_client(
+                &admin(),
+                NewClient {
+                    full_name: "Клиент Авито".into(),
+                    phones: phones(&["+7 921 000-00-09"]),
+                    source: "авито".into(),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        let r = t
+            .core
+            .rename_dictionary_item_everywhere(&admin(), source, rename("Авито", true))
+            .await?;
+        assert_eq!(r.records_changed, 1, "{}", t.label);
+        let after = t.core.get_client(&admin(), client.id).await?;
+        assert_eq!(after.source, "Авито", "{}", t.label);
+        assert_eq!(after.version, client.version + 1);
+    }
+    Ok(())
+}

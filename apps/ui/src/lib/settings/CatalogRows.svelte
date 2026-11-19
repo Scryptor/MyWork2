@@ -4,6 +4,7 @@
 <script lang="ts">
 	import Archive from '@lucide/svelte/icons/archive';
 	import ArchiveRestore from '@lucide/svelte/icons/archive-restore';
+	import SpellCheck from '@lucide/svelte/icons/spell-check';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import { tick, type Snippet } from 'svelte';
 	import { ru } from '#lib/i18n/ru.js';
@@ -22,6 +23,7 @@
 		onrename,
 		onarchive,
 		ondelete,
+		onalign,
 		onreorder,
 		extra
 	}: {
@@ -34,6 +36,8 @@
 		onarchive: (id: number, archived: boolean) => void;
 		/** Offered only for a value that nothing uses. */
 		ondelete?: (id: number) => void;
+		/** Offered for a value that records use: their spelling is made the one of the dictionary. */
+		onalign?: (id: number) => void;
 		onreorder: (ids: number[]) => void;
 		/** Something more in a row, after the count (the colour of a status). */
 		extra?: Snippet<[number]>;
@@ -91,6 +95,11 @@
 	{/if}
 {/snippet}
 
+{#snippet line(r: Row)}
+	{@render value(r)}
+	{@render tail(r)}
+{/snippet}
+
 {#snippet tail(r: Row)}
 	{#if r.count !== null}<span class="count">{countLabel(r.count)}</span>{/if}
 	{#if extra}{@render extra(r.id)}{/if}
@@ -110,6 +119,9 @@
 					icon={Archive}
 					onclick={() => onarchive(r.id, true)}
 				/>
+			{/if}
+			{#if onalign && r.count !== null && r.count > 0}
+				<IconButton size="sm" label={t.align} icon={SpellCheck} onclick={() => onalign(r.id)} />
 			{/if}
 			{#if ondelete && r.count === 0}
 				<IconButton size="sm" label={t.remove} icon={Trash2} onclick={() => ondelete(r.id)} />
@@ -136,8 +148,7 @@
 					onchange={(e) => toggle(r.id, e.currentTarget.checked)}
 				/>
 			{/if}
-			{@render value(r)}
-			{@render tail(r)}
+			{@render line(r)}
 		</div>
 	{/snippet}
 </SortableList>
@@ -146,9 +157,10 @@
 	<h3 class="archive">{t.archive}</h3>
 	<ul class="archived">
 		{#each archived as r (r.id)}
-			<li class="line dim">
-				{@render value(r)}
-				{@render tail(r)}
+			<li class="dim">
+				<div class="line">
+					{@render line(r)}
+				</div>
 			</li>
 		{/each}
 	</ul>

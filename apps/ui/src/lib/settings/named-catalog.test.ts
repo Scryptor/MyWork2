@@ -58,6 +58,25 @@ describe('createNamedCatalog', () => {
 		expect(c.countOf(1)).toBe(0);
 	});
 
+	it('without the right to the counts they are not asked for at all', async () => {
+		const api = {
+			list: vi.fn(async () => [st(1, 'A')]),
+			usage: vi.fn(async () => [{ id: 1, count: 3 }]),
+			add: vi.fn(async () => st(9, 'N')),
+			update: vi.fn(async () => st(1, 'A')),
+			reorder: vi.fn(async () => {})
+		} satisfies NamedApi<Status, unknown, unknown>;
+		const c = createNamedCatalog<Status, unknown, unknown>(
+			api,
+			() => {},
+			() => false
+		);
+		await c.load();
+		await c.refresh();
+		expect(api.usage).not.toHaveBeenCalled();
+		expect(c.countOf(1)).toBeNull();
+	});
+
 	it('a change reloads and tells the program; a refusal gives the text of the mistake', async () => {
 		const { c, api, changed } = make();
 		await c.load();
@@ -102,7 +121,7 @@ describe('createNamedCatalog', () => {
 	it('a stale order is refused once: the move is made again on the fresh list and kept', async () => {
 		const { c, api } = make();
 		await c.load();
-		api.reorder.mockRejectedValueOnce(new Error('stale'));
+		api.reorder.mockRejectedValueOnce(validation('ordered_ids', 'stale'));
 		api.list.mockResolvedValue([
 			st(1, 'A'),
 			st(2, 'B'),
@@ -118,7 +137,7 @@ describe('createNamedCatalog', () => {
 	it('another screen moved a status meanwhile: our move is made on top of theirs', async () => {
 		const { c, api } = make();
 		await c.load();
-		api.reorder.mockRejectedValueOnce(new Error('stale'));
+		api.reorder.mockRejectedValueOnce(validation('ordered_ids', 'stale'));
 		// The other screen put C first; the set is the same.
 		api.list.mockResolvedValue([
 			{ ...st(3, 'C'), sort_order: 0 },

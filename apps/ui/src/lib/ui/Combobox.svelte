@@ -17,6 +17,8 @@
 		emptyText = ru.common.nothingFound,
 		filter = true,
 		onselect,
+		onenter,
+		onblur,
 		label,
 		hint,
 		error,
@@ -32,6 +34,10 @@
 		/** false: the items are shown as given (the caller already filtered them, e.g. the server). */
 		filter?: boolean;
 		onselect?: (v: string) => void;
+		/** Enter in the field with nothing to pick: the text typed is final. */
+		onenter?: () => void;
+		/** The field is left. */
+		onblur?: () => void;
 		label?: string;
 		hint?: string;
 		error?: string;
@@ -71,18 +77,23 @@
 	}
 
 	function onKeydown(e: KeyboardEvent) {
-		if (e.key !== 'Enter' || !open) return;
+		if (e.key !== 'Enter') return;
+		if (!open) {
+			onenter?.();
+			return;
+		}
 		const highlighted = document.querySelector('[data-combobox-item][data-highlighted]');
 		if (highlighted) return;
 		const first = filtered[0];
 		if (first && normalizeSearch(text) !== '') {
 			e.preventDefault();
 			pick(first.value);
-		}
+		} else onenter?.();
 	}
 
 	function onBlur() {
 		if (!allowCustom) text = value;
+		onblur?.();
 	}
 </script>
 

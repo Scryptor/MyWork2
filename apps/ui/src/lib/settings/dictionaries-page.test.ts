@@ -32,6 +32,7 @@ vi.mock('#lib/app/context.svelte.js', () => ({
 	app: { can: () => rights.manage, refreshCatalogs: rights.refreshCatalogs }
 }));
 
+import { toast } from '#lib/ui/toast/toast.svelte.js';
 import Page from './DictionariesPageHarness.test-helper.svelte';
 
 const item = (id: number, value: string, archived = false) => ({
@@ -67,13 +68,20 @@ describe('«Справочники» without «settings_manage»', () => {
 		render(Page);
 		expect(await screen.findByText('Alpha')).toBeInTheDocument();
 		expect(screen.getByText('Old')).toBeInTheDocument();
-		await waitFor(() => expect(api.dictionaryUsage).toHaveBeenCalled());
+		await waitFor(() => expect(api.listDictionary).toHaveBeenCalled());
+		expect(api.dictionaryUsage).not.toHaveBeenCalled();
 		expect(screen.queryAllByText(/^в \d+ заказ/)).toHaveLength(0);
 		expect(screen.queryByText(t403)).not.toBeInTheDocument();
 
 		expect(screen.queryByRole('textbox', { name: 'Добавить значение' })).not.toBeInTheDocument();
 		expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
-		for (const name of ['В архив', 'Вернуть', 'Удалить', 'Объединить выбранные']) {
+		for (const name of [
+			'В архив',
+			'Вернуть',
+			'Удалить',
+			'Объединить выбранные',
+			'Привести написание в заказах'
+		]) {
 			expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
 		}
 		// The handles of the SortableList, and the value that would be edited in place.
@@ -139,6 +147,25 @@ describe('«Справочники» for an administrator', () => {
 		await userEvent.type(screen.getByRole('textbox', { name: 'Значение „Alpha“' }), 'X{Enter}');
 		await waitFor(() => expect(api.updateDictionaryItem).toHaveBeenCalled());
 		expect(rights.refreshCatalogs).not.toHaveBeenCalled();
+	});
+
+	it('«Привести написание в заказах» only for a value in use: renames it to itself in the orders', async () => {
+		api.dictionaryUsage.mockResolvedValue([{ id: 1, count: 3 }]);
+		api.renameDictionaryItem.mockResolvedValue({ item: item(1, 'Alpha'), records_changed: 2 });
+		render(Page);
+		const align = await screen.findAllByRole('button', { name: 'Привести написание в заказах' });
+		// Alpha is used by 3 orders; Beta and the archived Old by none.
+		expect(align).toHaveLength(1);
+		await userEvent.click(align[0]!);
+		await waitFor(() =>
+			expect(api.renameDictionaryItem).toHaveBeenCalledWith(1, {
+				value: 'Alpha',
+				in_orders: true
+			})
+		);
+		await waitFor(() =>
+			expect(toast.items.map((x) => x.message)).toContain('Приведено: изменено 2 заказа')
+		);
 	});
 
 	it('merges what the dialog shows: a value archived meanwhile stays out', async () => {

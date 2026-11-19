@@ -32,7 +32,8 @@
 			update: updateServicePoint,
 			reorder: reorderServicePoints
 		},
-		() => app.refreshCatalogs()
+		() => app.refreshCatalogs(),
+		() => app.can('settings_manage')
 	);
 	const readonly = $derived(!app.can('settings_manage'));
 	const countLabel = (n: number) => ru.dictionaries.countIn(countOf(n, ru.dictionaries.inOrders));

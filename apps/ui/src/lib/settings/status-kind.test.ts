@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { KIND_HINTS, kindChangeWarning } from './status-kind.js';
+import { KIND_HINTS, kindChangeWarning, startKindChange } from './status-kind.js';
 
 describe('kindChangeWarning', () => {
 	it('nothing to warn about when no order is in the status', () => {
@@ -42,5 +42,19 @@ describe('kindChangeWarning', () => {
 	it('a hint for every kind', () => {
 		expect(Object.keys(KIND_HINTS).sort()).toEqual(['diagnostics', 'issued', 'open', 'ready']);
 		expect(KIND_HINTS.open).toBe('заказ в работе');
+	});
+});
+
+describe('startKindChange', () => {
+	it('makes the warning once, from the count of the moment the window opens', () => {
+		const change = startKindChange({ id: 7, name: 'Выдан', kind: 'issued' }, 'open', 3);
+		expect(change).toMatchObject({ id: 7, name: 'Выдан', from: 'issued', to: 'open' });
+		expect(change.warning).toBe(kindChangeWarning('issued', 'open', 3));
+		// A later reading with another count does not touch what was made.
+		expect(kindChangeWarning('issued', 'open', 0)).toBeNull();
+		expect(change.warning).not.toBeNull();
+	});
+	it('no warning when no order is in the status', () => {
+		expect(startKindChange({ id: 1, name: 'X', kind: 'open' }, 'ready', 0).warning).toBeNull();
 	});
 });

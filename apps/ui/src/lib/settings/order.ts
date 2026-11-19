@@ -18,6 +18,8 @@ export function movedId(before: number[], after: number[]): number | null {
 
 /** `fresh` with `moved` put next to the neighbour it has in `intended`: after its predecessor, else before its successor. */
 export function reapplyMove(fresh: number[], intended: number[], moved: number): number[] {
+	// Deleted meanwhile: nothing to move, and it must not come back into the list.
+	if (!fresh.includes(moved)) return fresh;
 	const rest = fresh.filter((x) => x !== moved);
 	const at = intended.indexOf(moved);
 	const known = new Set(rest);
@@ -39,10 +41,15 @@ export function reapplyMove(fresh: number[], intended: number[], moved: number):
 const isStale = (e: unknown) =>
 	e instanceof ApiError && (e.body?.fields.some((f) => f.code === 'stale') ?? false);
 
+/** The server refused the list itself (other ids than it has): a mistake of `ordered_ids`, not of rights or of the server. */
+const isListMismatch = (e: unknown) =>
+	e instanceof ApiError && (e.body?.fields.some((f) => f.field === 'ordered_ids') ?? false);
+
 /**
  * Sends `ordered`, made from `seen`; when the server refuses and its list is not `seen` any more (other ids, or
  * another order), or it says the order was stale (it may have settled by the time it is read), sends the move
- * again on the fresh list. Answers the order that was saved; throws the refusal when it was not about that.
+ * again on the fresh list. Only a refusal about the list itself (`ordered_ids`) is retried: no right (403) or
+ * a failure of the server (500) is thrown at once. Answers the order that was saved; throws the refusal when it was not about that.
  */
 export async function putOrder(opts: {
 	ordered: number[];
@@ -55,7 +62,7 @@ export async function putOrder(opts: {
 		await opts.put(opts.ordered, opts.seen);
 		return opts.ordered;
 	} catch (first) {
-		if (opts.moved === null) throw first;
+		if (opts.moved === null || !isListMismatch(first)) throw first;
 		let fresh: number[];
 		try {
 			fresh = await opts.fresh();
@@ -64,6 +71,8 @@ export async function putOrder(opts: {
 		}
 		const same = fresh.length === opts.seen.length && fresh.every((x, i) => x === opts.seen[i]);
 		if (same && !isStale(first)) throw first;
+		// The moved one was deleted meanwhile: there is nothing to send, the list as it is now is the answer.
+		if (!fresh.includes(opts.moved)) return fresh;
 		const again = reapplyMove(fresh, opts.ordered, opts.moved);
 		await opts.put(again, fresh);
 		return again;

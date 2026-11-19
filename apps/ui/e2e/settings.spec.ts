@@ -317,9 +317,9 @@ test.describe('server settings', () => {
 		try {
 			const next = async () =>
 				((await (await api.get('/api/v1/orders/next-number')).json()) as { next: number }).next;
-			// A jump of 1000 and more shows that the setting took effect; the window of 100 above it takes in the
+			// A jump of 10 000 shows that the setting took effect; the window of 1000 above it takes in the
 			// orders other specs create on this server meanwhile.
-			const wanted = (await next()) + 1000 + Math.floor(Math.random() * 1000);
+			const wanted = (await next()) + 10_000;
 			await page.goto(`${origin}/settings/general`);
 			const field = page.getByRole('textbox', { name: 'Следующий номер заказа' });
 			await expect(field).toHaveValue(/^\d+$/);
@@ -328,12 +328,12 @@ test.describe('server settings', () => {
 			await expect
 				.poll(async () => {
 					const n = await next();
-					return n >= wanted && n < wanted + 100;
+					return n >= wanted && n < wanted + 1000;
 				})
 				.toBe(true);
 			const order = await createOrder(api, { clientName: uniq('Номер') });
 			expect(order.id).toBeGreaterThanOrEqual(wanted);
-			expect(order.id).toBeLessThan(wanted + 100);
+			expect(order.id).toBeLessThan(wanted + 1000);
 
 			// An order has that number already: the server refuses, the field is as it was.
 			const shown = await field.inputValue();
@@ -346,6 +346,12 @@ test.describe('server settings', () => {
 					page.getByText('Номер должен быть больше номеров существующих заказов')
 				).toBeVisible({ timeout: 1500 });
 			}).toPass();
+			await expect(field).toHaveValue(shown);
+
+			// More than the counter can hold: refused in words, nothing is sent, the field is as it was.
+			await field.fill('1000000000');
+			await field.blur();
+			await expect(page.getByText('Слишком большой номер')).toBeVisible();
 			await expect(field).toHaveValue(shown);
 		} finally {
 			await api.dispose();

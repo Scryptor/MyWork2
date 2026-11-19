@@ -29,6 +29,8 @@ export const ru = {
 		saving: 'Сохраняю…',
 		saved: 'Сохранено',
 		failed: 'Не сохранено',
+		/** Why: nothing was refused as a whole, only fields have a mistake. */
+		checkFields: 'Не сохранено: проверьте поля',
 		/** Why: the order was deleted while it was being edited. */
 		deleted: 'заказ удалён',
 		/** Why: the client was deleted (merged into another) while being edited. */
@@ -553,6 +555,7 @@ export const ru = {
 		unknownTimezone: 'Неизвестный часовой пояс',
 		unknownPoint: 'Такой точки нет',
 		nextOrderTooSmall: 'Номер должен быть больше номеров существующих заказов',
+		nextOrderTooBig: 'Слишком большой номер',
 		nextOrderNotNumber: 'Введите номер, например 10000',
 		loadFailed: 'Не удалось загрузить сведения',
 		version: 'Версия',
@@ -614,6 +617,8 @@ export const ru = {
 		rename: 'Переименовать',
 		renamed: (changed: string) => `Переименовано, изменено ${changed}`,
 		renamedPlain: 'Переименовано',
+		align: 'Привести написание в заказах',
+		aligned: (changed: string) => `Приведено: изменено ${changed}`,
 		mergeSelected: 'Объединить выбранные',
 		mergeTitle: 'Объединить значения',
 		mergeDescription: 'Выбранные значения станут одним: остальные будут удалены.',

@@ -43,6 +43,10 @@ export interface SettingsEditor {
 	): SettingsPatch[K];
 	/** Text: saved a moment after the last key. */
 	edit<K extends SettingsField>(field: K, value: SettingsPatch[K]): void;
+	/** Text that is saved only on Enter or when the field is left (`commitTyped`), not after a pause. */
+	type<K extends SettingsField>(field: K, value: SettingsPatch[K]): void;
+	/** Enter or leaving the field: what was typed there goes into the queue. */
+	commitTyped(field: SettingsField): void;
 	/** A choice or a switch: saved at once. */
 	commit<K extends SettingsField>(field: K, value: SettingsPatch[K]): void;
 	/** A whole number typed into a field; anything else is shown as a mistake and not sent. */
@@ -52,6 +56,8 @@ export interface SettingsEditor {
 	/** The field is left: its draft goes, and the mistake that was only about the draft with it. */
 	leave(field: SettingsField): void;
 	fieldError(field: SettingsField): string | undefined;
+	/** Some fields have a mistake (of the server or of what was typed), and it is not a failure of the whole save. */
+	readonly fieldsFailed: boolean;
 	pendingFields(): string[];
 	flush(): Promise<void>;
 	retry(): void;
@@ -67,6 +73,8 @@ export function createSettingsEditor(opts: {
 }): SettingsEditor {
 	let errors = $state<Record<string, string>>({});
 	let drafts = $state<Record<string, string>>({});
+	/** Text typed but not yet handed to the queue. */
+	let typed = $state<Record<string, SettingsPatch[SettingsField]>>({});
 	/** Mistakes of what was typed that the server never saw. */
 	let local = $state<Record<string, true>>({});
 
@@ -133,7 +141,27 @@ export function createSettingsEditor(opts: {
 			const e = inner.error;
 			return e && e.code !== 'validation' ? e : null;
 		},
-		value: (field, server) => inner.value(field, server as SettingsPatch[typeof field]),
+		value: (field, server) =>
+			(field in typed
+				? typed[field]
+				: inner.value(field, server as SettingsPatch[typeof field])) as SettingsPatch[typeof field],
+		type(field, value) {
+			if (!opts.can()) return;
+			unset(field);
+			typed = { ...typed, [field]: value };
+		},
+		commitTyped(field) {
+			if (!(field in typed) || !opts.can()) return;
+			const value = typed[field];
+			const next = { ...typed };
+			delete next[field];
+			typed = next;
+			inner.commit(field, value as never);
+		},
+		get fieldsFailed() {
+			const e = inner.error;
+			return Object.keys(errors).length > 0 && (e === null || e.code === 'validation');
+		},
 		edit(field, value) {
 			if (!opts.can()) return;
 			unset(field);
@@ -142,6 +170,11 @@ export function createSettingsEditor(opts: {
 		commit(field, value) {
 			if (!opts.can()) return;
 			unset(field);
+			if (field in typed) {
+				const rest = { ...typed };
+				delete rest[field];
+				typed = rest;
+			}
 			inner.commit(field, value);
 		},
 		editNumber(field, raw) {
