@@ -1,4 +1,5 @@
 import { untrack } from 'svelte';
+import { watchWindow } from '#lib/platform/window.js';
 import { readStorage, writeStorage } from './storage.js';
 import {
 	applyDisplay,
@@ -166,6 +167,8 @@ function initPrefs(): () => void {
 	window.addEventListener('focus', schedule);
 	const screenObj = window.screen as unknown as EventTarget | undefined;
 	screenObj?.addEventListener?.('change', schedule);
+	// The desktop program: a move to another monitor or a new monitor scale.
+	const stopWindow = watchWindow(schedule);
 
 	refresh();
 	return () => {
@@ -177,5 +180,6 @@ function initPrefs(): () => void {
 		window.removeEventListener('resize', schedule);
 		window.removeEventListener('focus', schedule);
 		screenObj?.removeEventListener?.('change', schedule);
+		stopWindow();
 	};
 }

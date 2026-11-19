@@ -8,9 +8,11 @@ export function isTauri(): boolean {
 
 /**
  * The full path of a folder the user chose, or null: no dialog here (a browser), or it was closed. The
- * dialog of the desktop program comes with it (plan 5.6, task 4); until then the path is typed in.
+ * dialog module is loaded only in the desktop program; a browser never downloads it.
  */
 export async function pickFolder(): Promise<string | null> {
 	if (!isTauri()) return null;
-	return null;
+	const { open } = await import('@tauri-apps/plugin-dialog');
+	const chosen = await open({ directory: true, multiple: false });
+	return typeof chosen === 'string' ? chosen : null;
 }

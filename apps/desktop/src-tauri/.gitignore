@@ -1,0 +1,3 @@
+# Сборка Tauri и созданные ею схемы прав
+/target/
+/gen/schemas

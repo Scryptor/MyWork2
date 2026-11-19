@@ -1,0 +1,50 @@
+# Программа для компьютера: окно Tauri над встроенным сервером `mw-server`.
+# Отдельный workspace: основной (`crates/*`) собирается и проверяется без WebKitGTK на Linux.
+[package]
+name = "mw-desktop"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+rust-version = "1.95"
+publish = false
+
+[workspace]
+
+[lib]
+name = "mw_desktop"
+path = "src/lib.rs"
+
+[[bin]]
+name = "mw-desktop"
+path = "src/main.rs"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+
+[build-dependencies]
+tauri-build = { version = "2.7", features = [] }
+
+[dependencies]
+mw-server = { path = "../../../crates/mw-server" }
+tauri = { version = "2.12", features = [] }
+tauri-plugin-dialog = "2.8"
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
+tracing = "0.1"
+serde_json = "1"
+thiserror = "2"
+url = "2"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros", "net", "io-util"] }
+tempfile = "3"
+
+# Argon2 в отладочной сборке ~10× медленнее (как в основном workspace).
+[profile.dev.package.argon2]
+opt-level = 3
+
+[profile.dev.package.blake2]
+opt-level = 3

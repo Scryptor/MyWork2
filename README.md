@@ -61,6 +61,33 @@ npm run dev                              # http://localhost:5173/design
 - `npm run verify` — svelte-check, Prettier, ESLint, Vitest, сборка и проверка лицензий;
 - `npm run test:e2e` — сквозные тесты Playwright (Chromium и WebKit).
 
+## Запуск программы для компьютера
+
+Программа для компьютера (`apps/desktop`, Tauri 2) поднимает встроенный сервер на `127.0.0.1` и открывает окно на его
+адресе; интерфейс тот же, что в браузере, и говорит с сервером по HTTP. Через Tauri идут только выбор папки и события
+окна.
+
+Нужны Rust, Node ≥ 22.17 и то, на чём Tauri рисует окно: на macOS — Xcode Command Line Tools, на Windows — WebView2
+(есть в Windows 10 и 11), на Linux — `libwebkit2gtk-4.1-dev libsoup-3.0-dev librsvg2-dev libayatana-appindicator3-dev`.
+
+```bash
+cd apps/ui && npm ci                     # интерфейс входит в программу ресурсом
+cd ../desktop && npm ci
+npm run tauri dev                        # собирает интерфейс и открывает окно
+npm run tauri build -- --debug           # пакет; на macOS — src-tauri/target/debug/bundle/macos/MyWork.app
+```
+
+- Данные — в папке данных ОС (`~/Library/Application Support/MyWork3`, `%APPDATA%\MyWork3`, `~/.local/share/MyWork3`),
+  при `portable.txt` рядом с исполняемым файлом — в `data` рядом с ним; журнал — `<папка данных>/logs/`.
+- Порт выбирается при первом запуске и запоминается в `<папка данных>/local.json`: адрес окна не меняется, и вместе с
+  ним остаются настройки вида, сохранённые виды и вход.
+- Одна копия на папку данных (замок `<папка данных>/mywork.lock`): вторая копия сообщает «Программа уже запущена».
+- Закрытие окна останавливает сервер штатно: перенос файлов черновиков и начатая запись импорта доходят до конца,
+  импорт до записи отменяется, база закрывается. Ошибка запуска и сбой показываются окном с путём к журналу.
+- Это отдельный Cargo-workspace (`apps/desktop/src-tauri`, свой `Cargo.lock`): проверки основного workspace его не
+  собирают. Его проверки — `cd apps/desktop/src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings
+  && cargo test`; перед ними нужна собранная `apps/ui/build` (`npm run build` в `apps/ui`).
+
 ## Лицензия
 
 [MIT](LICENSE)

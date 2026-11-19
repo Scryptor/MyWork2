@@ -1,10 +1,12 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { flushSync } from 'svelte';
+import { fakeDesktop, leaveDesktop } from '#lib/platform/fake-desktop.js';
 import { DEFAULT_PREFS, display, prefs } from './prefs.svelte.js';
 
 afterEach(() => {
 	vi.restoreAllMocks();
 	vi.unstubAllGlobals();
+	leaveDesktop();
 });
 
 function stubMatchMedia() {
@@ -192,4 +194,34 @@ it('an unchanged environment keeps the same display object', async () => {
 	await nextFrame();
 	expect(display.value).not.toBe(before);
 	stop();
+});
+
+it('in the desktop program a move to another monitor updates «Авто»; stop() unsubscribes', async () => {
+	stubStorage();
+	stubMatchMedia();
+	const screenObj = { width: 1920, height: 1080 };
+	vi.stubGlobal('screen', screenObj);
+	vi.stubGlobal('innerWidth', 1920);
+	const desktop = fakeDesktop();
+	const stop = prefs.init();
+	await vi.waitFor(() =>
+		expect(desktop.listening()).toEqual(['tauri://move', 'tauri://scale-change'])
+	);
+	expect(root().style.getPropertyValue('--ui-scale')).toBe('1');
+
+	// WebKit: the same pixel ratio on both monitors, no resize or focus — only the window's own event.
+	screenObj.width = 3840;
+	screenObj.height = 2160;
+	desktop.fire('tauri://move', { x: 1920, y: 0 });
+	await nextFrame();
+	expect(root().style.getPropertyValue('--ui-scale')).toBe('1.5');
+
+	screenObj.width = 1920;
+	screenObj.height = 1080;
+	desktop.fire('tauri://scale-change', { scaleFactor: 1, size: { width: 1920, height: 1080 } });
+	await nextFrame();
+	expect(root().style.getPropertyValue('--ui-scale')).toBe('1');
+
+	stop();
+	await vi.waitFor(() => expect(desktop.listening()).toEqual([]));
 });
