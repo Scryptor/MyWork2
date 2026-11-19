@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use chrono_tz::Tz;
 use mw_db::entity::{service_point, setting};
 use mw_domain::dictionary::DictionaryKind;
+use mw_domain::issue::IssueRequirement;
 use mw_domain::permission::Permission;
 use mw_domain::search::normalize_search;
 use mw_domain::validation::FieldError;
@@ -49,6 +50,8 @@ pub struct AppSettings {
     pub issue_terms: String,
     /// Часовой пояс предприятия (имя IANA).
     pub timezone: String,
+    /// Что должно быть заполнено в заказе перед выдачей; пусто — ничего сверх обычного.
+    pub issue_required: Vec<IssueRequirement>,
 }
 
 impl Default for AppSettings {
@@ -69,6 +72,7 @@ impl Default for AppSettings {
             intake_terms: String::new(),
             issue_terms: String::new(),
             timezone: "UTC".to_owned(),
+            issue_required: Vec::new(),
         }
     }
 }
@@ -137,6 +141,10 @@ pub struct SettingsPatch {
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub timezone: Option<String>,
+    /// Что должно быть заполнено в заказе перед выдачей (без повторов).
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
+    pub issue_required: Option<Vec<IssueRequirement>>,
 }
 
 /// Оставляет в правке только поля, значение которых отличается от текущего.
@@ -161,6 +169,7 @@ fn keep_differences(p: &mut SettingsPatch, c: &AppSettings) {
     keep(&mut p.intake_terms, &c.intake_terms);
     keep(&mut p.issue_terms, &c.issue_terms);
     keep(&mut p.timezone, &c.timezone);
+    keep(&mut p.issue_required, &c.issue_required);
 }
 
 pub(crate) fn parse_timezone(name: &str) -> Tz {
@@ -195,6 +204,7 @@ pub(crate) async fn load(conn: &impl ConnectionTrait) -> Result<AppSettings, Cor
         intake_terms: get(&rows, "intake_terms").unwrap_or(d.intake_terms),
         issue_terms: get(&rows, "issue_terms").unwrap_or(d.issue_terms),
         timezone: get(&rows, "timezone").unwrap_or(d.timezone),
+        issue_required: get(&rows, "issue_required").unwrap_or(d.issue_required),
     };
     // Точка по умолчанию, которая в архиве или которой нет, считается не выбранной.
     if let Some(id) = loaded.default_service_point_id {
@@ -351,6 +361,12 @@ pub(crate) fn validate(p: &SettingsPatch, point_exists: bool) -> Result<(), Core
         .is_some_and(|t| t.parse::<Tz>().is_err())
     {
         errors.push(FieldError::new("timezone", "invalid"));
+    }
+    if let Some(list) = &p.issue_required {
+        let unique: HashSet<_> = list.iter().collect();
+        if unique.len() != list.len() {
+            errors.push(FieldError::new("issue_required", "invalid"));
+        }
     }
     if errors.is_empty() {
         Ok(())
@@ -518,6 +534,14 @@ impl Core {
         }
         if let Some(v) = &patch.timezone {
             apply("timezone", "часовой пояс", *v != current.timezone, json!(v));
+        }
+        if let Some(v) = &patch.issue_required {
+            apply(
+                "issue_required",
+                "обязательно при выдаче",
+                *v != current.issue_required,
+                json!(v),
+            );
         }
         if changes.is_empty() {
             return Ok(current);

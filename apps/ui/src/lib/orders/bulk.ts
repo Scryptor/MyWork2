@@ -74,7 +74,9 @@ export async function runBulk(
 export function bulkErrorMessage(e: ApiError): string {
 	const fields = e.code === 'validation' ? (e.body?.fields ?? []) : [];
 	if (fields.length === 0) return errorMessage(e);
-	const required = fields.filter((f) => f.code === 'required' && ru.bulk.fields[f.field]);
+	const required = fields.filter(
+		(f) => (f.code === 'required' || f.code === 'required_for_issue') && ru.bulk.fields[f.field]
+	);
 	if (required.length === fields.length) {
 		return ru.bulk.fill(required.map((f) => ru.bulk.fields[f.field]).join(', '));
 	}

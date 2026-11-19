@@ -418,7 +418,8 @@ export const ru = {
 		fields: {
 			master: 'мастер',
 			work_done: 'выполненные работы',
-			final_price: 'итоговая цена'
+			final_price: 'итоговая цена',
+			warranty: 'гарантия'
 		} as Record<string, string>,
 		issuedDateTitle: 'Дата выдачи',
 		issuedDateText: (status: string, orders: string) =>
@@ -509,6 +510,14 @@ export const ru = {
 		diagnosticsDays: 'Долгая диагностика, дней',
 		readyDays: 'Давно готов, дней',
 		requiredFields: 'Проверять обязательные поля при приёме',
+		issueRequired: 'Обязательно при выдаче',
+		issueRequiredHint: 'Без этого заказ не выдать. Мастер и выполненные работы нужны всегда.',
+		issueFields: {
+			final_price: 'Итоговая цена',
+			work_done: 'Выполненные работы',
+			master: 'Мастер',
+			warranty: 'Гарантия'
+		} as Record<string, string>,
 		required: 'Обязательное поле',
 		notNumber: 'Введите целое число',
 		range: (min: number, max: number) => `От ${min} до ${max}`,

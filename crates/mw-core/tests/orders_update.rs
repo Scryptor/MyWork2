@@ -392,3 +392,130 @@ async fn status_change_can_skip_the_issue_date() -> Result<(), CoreError> {
     }
     Ok(())
 }
+
+#[tokio::test]
+async fn issue_required_fields_block_issue_and_skip_when_not_required() -> Result<(), CoreError> {
+    use mw_core::SettingsPatch;
+    use mw_domain::issue::IssueRequirement as R;
+    use mw_domain::money::Money;
+    for t in cores().await {
+        let all = vec![R::FinalPrice, R::WorkDone, R::Master, R::Warranty];
+        let set = |v: Vec<R>| SettingsPatch {
+            issue_required: Some(v),
+            ..Default::default()
+        };
+        assert!(t.core.settings().issue_required.is_empty());
+        let o = t.core.create_order(&admin(), sample_new_order()).await?;
+        let o = t
+            .core
+            .update_order(
+                &admin(),
+                o.id,
+                o.version,
+                OrderPatch {
+                    master: Some("Антон".into()),
+                    work_done: Some("Замена дисплея".into()),
+                    warranty: Some(" ".into()),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        // Без требований: цена и гарантия не нужны, как раньше.
+        let issued = status_id_by_name(&t.core, "Выдан").await;
+        let ready = status_id_by_name(&t.core, "Готов").await;
+        let other = t.core.create_order(&admin(), sample_new_order()).await?;
+        let other = t
+            .core
+            .update_order(
+                &admin(),
+                other.id,
+                other.version,
+                OrderPatch {
+                    master: Some("Антон".into()),
+                    work_done: Some("Работа".into()),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        t.core
+            .issue_order(&admin(), other.id, other.version)
+            .await?;
+
+        t.core.update_settings(&admin(), set(all.clone())).await?;
+        let bare = t.core.create_order(&admin(), sample_new_order()).await?;
+        assert_validation(
+            t.core.issue_order(&admin(), bare.id, bare.version).await,
+            &[
+                ("final_price", "required_for_issue"),
+                ("master", "required_for_issue"),
+                ("work_done", "required_for_issue"),
+            ],
+        );
+        assert_validation(
+            t.core.issue_order(&admin(), o.id, o.version).await,
+            &[
+                ("final_price", "required_for_issue"),
+                ("warranty", "required_for_issue"),
+            ],
+        );
+        assert_validation(
+            t.core
+                .change_status(&admin(), o.id, o.version, issued)
+                .await,
+            &[
+                ("final_price", "required_for_issue"),
+                ("warranty", "required_for_issue"),
+            ],
+        );
+        // Не «Выдан» — правило не действует.
+        let o = t
+            .core
+            .change_status(&admin(), o.id, o.version, ready)
+            .await?;
+        // Пустая после trim работа — тоже пусто.
+        let o = t
+            .core
+            .update_order(
+                &admin(),
+                o.id,
+                o.version,
+                OrderPatch {
+                    final_price: Some(Some(Money::from_kopecks(50_000))),
+                    warranty: Some("30 дней".into()),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        let done = t.core.issue_order(&admin(), o.id, o.version).await?;
+        assert_eq!(done.status_id, issued);
+
+        // Только отмеченное: цена не отмечена — без неё можно.
+        t.core
+            .update_settings(&admin(), set(vec![R::Warranty]))
+            .await?;
+        let p = t.core.create_order(&admin(), sample_new_order()).await?;
+        let p = t
+            .core
+            .update_order(
+                &admin(),
+                p.id,
+                p.version,
+                OrderPatch {
+                    master: Some("Антон".into()),
+                    work_done: Some("Работа".into()),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        assert!(t.core.issue_order(&admin(), p.id, p.version).await.is_ok());
+
+        // Повторы в списке отклоняются.
+        assert_validation(
+            t.core
+                .update_settings(&admin(), set(vec![R::Master, R::Master]))
+                .await,
+            &[("issue_required", "invalid")],
+        );
+    }
+    Ok(())
+}

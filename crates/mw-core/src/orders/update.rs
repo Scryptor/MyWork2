@@ -1,5 +1,6 @@
 use chrono::{NaiveDateTime, SubsecRound};
 use mw_db::entity::{order, status};
+use mw_domain::issue::IssueRequirement;
 use mw_domain::permission::Permission;
 use mw_domain::status::StatusKind;
 use mw_domain::validation::FieldError;
@@ -623,22 +624,60 @@ impl Core {
             });
         }
         let to_issued = new_status.kind == StatusKind::Issued.as_str();
+        let old_status = status::Entity::find_by_id(current.status_id)
+            .one(tx)
+            .await?;
         if to_issued {
+            // «Обязательно при выдаче» действует при переходе в «Выдан» из другого вида; мастер и
+            // выполненные работы нужны при выдаче всегда.
+            let from_issued = old_status
+                .as_ref()
+                .is_some_and(|s| s.kind == StatusKind::Issued.as_str());
+            let required = if from_issued {
+                Vec::new()
+            } else {
+                crate::settings::load(tx).await?.issue_required
+            };
             let mut errors = Vec::new();
-            if current.master.trim().is_empty() {
-                errors.push(FieldError::required("master"));
-            }
-            if current.work_done.trim().is_empty() {
-                errors.push(FieldError::required("work_done"));
-            }
+            let mut check = |req: IssueRequirement, empty: bool, always: bool| {
+                let listed = required.contains(&req);
+                if empty && (listed || always) {
+                    errors.push(if listed {
+                        FieldError::with_message(
+                            req.as_str(),
+                            "required_for_issue",
+                            "Заполните перед выдачей",
+                        )
+                    } else {
+                        FieldError::new(req.as_str(), "required")
+                    });
+                }
+            };
+            check(
+                IssueRequirement::FinalPrice,
+                current.final_price.is_none(),
+                false,
+            );
+            check(
+                IssueRequirement::Master,
+                current.master.trim().is_empty(),
+                true,
+            );
+            check(
+                IssueRequirement::WorkDone,
+                current.work_done.trim().is_empty(),
+                true,
+            );
+            check(
+                IssueRequirement::Warranty,
+                current.warranty_text.trim().is_empty(),
+                false,
+            );
             if !errors.is_empty() {
                 return Err(CoreError::Validation(errors));
             }
         }
-        let old_name = status::Entity::find_by_id(current.status_id)
-            .one(tx)
-            .await?
-            .map_or_else(|| current.status_id.to_string(), |s| s.name);
+        let old_name = old_status.map_or_else(|| current.status_id.to_string(), |s| s.name);
 
         let now = self.now();
         let issued_at: Option<NaiveDateTime> = if to_issued && stamp_issued_at {

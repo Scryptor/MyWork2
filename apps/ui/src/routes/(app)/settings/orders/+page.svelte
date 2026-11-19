@@ -8,6 +8,7 @@
 	import { createSettingsEditor } from '#lib/settings/settings-editor.svelte.js';
 	import Callout from '#lib/ui/Callout.svelte';
 	import Card from '#lib/ui/Card.svelte';
+	import Checkbox from '#lib/ui/Checkbox.svelte';
 	import Combobox from '#lib/ui/Combobox.svelte';
 	import Select from '#lib/ui/Select.svelte';
 	import Switch from '#lib/ui/Switch.svelte';
@@ -21,6 +22,16 @@
 	});
 	const s = $derived(app.settings);
 	const locked = $derived(!editor.canEdit);
+
+	const ISSUE_FIELDS = ['final_price', 'work_done', 'master', 'warranty'] as const;
+	type IssueField = (typeof ISSUE_FIELDS)[number];
+	const required = $derived<IssueField[]>(
+		editor.value('issue_required', s.issue_required) ?? s.issue_required
+	);
+	function toggle(f: IssueField, on: boolean) {
+		const next = ISSUE_FIELDS.filter((x) => (x === f ? on : required.includes(x)));
+		editor.commit('issue_required', next);
+	}
 
 	const NONE = 0;
 	const points = $derived([
@@ -119,6 +130,17 @@
 				(v) => editor.commit('intake_required_fields', v)
 			}
 		/>
+		<fieldset class="group">
+			<legend>{t.issueRequired}</legend>
+			<p class="hint">{t.issueRequiredHint}</p>
+			{#each ISSUE_FIELDS as f (f)}
+				<Checkbox
+					label={t.issueFields[f]!}
+					disabled={locked}
+					bind:checked={() => required.includes(f), (v) => toggle(f, v)}
+				/>
+			{/each}
+		</fieldset>
 		<SaveNote {editor} />
 	</div>
 </Card>
@@ -128,6 +150,23 @@
 		margin: 0;
 		font-size: var(--text-xl);
 		font-weight: 600;
+	}
+	.group {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-2);
+		margin: 0;
+		padding: 0;
+		border: 0;
+	}
+	.group legend {
+		padding: 0;
+		font-weight: 600;
+	}
+	.hint {
+		margin: 0;
+		color: var(--text-3);
+		font-size: var(--text-sm);
 	}
 	.fields {
 		display: flex;

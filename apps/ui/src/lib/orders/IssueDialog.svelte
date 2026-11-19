@@ -15,6 +15,7 @@
 	import { untrack } from 'svelte';
 	import type { Order } from '$api/Order';
 	import { ApiError, errorMessage } from '#lib/api/client.js';
+	import { app } from '#lib/app/context.svelte.js';
 	import { submitShortcut } from '#lib/design/hotkeys.svelte.js';
 	import { formatMoney } from '#lib/format/money.js';
 	import { ru } from '#lib/i18n/ru.js';
@@ -92,10 +93,13 @@
 		});
 	});
 
+	/** «Обязательно при выдаче» (spec 6.8): the warranty is required only when the setting says so. */
+	const warrantyRequired = $derived(app.settings.issue_required.includes('warranty'));
 	const missing = $derived({
 		work: work.trim() === '',
 		master: master.trim() === '',
-		price: price === null
+		price: price === null,
+		warranty: warrantyRequired && warranty.trim() === ''
 	});
 	/** What stops the issue, in the order of the fields: an empty required field or a wrong amount. */
 	const blocking = $derived<Record<Key, boolean>>({
@@ -103,7 +107,7 @@
 		master: missing.master,
 		price: missing.price || priceInvalid,
 		discount: discountInvalid,
-		warranty: false
+		warranty: missing.warranty
 	});
 	const wrong = $derived([
 		...(priceInvalid ? [t.issuePrice] : []),
@@ -146,7 +150,7 @@
 			const shown: Partial<Record<Key, string>> = {};
 			for (const f of fields) {
 				const k = SERVER_FIELDS[f.field];
-				if (k) shown[k] ??= f.message;
+				if (k) shown[k] ??= f.code.startsWith('required') ? t.required : f.message;
 			}
 			serverErrors = shown;
 			const known = Object.keys(shown) as Key[];
@@ -239,6 +243,7 @@
 			<Combobox
 				id={IDS.warranty}
 				label={t.warranty}
+				required={warrantyRequired}
 				items={warrantyItems}
 				hint={noWarranty ? t.noWarranty : undefined}
 				bind:value={
@@ -248,7 +253,7 @@
 						drop('warranty');
 					}
 				}
-				error={serverErrors.warranty}
+				error={missing.warranty ? t.required : serverErrors.warranty}
 			/>
 		</div>
 	{/if}

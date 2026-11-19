@@ -3635,7 +3635,8 @@
           "firm_legal_details",
           "intake_terms",
           "issue_terms",
-          "timezone"
+          "timezone",
+          "issue_required"
         ],
         "properties": {
           "currency_symbol": {
@@ -3687,6 +3688,13 @@
           "intake_terms": {
             "type": "string",
             "description": "Условия приёма (текст акта приёма)."
+          },
+          "issue_required": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IssueRequirement"
+            },
+            "description": "Что должно быть заполнено в заказе перед выдачей; пусто — ничего сверх обычного."
           },
           "issue_terms": {
             "type": "string",
@@ -4427,6 +4435,15 @@
             "description": "Сообщение по-русски."
           }
         }
+      },
+      "IssueRequirement": {
+        "type": "string",
+        "enum": [
+          "final_price",
+          "work_done",
+          "master",
+          "warranty"
+        ]
       },
       "IssuedFilter": {
         "type": "string",
@@ -5755,6 +5772,13 @@
           "intake_terms": {
             "type": "string",
             "description": "Условия приёма (текст акта приёма)."
+          },
+          "issue_required": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IssueRequirement"
+            },
+            "description": "Что должно быть заполнено в заказе перед выдачей (без повторов)."
           },
           "issue_terms": {
             "type": "string",

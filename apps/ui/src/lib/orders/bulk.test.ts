@@ -146,6 +146,13 @@ describe('failure texts', () => {
 			]
 		});
 		expect(bulkErrorMessage(e)).toBe('заполните: мастер, выполненные работы');
+		const configured = apiError('validation', {
+			fields: [
+				{ field: 'final_price', code: 'required_for_issue', message: 'Заполните перед выдачей' },
+				{ field: 'warranty', code: 'required_for_issue', message: 'Заполните перед выдачей' }
+			]
+		});
+		expect(bulkErrorMessage(configured)).toBe('заполните: итоговая цена, гарантия');
 		const other = apiError('validation', {
 			fields: [{ field: 'status_id', code: 'invalid', message: 'Недопустимое значение' }]
 		});

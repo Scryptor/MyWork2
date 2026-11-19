@@ -34,6 +34,7 @@ const SETTINGS: AppSettings = {
 	ready_stale_days: 14,
 	default_warranty: '30 дней',
 	intake_required_fields: false,
+	issue_required: [],
 	default_service_point_id: null,
 	default_master: 'ТЕСТОВ',
 	firm_name: '',
