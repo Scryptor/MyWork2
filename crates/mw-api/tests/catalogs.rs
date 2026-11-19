@@ -4,7 +4,7 @@
 mod common;
 
 use axum::http::Method;
-use common::{Listen, apis, status_id_by_name};
+use common::{Listen, apis, create_order, new_order, status_id_by_name};
 use mw_domain::permission::Permission;
 use serde_json::json;
 
@@ -445,5 +445,155 @@ async fn dictionary_archive_usage_next_number_and_about() {
         assert!(r.body["data_dir"].is_string());
         assert_eq!(t.get("/api/v1/about", Some(&clerk)).await.status, 403);
         assert_eq!(t.get("/api/v1/about", None).await.status, 401);
+    }
+}
+
+#[tokio::test]
+async fn dictionary_rename_and_merge_endpoints() {
+    for t in apis(Listen::Network).await {
+        let admin = t.admin_token().await;
+        let clerk = t
+            .token_with("kassa", &[Permission::OrdersCreate, Permission::OrdersEdit])
+            .await;
+        let brand_id = |items: &serde_json::Value, value: &str| {
+            items
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|i| i["value"] == value)
+                .map(|i| i["id"].as_i64().unwrap())
+        };
+        let first = create_order(
+            &t,
+            &admin,
+            new_order("Пётр", "+7 921 000-00-01", "samsung", "A52"),
+        )
+        .await;
+        let items = t.get("/api/v1/dictionaries/brand", Some(&admin)).await.body;
+        let samsung = brand_id(&items, "Samsung").unwrap();
+        let rename = format!("/api/v1/dictionary-items/{samsung}/rename");
+
+        let r = t
+            .send(
+                Method::POST,
+                &rename,
+                Some(&clerk),
+                Some(json!({ "value": "Samsung Mobile", "in_orders": true })),
+            )
+            .await;
+        assert_eq!(
+            (r.status, &r.body["permission"]),
+            (403, &json!("settings_manage")),
+            "{}",
+            t.label
+        );
+        for body in [
+            json!({ "value": "Samsung Mobile", "in_orders": true, "extra": 1 }),
+            json!({ "value": "Samsung Mobile" }),
+        ] {
+            let r = t
+                .send(Method::POST, &rename, Some(&admin), Some(body))
+                .await;
+            assert_eq!(r.status, 400, "{}: {}", t.label, r.body);
+        }
+        let r = t
+            .send(
+                Method::POST,
+                &rename,
+                Some(&admin),
+                Some(json!({ "value": "Samsung Mobile", "in_orders": true })),
+            )
+            .await;
+        assert_eq!(
+            (
+                r.status,
+                &r.body["item"]["id"],
+                &r.body["item"]["value"],
+                &r.body["records_changed"]
+            ),
+            (200, &json!(samsung), &json!("Samsung Mobile"), &json!(1)),
+            "{}: {}",
+            t.label,
+            r.body
+        );
+        let order = t
+            .get(&format!("/api/v1/orders/{}", first["id"]), Some(&admin))
+            .await
+            .body;
+        assert_eq!(
+            (&order["brand"], &order["version"]),
+            (&json!("Samsung Mobile"), &json!(2))
+        );
+
+        let r = t
+            .send(
+                Method::POST,
+                "/api/v1/dictionaries/brand",
+                Some(&admin),
+                Some(json!({ "value": "Самсунг" })),
+            )
+            .await;
+        let cyrillic = r.body["id"].as_i64().unwrap();
+        create_order(
+            &t,
+            &admin,
+            new_order("Анна", "+7 921 000-00-02", "самсунг", "A53"),
+        )
+        .await;
+        let merge = "/api/v1/dictionaries/brand/merge";
+        let r = t
+            .send(
+                Method::POST,
+                merge,
+                Some(&admin),
+                Some(json!({ "target_id": samsung, "source_ids": [], "in_orders": true })),
+            )
+            .await;
+        assert_eq!(
+            (r.status, &r.body["fields"]),
+            (
+                422,
+                &json!([{ "field": "source_ids", "code": "required", "message": "Заполните поле" }])
+            ),
+            "{}",
+            t.label
+        );
+        let body = json!({ "target_id": samsung, "source_ids": [cyrillic], "in_orders": true });
+        assert_eq!(
+            t.send(Method::POST, merge, Some(&clerk), Some(body.clone()))
+                .await
+                .status,
+            403
+        );
+        assert_eq!(
+            t.send(
+                Method::POST,
+                "/api/v1/dictionaries/planet/merge",
+                Some(&admin),
+                Some(body.clone())
+            )
+            .await
+            .status,
+            400
+        );
+        let r = t.send(Method::POST, merge, Some(&admin), Some(body)).await;
+        assert_eq!(
+            (
+                r.status,
+                &r.body["item"]["value"],
+                &r.body["records_changed"]
+            ),
+            (200, &json!("Samsung Mobile"), &json!(1)),
+            "{}: {}",
+            t.label,
+            r.body
+        );
+        let items = t.get("/api/v1/dictionaries/brand", Some(&admin)).await.body;
+        assert_eq!(brand_id(&items, "Самсунг"), None);
+        let page = t
+            .get("/api/v1/orders?query=samsung%20mobile", Some(&admin))
+            .await
+            .body;
+        assert_eq!(page["total"], json!(2), "{}: {page}", t.label);
     }
 }

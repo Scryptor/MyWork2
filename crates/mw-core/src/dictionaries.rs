@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use mw_db::entity::dictionary_item;
 use mw_domain::dictionary::DictionaryKind;
 use mw_domain::permission::Permission;
@@ -10,6 +12,7 @@ use sea_orm::{
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+use crate::dictionaries_rewrite::records_word;
 use crate::statuses::check_permutation;
 use crate::{Actor, Core, CoreError, NewAuditEntry, write_audit};
 
@@ -43,6 +46,40 @@ pub struct DictionaryItemPatch {
     pub archived: Option<bool>,
 }
 
+/// Переименование значения справочника, при желании — и в записях, где оно стоит.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, ts_rs::TS, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DictionaryRename {
+    /// Новый текст значения.
+    pub value: String,
+    /// Заменить прежнее значение и в неудалённых заказах (для «Откуда узнали» — в клиентах);
+    /// сравнение без учёта регистра.
+    pub in_orders: bool,
+}
+
+/// Объединение значений одного справочника: источники удаляются, цель остаётся.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, ts_rs::TS, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DictionaryMerge {
+    /// Значение, которое остаётся.
+    pub target_id: i64,
+    /// Значения того же справочника, которые удаляются: хотя бы одно, без цели.
+    pub source_ids: Vec<i64>,
+    /// Заменить значения источников значением цели и в неудалённых заказах (для «Откуда узнали» —
+    /// в клиентах); сравнение без учёта регистра.
+    pub in_orders: bool,
+}
+
+/// Итог переименования или объединения.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
+pub struct RewriteResult {
+    /// Значение после изменения; при объединении — цель.
+    pub item: DictionaryItem,
+    /// Сколько заказов изменено (для «Откуда узнали» — клиентов).
+    #[ts(type = "number")]
+    pub records_changed: u64,
+}
+
 fn to_item(m: dictionary_item::Model) -> Result<DictionaryItem, CoreError> {
     let kind = m
         .kind
@@ -55,6 +92,33 @@ fn to_item(m: dictionary_item::Model) -> Result<DictionaryItem, CoreError> {
         sort_order: m.sort_order,
         archived: m.archived,
     })
+}
+
+async fn load_item(
+    conn: &impl ConnectionTrait,
+    id: i64,
+) -> Result<(dictionary_item::Model, DictionaryKind), CoreError> {
+    let current = dictionary_item::Entity::find_by_id(id)
+        .one(conn)
+        .await?
+        .ok_or(CoreError::NotFound {
+            entity: "значение справочника",
+            id,
+        })?;
+    let kind = current
+        .kind
+        .parse::<DictionaryKind>()
+        .map_err(|e| CoreError::Internal(format!("справочник №{id}: {e:?}")))?;
+    Ok((current, kind))
+}
+
+/// Ключи сравнения значений (пустые не совпадают ни с чем).
+fn value_keys<'a>(values: impl IntoIterator<Item = &'a str>) -> HashSet<String> {
+    values
+        .into_iter()
+        .map(normalize_search)
+        .filter(|k| !k.is_empty())
+        .collect()
 }
 
 async fn kind_rows(
@@ -166,17 +230,7 @@ impl Core {
     ) -> Result<DictionaryItem, CoreError> {
         actor.require(Permission::SettingsManage)?;
         let tx = self.begin_write().await?;
-        let current = dictionary_item::Entity::find_by_id(id)
-            .one(&tx)
-            .await?
-            .ok_or(CoreError::NotFound {
-                entity: "значение справочника",
-                id,
-            })?;
-        let kind = current
-            .kind
-            .parse::<DictionaryKind>()
-            .map_err(|e| CoreError::Internal(format!("справочник №{id}: {e:?}")))?;
+        let (current, kind) = load_item(&tx, id).await?;
         let renamed = match patch.value.as_deref() {
             Some(v) if v.trim() != current.value => {
                 let rows = kind_rows(&tx, kind).await?;
@@ -252,20 +306,178 @@ impl Core {
         to_item(model)
     }
 
+    /// Переименование значения; при `in_orders` прежнее значение (элемент списка) заменяется новым
+    /// и в неудалённых записях — каждая как обычная правка. Всё в одной транзакции; ничего не
+    /// изменилось — ничего не пишется.
+    pub async fn rename_dictionary_item_everywhere(
+        &self,
+        actor: &Actor,
+        id: i64,
+        req: DictionaryRename,
+    ) -> Result<RewriteResult, CoreError> {
+        actor.require(Permission::SettingsManage)?;
+        let tx = self.begin_write().await?;
+        let (current, kind) = load_item(&tx, id).await?;
+        let rows = kind_rows(&tx, kind).await?;
+        let value = check_value(&req.value, &rows, Some(id))?;
+        let old = current.value.clone();
+        let records_changed = if req.in_orders {
+            self.rewrite_dictionary_values(&tx, actor, kind, &value_keys([old.as_str()]), &value)
+                .await?
+        } else {
+            0
+        };
+        let renamed = value != old;
+        if !renamed && records_changed == 0 {
+            return Ok(RewriteResult {
+                item: to_item(current)?,
+                records_changed,
+            });
+        }
+        let model = if renamed {
+            let mut active: dictionary_item::ActiveModel = current.into();
+            active.value = Set(value.clone());
+            active.update(&tx).await?
+        } else {
+            current
+        };
+        let mut summary = if renamed {
+            format!(
+                "Справочник «{}»: «{old}» переименовано в «{value}»",
+                kind.label_ru()
+            )
+        } else {
+            format!("Справочник «{}»: «{value}»", kind.label_ru())
+        };
+        if req.in_orders {
+            summary.push_str(&format!(
+                ", изменено {}: {records_changed}",
+                records_word(kind)
+            ));
+        }
+        write_audit(
+            &tx,
+            self.now(),
+            actor,
+            NewAuditEntry {
+                action: "dictionary.renamed",
+                order_id: None,
+                client_id: None,
+                summary,
+                details: Some(json!({
+                    "id": id,
+                    "kind": kind.as_str(),
+                    "old": old,
+                    "new": value,
+                    "in_orders": req.in_orders,
+                    "records_changed": records_changed,
+                })),
+            },
+        )
+        .await?;
+        tx.commit().await?;
+        Ok(RewriteResult {
+            item: to_item(model)?,
+            records_changed,
+        })
+    }
+
+    /// Объединение: источники удаляются, цель остаётся; при `in_orders` значения (элементы списка)
+    /// источников заменяются значением цели и в неудалённых записях — каждая как обычная правка.
+    pub async fn merge_dictionary_items(
+        &self,
+        actor: &Actor,
+        kind: DictionaryKind,
+        req: DictionaryMerge,
+    ) -> Result<RewriteResult, CoreError> {
+        actor.require(Permission::SettingsManage)?;
+        let tx = self.begin_write().await?;
+        let rows = kind_rows(&tx, kind).await?;
+        let mut source_ids = req.source_ids.clone();
+        source_ids.sort_unstable();
+        source_ids.dedup();
+        let target = rows.iter().find(|r| r.id == req.target_id).cloned();
+        let sources: Vec<&dictionary_item::Model> = rows
+            .iter()
+            .filter(|r| source_ids.binary_search(&r.id).is_ok())
+            .collect();
+        let mut errors = Vec::new();
+        if target.is_none() {
+            errors.push(FieldError::new("target_id", "invalid"));
+        }
+        if source_ids.is_empty() {
+            errors.push(FieldError::required("source_ids"));
+        } else if source_ids.contains(&req.target_id) || sources.len() != source_ids.len() {
+            errors.push(FieldError::new("source_ids", "invalid"));
+        }
+        let (Some(target), true) = (target, errors.is_empty()) else {
+            return Err(CoreError::Validation(errors));
+        };
+        let to = target.value.trim().to_owned();
+        let records_changed = if req.in_orders {
+            let from = value_keys(sources.iter().map(|s| s.value.as_str()));
+            self.rewrite_dictionary_values(&tx, actor, kind, &from, &to)
+                .await?
+        } else {
+            0
+        };
+        dictionary_item::Entity::delete_many()
+            .filter(dictionary_item::Column::Id.is_in(source_ids))
+            .exec(&tx)
+            .await?;
+        let names: Vec<String> = sources.iter().map(|s| format!("«{}»", s.value)).collect();
+        let mut summary = format!(
+            "Справочник «{}»: в «{}» {} {}",
+            kind.label_ru(),
+            target.value,
+            if names.len() == 1 {
+                "влито"
+            } else {
+                "влиты"
+            },
+            names.join(", ")
+        );
+        if req.in_orders {
+            summary.push_str(&format!(
+                ", изменено {}: {records_changed}",
+                records_word(kind)
+            ));
+        }
+        let sources_json: Vec<_> = sources
+            .iter()
+            .map(|s| json!({ "id": s.id, "value": s.value }))
+            .collect();
+        write_audit(
+            &tx,
+            self.now(),
+            actor,
+            NewAuditEntry {
+                action: "dictionary.merged",
+                order_id: None,
+                client_id: None,
+                summary,
+                details: Some(json!({
+                    "kind": kind.as_str(),
+                    "target_id": target.id,
+                    "target": target.value,
+                    "sources": sources_json,
+                    "in_orders": req.in_orders,
+                    "records_changed": records_changed,
+                })),
+            },
+        )
+        .await?;
+        tx.commit().await?;
+        Ok(RewriteResult {
+            item: to_item(target)?,
+            records_changed,
+        })
+    }
+
     pub async fn delete_dictionary_item(&self, actor: &Actor, id: i64) -> Result<(), CoreError> {
         actor.require(Permission::SettingsManage)?;
         let tx = self.begin_write().await?;
-        let current = dictionary_item::Entity::find_by_id(id)
-            .one(&tx)
-            .await?
-            .ok_or(CoreError::NotFound {
-                entity: "значение справочника",
-                id,
-            })?;
-        let kind = current
-            .kind
-            .parse::<DictionaryKind>()
-            .map_err(|e| CoreError::Internal(format!("справочник №{id}: {e:?}")))?;
+        let (current, kind) = load_item(&tx, id).await?;
         dictionary_item::Entity::delete_by_id(id).exec(&tx).await?;
         write_audit(
             &tx,

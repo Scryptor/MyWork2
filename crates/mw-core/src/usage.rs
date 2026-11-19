@@ -23,10 +23,10 @@ pub struct CatalogUsage {
 
 /// Таблица и поле, где хранится значение справочника.
 pub(crate) struct UsageTarget {
-    table: &'static str,
-    column: &'static str,
+    pub(crate) table: &'static str,
+    pub(crate) column: &'static str,
     /// Поле хранит список через запятую.
-    list: bool,
+    pub(crate) list: bool,
 }
 
 pub(crate) fn usage_target(kind: DictionaryKind) -> UsageTarget {

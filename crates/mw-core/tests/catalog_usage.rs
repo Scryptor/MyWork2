@@ -165,6 +165,45 @@ async fn dictionary_usage_splits_lists_and_counts_order_once() -> Result<(), Cor
     Ok(())
 }
 
+/// Списки состояния, неисправностей и работ: каждое поле читается из своей колонки.
+#[tokio::test]
+async fn dictionary_usage_reads_condition_malfunction_and_work_done() -> Result<(), CoreError> {
+    for t in cores().await {
+        let id = order_with(&t.core, |o| {
+            o.device_condition = "Царапины, сколы".into();
+            o.malfunction = "не включается, Нет звука".into();
+        })
+        .await;
+        let o = t.core.get_order(&admin(), id).await?;
+        t.core
+            .update_order(
+                &admin(),
+                id,
+                o.version,
+                mw_core::OrderPatch {
+                    work_done: Some("Диагностика, чистка".into()),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        for (kind, values) in [
+            (DictionaryKind::Condition, ["Царапины", "Сколы"]),
+            (DictionaryKind::Malfunction, ["Не включается", "Нет звука"]),
+            (DictionaryKind::WorkDone, ["Диагностика", "Чистка"]),
+        ] {
+            let mut expected = Vec::new();
+            for v in values {
+                expected.push((item_id(&t.core, kind, v).await, 1));
+            }
+            expected.sort();
+            let mut got = usage(&t.core.dictionary_usage(&admin(), kind).await?);
+            got.sort();
+            assert_eq!(got, expected, "{}: {kind:?}", t.label);
+        }
+    }
+    Ok(())
+}
+
 #[tokio::test]
 async fn dictionary_usage_counts_clients_for_source() -> Result<(), CoreError> {
     for t in cores().await {

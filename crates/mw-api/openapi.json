@@ -1070,6 +1070,63 @@
         ]
       }
     },
+    "/api/v1/dictionaries/{kind}/merge": {
+      "post": {
+        "tags": [
+          "Настройки и справочники"
+        ],
+        "summary": "Объединение значений справочника: источники удаляются, цель остаётся; при `in_orders` значения\nисточников заменяются значением цели и в неудалённых заказах (для «Откуда узнали» — в клиентах)\n(право `settings_manage`).",
+        "operationId": "merge_dictionary_items",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "description": "Вид справочника",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/DictionaryKind"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DictionaryMerge"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Оставшееся значение и число изменённых записей",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RewriteResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/dictionaries/{kind}/order": {
       "put": {
         "tags": [
@@ -1245,6 +1302,64 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/DictionaryItem"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/dictionary-items/{id}/rename": {
+      "post": {
+        "tags": [
+          "Настройки и справочники"
+        ],
+        "summary": "Переименование значения справочника; при `in_orders` прежнее значение заменяется и в неудалённых\nзаказах (для «Откуда узнали» — в клиентах), каждый как обычная правка (право `settings_manage`).",
+        "operationId": "rename_dictionary_item",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер значения",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DictionaryRename"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Значение после переименования и число изменённых записей",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RewriteResult"
                 }
               }
             }
@@ -4148,6 +4263,54 @@
           "warranty"
         ]
       },
+      "DictionaryMerge": {
+        "type": "object",
+        "description": "Объединение значений одного справочника: источники удаляются, цель остаётся.",
+        "required": [
+          "target_id",
+          "source_ids",
+          "in_orders"
+        ],
+        "properties": {
+          "in_orders": {
+            "type": "boolean",
+            "description": "Заменить значения источников значением цели и в неудалённых заказах (для «Откуда узнали» —\nв клиентах); сравнение без учёта регистра."
+          },
+          "source_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "Значения того же справочника, которые удаляются: хотя бы одно, без цели."
+          },
+          "target_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Значение, которое остаётся."
+          }
+        },
+        "additionalProperties": false
+      },
+      "DictionaryRename": {
+        "type": "object",
+        "description": "Переименование значения справочника, при желании — и в записях, где оно стоит.",
+        "required": [
+          "value",
+          "in_orders"
+        ],
+        "properties": {
+          "in_orders": {
+            "type": "boolean",
+            "description": "Заменить прежнее значение и в неудалённых заказах (для «Откуда узнали» — в клиентах);\nсравнение без учёта регистра."
+          },
+          "value": {
+            "type": "string",
+            "description": "Новый текст значения."
+          }
+        },
+        "additionalProperties": false
+      },
       "DictionaryValue": {
         "type": "object",
         "description": "Значение справочника.",
@@ -5358,6 +5521,26 @@
           }
         },
         "additionalProperties": false
+      },
+      "RewriteResult": {
+        "type": "object",
+        "description": "Итог переименования или объединения.",
+        "required": [
+          "item",
+          "records_changed"
+        ],
+        "properties": {
+          "item": {
+            "$ref": "#/components/schemas/DictionaryItem",
+            "description": "Значение после изменения; при объединении — цель."
+          },
+          "records_changed": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Сколько заказов изменено (для «Откуда узнали» — клиентов).",
+            "minimum": 0
+          }
+        }
       },
       "Role": {
         "type": "object",

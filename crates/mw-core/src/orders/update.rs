@@ -72,6 +72,25 @@ impl Core {
         patch: OrderPatch,
     ) -> Result<Order, CoreError> {
         actor.require(Permission::OrdersEdit)?;
+        let tx = self.begin_write().await?;
+        let (updated, _) = self
+            .update_order_in(&tx, actor, id, expected_version, patch)
+            .await?;
+        tx.commit().await?;
+        Ok(updated)
+    }
+
+    /// Правка заказа внутри открытой транзакции записи: всё, что делает `update_order`, кроме
+    /// проверки права `orders_edit` и фиксации (замена значения справочника в заказах идёт через
+    /// неё же). Возвращает заказ и признак, что запись изменилась.
+    pub(crate) async fn update_order_in(
+        &self,
+        tx: &DatabaseTransaction,
+        actor: &Actor,
+        id: i64,
+        expected_version: i64,
+        patch: OrderPatch,
+    ) -> Result<(Order, bool), CoreError> {
         // Даты хранятся с точностью до секунды, как `Core::now()`.
         let patch = OrderPatch {
             received_at: patch.received_at.map(|t| t.trunc_subsecs(0)),
@@ -81,8 +100,7 @@ impl Core {
         if patch.received_at.is_some() || patch.issued_at.is_some() {
             actor.require(Permission::OrderDatesEdit)?;
         }
-        let tx = self.begin_write().await?;
-        let current = load(&tx, id).await?;
+        let current = load(tx, id).await?;
         if current.deleted_at.is_some() {
             return Err(deleted_error());
         }
@@ -205,7 +223,7 @@ impl Core {
         apply!(d, m, need_parts, "требует заказа", patch.need_parts);
 
         if d.changes.is_empty() {
-            return Ok(current.into());
+            return Ok((current.into(), false));
         }
         if current.version != expected_version {
             return Err(CoreError::Conflict {
@@ -216,14 +234,14 @@ impl Core {
         }
 
         let mut errors: Vec<FieldError> = Vec::new();
-        if m.client_id != current.client_id && find_live(&tx, m.client_id).await?.is_none() {
+        if m.client_id != current.client_id && find_live(tx, m.client_id).await?.is_none() {
             errors.push(FieldError::new("client_id", "invalid"));
         }
         if m.service_point_id != current.service_point_id
             && let Some(sp) = m.service_point_id
         {
             let ok = mw_db::entity::service_point::Entity::find_by_id(sp)
-                .one(&tx)
+                .one(tx)
                 .await?
                 .is_some_and(|p| !p.archived);
             if !ok {
@@ -339,12 +357,12 @@ impl Core {
             .filter(order::Column::Id.eq(id))
             .filter(order::Column::Version.eq(expected_version))
             .filter(order::Column::DeletedAt.is_null())
-            .exec(&tx)
+            .exec(tx)
             .await?;
-        check_affected(&tx, res.rows_affected, id).await?;
+        check_affected(tx, res.rows_affected, id).await?;
 
         write_audit(
-            &tx,
+            tx,
             now,
             actor,
             NewAuditEntry {
@@ -356,9 +374,7 @@ impl Core {
             },
         )
         .await?;
-        let updated = load(&tx, id).await?;
-        tx.commit().await?;
-        Ok(updated.into())
+        Ok((load(tx, id).await?.into(), true))
     }
 
     /// Смена статуса заказа.

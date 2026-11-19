@@ -3,8 +3,9 @@
 use axum::extract::State;
 use axum::http::StatusCode;
 use mw_core::{
-    AppSettings, CatalogUsage, DictionaryItem, DictionaryItemPatch, NewStatus, ServicePoint,
-    ServicePointPatch, SettingsPatch, Status, StatusPatch,
+    AppSettings, CatalogUsage, DictionaryItem, DictionaryItemPatch, DictionaryMerge,
+    DictionaryRename, NewStatus, RewriteResult, ServicePoint, ServicePointPatch, SettingsPatch,
+    Status, StatusPatch,
 };
 use mw_domain::dictionary::DictionaryKind;
 
@@ -224,6 +225,54 @@ pub(super) async fn update_dictionary_item(
 ) -> Result<Json<DictionaryItem>, ApiError> {
     Ok(Json(
         state.core.update_dictionary_item(&actor, id, patch).await?,
+    ))
+}
+
+/// Переименование значения справочника; при `in_orders` прежнее значение заменяется и в неудалённых
+/// заказах (для «Откуда узнали» — в клиентах), каждый как обычная правка (право `settings_manage`).
+#[utoipa::path(
+    post,
+    path = "/api/v1/dictionary-items/{id}/rename",
+    tag = "Настройки и справочники",
+    security(("bearer" = [])),
+    params(("id" = i64, Path, description = "Номер значения")),
+    request_body = DictionaryRename,
+    responses((status = 200, description = "Значение после переименования и число изменённых записей", body = RewriteResult))
+)]
+pub(super) async fn rename_dictionary_item(
+    State(state): State<AppState>,
+    CurrentActor(actor): CurrentActor,
+    Path(id): Path<i64>,
+    Json(req): Json<DictionaryRename>,
+) -> Result<Json<RewriteResult>, ApiError> {
+    Ok(Json(
+        state
+            .core
+            .rename_dictionary_item_everywhere(&actor, id, req)
+            .await?,
+    ))
+}
+
+/// Объединение значений справочника: источники удаляются, цель остаётся; при `in_orders` значения
+/// источников заменяются значением цели и в неудалённых заказах (для «Откуда узнали» — в клиентах)
+/// (право `settings_manage`).
+#[utoipa::path(
+    post,
+    path = "/api/v1/dictionaries/{kind}/merge",
+    tag = "Настройки и справочники",
+    security(("bearer" = [])),
+    params(("kind" = DictionaryKind, Path, description = "Вид справочника")),
+    request_body = DictionaryMerge,
+    responses((status = 200, description = "Оставшееся значение и число изменённых записей", body = RewriteResult))
+)]
+pub(super) async fn merge_dictionary_items(
+    State(state): State<AppState>,
+    CurrentActor(actor): CurrentActor,
+    Path(kind): Path<DictionaryKind>,
+    Json(req): Json<DictionaryMerge>,
+) -> Result<Json<RewriteResult>, ApiError> {
+    Ok(Json(
+        state.core.merge_dictionary_items(&actor, kind, req).await?,
     ))
 }
 

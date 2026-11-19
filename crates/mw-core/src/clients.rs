@@ -9,8 +9,8 @@ use mw_domain::validation::FieldError;
 use sea_orm::ExprTrait;
 use sea_orm::sea_query::{Expr, Order, Query};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, NotSet, PaginatorTrait,
-    QueryFilter, QueryOrder, QuerySelect, Set,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseTransaction, EntityTrait, NotSet,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
@@ -518,13 +518,31 @@ impl Core {
     ) -> Result<Client, CoreError> {
         actor.require_any(&[Permission::ClientsEdit, Permission::OrdersEdit])?;
         let tx = self.begin_write().await?;
-        let current = find_live(&tx, id)
+        let (updated, _) = self
+            .update_client_in(&tx, actor, id, expected_version, patch)
+            .await?;
+        tx.commit().await?;
+        Ok(updated)
+    }
+
+    /// Правка клиента внутри открытой транзакции записи: всё, что делает `update_client`, кроме
+    /// проверки прав и фиксации (замена источника клиента из справочника идёт через неё же).
+    /// Возвращает клиента и признак, что запись изменилась.
+    pub(crate) async fn update_client_in(
+        &self,
+        tx: &DatabaseTransaction,
+        actor: &Actor,
+        id: i64,
+        expected_version: i64,
+        patch: ClientPatch,
+    ) -> Result<(Client, bool), CoreError> {
+        let current = find_live(tx, id)
             .await?
             .ok_or(CoreError::NotFound { entity: ENTITY, id })?;
         let full_name = patch
             .full_name
             .map_or_else(|| current.full_name.clone(), |v| v.trim().to_owned());
-        let current_phones = load_phones(&tx, &[id])
+        let current_phones = load_phones(tx, &[id])
             .await?
             .remove(&id)
             .unwrap_or_default();
@@ -575,7 +593,7 @@ impl Core {
             {
                 return Err(CoreError::Validation(errors.clone()));
             }
-            return Ok(Client::from_parts(current, current_phones));
+            return Ok((Client::from_parts(current, current_phones), false));
         }
         if current.version != expected_version {
             return Err(CoreError::Conflict {
@@ -593,7 +611,7 @@ impl Core {
 
         let now = self.now();
         apply_client_fields(
-            &tx,
+            tx,
             id,
             expected_version,
             now,
@@ -608,7 +626,7 @@ impl Core {
         )
         .await?;
         write_audit(
-            &tx,
+            tx,
             now,
             actor,
             NewAuditEntry {
@@ -620,12 +638,11 @@ impl Core {
             },
         )
         .await?;
-        write_phones(&tx, id, &phones).await?;
-        let updated = find_live(&tx, id)
+        write_phones(tx, id, &phones).await?;
+        let updated = find_live(tx, id)
             .await?
             .ok_or(CoreError::NotFound { entity: ENTITY, id })?;
-        tx.commit().await?;
-        Ok(Client::from_parts(updated, phones))
+        Ok((Client::from_parts(updated, phones), true))
     }
 
     pub async fn list_clients(

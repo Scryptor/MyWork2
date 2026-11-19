@@ -9,6 +9,7 @@ mod clients_merge;
 mod clock;
 mod core;
 mod dictionaries;
+mod dictionaries_rewrite;
 mod error;
 mod import;
 mod orders;
@@ -36,7 +37,9 @@ pub use clients::{
 pub use clients_merge::{MAX_MERGE_SOURCES, MAX_SIMILAR_CLIENTS, MergeClients, VersionedId};
 pub use clock::{Clock, FixedClock, SystemClock};
 pub use core::Core;
-pub use dictionaries::{DictionaryItem, DictionaryItemPatch};
+pub use dictionaries::{
+    DictionaryItem, DictionaryItemPatch, DictionaryMerge, DictionaryRename, RewriteResult,
+};
 pub use error::CoreError;
 pub use import::{
     DatabaseKind, ImportBundle, ImportMode, ImportSummary, ImportTarget, ImportedClient,

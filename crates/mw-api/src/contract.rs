@@ -35,6 +35,9 @@ pub fn export_typescript(dir: &Path) -> Result<(), ts_rs::ExportError> {
     AboutInfo::export_all(&cfg)?;
     mw_core::DictionaryItemPatch::export_all(&cfg)?;
     mw_core::CatalogUsage::export_all(&cfg)?;
+    mw_core::DictionaryRename::export_all(&cfg)?;
+    mw_core::DictionaryMerge::export_all(&cfg)?;
+    mw_core::RewriteResult::export_all(&cfg)?;
     NewServicePoint::export_all(&cfg)?;
     ClientListQuery::export_all(&cfg)?;
     PhoneQuery::export_all(&cfg)?;

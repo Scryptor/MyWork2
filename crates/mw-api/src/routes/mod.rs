@@ -55,6 +55,8 @@ pub(crate) fn api_routes() -> OpenApiRouter<AppState> {
             catalogs::add_dictionary_item
         ))
         .routes(routes!(catalogs::reorder_dictionary))
+        .routes(routes!(catalogs::merge_dictionary_items))
+        .routes(routes!(catalogs::rename_dictionary_item))
         .routes(routes!(
             catalogs::update_dictionary_item,
             catalogs::delete_dictionary_item

@@ -5,10 +5,10 @@
 use std::fmt::Debug;
 
 use mw_core::{
-    AppSettings, AuditEntry, Client, ClientPatch, ClientRef, DictionaryItem, IssuedFilter,
-    NewClient, NewOrder, NewRole, NewStatus, NewUser, Order, OrderListItem, OrderPatch,
-    OrderSortField, Role, RolePatch, ServicePoint, ServicePointPatch, SettingsPatch, Status,
-    StatusPatch, User, UserPatch,
+    AppSettings, AuditEntry, Client, ClientPatch, ClientRef, DictionaryItem, DictionaryMerge,
+    DictionaryRename, IssuedFilter, NewClient, NewOrder, NewRole, NewStatus, NewUser, Order,
+    OrderListItem, OrderPatch, OrderSortField, RewriteResult, Role, RolePatch, ServicePoint,
+    ServicePointPatch, SettingsPatch, Status, StatusPatch, User, UserPatch,
 };
 use mw_domain::dictionary::DictionaryKind;
 use mw_domain::money::Money;
@@ -176,6 +176,7 @@ fn response_types_are_complete_and_hide_secrets() {
         AppSettings::decl(&c),
         ServicePoint::decl(&c),
         DictionaryItem::decl(&c),
+        RewriteResult::decl(&c),
     ] {
         assert!(!decl.contains("?:") && !decl.contains("bigint"), "{decl}");
     }
@@ -260,6 +261,8 @@ fn request_bodies_require_every_field() {
         json!({ "login": "a", "display_name": "А", "role_id": 1, "password": "pw12" }),
     );
     check_new::<NewRole>(json!({ "name": "А", "permissions": ["orders_create"] }));
+    check_new::<DictionaryRename>(json!({ "value": "А", "in_orders": true }));
+    check_new::<DictionaryMerge>(json!({ "target_id": 1, "source_ids": [2], "in_orders": false }));
     check_new::<NewOrder>(json!({
         "client": { "existing": 1 }, "service_point_id": null, "status_id": null,
         "device_type": "", "brand": "", "model": "", "serial": "", "color": "",
