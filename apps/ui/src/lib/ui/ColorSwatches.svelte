@@ -28,7 +28,10 @@
 		if (selectOnArrow || !(input instanceof HTMLInputElement) || input.type !== 'radio') return;
 		if (e.key === 'Enter') {
 			e.preventDefault();
-			if (!input.disabled) input.click();
+			if (input.disabled) return;
+			// The hue that is already checked fires no change: confirm it all the same.
+			if (input.checked) onchange(input.value as StatusHue);
+			else input.click();
 			return;
 		}
 		if (!ARROWS.includes(e.key)) return;

@@ -38,4 +38,18 @@ describe('ColorSwatches', () => {
 			'true'
 		);
 	});
+
+	it('selectOnArrow=false: arrows only move focus; Enter confirms, also the hue already checked', async () => {
+		const onchange = vi.fn();
+		render(ColorSwatches, { value: 'gray', onchange, label: 'Цвет', selectOnArrow: false });
+		screen.getByRole('radio', { name: 'Серый' }).focus();
+		await userEvent.keyboard('{Enter}');
+		expect(onchange).toHaveBeenCalledTimes(1);
+		expect(onchange).toHaveBeenCalledWith('gray');
+		await userEvent.keyboard('{ArrowRight}');
+		expect(onchange).toHaveBeenCalledTimes(1);
+		expect(screen.getByRole('radio', { name: 'Красный' })).toHaveFocus();
+		await userEvent.keyboard('{Enter}');
+		expect(onchange).toHaveBeenLastCalledWith('red');
+	});
 });

@@ -2,7 +2,7 @@
 	import ArrowDown from '@lucide/svelte/icons/arrow-down';
 	import ArrowUp from '@lucide/svelte/icons/arrow-up';
 	import { createVirtualizer } from '@tanstack/svelte-virtual';
-	import { untrack, type Snippet } from 'svelte';
+	import { tick, untrack, type Snippet } from 'svelte';
 	import { SvelteMap } from 'svelte/reactivity';
 	import { display, prefs } from '#lib/design/prefs.svelte.js';
 	import { ROW_REM } from './sizes.js';
@@ -160,7 +160,13 @@
 				const rowsAbove = el && was > 0 ? el.scrollTop / was : 0;
 				measuredPx = size;
 				$virtualizer.measure();
-				if (el && was > 0 && el.scrollTop > 0) el.scrollTop = Math.round(rowsAbove * size);
+				if (el && was > 0 && el.scrollTop > 0) {
+					// After the new total height is in the DOM: taller rows would otherwise clamp it.
+					const top = Math.round(rowsAbove * size);
+					void tick().then(() => {
+						if (scroller === el) el.scrollTop = top;
+					});
+				}
 			}
 		});
 	});

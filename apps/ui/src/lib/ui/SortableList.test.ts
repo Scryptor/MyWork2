@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { layers } from '#lib/design/layers.svelte.js';
 import Harness from './SortableListHarness.test-helper.svelte';
 
 const titles = () => screen.getAllByRole('listitem').map((li) => li.textContent?.trim());
@@ -58,6 +59,22 @@ describe('SortableList', () => {
 		await user.keyboard('{ArrowDown}');
 		expect(onorder).not.toHaveBeenCalled();
 		await user.tab();
+		expect(onorder).toHaveBeenCalledTimes(1);
+		expect(onorder).toHaveBeenCalledWith([2, 1, 3]);
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(onorder).toHaveBeenCalledTimes(1);
+	});
+
+	it('unmounting within the pause still sends the move, once', async () => {
+		vi.useFakeTimers();
+		const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+		const onorder = vi.fn();
+		const { unmount } = render(Harness, { onorder });
+		screen.getByRole('button', { name: 'Переместить „Первый“' }).focus();
+		await user.keyboard('{ArrowDown}');
+		await vi.advanceTimersByTimeAsync(100);
+		expect(onorder).not.toHaveBeenCalled();
+		unmount();
 		expect(onorder).toHaveBeenCalledTimes(1);
 		expect(onorder).toHaveBeenCalledWith([2, 1, 3]);
 		await vi.advanceTimersByTimeAsync(1000);
@@ -172,6 +189,23 @@ describe('SortableList', () => {
 			expect(li.style.transform).toBe('');
 			pointer(window, 'pointerup', 110);
 			expect(onorder).not.toHaveBeenCalled();
+		});
+
+		it('Esc during the drag does not reach the layers: a panel under the list stays open', async () => {
+			layout();
+			const close = vi.fn();
+			const off = layers.open('panel', close);
+			render(Harness, {});
+			pointer(handle('Первый'), 'pointerdown', 20);
+			pointer(window, 'pointermove', 110);
+			window.dispatchEvent(
+				new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+			);
+			expect(close).not.toHaveBeenCalled();
+			pointer(window, 'pointerup', 110);
+			window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
+			expect(close).toHaveBeenCalledTimes(1);
+			off();
 		});
 
 		it('Esc without a drag is left alone', () => {

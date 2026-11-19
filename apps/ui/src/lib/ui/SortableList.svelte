@@ -35,7 +35,8 @@
 	let timer: ReturnType<typeof setTimeout> | null = null;
 	/** Focus goes off the handle for a moment while its row moves in the DOM: that is not «leaving». */
 	let refocusing = false;
-	onDestroy(() => timer && clearTimeout(timer));
+	// A list that goes away within the pause (tab, dialog, route) still sends the move: focusout is not reliable then.
+	onDestroy(() => flush());
 
 	const ids = $derived(pending?.order ?? items.map(key));
 	const shown = $derived(
@@ -153,7 +154,7 @@
 			window.removeEventListener('pointermove', move);
 			window.removeEventListener('pointerup', up);
 			window.removeEventListener('pointercancel', cancel);
-			window.removeEventListener('keydown', escape);
+			window.removeEventListener('keydown', escape, true);
 			const d = drag;
 			drag = null;
 			if (!commit || !d || d.to === ids.indexOf(id)) return;
@@ -163,13 +164,15 @@
 		abortDrag = () => finish(false);
 		const up = () => finish(true);
 		const cancel = () => finish(false);
-		// Esc takes the drag back (and is ours alone: a panel under the list keeps its own Esc for later).
+		// Esc takes the drag back and nothing else: it is heard in the capture phase, before the layers
+		// stack and bits-ui, and stopped, so a panel or dialog under the list stays open.
 		const escape = (ev: KeyboardEvent) => {
 			if (ev.key !== 'Escape') return;
 			ev.preventDefault();
+			ev.stopPropagation();
 			finish(false);
 		};
-		window.addEventListener('keydown', escape);
+		window.addEventListener('keydown', escape, true);
 		window.addEventListener('pointermove', move);
 		window.addEventListener('pointerup', up);
 		window.addEventListener('pointercancel', cancel);
