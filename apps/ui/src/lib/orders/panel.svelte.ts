@@ -1,4 +1,5 @@
 import { pushRecent } from '#lib/app/recent.js';
+import { onSessionReset } from '#lib/app/session-reset.js';
 
 export interface PanelOptions {
 	/** The numbers of the list the order was opened from, as they are now: ‹ › and ↑↓ go along them. */
@@ -79,6 +80,13 @@ class OrderPanel {
 		this.#neighbors = undefined;
 	}
 
+	/** The user signed out: no order is open, no guard or card is left from their screens. */
+	reset(): void {
+		this.#shut();
+		this.#guard = null;
+		this.#card = null;
+	}
+
 	#neighbor(dir: 1 | -1): number | undefined {
 		if (this.id === null || !this.#neighbors) return undefined;
 		const list = this.#neighbors();
@@ -109,3 +117,5 @@ class OrderPanel {
 }
 
 export const orderPanel = new OrderPanel();
+
+onSessionReset(() => orderPanel.reset());

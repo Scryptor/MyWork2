@@ -30,6 +30,8 @@
 	import ChangePasswordDialog from '#lib/app/ChangePasswordDialog.svelte';
 	import { app } from '#lib/app/context.svelte.js';
 	import { loginPath } from '#lib/app/login.js';
+	import { discardQueues, resetSession, settleQueues } from '#lib/app/session-reset.js';
+	import UnsavedLogoutDialog from '#lib/app/UnsavedLogoutDialog.svelte';
 	import {
 		createPaletteSearch,
 		loadRecent,
@@ -80,7 +82,23 @@
 		return () => setUnauthenticatedHandler(() => {});
 	});
 
+	// Signing out (spec 6.11): the edits still on their way go first, under this user's token; what cannot
+	// be sent in 5 s is asked about. Then the token goes, the login page opens, and everything the user
+	// left in memory is reset (the screens are gone by then, so none reads a reset singleton).
+	let unsavedOpen = $state(false);
+	let unsavedBusy = $state(false);
+	let leaving = false;
 	async function signOut() {
+		if (leaving) return;
+		leaving = true;
+		try {
+			if (await settleQueues()) await finishSignOut();
+			else unsavedOpen = true;
+		} finally {
+			leaving = false;
+		}
+	}
+	async function finishSignOut() {
 		try {
 			await logout();
 		} catch {
@@ -88,14 +106,33 @@
 		}
 		clearToken();
 		await goto(resolve('/login'));
+		resetSession();
+	}
+	async function saveAndSignOut() {
+		unsavedBusy = true;
+		try {
+			if (await settleQueues()) {
+				unsavedOpen = false;
+				await finishSignOut();
+			}
+		} finally {
+			unsavedBusy = false;
+		}
+	}
+	async function leaveUnsaved() {
+		discardQueues();
+		unsavedOpen = false;
+		await finishSignOut();
 	}
 
 	let passwordOpen = $state(false);
 	/** The server closed every session of the user: sign in with the new password. */
-	function passwordChanged() {
+	async function passwordChanged() {
 		clearToken();
+		const to = resolve(loginPath(here()));
+		// The login page resets the session (and its toasts): the notice comes after it.
+		await goto(to);
 		toast.show({ message: ru.password.changed, tone: 'success' });
-		void goto(resolve(loginPath(here())));
 	}
 
 	// Counts of the sidebar (and of the quick filters): at the start, for another point, after edits.
@@ -341,9 +378,15 @@
 	orders={choice.orders}
 	onchoose={(id) => void orderPanel.open(id)}
 />
+<UnsavedLogoutDialog
+	bind:open={unsavedOpen}
+	busy={unsavedBusy}
+	onsave={() => void saveAndSignOut()}
+	onleave={() => void leaveUnsaved()}
+/>
 <ShortcutsHelp bind:open={helpOpen} groups={SHORTCUTS} />
 {#if !app.me.open_mode}
-	<ChangePasswordDialog bind:open={passwordOpen} onchanged={passwordChanged} />
+	<ChangePasswordDialog bind:open={passwordOpen} onchanged={() => void passwordChanged()} />
 {/if}
 <Dialog bind:open={moreOpen} title={ru.common.more} position="bottom">
 	<div class="more">

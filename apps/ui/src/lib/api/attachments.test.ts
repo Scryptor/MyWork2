@@ -1,9 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-	__resetAttachmentCacheForTests,
-	attachmentUrl,
-	uploadOrderAttachment
-} from './attachments.js';
+import { clearAttachmentCache, attachmentUrl, uploadOrderAttachment } from './attachments.js';
 import { clearToken, setToken } from './session.js';
 
 let seq = 0;
@@ -19,7 +15,7 @@ function stubFetch(handler: (url: string, init: RequestInit) => Response | Promi
 beforeEach(() => {
 	seq = 0;
 	created.length = 0;
-	__resetAttachmentCacheForTests();
+	clearAttachmentCache();
 	revoked.length = 0;
 	URL.createObjectURL = () => {
 		const u = `blob:test/${++seq}`;

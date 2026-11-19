@@ -351,9 +351,7 @@ describe('performBulk', () => {
 			{ api, ...h.deps }
 		);
 		expect(h.undo).toEqual([]);
-		expect(h.toasts.map((t) => t.message)).toEqual([
-			'Не удалось у 1 заказа: № 7 — Заказ не найден'
-		]);
+		expect(h.toasts.map((t) => t.message)).toEqual(['Ничего не изменено: № 7 — Заказ не найден']);
 	});
 
 	it('undo that fails for an order says so', async () => {
@@ -370,5 +368,75 @@ describe('performBulk', () => {
 		expect(h.toasts).toEqual([
 			{ message: 'Не удалось отменить у 1 заказа: № 1 — Заказ не найден', tone: 'danger' }
 		]);
+	});
+
+	it('undo puts back what the orders had before the batch, not what the list showed', async () => {
+		// The list was loaded when the master was «Антон»; meanwhile someone else made it «Виктор».
+		const { api, db } = fakeServer([
+			order(1, { master: 'Виктор', version: 4 }),
+			order(2, { master: '', need_call: true, version: 2 })
+		]);
+		const h = harness();
+		await performBulk(
+			[item(1, { master: 'Антон', version: 1 }), item(2, { need_call: false, version: 1 })],
+			{ kind: 'master', master: 'Борис' },
+			{ statusName, canClearIssuedAt: true },
+			{ api, ...h.deps }
+		);
+		expect(db.get(1)?.master).toBe('Борис');
+		await h.undo[0]!.run();
+		expect(db.get(1)?.master).toBe('Виктор');
+		expect(db.get(2)?.master).toBe('');
+
+		const flags = fakeServer([order(3, { need_call: true })]);
+		const g = harness();
+		await performBulk(
+			[item(3, { need_call: false })],
+			{ kind: 'flag', flag: 'need_call', value: false },
+			{ statusName, canClearIssuedAt: true },
+			{ api: flags.api, ...g.deps }
+		);
+		expect(flags.db.get(3)?.need_call).toBe(false);
+		await g.undo[0]!.run();
+		expect(flags.db.get(3)?.need_call).toBe(true);
+	});
+
+	it('undo of a status goes back to the status of the moment, not of the list', async () => {
+		const { api, db } = fakeServer([order(1, { status_id: 3, version: 3 })]);
+		const h = harness();
+		await performBulk(
+			[item(1, { status_id: 1 })],
+			{ kind: 'status', statusId: 4, stamp: false },
+			{ statusName, canClearIssuedAt: true },
+			{ api, ...h.deps }
+		);
+		await h.undo[0]!.run();
+		expect(db.get(1)?.status_id).toBe(3);
+	});
+
+	it('when no order changed the text says nothing was changed', async () => {
+		const { api } = fakeServer([]);
+		const h = harness();
+		await performBulk(
+			[item(7), item(8)],
+			{ kind: 'master', master: 'Борис' },
+			{ statusName, canClearIssuedAt: true },
+			{ api, ...h.deps }
+		);
+		expect(h.toasts.map((t) => t.message)).toEqual([
+			'Ничего не изменено: № 7 — Заказ не найден; № 8 — Заказ не найден'
+		]);
+	});
+
+	it('when only some failed the text is still «Не удалось»', async () => {
+		const { api } = fakeServer([order(1)]);
+		const h = harness();
+		await performBulk(
+			[item(1), item(9)],
+			{ kind: 'master', master: 'Борис' },
+			{ statusName, canClearIssuedAt: true },
+			{ api, ...h.deps }
+		);
+		expect(h.toasts[0]?.message).toMatch(/^Не удалось у 1 заказа/);
 	});
 });

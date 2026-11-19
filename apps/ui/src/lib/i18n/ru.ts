@@ -68,6 +68,11 @@ export const ru = {
 		userMenu: (name: string) => `Пользователь: ${name}`,
 		changePassword: 'Сменить пароль',
 		logout: 'Выйти',
+		unsavedTitle: 'Есть несохранённые правки',
+		unsavedText:
+			'Не удалось отправить правки на сервер. Если выйти сейчас, они пропадут. «Сохранить» пробует отправить их ещё раз.',
+		unsavedSave: 'Сохранить',
+		unsavedLeave: 'Выйти без сохранения',
 		attention: 'Требуют внимания',
 		attentionItems: {
 			call: 'Позвонить',
@@ -419,6 +424,7 @@ export const ru = {
 		markOnDone: (label: string, orders: string) => `Отметка «${label}» у ${orders}`,
 		markOffDone: (label: string, orders: string) => `Отметка «${label}» снята у ${orders}`,
 		failed: (orders: string, details: string) => `Не удалось у ${orders}: ${details}`,
+		nothingChanged: (_orders: string, details: string) => `Ничего не изменено: ${details}`,
 		undoFailed: (orders: string, details: string) => `Не удалось отменить у ${orders}: ${details}`,
 		failure: (id: number, message: string) => `№ ${id} — ${message}`,
 		andMore: (n: number) => `и ещё ${n}`,

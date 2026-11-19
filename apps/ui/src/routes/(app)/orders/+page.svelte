@@ -222,13 +222,14 @@
 		if (bulkBusy || items.length === 0) return;
 		bulkBusy = true;
 		try {
-			await performBulk(items, change, {
+			const r = await performBulk(items, change, {
 				statusName: (id) => app.statusById(id)?.name ?? '',
 				canClearIssuedAt: app.can('order_dates_edit')
 			});
+			// Nothing changed: the selection stays for another try.
+			if (r.done.length > 0) selected = new Set();
 		} finally {
 			bulkBusy = false;
-			selected = new Set();
 		}
 	}
 	/** An issued status asks first whether to stamp the issue date. */
@@ -376,8 +377,13 @@
 {#snippet bulkMenu(items: MenuItem[], label: string, text: string)}
 	<DropdownMenu {items} {label}>
 		{#snippet trigger(props)}
-			<Button {...props} variant="ghost" size="sm" iconEnd={ChevronDown} busy={bulkBusy}
-				>{text}</Button
+			<Button
+				{...props}
+				variant="ghost"
+				size="sm"
+				iconEnd={ChevronDown}
+				busy={bulkBusy}
+				disabled={bulkBusy}>{text}</Button
 			>
 		{/snippet}
 	</DropdownMenu>

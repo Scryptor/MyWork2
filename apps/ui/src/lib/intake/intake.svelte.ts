@@ -1,3 +1,7 @@
+import { onSessionReset } from '#lib/app/session-reset.js';
+import { removeStorage } from '#lib/design/storage.js';
+import { INTAKE_DRAFT_KEY } from './draft.js';
+
 export interface IntakePrefill {
 	/** Intake for this client (from the client's card). */
 	clientId?: number;
@@ -48,6 +52,16 @@ class Intake {
 		if (!this.isOpen) this.#opening += 1;
 		this.prefill = prefill;
 		this.isOpen = true;
+	}
+
+	/**
+	 * The user signed out: the sheet closes, a waiting order is called off, the draft (a client's data)
+	 * is not left on the device for the next user.
+	 */
+	reset(): void {
+		this.callOff();
+		this.close();
+		removeStorage(INTAKE_DRAFT_KEY);
 	}
 
 	close(): void {
@@ -118,3 +132,5 @@ class Intake {
 }
 
 export const intake = new Intake();
+
+onSessionReset(() => intake.reset());

@@ -3,6 +3,7 @@
 // own fields and requests; each open record gets one editor.
 /* eslint-disable svelte/prefer-svelte-reactivity -- maps and sets here are replaced whole in $state.raw */
 import { ApiError } from '#lib/api/client.js';
+import { trackQueue } from '#lib/app/session-reset.js';
 import { createAutosave, type Autosave, type SaveState } from '#lib/orders/autosave.js';
 import { mergeRemote, sameValue } from '#lib/orders/merge.js';
 
@@ -238,7 +239,7 @@ export function createEntityEditor<T extends Versioned, F extends keyof T>(
 		dispose: () => inner.dispose()
 	};
 
-	return {
+	const editor: EntityEditor<T, F> = {
 		get record() {
 			return record;
 		},
@@ -323,7 +324,15 @@ export function createEntityEditor<T extends Versioned, F extends keyof T>(
 			});
 		},
 		dispose() {
+			untrack();
 			inner.dispose();
 		}
 	};
+	// Signing out waits for this editor's changes, or gives them up.
+	const untrack = trackQueue({
+		unsaved: () => editor.unsaved,
+		flush: () => editor.flush(),
+		discard: () => editor.drop()
+	});
+	return editor;
 }

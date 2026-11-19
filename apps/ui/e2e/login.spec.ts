@@ -131,6 +131,11 @@ test('signing out with an unsaved edit on the order card goes to login', async (
 	await expect(page.getByRole('main').getByText('Не сохранено')).toBeVisible();
 	await page.getByRole('button', { name: /Администратор/ }).click();
 	await page.getByRole('menuitem', { name: 'Выйти' }).click();
+	// The edit cannot be sent: the program asks instead of dropping it.
+	const dialog = page.getByRole('dialog', { name: 'Есть несохранённые правки' });
+	await expect(dialog).toBeVisible();
+	await expect(page).toHaveURL(/\/orders\//);
+	await dialog.getByRole('button', { name: 'Выйти без сохранения' }).click();
 	await expect(page).toHaveURL(/\/login$/);
 	await expect(page.getByRole('button', { name: 'Войти' })).toBeVisible();
 });
@@ -142,4 +147,107 @@ test('an expired session with an unsaved edit on the order card goes to login', 
 	const o = await cardWithUnsavedEdit(page, playwright, 401);
 	await expect(page).toHaveURL(new RegExp(`/login\\?next=%2Forders%2F${o.id}$`));
 	await expect(page.getByRole('button', { name: 'Войти' })).toBeVisible();
+});
+
+/** Test password of the second user made here (fictional). */
+const SECOND_PASSWORD = 'e2e-second-password';
+
+/** A user with order rights, made through the API by the administrator; the login and the shown name. */
+async function makeSecondUser(playwright: PlaywrightWorkerArgs['playwright'], adminToken: string) {
+	const admin = await playwright.request.newContext({
+		baseURL: 'http://127.0.0.1:4174',
+		extraHTTPHeaders: { Authorization: `Bearer ${adminToken}` }
+	});
+	try {
+		const role = await admin.post('/api/v1/roles', {
+			data: {
+				name: uniq('Приёмщик'),
+				permissions: [
+					'orders_create',
+					'orders_edit',
+					'clients_view',
+					'clients_create',
+					'clients_edit'
+				]
+			}
+		});
+		expect(role.ok()).toBe(true);
+		const { id } = (await role.json()) as { id: number };
+		const login = uniq('second');
+		const display = uniq('Второй');
+		const user = await admin.post('/api/v1/users', {
+			data: { login, display_name: display, role_id: id, password: SECOND_PASSWORD }
+		});
+		expect(user.ok()).toBe(true);
+		return { login, display };
+	} finally {
+		await admin.dispose();
+	}
+}
+
+test('an edit goes out before signing out, and the next user sees nothing of the first', async ({
+	page,
+	playwright
+}) => {
+	await page.goto('/orders');
+	await signIn(page);
+	await expect(page).toHaveURL(/\/orders$/);
+	const token = (await page.evaluate(
+		() => localStorage.getItem('mw.session') ?? sessionStorage.getItem('mw.session')
+	)) as string;
+	const second = await makeSecondUser(playwright, token);
+	const api = await playwright.request.newContext({
+		baseURL: 'http://127.0.0.1:4174',
+		extraHTTPHeaders: { Authorization: `Bearer ${token}` }
+	});
+	const o = await createOrder(api, { model: uniq('M') });
+	await page.goto(`/orders/${o.id}`);
+	const work = page.getByRole('main').getByRole('textbox', { name: 'Выполненные работы' });
+	await expect(work).toBeVisible();
+	const text = uniq('Замена');
+	await work.fill(text);
+	// At once, without waiting for the pause of the autosave.
+	await page.getByRole('button', { name: /Администратор/ }).click();
+	await page.getByRole('menuitem', { name: 'Выйти' }).click();
+	await expect(page).toHaveURL(/\/login$/);
+
+	// It was sent as the administrator, before the token went (that token is closed now: a new one).
+	await api.dispose();
+	const anonymous = await playwright.request.newContext({ baseURL: 'http://127.0.0.1:4174' });
+	const fresh = (await (
+		await anonymous.post('/api/v1/auth/login', {
+			data: { login: E2E_ADMIN_LOGIN, password: E2E_ADMIN_PASSWORD, device_label: '' }
+		})
+	).json()) as { token: string };
+	await anonymous.dispose();
+	const reader = await playwright.request.newContext({
+		baseURL: 'http://127.0.0.1:4174',
+		extraHTTPHeaders: { Authorization: `Bearer ${fresh.token}` }
+	});
+	const saved = (await (await reader.get(`/api/v1/orders/${o.id}`)).json()) as {
+		work_done: string;
+	};
+	expect(saved.work_done).toBe(text);
+	const history = (await (await reader.get(`/api/v1/orders/${o.id}/history`)).json()) as {
+		items: { user_name: string; action: string }[];
+	};
+	expect(history.items.some((e) => e.user_name === 'Администратор')).toBe(true);
+	expect(history.items.every((e) => e.user_name !== second.display)).toBe(true);
+	await reader.dispose();
+
+	// Another user signs in on the same device: nothing of the first one is shown or sent.
+	const writes: string[] = [];
+	page.on('request', (r) => {
+		if (r.method() !== 'GET' && r.url().includes('/api/v1/orders')) writes.push(r.url());
+	});
+	await page.getByLabel('Логин').fill(second.login);
+	await page.getByLabel('Пароль').fill(SECOND_PASSWORD);
+	await page.getByRole('button', { name: 'Войти' }).click();
+	await expect(page).toHaveURL(/\/orders$/);
+	await expect(page.getByRole('button', { name: new RegExp(second.display) })).toBeVisible();
+	await expect(page.getByText('Администратор')).toHaveCount(0);
+	await expect(page.getByRole('status', { name: 'Уведомления' })).toHaveText('');
+	await expect(page.getByRole('dialog')).toHaveCount(0);
+	await page.waitForTimeout(1500);
+	expect(writes).toEqual([]);
 });

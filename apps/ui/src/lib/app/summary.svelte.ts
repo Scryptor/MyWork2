@@ -1,5 +1,6 @@
 import type { OrderSummary } from '$api/OrderSummary';
 import type { Status } from '$api/Status';
+import { onSessionReset } from '#lib/app/session-reset.js';
 import { orderSummary } from '#lib/api/orders.js';
 import { workStatusIds, type AttentionKey } from '#lib/orders/view.js';
 
@@ -54,6 +55,14 @@ export function createSummary(load: (point: number | null) => Promise<OrderSumma
 		get current(): OrderSummary | null {
 			return current;
 		},
+		/** Forgets the counts of the user who signed out; an answer still on its way is ignored. */
+		reset(): void {
+			clearTimeout(timer);
+			timer = undefined;
+			seq += 1;
+			last = -Infinity;
+			current = null;
+		},
 		refresh(point: number | null): void {
 			wanted = point;
 			if (timer !== undefined) return;
@@ -65,3 +74,5 @@ export function createSummary(load: (point: number | null) => Promise<OrderSumma
 }
 
 export const summary = createSummary(orderSummary);
+
+onSessionReset(() => summary.reset());

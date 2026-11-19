@@ -161,7 +161,7 @@ function send(change: BulkChange, row: BulkRow, api: BulkApi): Promise<Order> {
 /** Puts back what the list showed before the change; a stamped issue date goes away if allowed. */
 async function putBack(
 	change: BulkChange,
-	before: OrderListItem,
+	before: Order,
 	row: BulkRow,
 	api: BulkApi,
 	ctx: BulkContext
@@ -201,9 +201,16 @@ export async function performBulk(
 	const undo = deps.undo ?? appUndo;
 	const toast = deps.toast ?? appToast;
 	const runDeps: BulkDeps = { getOrder: api.getOrder, emit: deps.emit };
-	const before = new Map(items.map((o) => [o.id, o]));
+	// What each order had a moment before its own change: «Отменить» puts back this, not what the list
+	// showed when it was loaded (the order may have been changed since).
+	const before = new Map<number, Order>();
+	const apply = async (row: BulkRow): Promise<Order> => {
+		const current = await api.getOrder(row.id);
+		before.set(row.id, current);
+		return send(change, { id: row.id, version: current.version }, api);
+	};
 
-	const r = await runBulk(items.map(rowOf), (row) => send(change, row, api), runDeps);
+	const r = await runBulk(items.map(rowOf), apply, runDeps);
 	if (r.done.length > 0) {
 		undo.push(doneText(change, r.done.length, ctx), async () => {
 			const back = await runBulk(
@@ -216,6 +223,10 @@ export async function performBulk(
 			}
 		});
 	}
-	if (r.failed.length > 0) toast.show({ message: failureText(r.failed), tone: 'danger' });
+	if (r.failed.length > 0) {
+		// Nothing changed at all: say so, the selection stays for another try.
+		const text = r.done.length === 0 ? ru.bulk.nothingChanged : ru.bulk.failed;
+		toast.show({ message: failureText(r.failed, text), tone: 'danger' });
+	}
 	return r;
 }

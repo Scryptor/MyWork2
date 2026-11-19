@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/svelte';
+import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEMO_STATUSES } from '#lib/demo/fake.js';
@@ -124,6 +124,21 @@ describe('StatusPicker', () => {
 		await user.keyboard(' ');
 		expect(screen.getByTestId('changes')).toHaveTextContent(/^1→3$/);
 		expect(radios[2]).toBeChecked();
+	});
+
+	it('Shift+arrow does not choose through the native radio: it only moves focus', async () => {
+		screenWidth(false);
+		render(Harness, { mode: 'take' });
+		const radios = within(screen.getByRole('radiogroup', { name: 'Статус' })).getAllByRole('radio');
+		radios[0]!.focus();
+		// A browser would check the radio it reaches by this key; the picker must cancel it.
+		const notCancelled = await fireEvent.keyDown(radios[0]!, { key: 'ArrowRight', shiftKey: true });
+		expect(notCancelled).toBe(false);
+		expect(radios[1]).toHaveFocus();
+		await fireEvent.keyDown(radios[1]!, { key: 'ArrowDown', shiftKey: true });
+		expect(radios[2]).toHaveFocus();
+		expect(screen.getByTestId('changes')).toHaveTextContent(/^$/);
+		expect(radios[0]).toBeChecked();
 	});
 
 	it('Enter chooses the focused status; arrows wrap around', async () => {

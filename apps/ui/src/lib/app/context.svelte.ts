@@ -5,6 +5,7 @@ import type { ServerInfo } from '$api/ServerInfo';
 import type { ServicePoint } from '$api/ServicePoint';
 import type { Status } from '$api/Status';
 import { getSettings, listServicePoints, listStatuses } from '#lib/api/catalogs.js';
+import { onSessionReset } from '#lib/app/session-reset.js';
 import { readStorage, removeStorage, writeStorage } from '#lib/design/storage.js';
 
 /** The point chosen in the top bar, kept on this device; none stored is «Все точки». */
@@ -50,6 +51,12 @@ class AppContext {
 	set(data: AppData): void {
 		this.#data = data;
 		this.#point = storedPoint(data.points);
+	}
+
+	/** The user signed out: the next one loads their own data (`set`); the point on disk is per device. */
+	reset(): void {
+		this.#data = null;
+		this.#point = null;
 	}
 
 	get server(): ServerInfo {
@@ -101,3 +108,5 @@ class AppContext {
 }
 
 export const app = new AppContext();
+
+onSessionReset(() => app.reset());

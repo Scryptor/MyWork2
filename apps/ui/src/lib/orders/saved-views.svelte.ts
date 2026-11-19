@@ -1,3 +1,4 @@
+import { onSessionReset } from '#lib/app/session-reset.js';
 import { readStorage, writeStorage } from '#lib/design/storage.js';
 import { normalizeSearch } from '#lib/format/search.js';
 import { parseSavedViews, type SavedView } from './view.js';
@@ -14,6 +15,10 @@ export function createSavedViews() {
 	}
 
 	return {
+		/** Signed out: what the device keeps is read again, nothing of the session's own stays. */
+		reset(): void {
+			list = parseSavedViews(readStorage(SAVED_VIEWS_KEY));
+		},
 		get list(): SavedView[] {
 			return list;
 		},
@@ -33,3 +38,5 @@ export function createSavedViews() {
 }
 
 export const savedViews = createSavedViews();
+
+onSessionReset(() => savedViews.reset());

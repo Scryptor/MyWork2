@@ -158,3 +158,73 @@ test('bulk marks are set and cleared', async ({ page, request }) => {
 	expect((await fetchOrder(request, a.id)).need_call).toBe(false);
 	expect((await fetchOrder(request, b.id)).need_call).toBe(false);
 });
+
+test('the bulk menus are unavailable while a batch is running', async ({ page, request }) => {
+	const m = uniq('M');
+	const master = uniq('Мастер');
+	await addDictionaryItem(request, 'master', master);
+	const a = await createOrder(request, { model: m });
+	const b = await createOrder(request, { model: m });
+	await selectAll(page, m, [a.id, b.id]);
+
+	// The writes wait until the test lets them go.
+	let release: () => void = () => {};
+	const gate = new Promise<void>((resolve) => (release = resolve));
+	await page.route(/\/api\/v1\/orders\/\d+(\?.*)?$/, async (route) => {
+		if (route.request().method() === 'PATCH') await gate;
+		await route.fallback();
+	});
+
+	await barOf(page).getByRole('button', { name: 'Мастер' }).click();
+	await page.getByRole('menuitem', { name: master }).click();
+	// While busy the buttons show a spinner instead of the text: the three menu triggers by their role.
+	const menus = barOf(page).locator('button[aria-haspopup="menu"]');
+	await expect(menus).toHaveCount(3);
+	for (const menu of await menus.all()) await expect(menu).toBeDisabled();
+	release();
+	await expect(toastsOf(page)).toContainText(`Мастер «${master}» у 2 заказов`);
+	await expect(barOf(page)).toBeHidden();
+});
+
+test('when no order could be changed the selection stays and the toast says so', async ({
+	page,
+	request
+}) => {
+	const m = uniq('M');
+	const ready = await statusId(request, 'Готов');
+	// No price, master and work done: the server issues neither of them.
+	const a = await createOrder(request, { model: m, status_id: ready });
+	const b = await createOrder(request, { model: m, status_id: ready });
+	await selectAll(page, m, [a.id, b.id]);
+
+	await barOf(page).getByRole('button', { name: 'Статус' }).click();
+	await page.getByRole('menuitem', { name: 'Выдан' }).click();
+	await page
+		.getByRole('dialog', { name: 'Дата выдачи' })
+		.getByRole('button', { name: 'Не ставить' })
+		.click();
+
+	await expect(toastsOf(page)).toContainText('Ничего не изменено: ');
+	await expect(toastsOf(page)).toContainText(`№ ${a.id} — заполните:`);
+	await expect(barOf(page)).toContainText('Выбрано 2');
+	await expect(toastsOf(page).getByRole('button', { name: 'Отменить' })).toHaveCount(0);
+});
+
+test('bulk undo puts back the value of the moment of the action, not of the list', async ({
+	page,
+	request
+}) => {
+	const m = uniq('M');
+	const master = uniq('Мастер');
+	await addDictionaryItem(request, 'master', master);
+	const a = await createOrder(request, { model: m, master: 'Антон' });
+	await selectAll(page, m, [a.id]);
+	// Someone else changes the master after the list was loaded.
+	await patchOrder(request, a.id, { master: 'Виктор' });
+
+	await barOf(page).getByRole('button', { name: 'Мастер' }).click();
+	await page.getByRole('menuitem', { name: master }).click();
+	await expect(toastsOf(page)).toContainText(`Мастер «${master}» у 1 заказа`);
+	await toastsOf(page).getByRole('button', { name: 'Отменить' }).click();
+	await expect.poll(async () => (await fetchOrder(request, a.id)).master).toBe('Виктор');
+});

@@ -1,16 +1,22 @@
 <!-- Sign-in (spec 6.11): only when the program has users; afterwards back where the user was. -->
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { login } from '#lib/api/auth.js';
 	import { ApiError } from '#lib/api/client.js';
 	import { setToken } from '#lib/api/session.js';
 	import { safeNext } from '#lib/app/login.js';
+	import { resetSession } from '#lib/app/session-reset.js';
 	import '#lib/app/page-card.css';
 	import { ru } from '#lib/i18n/ru.js';
 	import Button from '#lib/ui/Button.svelte';
 	import Checkbox from '#lib/ui/Checkbox.svelte';
 	import TextInput from '#lib/ui/TextInput.svelte';
+
+	// Nobody is signed in here: whatever the previous user left in memory (also after an expired session)
+	// is gone before the next one signs in.
+	onMount(resetSession);
 
 	let name = $state('');
 	let password = $state('');

@@ -1,4 +1,5 @@
 import { untrack } from 'svelte';
+import { onSessionReset } from '#lib/app/session-reset.js';
 import { ru } from '#lib/i18n/ru.js';
 
 export interface ToastOptions {
@@ -98,6 +99,14 @@ export const toast = {
 		});
 	},
 
+	/** Removes every toast: after signing out nobody may press the undo of the previous user. */
+	clear(): void {
+		untrack(() => {
+			for (const id of [...meta.keys()]) forget(id);
+			items = [];
+		});
+	},
+
 	/** Holds every timer while the pointer or focus is on the toasts. */
 	pause(): void {
 		if (paused) return;
@@ -117,3 +126,5 @@ export const toast = {
 		for (const [id, m] of meta) arm(id, m);
 	}
 };
+
+onSessionReset(() => toast.clear());

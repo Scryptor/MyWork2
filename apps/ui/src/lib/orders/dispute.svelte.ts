@@ -1,6 +1,8 @@
 // The question «Есть несохранённый спор» when an order with an undecided dispute is about to be left
 // (another order in the panel, another screen from the card). One dialog for the whole program.
 
+import { onSessionReset } from '#lib/app/session-reset.js';
+
 class Dispute {
 	/** The order whose dispute is asked about; null: no question. */
 	pending = $state<number | null>(null);
@@ -24,3 +26,5 @@ class Dispute {
 }
 
 export const dispute = new Dispute();
+
+onSessionReset(() => dispute.answer(false));

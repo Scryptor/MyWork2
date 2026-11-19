@@ -72,7 +72,8 @@
 
 	/** Arrows move focus over the labels without choosing (a choice may open «Выдать»); Enter chooses. */
 	function onkeydown(e: KeyboardEvent, id: number) {
-		if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+		if (e.altKey || e.ctrlKey || e.metaKey) return;
+		if (e.shiftKey && STEP[e.key] === undefined) return;
 		if (e.key === 'Enter') {
 			e.preventDefault();
 			pick(id);
@@ -80,6 +81,7 @@
 		}
 		const step = STEP[e.key];
 		if (step === undefined) return;
+		// Shift+arrow too: the native radio would check the status it reaches, and a choice may open «Выдать».
 		e.preventDefault();
 		const radios = [...(group?.querySelectorAll<HTMLInputElement>('input[type="radio"]') ?? [])];
 		const at = radios.indexOf(e.currentTarget as HTMLInputElement);

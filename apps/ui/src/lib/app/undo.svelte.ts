@@ -1,4 +1,5 @@
 import { errorMessage } from '#lib/api/client.js';
+import { onSessionReset } from '#lib/app/session-reset.js';
 import { ru } from '#lib/i18n/ru.js';
 import { toast } from '#lib/ui/toast/toast.svelte.js';
 
@@ -40,3 +41,7 @@ export const undo = {
 		if (last) await perform(last);
 	}
 };
+
+onSessionReset(() => {
+	entries = [];
+});

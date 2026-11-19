@@ -1,4 +1,5 @@
 import type { Attachment } from '$api/Attachment';
+import { onSessionReset } from '#lib/app/session-reset.js';
 import { request, requestBlob, upload } from './client.js';
 
 export const listOrderAttachments = (orderId: number) =>
@@ -74,9 +75,11 @@ export async function downloadAttachment(a: Attachment): Promise<void> {
 	setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
-/** Tests only. */
-export function __resetAttachmentCacheForTests(): void {
+/** Drops every cached picture of the user who signed out (and in tests). */
+export function clearAttachmentCache(): void {
 	for (const url of cache.values()) URL.revokeObjectURL(url);
 	cache.clear();
 	pending.clear();
 }
+
+onSessionReset(clearAttachmentCache);
