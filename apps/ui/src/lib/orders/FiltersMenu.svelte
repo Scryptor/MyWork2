@@ -197,7 +197,7 @@
 			<Combobox label={t.deviceType} bind:value={draft.deviceType} items={types.items} />
 			<Combobox label={t.brand} bind:value={draft.brand} items={brands.items} />
 			<Combobox label={t.master} bind:value={draft.master} items={masters.items} />
-			{#if app.points.length > 0}
+			{#if pointItems.length > 1}
 				<Select
 					label={t.point}
 					items={pointItems}

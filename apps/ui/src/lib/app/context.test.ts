@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AppSettings } from '$api/AppSettings';
 import type { ServerInfo } from '$api/ServerInfo';
 import { POINTS, STATUSES, user } from './fixtures.test-helper.js';
-import { POINT_KEY, app, type AppData } from './context.svelte.js';
+import { POINT_KEY, app, readCatalogs, type AppData } from './context.svelte.js';
 
 const SERVER: ServerInfo = {
 	app: 'mw',
@@ -61,9 +61,10 @@ describe('app context', () => {
 		vi.stubGlobal(
 			'fetch',
 			vi.fn(async (url: string) => {
-				const body = url.endsWith('/statuses')
+				const path = new URL(url, 'http://localhost').pathname;
+				const body = path.endsWith('/statuses')
 					? renamed
-					: url.endsWith('/service-points')
+					: path.endsWith('/service-points')
 						? POINTS.slice(0, 1)
 						: { ...SETTINGS, ready_stale_days: 10 };
 				return new Response(JSON.stringify(body), { status: 200 });
@@ -74,5 +75,52 @@ describe('app context', () => {
 		expect(app.points).toHaveLength(1);
 		expect(app.settings.ready_stale_days).toBe(10);
 		expect(app.me.name).toBe('Тестовый');
+	});
+});
+
+describe('the catalogs of the program', () => {
+	// The server as it is: archived statuses and points only when asked for.
+	const OLD_STATUS = {
+		id: 9,
+		name: 'Старый',
+		kind: 'open' as const,
+		color: 'gray',
+		sort_order: 9,
+		archived: true
+	};
+	function serverWithArchive() {
+		const fetch = vi.fn(async (url: string) => {
+			const u = new URL(url, 'http://localhost');
+			const all = u.searchParams.get('include_archived') === 'true';
+			const body = u.pathname.endsWith('/statuses')
+				? all
+					? [...STATUSES, OLD_STATUS]
+					: STATUSES
+				: u.pathname.endsWith('/service-points')
+					? all
+						? POINTS
+						: POINTS.filter((p) => !p.archived)
+					: SETTINGS;
+			return new Response(JSON.stringify(body), { status: 200 });
+		});
+		vi.stubGlobal('fetch', fetch);
+		return fetch;
+	}
+
+	it('are read with the archived statuses and points: their orders keep a status and a point', async () => {
+		serverWithArchive();
+		const [statuses, points, settings] = await readCatalogs();
+		expect(statuses.map((s) => s.id)).toContain(OLD_STATUS.id);
+		expect(points.map((p) => p.name)).toEqual(['Центр', 'Склад']);
+		expect(settings).toEqual(SETTINGS);
+	});
+
+	it('refreshCatalogs keeps the archived ones too; only the live points can be chosen', async () => {
+		app.set(data({ statuses: STATUSES, points: POINTS }));
+		serverWithArchive();
+		await app.refreshCatalogs();
+		expect(app.statusById(OLD_STATUS.id)?.name).toBe('Старый');
+		expect(app.points.find((p) => p.id === 2)?.name).toBe('Склад');
+		expect(app.activePoints.map((p) => p.name)).toEqual(['Центр']);
 	});
 });

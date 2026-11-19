@@ -16,7 +16,7 @@ import type { Status } from '$api/Status';
 import type { StatusPatch } from '$api/StatusPatch';
 import { request } from './client.js';
 
-/** The statuses; with `archived` also the hidden ones (the order screens ask without it). */
+/** The statuses; with `archived` also the hidden ones (the program keeps them all, see `readCatalogs`). */
 export const listStatuses = (archived = false) =>
 	request<Status[]>('GET', '/statuses', {
 		query: archived ? { include_archived: true } : undefined

@@ -1,4 +1,5 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
+import type { ServicePoint } from '$api/ServicePoint';
 import type { Status } from '$api/Status';
 import { createOrder, uniq } from './support/api';
 
@@ -84,6 +85,53 @@ test('a new status shows in the filters at once; a change of kind warns and Canc
 		await expect(rowOf(page, name).getByRole('button', { name: 'Вернуть' })).toBeVisible();
 	} finally {
 		await archiveAll(request, [id]);
+	}
+});
+
+test('an archived status and point keep their orders: «В работе», the badge, the point name', async ({
+	page,
+	request
+}) => {
+	const id = uniq();
+	const statusName = `Ждёт запчасть-${id}`;
+	const pointName = `Склад-${id}`;
+	const status = (await (
+		await request.post('/api/v1/statuses', {
+			data: { name: statusName, kind: 'open', color: 'indigo' }
+		})
+	).json()) as Status;
+	const point = (await (
+		await request.post('/api/v1/service-points', { data: { name: pointName } })
+	).json()) as ServicePoint;
+	const model = uniq('M');
+	const order = await createOrder(request, {
+		status_id: status.id,
+		service_point_id: point.id,
+		model
+	});
+	try {
+		await request.patch(`/api/v1/statuses/${status.id}`, { data: { archived: true } });
+		await request.patch(`/api/v1/service-points/${point.id}`, { data: { archived: true } });
+
+		// «В работе» (the default view) still lists the order, with the badge of its status.
+		await page.goto(`/orders?q=${encodeURIComponent(model)}`);
+		const grid = page.getByRole('grid', { name: 'Заказы' });
+		const row = grid.getByRole('row').filter({ hasText: model });
+		await expect(row).toHaveCount(1);
+		await expect(row).toContainText(statusName);
+
+		// The card names the point and shows the status as the current one.
+		await page.goto(`/orders/${order.id}`);
+		const card = page.getByRole('main');
+		await expect(card.getByText(pointName, { exact: true })).toBeVisible();
+		// A label of its own, or «Ещё» showing it when the picker has no room for it.
+		const current = card
+			.getByRole('radio', { name: statusName, exact: true })
+			.or(card.getByRole('button', { name: `Ещё: ${statusName}` }));
+		await expect(current).toBeVisible();
+	} finally {
+		await archiveAll(request, [id]);
+		await request.patch(`/api/v1/service-points/${point.id}`, { data: { archived: true } });
 	}
 });
 

@@ -41,6 +41,18 @@ describe('viewToQuery', () => {
 		expect(q).toMatchObject({ sort: 'received_at', descending: true });
 	});
 
+	it('work chip keeps the orders of an archived open status', () => {
+		const withArchived: Status[] = [
+			...STATUSES,
+			{ id: 6, name: 'Старый', kind: 'open', color: 'gray', sort_order: 5, archived: true }
+		];
+		expect(viewToQuery(defaultView(), withArchived, null).status_ids).toEqual([1, 2, 6]);
+		const { main } = quickFilterItems(withArchived, summaryOf({ 1: 4, 6: 2 }));
+		expect(main[0]).toEqual({ id: 'work', label: 'В работе', count: 6 });
+		// The chip of the archived status itself is not offered.
+		expect(main.some((i) => i.id === '6')).toBe(false);
+	});
+
 	it('attention replaces chips', () => {
 		expect(viewToQuery({ ...defaultView(), attention: 'call' }, STATUSES, null)).toMatchObject({
 			need_call: true,

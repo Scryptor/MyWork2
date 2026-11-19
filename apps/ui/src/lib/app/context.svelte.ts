@@ -18,6 +18,15 @@ export interface AppData {
 	settings: AppSettings;
 }
 
+/**
+ * Statuses, points and settings as the program keeps them. The archived statuses and points come too: the
+ * orders in them still show their status and point, and «В работе» still lists them. What is offered for a
+ * choice leaves the archived ones out (`activePoints`, the pickers, the filters).
+ */
+export function readCatalogs(): Promise<[Status[], ServicePoint[], AppSettings]> {
+	return Promise.all([listStatuses(true), listServicePoints(true), getSettings()]);
+}
+
 function storedPoint(points: ServicePoint[]): number | null {
 	const raw = readStorage(POINT_KEY);
 	const id = raw === null ? NaN : Number(raw);
@@ -83,11 +92,7 @@ class AppContext {
 
 	/** Statuses, points and settings again, after they were changed. */
 	async refreshCatalogs(): Promise<void> {
-		const [statuses, points, settings] = await Promise.all([
-			listStatuses(),
-			listServicePoints(),
-			getSettings()
-		]);
+		const [statuses, points, settings] = await readCatalogs();
 		this.#data = { ...this.#get(), statuses, points, settings };
 		if (this.#point !== null && !points.some((p) => p.id === this.#point && !p.archived)) {
 			this.point = null;
