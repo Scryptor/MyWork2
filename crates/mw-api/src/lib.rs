@@ -27,11 +27,11 @@ use utoipa::{Modify, OpenApi as _, ToSchema};
 pub use auth::{ACCOUNT_FAILURE_LIMIT, FAILURE_WINDOW_SECS, IP_FAILURE_LIMIT, OPEN_MODE_ACTOR};
 pub use contract::export_typescript;
 pub use dto::{
-    AttachmentNameQuery, AuditListQuery, AuditPage, BarcodeQuery, CaptionPatch,
-    ChangePasswordRequest, ClientListQuery, ClientPage, CurrentUser, DictionaryValue,
-    IncludeArchived, LoginRequest, LoginResponse, NewServicePoint, NextOrderNumber, OrderListQuery,
-    OrderPage, OrderSummaryQuery, OrderValuesQuery, PageQuery, PhoneQuery, ReorderRequest,
-    ServerInfo, SetPasswordRequest, StatusChange, VersionParam,
+    AboutInfo, AttachmentNameQuery, AuditListQuery, AuditPage, BarcodeQuery, CaptionPatch,
+    ChangePasswordRequest, ClientListQuery, ClientPage, CurrentUser, DictionaryListQuery,
+    DictionaryValue, IncludeArchived, LoginRequest, LoginResponse, NewServicePoint,
+    NextOrderNumber, OrderListQuery, OrderPage, OrderSummaryQuery, OrderValuesQuery, PageQuery,
+    PhoneQuery, ReorderRequest, ServerInfo, SetPasswordRequest, StatusChange, VersionParam,
 };
 pub use error::{ErrorBody, ErrorCode, ErrorField};
 pub use state::ApiConfig;

@@ -135,12 +135,12 @@ async fn dictionary_add_from_intake_and_manage_from_settings() -> Result<(), Cor
             Err(CoreError::Forbidden(Permission::SettingsManage))
         ));
         t.core
-            .rename_dictionary_item(&admin(), item.id, "Nothing Phone")
+            .update_dictionary_item(&admin(), item.id, common::vpatch("Nothing Phone"))
             .await?;
         t.core.delete_dictionary_item(&admin(), item.id).await?;
         assert!(
             !t.core
-                .list_dictionary(DictionaryKind::Brand)
+                .list_dictionary(DictionaryKind::Brand, false)
                 .await?
                 .iter()
                 .any(|i| i.id == item.id)
@@ -288,7 +288,7 @@ async fn reorder_rejects_duplicated_ids() -> Result<(), CoreError> {
             &[("ordered_ids", "invalid")],
         );
 
-        let items = t.core.list_dictionary(DictionaryKind::Color).await?;
+        let items = t.core.list_dictionary(DictionaryKind::Color, false).await?;
         let mut ids: Vec<i64> = items.iter().map(|i| i.id).collect();
         ids[1] = ids[0];
         assert_validation(
@@ -298,7 +298,7 @@ async fn reorder_rejects_duplicated_ids() -> Result<(), CoreError> {
             &[("ordered_ids", "invalid")],
         );
         // id из другого справочника не подходит
-        let brand = t.core.list_dictionary(DictionaryKind::Brand).await?[0].id;
+        let brand = t.core.list_dictionary(DictionaryKind::Brand, false).await?[0].id;
         let mut ids: Vec<i64> = items.iter().map(|i| i.id).collect();
         ids[0] = brand;
         assert_validation(
@@ -326,14 +326,14 @@ async fn reorder_rejects_duplicated_ids() -> Result<(), CoreError> {
 #[tokio::test]
 async fn dictionary_reorder_changes_list_order() -> Result<(), CoreError> {
     for t in cores().await {
-        let items = t.core.list_dictionary(DictionaryKind::Color).await?;
+        let items = t.core.list_dictionary(DictionaryKind::Color, false).await?;
         let ids: Vec<i64> = items.iter().map(|i| i.id).rev().collect();
         t.core
             .reorder_dictionary(&admin(), DictionaryKind::Color, &ids)
             .await?;
         let after: Vec<i64> = t
             .core
-            .list_dictionary(DictionaryKind::Color)
+            .list_dictionary(DictionaryKind::Color, false)
             .await?
             .iter()
             .map(|i| i.id)
@@ -354,32 +354,36 @@ async fn dictionary_reorder_changes_list_order() -> Result<(), CoreError> {
 #[tokio::test]
 async fn dictionary_rename_edge_cases() -> Result<(), CoreError> {
     for t in cores().await {
-        let items = t.core.list_dictionary(DictionaryKind::Brand).await?;
+        let items = t.core.list_dictionary(DictionaryKind::Brand, false).await?;
         let (a, b) = (&items[0], &items[1]);
         // то же имя и смена только регистра — не дубль самого себя
         let same = t
             .core
-            .rename_dictionary_item(&admin(), a.id, &a.value)
+            .update_dictionary_item(&admin(), a.id, common::vpatch(&a.value))
             .await?;
         assert_eq!(same.value, a.value);
         let upper = t
             .core
-            .rename_dictionary_item(&admin(), a.id, &a.value.to_uppercase())
+            .update_dictionary_item(&admin(), a.id, common::vpatch(&a.value.to_uppercase()))
             .await?;
         assert_eq!(upper.value, a.value.to_uppercase());
         // столкновение с другим значением того же справочника
         assert_validation(
             t.core
-                .rename_dictionary_item(&admin(), a.id, &b.value)
+                .update_dictionary_item(&admin(), a.id, common::vpatch(&b.value))
                 .await,
             &[("value", "duplicate")],
         );
         assert_validation(
-            t.core.rename_dictionary_item(&admin(), a.id, "  ").await,
+            t.core
+                .update_dictionary_item(&admin(), a.id, common::vpatch("  "))
+                .await,
             &[("value", "required")],
         );
         assert!(matches!(
-            t.core.rename_dictionary_item(&admin(), 999_999, "X").await,
+            t.core
+                .update_dictionary_item(&admin(), 999_999, common::vpatch("X"))
+                .await,
             Err(CoreError::NotFound { .. })
         ));
         assert!(matches!(
@@ -388,7 +392,9 @@ async fn dictionary_rename_edge_cases() -> Result<(), CoreError> {
         ));
         let clerk = actor_with(&[Permission::OrdersCreate]);
         assert!(matches!(
-            t.core.rename_dictionary_item(&clerk, a.id, "Y").await,
+            t.core
+                .update_dictionary_item(&clerk, a.id, common::vpatch("Y"))
+                .await,
             Err(CoreError::Forbidden(Permission::SettingsManage))
         ));
         // то же значение допустимо в другом справочнике

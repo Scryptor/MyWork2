@@ -8,6 +8,7 @@ pub struct Model {
     pub kind: String,
     pub value: String,
     pub sort_order: i32,
+    pub archived: bool,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

@@ -347,3 +347,103 @@ async fn status_color_outside_the_palette_is_a_validation_error() {
         );
     }
 }
+
+#[tokio::test]
+async fn dictionary_archive_usage_next_number_and_about() {
+    for t in apis(Listen::Network).await {
+        let admin = t.admin_token().await;
+        let clerk = t.token_with("kassa", &[Permission::OrdersCreate]).await;
+        let items = t.get("/api/v1/dictionaries/brand", Some(&clerk)).await.body;
+        let apple = items
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|i| i["value"] == "Apple")
+            .unwrap()["id"]
+            .as_i64()
+            .unwrap();
+        let path = format!("/api/v1/dictionary-items/{apple}");
+        let r = t
+            .send(
+                Method::PATCH,
+                &path,
+                Some(&admin),
+                Some(json!({ "archived": true })),
+            )
+            .await;
+        assert_eq!((r.status, &r.body["archived"]), (200, &json!(true)));
+        let r = t
+            .send(
+                Method::PATCH,
+                &path,
+                Some(&admin),
+                Some(json!({ "archived": true, "extra": 1 })),
+            )
+            .await;
+        assert_eq!(r.status, 400, "{}", t.label);
+        let hidden = t.get("/api/v1/dictionaries/brand", Some(&clerk)).await.body;
+        assert!(hidden.as_array().unwrap().iter().all(|i| i["id"] != apple));
+        let shown = t
+            .get("/api/v1/dictionaries/brand?archived=true", Some(&clerk))
+            .await
+            .body;
+        assert!(shown.as_array().unwrap().iter().any(|i| i["id"] == apple));
+
+        for path in [
+            "/api/v1/dictionaries/brand/usage",
+            "/api/v1/statuses/usage",
+            "/api/v1/service-points/usage",
+        ] {
+            let r = t.get(path, Some(&admin)).await;
+            assert_eq!((r.status, &r.body), (200, &json!([])), "{path}");
+            assert_eq!(t.get(path, Some(&clerk)).await.status, 403, "{path}");
+        }
+        assert_eq!(
+            t.get("/api/v1/dictionaries/planet/usage", Some(&admin))
+                .await
+                .status,
+            400
+        );
+
+        let r = t.get("/api/v1/orders/next-number", Some(&admin)).await;
+        assert_eq!(
+            (r.status, &r.body),
+            (200, &json!({ "next": 1 })),
+            "{}",
+            t.label
+        );
+        assert_eq!(
+            t.send(
+                Method::PUT,
+                "/api/v1/orders/next-number",
+                Some(&admin),
+                Some(json!({ "next": 500 }))
+            )
+            .await
+            .status,
+            204
+        );
+        assert_eq!(
+            t.get("/api/v1/orders/next-number", Some(&admin)).await.body,
+            json!({ "next": 500 })
+        );
+        assert_eq!(
+            t.get("/api/v1/orders/next-number", Some(&clerk))
+                .await
+                .status,
+            403
+        );
+
+        let r = t.get("/api/v1/about", Some(&admin)).await;
+        assert_eq!(r.status, 200);
+        assert_eq!(r.body["version"], json!(env!("CARGO_PKG_VERSION")));
+        assert_eq!(
+            (&r.body["orders"], &r.body["clients"]),
+            (&json!(0), &json!(0))
+        );
+        assert!(r.body["database"] == "SQLite" || r.body["database"] == "PostgreSQL");
+        assert!(r.body["data_dir"].is_string());
+        assert_eq!(t.get("/api/v1/about", Some(&clerk)).await.status, 403);
+        assert_eq!(t.get("/api/v1/about", None).await.status, 401);
+    }
+}

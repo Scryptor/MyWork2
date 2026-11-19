@@ -10,6 +10,42 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/api/v1/about": {
+      "get": {
+        "tags": [
+          "Сервер"
+        ],
+        "summary": "Сведения для окна «О программе»: версия, СУБД, папка данных, объём базы (право `settings_manage`).",
+        "operationId": "about",
+        "responses": {
+          "200": {
+            "description": "О программе",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AboutInfo"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/attachments/{id}": {
       "delete": {
         "tags": [
@@ -925,7 +961,7 @@
         "tags": [
           "Настройки и справочники"
         ],
-        "summary": "Значения справочника в заданном порядке. Неизвестный вид — 400.",
+        "summary": "Значения справочника в заданном порядке; без `archived=true` — без архивных. Неизвестный вид — 400.",
         "operationId": "list_dictionary",
         "parameters": [
           {
@@ -935,6 +971,15 @@
             "required": true,
             "schema": {
               "$ref": "#/components/schemas/DictionaryKind"
+            }
+          },
+          {
+            "name": "archived",
+            "in": "query",
+            "description": "Показывать и архивные значения; по умолчанию `false`.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
             }
           }
         ],
@@ -1075,6 +1120,56 @@
         ]
       }
     },
+    "/api/v1/dictionaries/{kind}/usage": {
+      "get": {
+        "tags": [
+          "Настройки и справочники"
+        ],
+        "summary": "Сколько заказов (клиентов) используют каждое значение справочника; значения без использования не\nвозвращаются (право `settings_manage`).",
+        "operationId": "dictionary_usage",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "description": "Вид справочника",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/DictionaryKind"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Использование значений",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CatalogUsage"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/dictionary-items/{id}": {
       "delete": {
         "tags": [
@@ -1119,8 +1214,8 @@
         "tags": [
           "Настройки и справочники"
         ],
-        "summary": "Переименование значения справочника (право `settings_manage`).",
-        "operationId": "rename_dictionary_item",
+        "summary": "Изменение значения справочника: текст, архивация (право `settings_manage`).",
+        "operationId": "update_dictionary_item",
         "parameters": [
           {
             "name": "id",
@@ -1137,7 +1232,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/DictionaryValue"
+                "$ref": "#/components/schemas/DictionaryItemPatch"
               }
             }
           },
@@ -1696,6 +1791,40 @@
       }
     },
     "/api/v1/orders/next-number": {
+      "get": {
+        "tags": [
+          "Заказы"
+        ],
+        "summary": "Номер, который получит следующий заказ (право `settings_manage`).",
+        "operationId": "get_next_order_number",
+        "responses": {
+          "200": {
+            "description": "Следующий номер",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NextOrderNumber"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
       "put": {
         "tags": [
           "Заказы"
@@ -2713,6 +2842,45 @@
         ]
       }
     },
+    "/api/v1/service-points/usage": {
+      "get": {
+        "tags": [
+          "Настройки и справочники"
+        ],
+        "summary": "Сколько заказов у каждой точки обслуживания; пустые точки не возвращаются (право `settings_manage`).",
+        "operationId": "service_point_usage",
+        "responses": {
+          "200": {
+            "description": "Использование точек",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CatalogUsage"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/service-points/{id}": {
       "patch": {
         "tags": [
@@ -2965,6 +3133,45 @@
         "responses": {
           "204": {
             "description": "Порядок сохранён"
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/statuses/usage": {
+      "get": {
+        "tags": [
+          "Настройки и справочники"
+        ],
+        "summary": "Сколько заказов в каждом статусе; пустые статусы не возвращаются (право `settings_manage`).",
+        "operationId": "status_usage",
+        "responses": {
+          "200": {
+            "description": "Использование статусов",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CatalogUsage"
+                  }
+                }
+              }
+            }
           },
           "default": {
             "description": "Ошибка",
@@ -3247,6 +3454,46 @@
   },
   "components": {
     "schemas": {
+      "AboutInfo": {
+        "type": "object",
+        "description": "Сведения для окна «О программе».",
+        "required": [
+          "version",
+          "database",
+          "data_dir",
+          "orders",
+          "clients"
+        ],
+        "properties": {
+          "clients": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Сколько клиентов в базе (без удалённых).",
+            "minimum": 0
+          },
+          "data_dir": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Папка данных; пусто, если сервер её не задал."
+          },
+          "database": {
+            "type": "string",
+            "description": "СУБД: `SQLite` или `PostgreSQL`."
+          },
+          "orders": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Сколько заказов в базе (без удалённых).",
+            "minimum": 0
+          },
+          "version": {
+            "type": "string",
+            "description": "Версия программы."
+          }
+        }
+      },
       "AppSettings": {
         "type": "object",
         "description": "Настройки предприятия. Хранятся по строке на поле в таблице `settings` (ключ — имя поля,\nзначение — JSON).",
@@ -3528,6 +3775,27 @@
           }
         },
         "additionalProperties": false
+      },
+      "CatalogUsage": {
+        "type": "object",
+        "description": "Сколько неудалённых записей используют значение; значения без использования в ответ не попадают.",
+        "required": [
+          "id",
+          "count"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Сколько заказов (для источника клиента — клиентов) его используют.",
+            "minimum": 0
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Номер значения, статуса или точки обслуживания."
+          }
+        }
       },
       "ChangePasswordRequest": {
         "type": "object",
@@ -3822,9 +4090,14 @@
           "id",
           "kind",
           "value",
-          "sort_order"
+          "sort_order",
+          "archived"
         ],
         "properties": {
+          "archived": {
+            "type": "boolean",
+            "description": "Скрыто из выбора (в архиве)."
+          },
           "id": {
             "type": "integer",
             "format": "int64",
@@ -3844,6 +4117,21 @@
             "description": "Текст значения."
           }
         }
+      },
+      "DictionaryItemPatch": {
+        "type": "object",
+        "description": "Частичное изменение значения справочника; не переданное поле не меняется.",
+        "properties": {
+          "archived": {
+            "type": "boolean",
+            "description": "Скрыто из выбора (в архиве)."
+          },
+          "value": {
+            "type": "string",
+            "description": "Текст значения."
+          }
+        },
+        "additionalProperties": false
       },
       "DictionaryKind": {
         "type": "string",

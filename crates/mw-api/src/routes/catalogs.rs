@@ -3,13 +3,15 @@
 use axum::extract::State;
 use axum::http::StatusCode;
 use mw_core::{
-    AppSettings, DictionaryItem, NewStatus, ServicePoint, ServicePointPatch, SettingsPatch, Status,
-    StatusPatch,
+    AppSettings, CatalogUsage, DictionaryItem, DictionaryItemPatch, NewStatus, ServicePoint,
+    ServicePointPatch, SettingsPatch, Status, StatusPatch,
 };
 use mw_domain::dictionary::DictionaryKind;
 
 use crate::auth::CurrentActor;
-use crate::dto::{DictionaryValue, IncludeArchived, NewServicePoint, ReorderRequest};
+use crate::dto::{
+    DictionaryListQuery, DictionaryValue, IncludeArchived, NewServicePoint, ReorderRequest,
+};
 use crate::error::ApiError;
 use crate::extract::{Json, Path, Query};
 use crate::state::AppState;
@@ -128,21 +130,30 @@ pub(super) async fn reorder_statuses(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Значения справочника в заданном порядке. Неизвестный вид — 400.
+/// Значения справочника в заданном порядке; без `archived=true` — без архивных. Неизвестный вид — 400.
 #[utoipa::path(
     get,
     path = "/api/v1/dictionaries/{kind}",
     tag = "Настройки и справочники",
     security(("bearer" = [])),
-    params(("kind" = DictionaryKind, Path, description = "Вид справочника")),
+    params(
+        ("kind" = DictionaryKind, Path, description = "Вид справочника"),
+        DictionaryListQuery
+    ),
     responses((status = 200, description = "Значения", body = Vec<DictionaryItem>))
 )]
 pub(super) async fn list_dictionary(
     State(state): State<AppState>,
     CurrentActor(_actor): CurrentActor,
     Path(kind): Path<DictionaryKind>,
+    Query(q): Query<DictionaryListQuery>,
 ) -> Result<Json<Vec<DictionaryItem>>, ApiError> {
-    Ok(Json(state.core.list_dictionary(kind).await?))
+    Ok(Json(
+        state
+            .core
+            .list_dictionary(kind, q.archived.unwrap_or(false))
+            .await?,
+    ))
 }
 
 /// Новое значение справочника; доступно и при приёме заказа.
@@ -195,27 +206,24 @@ pub(super) async fn reorder_dictionary(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Переименование значения справочника (право `settings_manage`).
+/// Изменение значения справочника: текст, архивация (право `settings_manage`).
 #[utoipa::path(
     patch,
     path = "/api/v1/dictionary-items/{id}",
     tag = "Настройки и справочники",
     security(("bearer" = [])),
     params(("id" = i64, Path, description = "Номер значения")),
-    request_body = DictionaryValue,
+    request_body = DictionaryItemPatch,
     responses((status = 200, description = "Значение после изменения", body = DictionaryItem))
 )]
-pub(super) async fn rename_dictionary_item(
+pub(super) async fn update_dictionary_item(
     State(state): State<AppState>,
     CurrentActor(actor): CurrentActor,
     Path(id): Path<i64>,
-    Json(req): Json<DictionaryValue>,
+    Json(patch): Json<DictionaryItemPatch>,
 ) -> Result<Json<DictionaryItem>, ApiError> {
     Ok(Json(
-        state
-            .core
-            .rename_dictionary_item(&actor, id, &req.value)
-            .await?,
+        state.core.update_dictionary_item(&actor, id, patch).await?,
     ))
 }
 
@@ -319,4 +327,52 @@ pub(super) async fn reorder_service_points(
         .reorder_service_points(&actor, &req.ordered_ids)
         .await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Сколько заказов (клиентов) используют каждое значение справочника; значения без использования не
+/// возвращаются (право `settings_manage`).
+#[utoipa::path(
+    get,
+    path = "/api/v1/dictionaries/{kind}/usage",
+    tag = "Настройки и справочники",
+    security(("bearer" = [])),
+    params(("kind" = DictionaryKind, Path, description = "Вид справочника")),
+    responses((status = 200, description = "Использование значений", body = Vec<CatalogUsage>))
+)]
+pub(super) async fn dictionary_usage(
+    State(state): State<AppState>,
+    CurrentActor(actor): CurrentActor,
+    Path(kind): Path<DictionaryKind>,
+) -> Result<Json<Vec<CatalogUsage>>, ApiError> {
+    Ok(Json(state.core.dictionary_usage(&actor, kind).await?))
+}
+
+/// Сколько заказов в каждом статусе; пустые статусы не возвращаются (право `settings_manage`).
+#[utoipa::path(
+    get,
+    path = "/api/v1/statuses/usage",
+    tag = "Настройки и справочники",
+    security(("bearer" = [])),
+    responses((status = 200, description = "Использование статусов", body = Vec<CatalogUsage>))
+)]
+pub(super) async fn status_usage(
+    State(state): State<AppState>,
+    CurrentActor(actor): CurrentActor,
+) -> Result<Json<Vec<CatalogUsage>>, ApiError> {
+    Ok(Json(state.core.status_usage(&actor).await?))
+}
+
+/// Сколько заказов у каждой точки обслуживания; пустые точки не возвращаются (право `settings_manage`).
+#[utoipa::path(
+    get,
+    path = "/api/v1/service-points/usage",
+    tag = "Настройки и справочники",
+    security(("bearer" = [])),
+    responses((status = 200, description = "Использование точек", body = Vec<CatalogUsage>))
+)]
+pub(super) async fn service_point_usage(
+    State(state): State<AppState>,
+    CurrentActor(actor): CurrentActor,
+) -> Result<Json<Vec<CatalogUsage>>, ApiError> {
+    Ok(Json(state.core.service_point_usage(&actor).await?))
 }

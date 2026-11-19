@@ -19,6 +19,7 @@ mod service_points;
 mod settings;
 mod sql;
 mod statuses;
+mod usage;
 
 pub use actor::Actor;
 pub use attachments::{Attachment, AttachmentFile, AttachmentKind, AttachmentVariant};
@@ -35,7 +36,7 @@ pub use clients::{
 pub use clients_merge::{MAX_MERGE_SOURCES, MAX_SIMILAR_CLIENTS, MergeClients, VersionedId};
 pub use clock::{Clock, FixedClock, SystemClock};
 pub use core::Core;
-pub use dictionaries::DictionaryItem;
+pub use dictionaries::{DictionaryItem, DictionaryItemPatch};
 pub use error::CoreError;
 pub use import::{
     DatabaseKind, ImportBundle, ImportMode, ImportSummary, ImportTarget, ImportedClient,
@@ -51,5 +52,6 @@ pub use search_index::{ReindexStats, SEARCH_INDEX_VERSION};
 pub use service_points::{ServicePoint, ServicePointPatch};
 pub use settings::{AppSettings, SettingsPatch};
 pub use statuses::{NewStatus, Status, StatusPatch};
+pub use usage::CatalogUsage;
 
 pub(crate) use audit::{NewAuditEntry, write_audit};

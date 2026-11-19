@@ -24,6 +24,23 @@ pub struct DictionaryItem {
     pub value: String,
     /// Порядковый номер в списке.
     pub sort_order: i32,
+    /// Скрыто из выбора (в архиве).
+    pub archived: bool,
+}
+
+/// Частичное изменение значения справочника; не переданное поле не меняется.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, ts_rs::TS, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+#[ts(optional_fields)]
+pub struct DictionaryItemPatch {
+    /// Текст значения.
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
+    pub value: Option<String>,
+    /// Скрыто из выбора (в архиве).
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
+    pub archived: Option<bool>,
 }
 
 fn to_item(m: dictionary_item::Model) -> Result<DictionaryItem, CoreError> {
@@ -36,6 +53,7 @@ fn to_item(m: dictionary_item::Model) -> Result<DictionaryItem, CoreError> {
         kind,
         value: m.value,
         sort_order: m.sort_order,
+        archived: m.archived,
     })
 }
 
@@ -88,12 +106,17 @@ fn check_value(
 }
 
 impl Core {
-    /// По `sort_order`, затем по значению.
+    /// По `sort_order`, затем по значению; архивные — только по запросу.
     pub async fn list_dictionary(
         &self,
         kind: DictionaryKind,
+        include_archived: bool,
     ) -> Result<Vec<DictionaryItem>, CoreError> {
-        sorted_items(kind_rows(&self.db, kind).await?)
+        let mut rows = kind_rows(&self.db, kind).await?;
+        if !include_archived {
+            rows.retain(|r| !r.archived);
+        }
+        sorted_items(rows)
     }
 
     /// Доступно и из настроек, и из приёма («+ своё»).
@@ -113,6 +136,7 @@ impl Core {
             kind: Set(kind.as_str().to_owned()),
             value: Set(value.clone()),
             sort_order: Set(sort_order),
+            archived: Set(false),
         }
         .insert(&tx)
         .await?;
@@ -133,11 +157,12 @@ impl Core {
         to_item(model)
     }
 
-    pub async fn rename_dictionary_item(
+    /// Переименование и архивация значения; правка без изменений ничего не пишет.
+    pub async fn update_dictionary_item(
         &self,
         actor: &Actor,
         id: i64,
-        value: &str,
+        patch: DictionaryItemPatch,
     ) -> Result<DictionaryItem, CoreError> {
         actor.require(Permission::SettingsManage)?;
         let tx = self.begin_write().await?;
@@ -152,31 +177,77 @@ impl Core {
             .kind
             .parse::<DictionaryKind>()
             .map_err(|e| CoreError::Internal(format!("справочник №{id}: {e:?}")))?;
-        if value.trim() == current.value {
+        let renamed = match patch.value.as_deref() {
+            Some(v) if v.trim() != current.value => {
+                let rows = kind_rows(&tx, kind).await?;
+                Some(check_value(v, &rows, Some(id))?)
+            }
+            Some(v) if v.trim().is_empty() => {
+                return Err(CoreError::Validation(vec![FieldError::required("value")]));
+            }
+            _ => None,
+        };
+        let archived = patch.archived.filter(|a| *a != current.archived);
+        if renamed.is_none() && archived.is_none() {
             return to_item(current);
         }
-        let rows = kind_rows(&tx, kind).await?;
-        let value = check_value(value, &rows, Some(id))?;
         let old = current.value.clone();
         let mut active: dictionary_item::ActiveModel = current.into();
-        active.value = Set(value.clone());
+        if let Some(v) = &renamed {
+            active.value = Set(v.clone());
+        }
+        if let Some(a) = archived {
+            active.archived = Set(a);
+        }
         let model = active.update(&tx).await?;
-        write_audit(
-            &tx,
-            self.now(),
-            actor,
-            NewAuditEntry {
-                action: "dictionary.renamed",
-                order_id: None,
-                client_id: None,
-                summary: format!(
-                    "Справочник «{}»: «{old}» переименовано в «{value}»",
-                    kind.label_ru()
-                ),
-                details: Some(json!({ "id": id, "kind": kind.as_str(), "old": old, "new": value })),
-            },
-        )
-        .await?;
+        if let Some(value) = renamed {
+            write_audit(
+                &tx,
+                self.now(),
+                actor,
+                NewAuditEntry {
+                    action: "dictionary.renamed",
+                    order_id: None,
+                    client_id: None,
+                    summary: format!(
+                        "Справочник «{}»: «{old}» переименовано в «{value}»",
+                        kind.label_ru()
+                    ),
+                    details: Some(
+                        json!({ "id": id, "kind": kind.as_str(), "old": old, "new": value }),
+                    ),
+                },
+            )
+            .await?;
+        }
+        if let Some(a) = archived {
+            write_audit(
+                &tx,
+                self.now(),
+                actor,
+                NewAuditEntry {
+                    action: if a {
+                        "dictionary.archived"
+                    } else {
+                        "dictionary.restored"
+                    },
+                    order_id: None,
+                    client_id: None,
+                    summary: format!(
+                        "Справочник «{}»: «{}» {}",
+                        kind.label_ru(),
+                        model.value,
+                        if a {
+                            "в архиве"
+                        } else {
+                            "возвращено из архива"
+                        }
+                    ),
+                    details: Some(json!({ "id": id, "kind": kind.as_str(), "archived": a })),
+                },
+            )
+            .await?;
+        }
         tx.commit().await?;
         to_item(model)
     }

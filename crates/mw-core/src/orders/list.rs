@@ -2,7 +2,7 @@
 
 use chrono::{Duration, NaiveDateTime};
 use mw_db::entity::{client, order, status};
-use mw_db::ids::{IdTable, max_id, set_next_id};
+use mw_db::ids::{IdTable, max_id, next_id, set_next_id};
 use mw_domain::barcode::{normalize_scanned, order_barcode};
 use mw_domain::money::Money;
 use mw_domain::permission::Permission;
@@ -466,6 +466,12 @@ impl Core {
         q.order_by_expr(o(order::Column::ReceivedAt), Order::Desc)
             .order_by_expr(o(order::Column::Id), Order::Desc);
         self.select_items(q).await
+    }
+
+    /// Номер, который получит следующий созданный заказ.
+    pub async fn next_order_number(&self, actor: &Actor) -> Result<i64, CoreError> {
+        actor.require(Permission::SettingsManage)?;
+        Ok(next_id(&self.db, IdTable::Orders).await?)
     }
 
     /// Следующий созданный заказ получит номер `next` (выше всех существующих).

@@ -112,6 +112,34 @@ pub struct IncludeArchived {
     pub include_archived: Option<bool>,
 }
 
+/// Параметр списка значений справочника.
+#[derive(Debug, Clone, Default, Deserialize, TS, IntoParams)]
+#[serde(deny_unknown_fields)]
+#[ts(optional_fields)]
+#[into_params(parameter_in = Query)]
+pub struct DictionaryListQuery {
+    /// Показывать и архивные значения; по умолчанию `false`.
+    pub archived: Option<bool>,
+}
+
+/// Сведения для окна «О программе».
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, ToSchema)]
+pub struct AboutInfo {
+    /// Версия программы.
+    pub version: String,
+    /// СУБД: `SQLite` или `PostgreSQL`.
+    pub database: String,
+    /// Папка данных; пусто, если сервер её не задал.
+    #[schema(required = true)]
+    pub data_dir: Option<String>,
+    /// Сколько заказов в базе (без удалённых).
+    #[ts(type = "number")]
+    pub orders: u64,
+    /// Сколько клиентов в базе (без удалённых).
+    #[ts(type = "number")]
+    pub clients: u64,
+}
+
 /// Новый порядок записей: все их номера в нужной последовательности.
 #[derive(Debug, Clone, Deserialize, TS, ToSchema)]
 #[serde(deny_unknown_fields)]
@@ -373,7 +401,7 @@ pub struct PageQuery {
 }
 
 /// Следующий номер заказа.
-#[derive(Debug, Clone, Deserialize, TS, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct NextOrderNumber {
     /// Номер, который получит следующий заказ; больше всех существующих.

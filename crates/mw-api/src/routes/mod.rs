@@ -38,6 +38,7 @@ pub(crate) fn api_routes() -> OpenApiRouter<AppState> {
         ))
         .routes(routes!(meta::server_info))
         .routes(routes!(meta::openapi_json))
+        .routes(routes!(meta::about))
         .routes(routes!(auth::login))
         .routes(routes!(auth::logout))
         .routes(routes!(auth::me))
@@ -46,13 +47,16 @@ pub(crate) fn api_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(catalogs::list_statuses, catalogs::create_status))
         .routes(routes!(catalogs::update_status))
         .routes(routes!(catalogs::reorder_statuses))
+        .routes(routes!(catalogs::status_usage))
+        .routes(routes!(catalogs::dictionary_usage))
+        .routes(routes!(catalogs::service_point_usage))
         .routes(routes!(
             catalogs::list_dictionary,
             catalogs::add_dictionary_item
         ))
         .routes(routes!(catalogs::reorder_dictionary))
         .routes(routes!(
-            catalogs::rename_dictionary_item,
+            catalogs::update_dictionary_item,
             catalogs::delete_dictionary_item
         ))
         .routes(routes!(
@@ -70,7 +74,10 @@ pub(crate) fn api_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(orders::order_summary))
         .routes(routes!(orders::order_values))
         .routes(routes!(orders::orders_by_barcode))
-        .routes(routes!(orders::set_next_order_number))
+        .routes(routes!(
+            orders::set_next_order_number,
+            orders::get_next_order_number
+        ))
         .routes(routes!(
             orders::get_order,
             orders::update_order,

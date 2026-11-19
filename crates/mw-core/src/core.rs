@@ -46,6 +46,19 @@ impl Core {
         self
     }
 
+    /// Папка данных, если сервер её задал.
+    pub fn data_dir_path(&self) -> Option<&std::path::Path> {
+        self.data_dir.as_deref()
+    }
+
+    /// Название СУБД для людей: «SQLite» или «PostgreSQL».
+    pub fn database_label(&self) -> &'static str {
+        match self.db.get_database_backend() {
+            DatabaseBackend::Postgres => "PostgreSQL",
+            _ => "SQLite",
+        }
+    }
+
     #[cfg(any(test, feature = "testing"))]
     pub fn db(&self) -> &DatabaseConnection {
         &self.db

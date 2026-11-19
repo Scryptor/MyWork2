@@ -5,11 +5,11 @@ use std::path::Path;
 use ts_rs::TS;
 
 use crate::{
-    AttachmentNameQuery, AuditListQuery, AuditPage, BarcodeQuery, CaptionPatch,
-    ChangePasswordRequest, ClientListQuery, ClientPage, CurrentUser, DictionaryValue, ErrorBody,
-    IncludeArchived, LoginRequest, LoginResponse, NewServicePoint, NextOrderNumber, OrderListQuery,
-    OrderPage, OrderSummaryQuery, OrderValuesQuery, PageQuery, PhoneQuery, ReorderRequest,
-    ServerInfo, SetPasswordRequest, StatusChange, VersionParam,
+    AboutInfo, AttachmentNameQuery, AuditListQuery, AuditPage, BarcodeQuery, CaptionPatch,
+    ChangePasswordRequest, ClientListQuery, ClientPage, CurrentUser, DictionaryListQuery,
+    DictionaryValue, ErrorBody, IncludeArchived, LoginRequest, LoginResponse, NewServicePoint,
+    NextOrderNumber, OrderListQuery, OrderPage, OrderSummaryQuery, OrderValuesQuery, PageQuery,
+    PhoneQuery, ReorderRequest, ServerInfo, SetPasswordRequest, StatusChange, VersionParam,
 };
 
 /// Выгружает в `dir` TS-типы всех корневых типов API вместе с зависимостями
@@ -31,6 +31,10 @@ pub fn export_typescript(dir: &Path) -> Result<(), ts_rs::ExportError> {
     IncludeArchived::export_all(&cfg)?;
     ReorderRequest::export_all(&cfg)?;
     DictionaryValue::export_all(&cfg)?;
+    DictionaryListQuery::export_all(&cfg)?;
+    AboutInfo::export_all(&cfg)?;
+    mw_core::DictionaryItemPatch::export_all(&cfg)?;
+    mw_core::CatalogUsage::export_all(&cfg)?;
     NewServicePoint::export_all(&cfg)?;
     ClientListQuery::export_all(&cfg)?;
     PhoneQuery::export_all(&cfg)?;

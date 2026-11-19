@@ -64,10 +64,14 @@ async fn same_values_change_nothing_anywhere() -> Result<(), CoreError> {
             p
         );
         t.core.reorder_service_points(&admin(), &[p.id]).await?;
-        let brands = t.core.list_dictionary(DictionaryKind::Brand).await?;
+        let brands = t.core.list_dictionary(DictionaryKind::Brand, false).await?;
         assert_eq!(
             t.core
-                .rename_dictionary_item(&admin(), brands[0].id, &format!("{} ", brands[0].value))
+                .update_dictionary_item(
+                    &admin(),
+                    brands[0].id,
+                    vpatch(&format!("{} ", brands[0].value))
+                )
                 .await?,
             brands[0]
         );

@@ -124,6 +124,23 @@ pub(super) async fn set_next_order_number(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// Номер, который получит следующий заказ (право `settings_manage`).
+#[utoipa::path(
+    get,
+    path = "/api/v1/orders/next-number",
+    tag = "Заказы",
+    security(("bearer" = [])),
+    responses((status = 200, description = "Следующий номер", body = NextOrderNumber))
+)]
+pub(super) async fn get_next_order_number(
+    State(state): State<AppState>,
+    CurrentActor(actor): CurrentActor,
+) -> Result<Json<NextOrderNumber>, ApiError> {
+    Ok(Json(NextOrderNumber {
+        next: state.core.next_order_number(&actor).await?,
+    }))
+}
+
 /// Карточка заказа (достаточно войти).
 #[utoipa::path(
     get,

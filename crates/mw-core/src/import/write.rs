@@ -295,6 +295,7 @@ async fn write_catalogs(
                     kind: Set(kind.as_str().to_owned()),
                     value: Set(value.clone()),
                     sort_order: Set(i as i32),
+                    archived: Set(false),
                 })
         })
         .collect();

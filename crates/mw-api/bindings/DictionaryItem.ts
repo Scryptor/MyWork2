@@ -20,4 +20,8 @@ value: string,
 /**
  * Порядковый номер в списке.
  */
-sort_order: number, };
+sort_order: number, 
+/**
+ * Скрыто из выбора (в архиве).
+ */
+archived: boolean, };

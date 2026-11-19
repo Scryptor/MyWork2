@@ -804,3 +804,11 @@ pub async fn make_order_for(t: &TestCore, client_id: i64) -> mw_core::Order {
         .await
         .unwrap()
 }
+
+/// Правка значения справочника: только текст.
+pub fn vpatch(value: &str) -> mw_core::DictionaryItemPatch {
+    mw_core::DictionaryItemPatch {
+        value: Some(value.to_owned()),
+        ..Default::default()
+    }
+}
