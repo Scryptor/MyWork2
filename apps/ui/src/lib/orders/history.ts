@@ -76,3 +76,18 @@ export function mergeHistory(
 	for (const e of fresh) byId.set(e.id, e);
 	return [...byId.values()].sort((a, b) => b.id - a.id);
 }
+
+/**
+ * The cursor after the oldest entry in the order the server shows them (time, then id, both falling):
+ * the entries shown are a prefix of that order, so it is the smallest by (time, id). The time is a
+ * local time without offset, it compares as text.
+ */
+export function historyCursor(
+	entries: readonly AuditEntry[]
+): { before_at: string; before_id: number } | undefined {
+	let last: AuditEntry | undefined;
+	for (const e of entries) {
+		if (!last || e.at < last.at || (e.at === last.at && e.id < last.id)) last = e;
+	}
+	return last && { before_at: last.at, before_id: last.id };
+}

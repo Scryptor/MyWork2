@@ -273,10 +273,25 @@ pub(super) async fn order_history(
         limit: q.limit.unwrap_or(DEFAULT_PAGE_LIMIT),
         offset: q.offset.unwrap_or(0),
     };
+    let before = match (q.before_at, q.before_id) {
+        (Some(at), Some(b)) => Some((at, b)),
+        (None, None) => None,
+        (at, _) => {
+            let missing = if at.is_none() {
+                "before_at"
+            } else {
+                "before_id"
+            };
+            return Err(mw_core::CoreError::Validation(vec![
+                mw_domain::validation::FieldError::new(missing, "required"),
+            ])
+            .into());
+        }
+    };
     Ok(Json(
         state
             .core
-            .order_history_before(&actor, id, page, q.before_id)
+            .order_history_before(&actor, id, page, before)
             .await?
             .into(),
     ))

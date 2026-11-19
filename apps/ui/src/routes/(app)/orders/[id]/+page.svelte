@@ -43,6 +43,7 @@
 	import Section from '#lib/ui/Section.svelte';
 	import Skeleton from '#lib/ui/Skeleton.svelte';
 	import StatusPicker from '#lib/ui/StatusPicker.svelte';
+	import TabPane from '#lib/ui/TabPane.svelte';
 	import Tabs from '#lib/ui/Tabs.svelte';
 	import Timeline from '#lib/ui/Timeline.svelte';
 	import { toast } from '#lib/ui/toast/toast.svelte.js';
@@ -271,76 +272,84 @@
 
 {#snippet side()}
 	<div class="side">
-		<div hidden={!display.cardColumns && tab !== 'history'}>
-			<Section title={c.statuses} region>
-				{#if journal.failed}
-					<p class="muted">{t.historyFailed}</p>
-				{:else}
-					<Timeline items={timeline} now={serverClock.now()} emptyText={t.historyEmpty} />
-					{#if journal.timelineFailed}
-						<p class="muted">{c.timelineFailed}</p>
-						<div>
-							<Button size="sm" onclick={() => void journal.refresh(order?.id ?? 0)}
-								>{ru.common.retry}</Button
-							>
-						</div>
-					{/if}
-					{@render cut()}
-				{/if}
-			</Section>
-		</div>
-		{#if media}
-			<div hidden={!display.cardColumns && tab !== 'files'}>
-				<Section title={c.photos} region>
-					<OrderPhotos {media} readonly={!canEdit} />
-				</Section>
+		<TabPane value="history" bare={display.cardColumns}>
+			<div class="group">
+				<div class="s1">
+					<Section title={c.statuses} region>
+						{#if journal.failed}
+							<p class="muted">{t.historyFailed}</p>
+						{:else}
+							<Timeline items={timeline} now={serverClock.now()} emptyText={t.historyEmpty} />
+							{#if journal.timelineFailed}
+								<p class="muted">{c.timelineFailed}</p>
+								<div>
+									<Button size="sm" onclick={() => void journal.refresh(order?.id ?? 0)}
+										>{ru.common.retry}</Button
+									>
+								</div>
+							{/if}
+							{@render cut()}
+						{/if}
+					</Section>
+				</div>
+				<div class="s4">
+					<Section title={c.warrantyCases} region>
+						{#if cases.length === 0}
+							<p class="muted">{c.noWarrantyCases}</p>
+						{:else}
+							<ul class="cases">
+								{#each cases as w (w.id)}
+									<li>
+										<time class="num muted" datetime={w.at}>{formatDate(w.at)}</time>
+										<span>{w.complaint}</span>
+									</li>
+								{/each}
+							</ul>
+						{/if}
+						{@render cut()}
+					</Section>
+				</div>
+				<div class="s5">
+					<Section title={c.changes} region>
+						{#if journal.failed}
+							<p class="muted">{t.historyFailed}</p>
+						{:else}
+							<Timeline
+								items={historyItems(journal.entries)}
+								now={serverClock.now()}
+								emptyText={t.historyEmpty}
+							/>
+							{#if journal.moreFailed}
+								<p class="muted">{c.moreFailed}</p>
+							{/if}
+							{#if journal.hasMore}
+								<div>
+									<Button size="sm" busy={journal.loadingMore} onclick={() => void journal.more()}
+										>{journal.moreFailed ? ru.common.retry : c.showMore}</Button
+									>
+								</div>
+							{/if}
+						{/if}
+					</Section>
+				</div>
 			</div>
-			<div hidden={!display.cardColumns && tab !== 'files'}>
-				<Section title={c.files} region>
-					<OrderFiles {media} readonly={!canEdit} />
-				</Section>
+		</TabPane>
+		<TabPane value="files" bare={display.cardColumns}>
+			<div class="group">
+				{#if media}
+					<div class="s2">
+						<Section title={c.photos} region>
+							<OrderPhotos {media} readonly={!canEdit} />
+						</Section>
+					</div>
+					<div class="s3">
+						<Section title={c.files} region>
+							<OrderFiles {media} readonly={!canEdit} />
+						</Section>
+					</div>
+				{/if}
 			</div>
-		{/if}
-		<div hidden={!display.cardColumns && tab !== 'history'}>
-			<Section title={c.warrantyCases} region>
-				{#if cases.length === 0}
-					<p class="muted">{c.noWarrantyCases}</p>
-				{:else}
-					<ul class="cases">
-						{#each cases as w (w.id)}
-							<li>
-								<time class="num muted" datetime={w.at}>{formatDate(w.at)}</time>
-								<span>{w.complaint}</span>
-							</li>
-						{/each}
-					</ul>
-				{/if}
-				{@render cut()}
-			</Section>
-		</div>
-		<div hidden={!display.cardColumns && tab !== 'history'}>
-			<Section title={c.changes} region>
-				{#if journal.failed}
-					<p class="muted">{t.historyFailed}</p>
-				{:else}
-					<Timeline
-						items={historyItems(journal.entries)}
-						now={serverClock.now()}
-						emptyText={t.historyEmpty}
-					/>
-					{#if journal.moreFailed}
-						<p class="muted">{c.moreFailed}</p>
-					{/if}
-					{#if journal.hasMore}
-						<div>
-							<Button size="sm" busy={journal.loadingMore} onclick={() => void journal.more()}
-								>{journal.moreFailed ? ru.common.retry : c.showMore}</Button
-							>
-						</div>
-					{/if}
-				{/if}
-			</Section>
-		</div>
+		</TabPane>
 	</div>
 {/snippet}
 
@@ -384,22 +393,21 @@
 
 	{#if editor}
 		<!-- One markup for any width: the card is not rebuilt (nor the focus lost) when the window
-		     crosses 1024px; only the tab list and the hiding of the parts change. -->
-		{#if !display.cardColumns}
-			<Tabs bind:value={tab} items={TABS} />
-		{/if}
-		<div class="layout" class:columns={display.cardColumns}>
-			<div class="fields" hidden={!display.cardColumns && tab !== 'order'}>
-				{@render fields(editor)}
+		     crosses 1024px; only the tab list and the tab semantics of the panes change. -->
+		<Tabs bind:value={tab} items={TABS} hideList={display.cardColumns}>
+			<div class="layout" class:columns={display.cardColumns}>
+				<TabPane value="order" bare={display.cardColumns}>
+					<div class="fields">{@render fields(editor)}</div>
+				</TabPane>
+				<div
+					class="aside"
+					role={display.cardColumns ? 'complementary' : undefined}
+					aria-label={display.cardColumns ? c.history : undefined}
+				>
+					{@render side()}
+				</div>
 			</div>
-			<div
-				class="aside"
-				role={display.cardColumns ? 'complementary' : undefined}
-				aria-label={display.cardColumns ? c.history : undefined}
-			>
-				{@render side()}
-			</div>
-		</div>
+		</Tabs>
 	{:else if notFound}
 		<EmptyState title={c.notFound(param)} description={c.notFoundHint}>
 			{#snippet actions()}
@@ -478,10 +486,30 @@
 		align-items: start;
 		gap: var(--space-8);
 	}
-	.side {
+	.side,
+	.group {
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-6);
+	}
+	/* Wide: the groups of the tabs melt into one column in the order of the sections. */
+	.columns .group {
+		display: contents;
+	}
+	.s1 {
+		order: 1;
+	}
+	.s2 {
+		order: 2;
+	}
+	.s3 {
+		order: 3;
+	}
+	.s4 {
+		order: 4;
+	}
+	.s5 {
+		order: 5;
 	}
 	.cases {
 		display: flex;

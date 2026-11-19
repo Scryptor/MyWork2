@@ -285,69 +285,67 @@ async fn history_of_a_deleted_order_shows_the_deletion() -> Result<(), CoreError
 }
 
 #[tokio::test]
-async fn order_history_pages_by_cursor_even_when_new_entries_arrive() -> Result<(), CoreError> {
+async fn order_history_cursor_follows_time_even_when_it_runs_backwards() -> Result<(), CoreError> {
     for t in cores().await {
         let o = t.core.create_order(&admin(), sample_new_order()).await?;
-        let mut version = o.version;
-        for n in 0..3 {
-            let o = t
-                .core
-                .update_order(
-                    &admin(),
-                    o.id,
-                    version,
-                    OrderPatch {
-                        master: Some(format!("Мастер {n}")),
-                        ..Default::default()
-                    },
-                )
-                .await?;
-            version = o.version;
-            t.clock.advance(Duration::minutes(1));
+        let base = chrono::NaiveDate::from_ymd_opt(2030, 10, 27)
+            .unwrap()
+            .and_hms_opt(3, 0, 0)
+            .unwrap();
+        // Ids grow, the time does not: the clocks went back (autumn DST) and there are equal times.
+        let minutes = [50, 10, 40, 40, 5, 30, 30, 30, 20, 55];
+        for (i, m) in minutes.iter().enumerate() {
+            mw_db::entity::audit_log::ActiveModel {
+                at: Set(base + Duration::minutes(*m)),
+                user_name: Set("Админ".into()),
+                action: Set("order.updated".into()),
+                order_id: Set(Some(o.id)),
+                summary: Set(format!("Запись {i}")),
+                ..Default::default()
+            }
+            .insert(t.core.db())
+            .await
+            .map_err(CoreError::from)?;
         }
-        let first = t
+        let whole = t
             .core
             .order_history(
                 &admin(),
                 o.id,
                 PageRequest {
-                    limit: 2,
+                    limit: 500,
                     offset: 0,
                 },
             )
             .await?;
-        let cursor = first.items[1].id;
-        // New entries on top do not move the cursor's page.
-        t.core
-            .update_order(
-                &admin(),
-                o.id,
-                version,
-                OrderPatch {
-                    master: Some("Новый".into()),
-                    ..Default::default()
-                },
-            )
-            .await?;
-        let next = t
-            .core
-            .order_history_before(
-                &admin(),
-                o.id,
-                PageRequest {
-                    limit: 2,
-                    offset: 0,
-                },
-                Some(cursor),
-            )
-            .await?;
-        assert!(
-            next.items.iter().all(|e| e.id < cursor),
-            "{}: nothing at or after the cursor",
+        let mut got = Vec::new();
+        let mut cursor = None;
+        loop {
+            let page = t
+                .core
+                .order_history_before(
+                    &admin(),
+                    o.id,
+                    PageRequest {
+                        limit: 3,
+                        offset: 0,
+                    },
+                    cursor,
+                )
+                .await?;
+            let Some(last) = page.items.last() else { break };
+            cursor = Some((last.at, last.id));
+            got.extend(page.items.iter().map(|e| e.id));
+        }
+        let expected: Vec<i64> = whole.items.iter().map(|e| e.id).collect();
+        assert_eq!(expected.len(), 11, "{}", t.label);
+        assert_eq!(
+            got, expected,
+            "{}: every entry once, in display order",
             t.label
         );
-        assert!(!next.items.is_empty(), "{}", t.label);
-        assert_eq!(next.items.last().unwrap().action, "order.created");
+        let times: Vec<_> = whole.items.iter().map(|e| (e.at, e.id)).collect();
+        assert!(times.windows(2).all(|w| w[0] > w[1]), "{}", t.label);
     }
     Ok(())
 }

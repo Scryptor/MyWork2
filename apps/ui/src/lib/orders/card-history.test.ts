@@ -8,10 +8,13 @@ import {
 	TIMELINE_PAGE
 } from './card-history.svelte.js';
 
+/** `clock`: how the time of an entry follows its id; the same time for all by default. */
+let clock: (id: number) => string = () => '2026-11-17T10:00:00';
+
 function entry(id: number): AuditEntry {
 	return {
 		id,
-		at: '2026-11-17T10:00:00',
+		at: clock(id),
 		user_id: 1,
 		user_name: 'Администратор',
 		// The oldest entry is the intake, as on the server.
@@ -23,16 +26,24 @@ function entry(id: number): AuditEntry {
 	};
 }
 
+/** The server's order: time falling, then id falling. */
+const shown = (a: AuditEntry, b: AuditEntry) =>
+	a.at === b.at ? b.id - a.id : a.at < b.at ? 1 : -1;
+const later = (e: AuditEntry, q: HistoryQuery) =>
+	q.before_at === undefined ||
+	e.at < q.before_at ||
+	(e.at === q.before_at && e.id < (q.before_id ?? 0));
+
 /** A journal of `count` entries, newest (the biggest id) first, paged like the server does. */
 function journal(count: number) {
-	let all = Array.from({ length: count }, (_, i) => entry(count - i));
+	let all = Array.from({ length: count }, (_, i) => entry(count - i)).sort(shown);
 	return {
 		add(n: number) {
 			const top = all[0]?.id ?? 0;
 			all = [...Array.from({ length: n }, (_, i) => entry(top + n - i)), ...all];
 		},
 		orderHistory: vi.fn(async (_id: number, p: HistoryQuery) => {
-			const older = p.before_id === undefined ? all : all.filter((e) => e.id < p.before_id!);
+			const older = all.filter((e) => later(e, p));
 			const offset = p.offset ?? 0;
 			return { items: older.slice(offset, offset + (p.limit ?? 50)), total: all.length };
 		})
@@ -53,7 +64,11 @@ describe('createCardHistory', () => {
 		expect(h.hasMore).toBe(true);
 
 		await h.more();
-		expect(api.orderHistory).toHaveBeenLastCalledWith(7, { limit: 50, before_id: 71 });
+		expect(api.orderHistory).toHaveBeenLastCalledWith(7, {
+			limit: 50,
+			before_at: '2026-11-17T10:00:00',
+			before_id: 71
+		});
 		await h.more();
 		expect(h.entries).toHaveLength(120);
 		expect(h.entries.at(-1)?.id).toBe(1);
@@ -96,8 +111,8 @@ describe('createCardHistory', () => {
 		await h.refresh(7);
 		expect(api.orderHistory.mock.calls.map(([, p]) => p)).toEqual([
 			{ limit: TIMELINE_PAGE },
-			{ limit: TIMELINE_PAGE, before_id: 701 },
-			{ limit: TIMELINE_PAGE, before_id: 201 }
+			{ limit: TIMELINE_PAGE, before_at: '2026-11-17T10:00:00', before_id: 701 },
+			{ limit: TIMELINE_PAGE, before_at: '2026-11-17T10:00:00', before_id: 201 }
 		]);
 		expect(h.timeline).toHaveLength(1200);
 		expect(h.timeline.at(-1)?.action).toBe('order.created');
@@ -132,7 +147,7 @@ describe('createCardHistory', () => {
 		api.orderHistory.mockImplementation(async (_id, p) => {
 			if (p.before_id === 201) throw new Error('offline');
 			const all = Array.from({ length: 1200 }, (_, i) => entry(1200 - i));
-			const older = p.before_id === undefined ? all : all.filter((e) => e.id < p.before_id!);
+			const older = all.filter((e) => later(e, p));
 			return { items: older.slice(0, p.limit ?? 50), total: 1200 };
 		});
 		await h.refresh(7);
@@ -141,13 +156,29 @@ describe('createCardHistory', () => {
 		expect(h.timeline).toHaveLength(1000);
 		api.orderHistory.mockImplementation(async (_id, p) => {
 			const all = Array.from({ length: 1200 }, (_, i) => entry(1200 - i));
-			const older = p.before_id === undefined ? all : all.filter((e) => e.id < p.before_id!);
+			const older = all.filter((e) => later(e, p));
 			return { items: older.slice(0, p.limit ?? 50), total: 1200 };
 		});
 		await h.refresh(7);
 		expect(h.timelineFailed).toBe(false);
 		expect(h.timeline).toHaveLength(1200);
 		expect(h.timeline.at(-1)?.action).toBe('order.created');
+	});
+
+	it('pages by time and id: a clock that went back repeats nothing and skips nothing', async () => {
+		// Ids grow, the time dips: 41..50 are earlier than 31..40.
+		clock = (id) => `2026-11-17T${id > 40 ? '08' : '10'}:${String(id % 60).padStart(2, '0')}:00`;
+		try {
+			const api = journal(120);
+			const h = createCardHistory(api);
+			await h.refresh(7);
+			while (h.hasMore) await h.more();
+			const ids = h.entries.map((e) => e.id);
+			expect(new Set(ids).size).toBe(120);
+			expect(h.timeline).toHaveLength(120);
+		} finally {
+			clock = () => '2026-11-17T10:00:00';
+		}
 	});
 
 	it('a journal longer than the limit shows the newest part and says so', async () => {

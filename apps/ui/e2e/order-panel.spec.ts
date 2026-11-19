@@ -275,6 +275,35 @@ test('conflict callout lets me take the new value', async ({ page, request }) =>
 	expect((await fetchOrder(request, o.id)).malfunction).toBe('Моё окончательное');
 });
 
+test('moving on over an undecided dispute asks first: stay, or drop and go', async ({
+	page,
+	request
+}) => {
+	const m = uniq('M');
+	const older = await createOrder(request, { model: m });
+	const newer = await createOrder(request, { model: m, malfunction: 'Не включается' });
+	await openPanel(page, m, newer.id);
+	const panel = panelOf(page, newer.id);
+	const field = panel.getByRole('textbox', { name: 'Неисправность' });
+	await patchOrder(request, newer.id, { malfunction: 'Не включается после падения' });
+	await field.fill('Не включается, разбит экран');
+	await expect(panel.getByText('Заказ изменили на другом компьютере')).toBeVisible();
+
+	await page.keyboard.press('Alt+ArrowDown');
+	const ask = page.getByRole('alertdialog', { name: 'Есть несохранённый спор' });
+	await expect(ask).toBeVisible();
+	await ask.getByRole('button', { name: 'Остаться' }).click();
+	await expect(ask).toBeHidden();
+	await expect(panel).toBeVisible();
+	await expect(field).toHaveValue('Не включается, разбит экран');
+
+	await page.keyboard.press('Alt+ArrowDown');
+	await expect(ask).toBeVisible();
+	await ask.getByRole('button', { name: 'Отбросить и перейти' }).click();
+	await expect(panelOf(page, older.id)).toBeVisible();
+	expect((await fetchOrder(request, newer.id)).malfunction).toBe('Не включается после падения');
+});
+
 test('status change shows a toast and undo restores it', async ({ page, request }) => {
 	const m = uniq('M');
 	const diag = await statusId(request, 'Диагностика');

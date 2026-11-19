@@ -2427,9 +2427,19 @@
             }
           },
           {
+            "name": "before_at",
+            "in": "query",
+            "description": "Курсор: только записи после записи `(before_at, before_id)` в порядке показа. Оба поля\nвместе (время и номер последней полученной записи); не зависит от новых записей сверху.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
             "name": "before_id",
             "in": "query",
-            "description": "Только записи с номером меньше этого: курсор, не зависящий от новых записей сверху.",
+            "description": "Номер последней полученной записи; см. `before_at`.",
             "required": false,
             "schema": {
               "type": "integer",

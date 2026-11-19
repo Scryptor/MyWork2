@@ -507,17 +507,21 @@ async fn replayed_order_creation_is_marked() {
 }
 
 #[tokio::test]
-async fn history_before_id_gives_only_older_entries() {
+async fn history_cursor_gives_only_older_entries_and_needs_both_fields() {
     for t in apis(Listen::Network).await {
         let token = t.admin_token().await;
         let (id, _) = order_ready_to_issue(&t, &token).await;
         let all = t
             .get(&format!("/api/v1/orders/{id}/history"), Some(&token))
             .await;
-        let newest = all.body["items"][0]["id"].as_i64().unwrap();
+        let newest = &all.body["items"][0];
+        let (at, eid) = (
+            newest["at"].as_str().unwrap(),
+            newest["id"].as_i64().unwrap(),
+        );
         let r = t
             .get(
-                &format!("/api/v1/orders/{id}/history?before_id={newest}"),
+                &format!("/api/v1/orders/{id}/history?before_at={at}&before_id={eid}"),
                 Some(&token),
             )
             .await;
@@ -526,5 +530,11 @@ async fn history_before_id_gives_only_older_entries() {
         assert_eq!(items.len(), 1, "{}", t.label);
         assert_eq!(items[0]["action"], json!("order.created"));
         assert_eq!(r.body["total"], json!(2));
+        for half in [format!("before_id={eid}"), format!("before_at={at}")] {
+            let r = t
+                .get(&format!("/api/v1/orders/{id}/history?{half}"), Some(&token))
+                .await;
+            assert_eq!(r.status, 422, "{}: {}", t.label, r.body);
+        }
     }
 }

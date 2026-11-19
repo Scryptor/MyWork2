@@ -5,17 +5,25 @@
 	let {
 		value = $bindable(),
 		items,
-		content
+		content,
+		children,
+		hideList = false,
+		class: className
 	}: {
 		value: string;
 		items: { value: string; label: string; count?: number }[];
 		/** Without it only the tab list is drawn: the panes are the page's own (one markup for any width). */
 		content?: Snippet<[string]>;
+		/** Own panes (`TabPane`) inside the tabs: the page keeps one markup for any layout. */
+		children?: Snippet;
+		/** The tab list is not shown (every pane is, see `TabPane` `bare`). */
+		hideList?: boolean;
+		class?: string;
 	} = $props();
 </script>
 
-<Tabs.Root bind:value>
-	<Tabs.List class="mw-tabs-list">
+<Tabs.Root bind:value class={className}>
+	<Tabs.List class="mw-tabs-list" hidden={hideList || undefined}>
 		{#each items as item (item.value)}
 			<Tabs.Trigger value={item.value} class="mw-tab">
 				{item.label}
@@ -23,6 +31,7 @@
 			</Tabs.Trigger>
 		{/each}
 	</Tabs.List>
+	{@render children?.()}
 	{#if content}
 		{#each items as item (item.value)}
 			<Tabs.Content value={item.value} class="mw-tab-panel">
@@ -38,6 +47,9 @@
 		gap: var(--space-1);
 		border-bottom: 1px solid var(--border);
 		overflow-x: auto;
+	}
+	:global(.mw-tabs-list[hidden]) {
+		display: none;
 	}
 	:global(.mw-tab) {
 		display: inline-flex;

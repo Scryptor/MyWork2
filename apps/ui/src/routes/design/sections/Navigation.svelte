@@ -18,6 +18,7 @@
 		Kbd,
 		ShortcutsHelp,
 		SidebarNav,
+		TabPane,
 		Tabs,
 		TextInput,
 		TopBar,
@@ -165,10 +166,11 @@
 		{/snippet}
 		<div class="content">
 			<FilterChips items={CHIPS} bind:selected={chips} label="Быстрые фильтры" />
+			<!-- TabPane: the panes are the page's own markup, one for any layout (the full order card). -->
 			<Tabs bind:value={tab} items={TABS}>
-				{#snippet content(v)}
-					<p>Содержимое: {v}</p>
-				{/snippet}
+				{#each TABS as item (item.value)}
+					<TabPane value={item.value}><p>Содержимое: {item.value}</p></TabPane>
+				{/each}
 			</Tabs>
 			<div class="row">
 				<Button variant="secondary" onclick={() => (paletteOpen = true)}>Открыть палитру</Button>

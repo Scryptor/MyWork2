@@ -43,6 +43,7 @@ export { default as StatusBadge } from './StatusBadge.svelte';
 export { default as StatusPicker } from './StatusPicker.svelte';
 export { default as Switch } from './Switch.svelte';
 export { default as Tabs } from './Tabs.svelte';
+export { default as TabPane } from './TabPane.svelte';
 export { default as Textarea } from './Textarea.svelte';
 export { default as TextInput } from './TextInput.svelte';
 export { default as Timeline } from './Timeline.svelte';

@@ -360,4 +360,24 @@ test.describe('narrower than 1024px', () => {
 		await expect(regionOf(page, 'Статусы и сроки')).toContainText(`Заказ № ${o.id} принят`);
 		await expect(cardOf(page).getByRole('textbox', { name: 'Неисправность' })).toBeHidden();
 	});
+
+	test('the tabs have panels named by their tab', async ({ page, request }) => {
+		const o = await createOrder(request, { model: uniq('M') });
+		await openCard(page, o.id);
+		const card = cardOf(page);
+		const names = ['Заказ', 'История', 'Файлы'];
+		for (const active of names) {
+			await card.getByRole('tab', { name: active }).click();
+			await expect(card.getByRole('tabpanel', { name: active })).toBeVisible();
+			for (const other of names.filter((n) => n !== active)) {
+				await expect(card.getByRole('tabpanel', { name: other })).toHaveCount(0);
+			}
+			// Every tab points at an existing panel.
+			for (const name of names) {
+				const controls = await card.getByRole('tab', { name }).getAttribute('aria-controls');
+				expect(controls).toBeTruthy();
+				expect(await page.locator(`[id="${controls}"]`).count()).toBe(1);
+			}
+		}
+	});
 });

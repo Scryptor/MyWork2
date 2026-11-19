@@ -4,7 +4,7 @@ import type { AuditEntry } from '$api/AuditEntry';
 import type { AuditPage } from '$api/AuditPage';
 import type { HistoryQuery } from '$api/HistoryQuery';
 import { orderHistory } from '#lib/api/orders.js';
-import { mergeHistory } from './history.js';
+import { historyCursor, mergeHistory } from './history.js';
 
 /** «История изменений»: «Показать ещё» asks for this many more. */
 export const HISTORY_PAGE = 50;
@@ -52,7 +52,7 @@ export function createCardHistory(
 		try {
 			while (!timelineDone && timeline.length < timelineMax) {
 				const limit = Math.min(TIMELINE_PAGE, timelineMax - timeline.length);
-				const page = await api.orderHistory(id, { limit, before_id: timeline.at(-1)?.id });
+				const page = await api.orderHistory(id, { limit, ...historyCursor(timeline) });
 				if (mine !== seq) return;
 				timeline = mergeHistory(timeline, page.items);
 				timelineTotal = page.total;
@@ -151,7 +151,7 @@ export function createCardHistory(
 			try {
 				const page = await api.orderHistory(id, {
 					limit: HISTORY_PAGE,
-					before_id: entries.at(-1)?.id
+					...historyCursor(entries)
 				});
 				if (id !== orderId) return;
 				entries = mergeHistory(entries, page.items);
