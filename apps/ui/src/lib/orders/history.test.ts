@@ -1,6 +1,7 @@
 import type { AuditEntry } from '$api/AuditEntry';
 import { describe, expect, it } from 'vitest';
 import {
+	historyCursor,
 	historyItems,
 	mergeHistory,
 	statusBeforeIssue,
@@ -96,5 +97,14 @@ describe('mergeHistory', () => {
 		const fresh = [entry(5, 'a'), entry(4, 'a'), entry(3, 'a')];
 		expect(mergeHistory(shown, fresh).map((e) => e.id)).toEqual([5, 4, 3, 2, 1]);
 		expect(mergeHistory(shown, [entry(1, 'b')]).find((e) => e.id === 1)?.action).toBe('b');
+	});
+});
+
+describe('historyCursor', () => {
+	it('goes on after the last entry of the page as the server gave it, whatever its time', () => {
+		// 9 is at «2026-11-19», later than 8 («…18»), yet the last of the page: the cursor is after it.
+		const page = [entry(8, 'a'), entry(9, 'a')];
+		expect(historyCursor(page)).toEqual({ before_at: '2026-11-19T10:00:00', before_id: 9 });
+		expect(historyCursor([])).toBeUndefined();
 	});
 });

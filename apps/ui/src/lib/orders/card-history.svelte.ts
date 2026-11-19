@@ -4,7 +4,7 @@ import type { AuditEntry } from '$api/AuditEntry';
 import type { AuditPage } from '$api/AuditPage';
 import type { HistoryQuery } from '$api/HistoryQuery';
 import { orderHistory } from '#lib/api/orders.js';
-import { historyCursor, mergeHistory } from './history.js';
+import { historyCursor, mergeHistory, type HistoryCursor } from './history.js';
 
 /** «История изменений»: «Показать ещё» asks for this many more. */
 export const HISTORY_PAGE = 50;
@@ -33,11 +33,16 @@ export function createCardHistory(
 	let moreFailed = $state(false);
 	let timelineFailed = $state(false);
 	let loadingMore = $state(false);
+	/** Where «Показать ещё» and the timeline go on: after the last page each of them read. */
+	let entriesCursor: HistoryCursor | undefined;
+	let timelineCursor: HistoryCursor | undefined;
 	let seq = 0;
 
 	function reset() {
 		entries = [];
 		timeline = [];
+		entriesCursor = undefined;
+		timelineCursor = undefined;
 		timelineTotal = 0;
 		entriesDone = false;
 		timelineDone = false;
@@ -46,14 +51,15 @@ export function createCardHistory(
 		timelineFailed = false;
 	}
 
-	/** The timeline goes on to older entries by the id of the oldest one, until the journal or the limit ends. */
+	/** The timeline goes on to older entries after the last page it read, until the journal or the limit ends. */
 	async function extend(id: number, mine: number): Promise<void> {
 		timelineFailed = false;
 		try {
 			while (!timelineDone && timeline.length < timelineMax) {
 				const limit = Math.min(TIMELINE_PAGE, timelineMax - timeline.length);
-				const page = await api.orderHistory(id, { limit, ...historyCursor(timeline) });
+				const page = await api.orderHistory(id, { limit, ...timelineCursor });
 				if (mine !== seq) return;
+				timelineCursor = historyCursor(page.items) ?? timelineCursor;
 				timeline = mergeHistory(timeline, page.items);
 				timelineTotal = page.total;
 				if (page.items.length < limit) timelineDone = true;
@@ -122,6 +128,7 @@ export function createCardHistory(
 				}
 				if (entries.length === 0) {
 					entries = items.slice(0, HISTORY_PAGE);
+					entriesCursor = historyCursor(entries);
 					entriesDone = items.length <= HISTORY_PAGE;
 				} else {
 					const top = entries[0]?.id ?? 0;
@@ -130,7 +137,10 @@ export function createCardHistory(
 						items.filter((e) => e.id > top)
 					);
 				}
-				if (timeline.length === 0) timelineDone = items.length < TIMELINE_PAGE;
+				if (timeline.length === 0) {
+					timelineDone = items.length < TIMELINE_PAGE;
+					timelineCursor = historyCursor(items);
+				}
 				timeline = mergeHistory(timeline, items);
 				timelineTotal = latest.total;
 				failed = false;
@@ -149,11 +159,9 @@ export function createCardHistory(
 			loadingMore = true;
 			moreFailed = false;
 			try {
-				const page = await api.orderHistory(id, {
-					limit: HISTORY_PAGE,
-					...historyCursor(entries)
-				});
+				const page = await api.orderHistory(id, { limit: HISTORY_PAGE, ...entriesCursor });
 				if (id !== orderId) return;
+				entriesCursor = historyCursor(page.items) ?? entriesCursor;
 				entries = mergeHistory(entries, page.items);
 				if (page.items.length < HISTORY_PAGE) entriesDone = true;
 			} catch {

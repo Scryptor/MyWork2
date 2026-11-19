@@ -39,8 +39,8 @@ function journal(count: number) {
 	let all = Array.from({ length: count }, (_, i) => entry(count - i)).sort(shown);
 	return {
 		add(n: number) {
-			const top = all[0]?.id ?? 0;
-			all = [...Array.from({ length: n }, (_, i) => entry(top + n - i)), ...all];
+			const top = Math.max(0, ...all.map((e) => e.id));
+			all = [...Array.from({ length: n }, (_, i) => entry(top + n - i)), ...all].sort(shown);
 		},
 		orderHistory: vi.fn(async (_id: number, p: HistoryQuery) => {
 			const older = all.filter((e) => later(e, p));
@@ -176,6 +176,30 @@ describe('createCardHistory', () => {
 			const ids = h.entries.map((e) => e.id);
 			expect(new Set(ids).size).toBe(120);
 			expect(h.timeline).toHaveLength(120);
+		} finally {
+			clock = () => '2026-11-17T10:00:00';
+		}
+	});
+
+	it('pages on after the last page it read: a new entry on top with an earlier time skips nothing', async () => {
+		const api = journal(120);
+		const h = createCardHistory(api);
+		await h.refresh(7);
+		// The clock went back: the next entry is earlier than every one shown.
+		clock = (id) => (id > 120 ? '2026-11-17T08:00:00' : '2026-11-17T10:00:00');
+		try {
+			api.add(1);
+			await h.refresh(7);
+			expect(h.entries[0]?.id).toBe(121);
+			await h.more();
+			expect(api.orderHistory).toHaveBeenLastCalledWith(7, {
+				limit: HISTORY_PAGE,
+				before_at: '2026-11-17T10:00:00',
+				before_id: 71
+			});
+			while (h.hasMore) await h.more();
+			const ids = h.entries.map((e) => e.id);
+			expect(new Set(ids).size).toBe(121);
 		} finally {
 			clock = () => '2026-11-17T10:00:00';
 		}

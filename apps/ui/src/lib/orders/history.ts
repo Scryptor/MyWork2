@@ -77,17 +77,17 @@ export function mergeHistory(
 	return [...byId.values()].sort((a, b) => b.id - a.id);
 }
 
+export interface HistoryCursor {
+	before_at: string;
+	before_id: number;
+}
+
 /**
- * The cursor after the oldest entry in the order the server shows them (time, then id, both falling):
- * the entries shown are a prefix of that order, so it is the smallest by (time, id). The time is a
- * local time without offset, it compares as text.
+ * The cursor after a page as the server gave it (time, then id, both falling): its last entry. The next
+ * page goes on from the last page read, not from the oldest entry shown: entries added on top later (a
+ * refresh) may have an earlier time when the clock went back, and would make it skip the rest.
  */
-export function historyCursor(
-	entries: readonly AuditEntry[]
-): { before_at: string; before_id: number } | undefined {
-	let last: AuditEntry | undefined;
-	for (const e of entries) {
-		if (!last || e.at < last.at || (e.at === last.at && e.id < last.id)) last = e;
-	}
+export function historyCursor(page: readonly AuditEntry[]): HistoryCursor | undefined {
+	const last = page.at(-1);
 	return last && { before_at: last.at, before_id: last.id };
 }
