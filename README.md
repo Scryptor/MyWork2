@@ -84,7 +84,7 @@ npm run tauri build -- --debug           # пакет; на macOS — src-tauri/
 
 - Данные — в папке данных ОС (`~/Library/Application Support/MyWork3`, `%APPDATA%\MyWork3`, `~/.local/share/MyWork3`),
   при `portable.txt` рядом с исполняемым файлом — в `data` рядом с ним; журнал — `<папка данных>/logs/`, сбои —
-  `<папка данных>/logs/crash.txt`. Отладочная сборка (`tauri dev`,
+  `<папка данных>/logs/crash.txt` (до 1 МБ, старые записи отбрасываются). Отладочная сборка (`tauri dev`,
   `tauri build --debug`, `cargo run`) хранит данные в `MyWork3-dev`: ещё не выпущенная миграция не попадёт в базу
   установленной программы. `portable.txt` важнее обеих папок, но внутри пакета macOS (`MyWork.app/Contents/MacOS`)
   не действует: данные в пакете пропали бы при его замене. Без папки ОС (не заданы `HOME` / `APPDATA`) программа не

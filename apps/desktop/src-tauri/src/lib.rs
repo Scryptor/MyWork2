@@ -30,6 +30,11 @@ const WINDOW_SIZE: (f64, f64) = (1280.0, 800.0);
 const WINDOW_MIN_SIZE: (f64, f64) = (480.0, 400.0);
 /// Файл сбоев в папке журнала: пишется сразу, без очереди журнала, — успевает и перед аварийным выходом.
 const CRASH_FILE: &str = "crash.txt";
+/// Предел `crash.txt`: сверх него старые записи отбрасываются, остаются новые (повторяющийся сбой не
+/// заполняет диск).
+const CRASH_LIMIT: usize = 1024 * 1024;
+/// Начало записи о сбое в `crash.txt`: по нему файл обрезается целыми записями.
+const CRASH_MARK: &str = "=== ";
 
 /// То, что живёт, пока работает программа; отпускается по порядку в `RunEvent::Exit`.
 struct Desktop {
@@ -319,13 +324,40 @@ fn install_crash_report(crash_file: Option<PathBuf>) {
 fn write_crash(path: &Path, info: &std::panic::PanicHookInfo<'_>) {
     let when = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
     let backtrace = std::backtrace::Backtrace::force_capture();
-    let file = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path);
-    if let Ok(mut file) = file {
-        let _ = writeln!(file, "{when} сбой программы: {info}\n{backtrace}\n");
+    let entry = format!("{CRASH_MARK}{when} сбой программы: {info}\n{backtrace}\n\n");
+    let _ = append_crash(path, &entry, CRASH_LIMIT);
+}
+
+/// Дописывает запись в файл сбоев не больше `limit` байт: если не помещается, отбрасываются самые старые
+/// записи целиком (запись больше предела остаётся одна).
+fn append_crash(path: &Path, entry: &str, limit: usize) -> std::io::Result<()> {
+    let old = match std::fs::read(path) {
+        Ok(old) => old,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+        Err(e) => return Err(e),
+    };
+    if old.len() + entry.len() <= limit {
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)?;
+        return file.write_all(entry.as_bytes());
     }
+    // Остаются записи, что помещаются вместе с новой: с первого начала записи в последних `room` байтах.
+    let room = limit.saturating_sub(entry.len());
+    let from = old.len() - room.min(old.len());
+    let starts_entry = |at: usize| {
+        old[at..].starts_with(CRASH_MARK.as_bytes()) && (at == 0 || old[at - 1] == b'\n')
+    };
+    let kept = (from..old.len())
+        .find(|&at| starts_entry(at))
+        .map_or(&[][..], |at| &old[at..]);
+    let mut text = Vec::with_capacity(kept.len() + entry.len());
+    text.extend_from_slice(kept);
+    text.extend_from_slice(entry.as_bytes());
+    // Целиком или никак: временный файл рядом и замена переименованием.
+    let temporary = path.with_extension("txt.tmp");
+    std::fs::write(&temporary, &text).and_then(|()| std::fs::rename(&temporary, path))
 }
 
 fn panic_text(info: &std::panic::PanicHookInfo<'_>) -> String {
@@ -342,6 +374,39 @@ mod tests {
     use super::*;
     use std::str::FromStr;
     use tauri::utils::acl::RemoteUrlPattern;
+
+    #[test]
+    fn the_crash_file_keeps_the_newest_whole_entries_within_its_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(CRASH_FILE);
+        let entry = |n: usize| format!("{CRASH_MARK}сбой {n:02}\nстек\n\n");
+        let limit = 5 * entry(0).len();
+        for n in 0..5 {
+            append_crash(&path, &entry(n), limit).unwrap();
+        }
+        let all: String = (0..5).map(entry).collect();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), all);
+        for n in 5..12 {
+            append_crash(&path, &entry(n), limit).unwrap();
+            let text = std::fs::read_to_string(&path).unwrap();
+            assert!(text.len() <= limit, "{n}: {}", text.len());
+            assert!(text.starts_with(CRASH_MARK), "{n}: {text}");
+            assert!(text.ends_with(&entry(n)), "{n}: {text}");
+        }
+        let newest: String = (7..12).map(entry).collect();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), newest);
+        // Запись больше предела остаётся одна; временного файла нет.
+        let huge = format!("{CRASH_MARK}{}\n\n", "x".repeat(limit));
+        append_crash(&path, &huge, limit).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), huge);
+        append_crash(&path, &entry(12), limit).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), entry(12));
+        let names: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(names, vec![std::ffi::OsString::from(CRASH_FILE)]);
+    }
 
     /// Права окна — узкие: только адрес встроенного сервера, только выбор папки и события окна.
     #[test]
