@@ -19,7 +19,8 @@
 	import { groupDigits } from '#lib/format/digits.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import { LATEST_REPORT, reportRoute } from '#lib/import/report.js';
-	import { isTauri, pickFolder } from '#lib/platform/folder.js';
+	import { pickFolder } from '#lib/platform/folder.js';
+	import { isTauri } from '#lib/platform/tauri.js';
 	import Button from '#lib/ui/Button.svelte';
 	import Callout from '#lib/ui/Callout.svelte';
 	import ConfirmDialog from '#lib/ui/ConfirmDialog.svelte';

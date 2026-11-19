@@ -1,0 +1,13 @@
+# Своя реализация `option-ext` 0.2.0 под MIT (тот же интерфейс, код написан заново по сигнатурам).
+# Оригинал — MPL-2.0; его тянет `tauri → dirs → dirs-sys`, а в программу MPL не берём (AGENTS.md).
+# Подключается через `[patch.crates-io]` в `../../Cargo.toml`.
+[package]
+name = "option-ext"
+version = "0.2.0"
+edition = "2021"
+license = "MIT"
+description = "Extra operations on Option: contains, map_or2, map_or_else2 (MIT reimplementation for MyWork)"
+publish = false
+
+[lib]
+path = "src/lib.rs"

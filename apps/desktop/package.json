@@ -4,7 +4,8 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
-		"tauri": "tauri"
+		"tauri": "tauri",
+		"licenses": "node scripts/check-licenses.mjs"
 	},
 	"devDependencies": {
 		"@tauri-apps/cli": "2.12.6"

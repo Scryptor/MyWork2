@@ -79,8 +79,8 @@ jobs:
       - run: npm run verify
 
   # The desktop program (Tauri 2) is a Cargo workspace of its own, so the main one builds without WebKitGTK on
-  # Linux. Format, lints and tests only — the installers come with plan 11. tauri-build copies the built interface
-  # (apps/ui/build) as a resource of the program, so the interface is built first.
+  # Linux. Format, lints, tests and the licences of the program — the installers come with plan 11. tauri-build
+  # copies the built interface (apps/ui/build) as a resource of the program, so the interface is built first.
   desktop:
     name: desktop (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -121,11 +121,16 @@ jobs:
         working-directory: apps/ui
         run: npm run build
       - name: Format
-        run: cargo fmt --check
+        run: cargo fmt --all --check
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
       - name: Test
         run: cargo test
+      # What goes into the program (normal dependencies, every desktop target at once): no MPL or copyleft.
+      - name: Licences of the program
+        if: runner.os == 'Linux'
+        working-directory: apps/desktop
+        run: npm run licenses
 
   # The server is built once; both browsers take the binary as an artifact. With it goes make_fixture, which
   # writes the synthetic MyWork 2 folder of the import tests (the artifact keeps the paths below target/debug).

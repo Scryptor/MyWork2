@@ -9,6 +9,8 @@ rust-version = "1.95"
 publish = false
 
 [workspace]
+members = [".", "vendor/option-ext"]
+default-members = [".", "vendor/option-ext"]
 
 [lib]
 name = "mw_desktop"
@@ -30,6 +32,8 @@ tauri-build = { version = "2.7", features = [] }
 
 [dependencies]
 mw-server = { path = "../../../crates/mw-server" }
+chrono = "0.4"
+open = "5"
 tauri = { version = "2.12", features = [] }
 tauri-plugin-dialog = "2.8"
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
@@ -41,6 +45,10 @@ url = "2"
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros", "net", "io-util"] }
 tempfile = "3"
+
+# `option-ext` (через `tauri → dirs → dirs-sys`) — под MPL-2.0; вместо него своя реализация под MIT (AGENTS.md).
+[patch.crates-io]
+option-ext = { path = "vendor/option-ext" }
 
 # Argon2 в отладочной сборке ~10× медленнее (как в основном workspace).
 [profile.dev.package.argon2]

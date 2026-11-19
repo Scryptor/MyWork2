@@ -5,10 +5,13 @@
 //! и события окна. Одна копия на папку данных (`single`), закрытие окна останавливает сервер штатно.
 
 pub mod launch;
+pub mod navigation;
 pub mod single;
 
 use mw_server::LogGuard;
+use navigation::Navigation;
 use std::collections::HashMap;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
@@ -25,6 +28,8 @@ const MAIN_WINDOW: &str = "main";
 /// экране — меньше.
 const WINDOW_SIZE: (f64, f64) = (1280.0, 800.0);
 const WINDOW_MIN_SIZE: (f64, f64) = (480.0, 400.0);
+/// Файл сбоев в папке журнала: пишется сразу, без очереди журнала, — успевает и перед аварийным выходом.
+const CRASH_FILE: &str = "crash.txt";
 
 /// То, что живёт, пока работает программа; отпускается по порядку в `RunEvent::Exit`.
 struct Desktop {
@@ -33,10 +38,20 @@ struct Desktop {
     log: Mutex<Option<LogGuard>>,
 }
 
+/// С чем программа входит в цикл окон.
+enum Start {
+    /// Папка данных своя: поднять сервер и открыть окно.
+    Ready { data_dir: PathBuf, log_dir: PathBuf },
+    /// Папку данных держит другая копия.
+    Busy(PathBuf),
+    /// Запуск невозможен: текст для человека и папка журнала, если она есть.
+    Failed(String, Option<PathBuf>),
+}
+
 static APP: OnceLock<AppHandle> = OnceLock::new();
 static MAIN_THREAD: OnceLock<ThreadId> = OnceLock::new();
 /// Окно о сбое показывается один раз: повторяющийся сбой (например, в опрашиваемом запросе) не засыпает
-/// человека окнами, всё остальное — в журнале.
+/// человека окнами, всё остальное — в журнале и в `crash.txt`.
 static CRASH_SHOWN: AtomicBool = AtomicBool::new(false);
 
 fn locked<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -46,13 +61,32 @@ fn locked<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 /// Запускает программу; возвращается только если окно не удалось создать.
 pub fn run() {
     let _ = MAIN_THREAD.set(std::thread::current().id());
-    let exe_dir = std::env::current_exe()
-        .ok()
-        .and_then(|exe| exe.parent().map(Path::to_path_buf))
-        .unwrap_or_default();
-    let data_dir = launch::data_dir(&exe_dir);
-    let log_dir = data_dir.join("logs");
-    let log = match mw_server::init_logging(Some(&log_dir)) {
+    let data_dir = std::env::current_exe()
+        .map_err(|e| format!("не удалось узнать, где лежит программа: {e}"))
+        .and_then(|exe| {
+            let exe_dir = exe.parent().map(Path::to_path_buf).unwrap_or_default();
+            launch::data_dir(&exe_dir).map_err(|e| e.to_string())
+        });
+    // Замок — до журнала в файл и до сервера: вторая копия не пишет в общий журнал и не открывает базу.
+    let (start, lock) = match data_dir {
+        Ok(data_dir) => match single::acquire(&data_dir) {
+            Ok(lock) => (
+                Start::Ready {
+                    log_dir: data_dir.join("logs"),
+                    data_dir,
+                },
+                Some(lock),
+            ),
+            Err(single::LockError::Busy(dir)) => (Start::Busy(dir), None),
+            Err(e) => (Start::Failed(e.to_string(), None), None),
+        },
+        Err(e) => (Start::Failed(e, None), None),
+    };
+    let log_dir = match &start {
+        Start::Ready { log_dir, .. } => Some(log_dir.clone()),
+        _ => None,
+    };
+    let log = match mw_server::init_logging(log_dir.as_deref()) {
         Ok(guard) => Some(guard),
         Err(e) => {
             let guard = mw_server::init_logging(None).ok();
@@ -60,18 +94,12 @@ pub fn run() {
             guard
         }
     };
-    install_crash_report(log_dir.clone());
-    tracing::info!(
-        "MyWork {} для компьютера, папка данных {}",
-        env!("CARGO_PKG_VERSION"),
-        data_dir.display()
-    );
-    // Замок берётся до сервера: вторая копия не открывает базу первой.
-    let lock = single::acquire(&data_dir);
+    install_crash_report(log_dir.map(|dir| dir.join(CRASH_FILE)));
+    tracing::info!("MyWork {} для компьютера", env!("CARGO_PKG_VERSION"));
 
     let desktop = Desktop {
         running: Mutex::new(None),
-        lock: Mutex::new(None),
+        lock: Mutex::new(lock),
         log: Mutex::new(log),
     };
     let built = tauri::Builder::default()
@@ -79,12 +107,14 @@ pub fn run() {
         .manage(desktop)
         .setup(move |app| {
             let _ = APP.set(app.handle().clone());
-            let problem = match lock {
-                Ok(lock) => {
-                    *locked(&app.state::<Desktop>().lock) = Some(lock);
-                    open(app, &data_dir).err().map(|e| e.to_string())
+            match start {
+                Start::Ready { data_dir, log_dir } => {
+                    tracing::info!("папка данных {}", data_dir.display());
+                    if let Err(e) = open(app, &data_dir) {
+                        startup_failed(app.handle(), &e.to_string(), Some(&log_dir));
+                    }
                 }
-                Err(single::LockError::Busy(dir)) => {
+                Start::Busy(dir) => {
                     tracing::warn!("папка данных {} занята другой копией", dir.display());
                     let handle = app.handle().clone();
                     app.dialog()
@@ -95,19 +125,10 @@ pub fn run() {
                         .title(TITLE)
                         .kind(MessageDialogKind::Info)
                         .show(move |_| handle.exit(0));
-                    None
                 }
-                Err(e) => Some(e.to_string()),
-            };
-            if let Some(problem) = problem {
-                tracing::error!("программа не запущена: {problem}");
-                fail(
-                    app.handle(),
-                    format!(
-                        "Не удалось запустить программу: {problem}\n\nПодробности — в журнале: {}",
-                        log_dir.display()
-                    ),
-                );
+                Start::Failed(problem, log_dir) => {
+                    startup_failed(app.handle(), &problem, log_dir.as_deref());
+                }
             }
             Ok(())
         })
@@ -135,6 +156,8 @@ fn open(app: &App, data_dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
 
     let (width, height) = window_size(app);
     let origin = url.origin();
+    let own = origin.clone();
+    // Куда сохраняется каждая принятая загрузка: macOS в конце пути не сообщает.
     let saved = Mutex::new(HashMap::<Url, PathBuf>::new());
     WebviewWindowBuilder::new(app, MAIN_WINDOW, WebviewUrl::External(url))
         .title(TITLE)
@@ -143,44 +166,67 @@ fn open(app: &App, data_dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
         .center()
         // Масштаб страницы выключен: размер программы меняют её собственные клавиши (Ctrl/⌘ + − 0).
         .zoom_hotkeys_enabled(false)
-        // Окно показывает только свой сервер: права окна (`capabilities`) не уходят чужим страницам.
-        .on_navigation(move |to| to.scheme() == "about" || to.origin() == origin)
-        // «Сохранить отчёт» и файлы-вложения: WebKit без обработчика загрузку отменяет.
-        .on_download(move |webview, event| {
-            match event {
-                DownloadEvent::Requested { url, destination } => {
-                    tracing::info!("файл сохраняется в {}", destination.display());
-                    locked(&saved).insert(url, destination.clone());
-                }
-                DownloadEvent::Finished { url, path, success } => {
-                    let path = locked(&saved).remove(&url).or(path);
-                    let (kind, text) = match (success, path) {
-                        (true, Some(path)) => (
-                            MessageDialogKind::Info,
-                            format!("Файл сохранён: {}", path.display()),
-                        ),
-                        (true, None) => (MessageDialogKind::Info, "Файл сохранён".to_string()),
-                        (false, _) => {
-                            tracing::warn!("файл не сохранён: {url}");
-                            (
-                                MessageDialogKind::Warning,
-                                "Не удалось сохранить файл".to_string(),
-                            )
-                        }
-                    };
-                    webview
-                        .dialog()
-                        .message(text)
-                        .title(TITLE)
-                        .kind(kind)
-                        .show(|_| {});
-                }
-                _ => {}
+        .on_navigation(move |to| match navigation::navigation(to, &origin) {
+            Navigation::Allow => true,
+            Navigation::System => {
+                open_in_system(to);
+                false
             }
-            true
+            Navigation::Block => {
+                tracing::warn!("переход не открыт: схема {}", to.scheme());
+                false
+            }
+        })
+        // «Сохранить отчёт» и файлы-вложения: WebKit без обработчика загрузку отменяет.
+        .on_download(move |webview, event| match event {
+            DownloadEvent::Requested { url, destination } => {
+                if !navigation::download_allowed(&url, &own) {
+                    tracing::warn!("загрузка не со своего сервера отклонена");
+                    return false;
+                }
+                // Имя файла может назвать клиента: в журнал не пишется.
+                tracing::info!("файл сохраняется в папку загрузок");
+                locked(&saved).insert(url, destination.clone());
+                true
+            }
+            DownloadEvent::Finished { url, path, success } => {
+                // Только загрузки, принятые выше.
+                let Some(destination) = locked(&saved).remove(&url) else {
+                    return true;
+                };
+                let path = path.unwrap_or(destination);
+                let (kind, text) = if success {
+                    (
+                        MessageDialogKind::Info,
+                        format!("Файл сохранён: {}", path.display()),
+                    )
+                } else {
+                    tracing::warn!("файл не сохранён");
+                    (
+                        MessageDialogKind::Warning,
+                        "Не удалось сохранить файл".to_string(),
+                    )
+                };
+                webview
+                    .dialog()
+                    .message(text)
+                    .title(TITLE)
+                    .kind(kind)
+                    .show(|_| {});
+                true
+            }
+            _ => true,
         })
         .build()?;
     Ok(())
+}
+
+/// Звонок, письмо, внешний сайт — программой системы. Адрес может назвать клиента (номер, почта): в журнал
+/// идёт только схема.
+fn open_in_system(url: &Url) {
+    if let Err(e) = open::that_detached(url.as_str()) {
+        tracing::warn!("система не открыла адрес со схемой {}: {e}", url.scheme());
+    }
 }
 
 /// `WINDOW_SIZE`, но не больше 90 % рабочей области основного монитора.
@@ -199,8 +245,16 @@ fn window_size(app: &App) -> (f64, f64) {
     }
 }
 
-/// Окно с ошибкой запуска; по нажатию программа завершается.
-fn fail(app: &AppHandle, text: String) {
+/// Окно с ошибкой запуска (и путём к журналу, если он есть); по нажатию программа завершается.
+fn startup_failed(app: &AppHandle, problem: &str, log_dir: Option<&Path>) {
+    tracing::error!("программа не запущена: {problem}");
+    let text = match log_dir {
+        Some(dir) => format!(
+            "Не удалось запустить программу: {problem}\n\nПодробности — в журнале: {}",
+            dir.display()
+        ),
+        None => format!("Не удалось запустить программу: {problem}"),
+    };
     let handle = app.clone();
     app.dialog()
         .message(text)
@@ -209,9 +263,15 @@ fn fail(app: &AppHandle, text: String) {
         .show(move |_| handle.exit(1));
 }
 
-/// Выход (последнее окно закрыто, ⌘Q, `exit`): сервер останавливается штатно — дожидается начатого
-/// (до 30 с, запись импорта — до фиксации) и закрывает базу; затем отпускается замок и дописывается журнал.
+/// Выход (последнее окно закрыто, ⌘Q, `exit`): окно прячется, чтобы не висеть замершим, сервер
+/// останавливается штатно — дожидается начатого (до 30 с, запись импорта — до фиксации) и закрывает базу;
+/// затем отпускается замок и дописывается журнал.
 fn shut_down(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window(MAIN_WINDOW)
+        && let Err(e) = window.hide()
+    {
+        tracing::warn!("окно не спрятано: {e}");
+    }
     let desktop = app.state::<Desktop>();
     let running = locked(&desktop.running).take();
     if let Some(running) = running {
@@ -224,11 +284,14 @@ fn shut_down(app: &AppHandle) {
     drop(locked(&desktop.log).take());
 }
 
-/// Сбой (паника) — в журнал и, если программа уже запущена и сбой не в главном потоке, окном с путём
-/// к журналу. Главный поток, упав, окно показать не может: тогда остаётся запись в журнале.
-fn install_crash_report(log_dir: PathBuf) {
+/// Сбой (паника): сразу в `crash.txt` (без очереди журнала — успевает и перед аварийным выходом), в журнал
+/// и, если сбой не в главном потоке, одним окном с путём к файлу. Главный поток, упав, окно показать не может.
+fn install_crash_report(crash_file: Option<PathBuf>) {
     let default = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
+        if let Some(path) = &crash_file {
+            write_crash(path, info);
+        }
         tracing::error!("сбой программы: {info}");
         default(info);
         let on_main = MAIN_THREAD.get() == Some(&std::thread::current().id());
@@ -236,17 +299,33 @@ fn install_crash_report(log_dir: PathBuf) {
             && !on_main
             && !CRASH_SHOWN.swap(true, Ordering::SeqCst)
         {
+            let details = match &crash_file {
+                Some(path) => format!("Подробности — в файле {}", path.display()),
+                None => "Подробности — в выводе программы".to_string(),
+            };
             app.dialog()
                 .message(format!(
-                    "Внутренняя ошибка программы: {}\n\nПодробности — в журнале: {}",
-                    panic_text(info),
-                    log_dir.display()
+                    "Внутренняя ошибка программы: {}\n\n{details}",
+                    panic_text(info)
                 ))
                 .title(TITLE)
                 .kind(MessageDialogKind::Error)
                 .show(|_| {});
         }
     }));
+}
+
+/// Дописывает сбой в файл: время (UTC, как в журнале), место и текст, стек вызовов.
+fn write_crash(path: &Path, info: &std::panic::PanicHookInfo<'_>) {
+    let when = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    let backtrace = std::backtrace::Backtrace::force_capture();
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path);
+    if let Ok(mut file) = file {
+        let _ = writeln!(file, "{when} сбой программы: {info}\n{backtrace}\n");
+    }
 }
 
 fn panic_text(info: &std::panic::PanicHookInfo<'_>) -> String {

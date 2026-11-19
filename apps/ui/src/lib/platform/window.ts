@@ -2,7 +2,7 @@
 // Moving the window to another monitor with the same pixel ratio fires no `resize` or `focus` in WebKit,
 // so «Авто» would keep the old monitor's scale until then; the window itself reports the move.
 
-import { isTauri } from './folder.js';
+import { isTauri } from './tauri.js';
 
 type Unlisten = () => void;
 

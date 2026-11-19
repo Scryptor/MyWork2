@@ -1,6 +1,6 @@
 //! Встроенный сервер программы для компьютера: папка данных, адрес на 127.0.0.1, штатная остановка.
 
-use mw_server::{Config, Server, ServerError, os_data_dir, resolve_data_dir};
+use mw_server::{Config, DATA_DIR_NAME, Server, ServerError, os_data_dir};
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 use tokio::sync::oneshot;
@@ -9,10 +9,37 @@ use tokio::task::JoinHandle;
 /// Файл настроек этого компьютера в папке данных (спецификация, «Где лежат данные»).
 pub const LOCAL_FILE: &str = "local.json";
 
-/// Папка данных программы: `data` рядом с программой при `portable.txt`, иначе папка данных ОС + `MyWork3`.
-/// Если ОС свою папку не назвала (нет `HOME` / `APPDATA`), данные тоже лежат в `data` рядом с программой.
-pub fn data_dir(exe_dir: &Path) -> PathBuf {
-    resolve_data_dir(None, Some(exe_dir), os_data_dir()).unwrap_or_else(|_| exe_dir.join("data"))
+/// Файл рядом с программой, переводящий её в портативный режим (данные — в `data` рядом).
+pub const PORTABLE_FILE: &str = "portable.txt";
+
+/// Папка данных программы этой сборки: см. `data_dir_for`.
+pub fn data_dir(exe_dir: &Path) -> Result<PathBuf, ServerError> {
+    data_dir_for(exe_dir, os_data_dir(), cfg!(debug_assertions))
+}
+
+/// Папка данных: `data` рядом с программой при `portable.txt`; иначе в папке данных ОС — `MyWork3`, а у
+/// отладочной сборки (`dev`) — `MyWork3-dev`: сборка из рабочей копии может применить ещё не выпущенную
+/// миграцию, и установленная программа на такой базе больше бы не запустилась. Без папки ОС (нет `HOME` /
+/// `APPDATA`) — ошибка: молча писать рядом с программой или в текущую папку нельзя.
+pub fn data_dir_for(
+    exe_dir: &Path,
+    os_dir: Option<PathBuf>,
+    dev: bool,
+) -> Result<PathBuf, ServerError> {
+    if exe_dir.join(PORTABLE_FILE).exists() {
+        return Ok(exe_dir.join("data"));
+    }
+    let name = if dev {
+        format!("{DATA_DIR_NAME}-dev")
+    } else {
+        DATA_DIR_NAME.to_string()
+    };
+    os_dir.map(|dir| dir.join(name)).ok_or_else(|| {
+        ServerError::Config(format!(
+            "не удалось определить папку данных: система не назвала свою папку (не заданы HOME / APPDATA). \
+             Чтобы хранить данные рядом с программой, положите рядом с ней файл {PORTABLE_FILE}"
+        ))
+    })
 }
 
 /// Работающий встроенный сервер.
@@ -41,19 +68,18 @@ impl Running {
 /// (из `local.json`), если он свободен, иначе любой свободный: у окна тот же адрес, а с ним и источник,
 /// к которому браузерное хранилище привязывает настройки вида, сохранённые виды и вход.
 pub async fn start(data_dir: &Path, ui_dir: &Path) -> Result<Running, ServerError> {
-    let port = remembered_port(data_dir)
-        .filter(|&port| port_is_free(port))
-        .unwrap_or(0);
-    let config = Config {
-        listen: SocketAddr::from((Ipv4Addr::LOCALHOST, port)),
-        data_dir: data_dir.to_path_buf(),
-        database_url: None,
-        timezone: None,
-        ui_dir: Some(ui_dir.to_path_buf()),
+    let remembered = remembered_port(data_dir);
+    let server = match Server::start(&config(data_dir, ui_dir, remembered.unwrap_or(0))).await {
+        Err(ServerError::Io { source, .. })
+            if remembered.is_some() && port_taken(source.kind()) =>
+        {
+            tracing::info!("прежний порт занят, сервер возьмёт свободный");
+            Server::start(&config(data_dir, ui_dir, 0)).await?
+        }
+        started => started?,
     };
-    let server = Server::start(&config).await?;
     let addr = server.local_addr();
-    if addr.port() != port {
+    if Some(addr.port()) != remembered {
         remember_port(data_dir, addr.port());
     }
     let (stop, stopped) = oneshot::channel::<()>();
@@ -67,10 +93,23 @@ pub async fn start(data_dir: &Path, ui_dir: &Path) -> Result<Running, ServerErro
     })
 }
 
-/// Свободен ли порт на 127.0.0.1 прямо сейчас (проверка привязкой; занять его сразу после может кто-то
-/// другой — тогда `Server::start` сообщит, что адрес занят).
-fn port_is_free(port: u16) -> bool {
-    std::net::TcpListener::bind((Ipv4Addr::LOCALHOST, port)).is_ok()
+fn config(data_dir: &Path, ui_dir: &Path, port: u16) -> Config {
+    Config {
+        listen: SocketAddr::from((Ipv4Addr::LOCALHOST, port)),
+        data_dir: data_dir.to_path_buf(),
+        database_url: None,
+        timezone: None,
+        ui_dir: Some(ui_dir.to_path_buf()),
+    }
+}
+
+/// Порт занят другой программой (`AddrInUse`) или закрыт для программ системой (Windows резервирует
+/// диапазоны портов, там привязка даёт `PermissionDenied`).
+fn port_taken(kind: std::io::ErrorKind) -> bool {
+    matches!(
+        kind,
+        std::io::ErrorKind::AddrInUse | std::io::ErrorKind::PermissionDenied
+    )
 }
 
 fn read_local(data_dir: &Path) -> Option<serde_json::Map<String, serde_json::Value>> {
@@ -103,7 +142,12 @@ fn remember_port(data_dir: &Path, port: u16) {
     };
     local.insert("port".into(), port.into());
     let text = serde_json::Value::Object(local).to_string();
-    if let Err(e) = std::fs::write(&path, text) {
+    // Целиком или никак: временный файл рядом и замена переименованием.
+    let temporary = data_dir.join(format!("{LOCAL_FILE}.tmp"));
+    let written =
+        std::fs::write(&temporary, text).and_then(|()| std::fs::rename(&temporary, &path));
+    if let Err(e) = written {
+        let _ = std::fs::remove_file(&temporary);
         tracing::warn!("не удалось запомнить порт в {}: {e}", path.display());
     }
 }
@@ -146,14 +190,78 @@ mod tests {
     }
 
     #[test]
-    fn portable_txt_next_to_the_program_keeps_the_data_beside_it() {
+    fn portable_txt_next_to_the_program_keeps_the_data_beside_it_in_any_build() {
+        let exe = tempfile::tempdir().unwrap();
+        std::fs::write(exe.path().join("portable.txt"), "").unwrap();
+        for dev in [false, true] {
+            assert_eq!(
+                data_dir_for(exe.path(), Some("/os".into()), dev).unwrap(),
+                exe.path().join("data")
+            );
+            assert_eq!(
+                data_dir_for(exe.path(), None, dev).unwrap(),
+                exe.path().join("data")
+            );
+        }
+    }
+
+    #[test]
+    fn a_debug_build_has_its_own_folder_so_unreleased_migrations_never_reach_the_installed_program()
+    {
         let exe = tempfile::tempdir().unwrap();
         assert_eq!(
-            data_dir(exe.path()),
-            mw_server::os_data_dir().unwrap().join("MyWork3")
+            data_dir_for(exe.path(), Some("/os".into()), false).unwrap(),
+            PathBuf::from("/os").join("MyWork3")
         );
-        std::fs::write(exe.path().join("portable.txt"), "").unwrap();
-        assert_eq!(data_dir(exe.path()), exe.path().join("data"));
+        assert_eq!(
+            data_dir_for(exe.path(), Some("/os".into()), true).unwrap(),
+            PathBuf::from("/os").join("MyWork3-dev")
+        );
+        // Эта сборка тестов — отладочная (или выпускная при `--release`): `data_dir` следует ей.
+        let name = if cfg!(debug_assertions) {
+            "MyWork3-dev"
+        } else {
+            "MyWork3"
+        };
+        assert_eq!(
+            data_dir(exe.path()).unwrap(),
+            mw_server::os_data_dir().unwrap().join(name)
+        );
+    }
+
+    #[test]
+    fn without_a_folder_of_the_system_the_start_fails_clearly_instead_of_writing_beside_the_program()
+     {
+        let exe = tempfile::tempdir().unwrap();
+        let error = data_dir_for(exe.path(), None, false)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("папку данных"), "{error}");
+        assert!(error.contains("portable.txt"), "{error}");
+        assert!(!exe.path().join("data").exists());
+    }
+
+    #[test]
+    fn local_settings_are_replaced_whole_through_a_temporary_file() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join(LOCAL_FILE), r#"{"printer": "Принтер"}"#).unwrap();
+        remember_port(dir.path(), 50946);
+        let names: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect();
+        assert_eq!(
+            names,
+            vec![std::ffi::OsString::from(LOCAL_FILE)],
+            "временный файл убран"
+        );
+        let local: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(dir.path().join(LOCAL_FILE)).unwrap())
+                .unwrap();
+        assert_eq!(
+            local,
+            serde_json::json!({"port": 50946, "printer": "Принтер"})
+        );
     }
 
     #[tokio::test(flavor = "multi_thread")]

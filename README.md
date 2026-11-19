@@ -78,15 +78,20 @@ npm run tauri build -- --debug           # пакет; на macOS — src-tauri/
 ```
 
 - Данные — в папке данных ОС (`~/Library/Application Support/MyWork3`, `%APPDATA%\MyWork3`, `~/.local/share/MyWork3`),
-  при `portable.txt` рядом с исполняемым файлом — в `data` рядом с ним; журнал — `<папка данных>/logs/`.
+  при `portable.txt` рядом с исполняемым файлом — в `data` рядом с ним; журнал — `<папка данных>/logs/`, сбои —
+  `<папка данных>/logs/crash.txt`. Отладочная сборка (`tauri dev`, `tauri build --debug`, `cargo run`) хранит данные в
+  `MyWork3-dev`: ещё не выпущенная миграция не попадёт в базу установленной программы. `portable.txt` важнее обеих
+  папок. Без папки ОС (не заданы `HOME` / `APPDATA`) программа не запускается и говорит об этом.
 - Порт выбирается при первом запуске и запоминается в `<папка данных>/local.json`: адрес окна не меняется, и вместе с
   ним остаются настройки вида, сохранённые виды и вход.
 - Одна копия на папку данных (замок `<папка данных>/mywork.lock`): вторая копия сообщает «Программа уже запущена».
 - Закрытие окна останавливает сервер штатно: перенос файлов черновиков и начатая запись импорта доходят до конца,
   импорт до записи отменяется, база закрывается. Ошибка запуска и сбой показываются окном с путём к журналу.
+- Звонок (`tel:`), письмо (`mailto:`) и внешние сайты открывает система; окно показывает только свой сервер.
 - Это отдельный Cargo-workspace (`apps/desktop/src-tauri`, свой `Cargo.lock`): проверки основного workspace его не
-  собирают. Его проверки — `cd apps/desktop/src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings
-  && cargo test`; перед ними нужна собранная `apps/ui/build` (`npm run build` в `apps/ui`).
+  собирают. Его проверки — `cd apps/desktop/src-tauri && cargo fmt --all --check && cargo clippy --all-targets -- -D
+  warnings && cargo test`, лицензии — `npm run licenses` в `apps/desktop`; перед ними нужна собранная `apps/ui/build`
+  (`npm run build` в `apps/ui`).
 
 ## Лицензия
 
