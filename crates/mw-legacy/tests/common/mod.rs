@@ -83,6 +83,7 @@ pub fn options(src: &Path, data: &Path, replace: bool) -> ImportOptions {
         backups_dir: data.join("backups"),
         replace,
         progress: None,
+        cancel: None,
     }
 }
 

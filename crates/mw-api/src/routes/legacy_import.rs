@@ -56,7 +56,8 @@ pub(super) async fn check_legacy_folder(
 }
 
 /// Запуск переноса фоновой задачей; ход — `GET /legacy-import/current`. Одновременно идёт один
-/// импорт: второй запуск — 409. Ошибка переноса приходит в ходе (`error`), а не ответом
+/// импорт: второй запуск — 409. Ошибка переноса приходит в ходе (`error`), а не ответом. Остановка
+/// сервера до записи в базу прерывает импорт, во время записи — дожидается её
 /// (права `settings_manage` и `users_manage`, только сервер на этом компьютере).
 #[utoipa::path(
     post,
@@ -86,7 +87,8 @@ pub(super) async fn start_legacy_import(
         replace = body.replace,
         "импорт из MyWork 2 запущен из интерфейса"
     );
-    tokio::spawn(run_import(
+    // На трекере `Core`: остановка сервера отменяет импорт до записи в базу, а начатую запись ждёт.
+    state.core.spawn_background(run_import(
         state.import.clone(),
         state.core.clone(),
         actor,
@@ -96,6 +98,7 @@ pub(super) async fn start_legacy_import(
             backups_dir: data_dir.join("backups"),
             replace: body.replace,
             progress: None,
+            cancel: Some(state.core.shutdown_token()),
         },
         data_dir,
     ));

@@ -6,13 +6,14 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use common::*;
-use mw_core::{Actor, NewClient};
+use mw_core::{Actor, AttachmentVariant, Core, NewClient};
 use mw_legacy::fixture::FixtureVersion::V32;
 use mw_legacy::{
-    ImportStage, LegacyError, Severity, StartedFrom, WarningCode, check_folder,
-    import_error_message, import_folder, import_item, remove_abandoned_staging, report_view,
+    ImportOptions, ImportStage, LegacyError, Severity, StartedFrom, WarningCode, check_folder,
+    finish_interrupted_imports, import_error_message, import_folder, import_item, report_view,
     write_report_files,
 };
+use tokio_util::sync::CancellationToken;
 
 type Res = Result<(), Box<dyn std::error::Error>>;
 
@@ -199,23 +200,184 @@ async fn stored_report_gives_the_list_item_groups_and_the_command_text() -> Res 
     Ok(())
 }
 
+/// Промежуточные папки `.import-*` в папке вложений.
+fn staging_dirs(att: &Path) -> Vec<std::path::PathBuf> {
+    let Ok(entries) = std::fs::read_dir(att) else {
+        return Vec::new();
+    };
+    let mut dirs: Vec<_> = entries
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.is_dir())
+        .filter(|p| {
+            p.file_name()
+                .unwrap()
+                .to_string_lossy()
+                .starts_with(".import-")
+        })
+        .collect();
+    dirs.sort();
+    dirs
+}
+
+/// Импорт «падает» (паника, как обрыв процесса) в начале этапа `stage`.
+async fn crash_at(core: &Core, mut options: ImportOptions, stage: ImportStage) {
+    options.progress = Some(Arc::new(move |s, _| {
+        if s == stage {
+            panic!("проверка: обрыв импорта на этапе {s:?}");
+        }
+    }));
+    let core = core.clone();
+    let r = tokio::spawn(async move { import_folder(&core, &admin(), &options).await }).await;
+    assert!(r.unwrap_err().is_panic());
+}
+
 #[tokio::test]
-async fn abandoned_staging_is_removed_but_files_of_a_written_import_are_kept() {
-    let att = tempfile::tempdir().unwrap();
-    let abandoned = att.path().join(".import-20261111-090000");
-    std::fs::create_dir_all(abandoned.join("orders/1")).unwrap();
-    std::fs::write(abandoned.join("orders/1/a.jpg"), b"x").unwrap();
-    std::fs::create_dir_all(att.path().join("orders/2")).unwrap();
-    std::fs::write(att.path().join("orders/2/b.jpg"), b"y").unwrap();
-    std::fs::write(att.path().join(".import-file"), b"z").unwrap();
-    let cleanup = remove_abandoned_staging(att.path());
-    assert_eq!(cleanup.removed, std::slice::from_ref(&abandoned));
-    assert!(cleanup.kept.is_empty());
-    assert!(!abandoned.exists());
-    assert!(att.path().join("orders/2/b.jpg").exists());
-    assert!(att.path().join(".import-file").exists());
-    let none = remove_abandoned_staging(&att.path().join("missing"));
-    assert!(none.removed.is_empty() && none.kept.is_empty());
+async fn abandoned_staging_is_removed_at_start() -> Res {
+    for t in cores().await {
+        let att = tempfile::tempdir()?;
+        let abandoned = att.path().join(".import-20261111-090000");
+        std::fs::create_dir_all(abandoned.join("orders/1"))?;
+        std::fs::write(abandoned.join("orders/1/a.jpg"), b"x")?;
+        std::fs::create_dir_all(att.path().join("orders/2"))?;
+        std::fs::write(att.path().join("orders/2/b.jpg"), b"y")?;
+        std::fs::write(att.path().join(".import-file"), b"z")?;
+        let cleanup = finish_interrupted_imports(&t.core, att.path()).await?;
+        assert_eq!(
+            cleanup.removed,
+            std::slice::from_ref(&abandoned),
+            "{}",
+            t.label
+        );
+        assert!(cleanup.kept.is_empty() && cleanup.placed.is_empty());
+        assert!(!abandoned.exists());
+        assert!(att.path().join("orders/2/b.jpg").exists());
+        assert!(att.path().join(".import-file").exists());
+        let none = finish_interrupted_imports(&t.core, &att.path().join("missing")).await?;
+        assert_eq!(none, mw_legacy::StagingCleanup::default());
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn import_interrupted_after_the_commit_is_placed_at_start() -> Res {
+    for t in cores().await {
+        let (src, data) = (fixture_dir(V32).await, tempfile::tempdir()?);
+        let core = t
+            .core
+            .clone()
+            .with_attachments_dir(data.path().to_path_buf());
+        let att = data.path().join("attachments");
+        crash_at(
+            &core,
+            options(src.path(), data.path(), false),
+            ImportStage::Placing,
+        )
+        .await;
+        let staging = staging_dirs(&att);
+        assert_eq!(staging.len(), 1, "{}", t.label);
+        assert!(!att.join("orders").exists());
+        let cleanup = finish_interrupted_imports(&core, &att).await?;
+        assert_eq!(cleanup.placed, staging, "{}", t.label);
+        assert!(staging_dirs(&att).is_empty());
+        assert!(att.join("orders/1/photo.jpg").exists() && att.join("stock/1/abc123.jpg").exists());
+        let files = core.list_order_attachments(&admin(), 1).await?;
+        assert!(
+            !files.is_empty() && files.iter().all(|a| !a.missing),
+            "{}",
+            t.label
+        );
+        for a in files {
+            let file = core
+                .attachment_file(&admin(), a.id, AttachmentVariant::Full)
+                .await?;
+            assert!(file.path.exists());
+        }
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn interrupted_import_waits_while_its_place_is_taken() -> Res {
+    for t in cores().await {
+        let (src, data) = (fixture_dir(V32).await, tempfile::tempdir()?);
+        let att = data.path().join("attachments");
+        crash_at(
+            &t.core,
+            options(src.path(), data.path(), false),
+            ImportStage::Placing,
+        )
+        .await;
+        std::fs::create_dir_all(att.join("orders/9"))?;
+        std::fs::write(att.join("orders/9/other.jpg"), b"x")?;
+        let staging = staging_dirs(&att);
+        let cleanup = finish_interrupted_imports(&t.core, &att).await?;
+        assert_eq!(cleanup.kept, staging, "{}", t.label);
+        assert!(cleanup.placed.is_empty() && cleanup.removed.is_empty());
+        assert!(staging[0].join("orders/1/photo.jpg").exists());
+        assert!(staging[0].join("stock/1/abc123.jpg").exists() && !att.join("stock").exists());
+        assert!(att.join("orders/9/other.jpg").exists());
+    }
+    Ok(())
+}
+
+// Новый импорт поверх прерванного возможен только заменой — только в SQLite.
+#[tokio::test]
+async fn staging_of_a_superseded_import_is_removed_at_start() -> Res {
+    let (src, data) = (fixture_dir(V32).await, tempfile::tempdir()?);
+    let att = data.path().join("attachments");
+    let core = file_sqlite_core(&data.path().join("mw.sqlite")).await;
+    crash_at(
+        &core,
+        options(src.path(), data.path(), false),
+        ImportStage::Placing,
+    )
+    .await;
+    let crashed = staging_dirs(&att);
+    assert_eq!(crashed.len(), 1);
+    let r = import_folder(&core, &admin(), &options(src.path(), data.path(), true)).await?;
+    assert_eq!(
+        staging_dirs(&att),
+        crashed,
+        "новый импорт убрал только свою папку"
+    );
+    let cleanup = finish_interrupted_imports(&core, &att).await?;
+    assert_eq!(cleanup.removed, crashed);
+    assert!(staging_dirs(&att).is_empty());
+    assert!(att.join("orders/1/photo.jpg").exists());
+    assert_eq!(
+        core.list_legacy_imports(&admin()).await?[0].id,
+        r.summary.import_id
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn cancel_while_copying_leaves_nothing_behind() -> Res {
+    for t in cores().await {
+        let (src, data) = (fixture_dir(V32).await, tempfile::tempdir()?);
+        let att = data.path().join("attachments");
+        let token = CancellationToken::new();
+        let mut o = options(src.path(), data.path(), false);
+        o.cancel = Some(token.clone());
+        o.progress = Some(Arc::new(move |stage, percent| {
+            if stage == ImportStage::Copying && percent > 0 {
+                token.cancel();
+            }
+        }));
+        let r = import_folder(&t.core, &admin(), &o).await;
+        assert!(
+            matches!(r, Err(LegacyError::Cancelled)),
+            "{}: {r:?}",
+            t.label
+        );
+        assert_eq!(
+            import_error_message(&r.unwrap_err(), StartedFrom::Interface),
+            "Импорт прерван: программа закрывается"
+        );
+        assert!(t.core.import_target_state().await?.is_empty());
+        assert!(staging_dirs(&att).is_empty() && !att.join("orders").exists());
+    }
+    Ok(())
 }
 
 #[cfg(unix)]
@@ -231,10 +393,20 @@ async fn staging_of_an_import_written_to_the_database_survives_cleanup() -> Res 
         let Err(LegacyError::FilesNotPlaced { staging, .. }) = r else {
             panic!("{}: {r:?}", t.label);
         };
-        let cleanup = remove_abandoned_staging(&att);
+        let cleanup = finish_interrupted_imports(&t.core, &att).await?;
         assert_eq!(cleanup.kept, std::slice::from_ref(&staging), "{}", t.label);
-        assert!(cleanup.removed.is_empty());
+        assert!(cleanup.removed.is_empty() && cleanup.placed.is_empty());
         assert!(staging.join("orders/1/photo.jpg").exists());
+        // Место освободилось — следующий запуск доустанавливает.
+        std::fs::remove_file(att.join("orders"))?;
+        let cleanup = finish_interrupted_imports(&t.core, &att).await?;
+        assert_eq!(
+            cleanup.placed,
+            std::slice::from_ref(&staging),
+            "{}",
+            t.label
+        );
+        assert!(att.join("orders/1/photo.jpg").exists() && !staging.exists());
     }
     Ok(())
 }

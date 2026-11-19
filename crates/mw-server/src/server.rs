@@ -94,10 +94,10 @@ impl Server {
             validate_ui_dir(dir)?;
         }
         migrate(&db, None).await?;
-        remove_abandoned_staging(config);
         let core = Core::open(db.clone(), Arc::new(SystemClock), &system_timezone(config))
             .await?
             .with_attachments_dir(config.data_dir.clone());
+        finish_interrupted_imports(&core, config).await;
         log_timezone(&core, config.timezone.as_deref());
         let listener =
             TcpListener::bind(config.listen)
@@ -168,9 +168,23 @@ impl Server {
     }
 }
 
-/// Убирает промежуточные папки импорта, оборванного до записи базы (закрыли программу, упал сервер).
-fn remove_abandoned_staging(config: &Config) {
-    let cleanup = mw_legacy::remove_abandoned_staging(&config.data_dir.join("attachments"));
+/// Разбирает промежуточные папки оборванного импорта (закрыли программу, упал сервер): файлы импорта,
+/// уже записанного в базу, ставятся на место, остальные папки удаляются.
+async fn finish_interrupted_imports(core: &Core, config: &Config) {
+    let attachments = config.data_dir.join("attachments");
+    let cleanup = match mw_legacy::finish_interrupted_imports(core, &attachments).await {
+        Ok(cleanup) => cleanup,
+        Err(e) => {
+            tracing::warn!("промежуточные папки импорта не разобраны: {e}");
+            return;
+        }
+    };
+    for dir in &cleanup.placed {
+        tracing::info!(
+            "файлы прерванного импорта поставлены на место: {}",
+            dir.display()
+        );
+    }
     for dir in &cleanup.removed {
         tracing::info!(
             "удалена промежуточная папка прерванного импорта: {}",
@@ -179,7 +193,7 @@ fn remove_abandoned_staging(config: &Config) {
     }
     for dir in &cleanup.kept {
         tracing::warn!(
-            "промежуточная папка импорта оставлена (база уже записана, файлы не поставлены на место): {}",
+            "промежуточная папка импорта оставлена (файлы не поставлены на место): {}",
             dir.display()
         );
     }

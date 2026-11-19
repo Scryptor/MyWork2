@@ -7,6 +7,7 @@ use sea_orm::{
     TransactionOptions, TransactionTrait,
 };
 
+use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
 use crate::auth::{HashGate, MAX_CONCURRENT_PASSWORD_HASHES};
@@ -22,8 +23,10 @@ pub struct Core {
     pub(crate) hash_gate: HashGate,
     /// Корень папки данных: файлы вложений лежат в `<корень>/attachments`.
     pub(crate) data_dir: Option<PathBuf>,
-    /// Фоновые задачи, которые нельзя бросать при остановке (перенос файлов черновиков).
+    /// Фоновые задачи, которые нельзя бросать при остановке (перенос файлов черновиков, импорт).
     pub(crate) background: TaskTracker,
+    /// Остановка началась (`wait_background`): задачи, которые можно прервать без вреда, прерываются.
+    pub(crate) shutdown: CancellationToken,
     /// Порядок обновления кэша настроек (см. `Core::commit_with_settings`).
     pub(crate) settings_gate: Arc<tokio::sync::Mutex<()>>,
 }
@@ -44,6 +47,7 @@ impl Core {
             hash_gate: HashGate::new(MAX_CONCURRENT_PASSWORD_HASHES),
             data_dir: None,
             background: TaskTracker::new(),
+            shutdown: CancellationToken::new(),
             settings_gate: Arc::new(tokio::sync::Mutex::new(())),
         })
     }
@@ -90,10 +94,26 @@ impl Core {
         self.clock.now_utc()
     }
 
-    /// Ждёт фоновые задачи (перенос файлов черновиков) не дольше `limit`: вызывается перед
-    /// закрытием БД. Зависшая задача не должна держать остановку — по истечении срока пишет
-    /// предупреждение и возвращает `false`.
+    /// Запускает фоновую задачу, которую остановка сервера дождётся (`wait_background`).
+    pub fn spawn_background<F>(&self, task: F) -> tokio::task::JoinHandle<F::Output>
+    where
+        F: std::future::Future + Send + 'static,
+        F::Output: Send + 'static,
+    {
+        self.background.spawn(task)
+    }
+
+    /// Знак остановки: отменяется в начале `wait_background` и больше не снимается.
+    pub fn shutdown_token(&self) -> CancellationToken {
+        self.shutdown.child_token()
+    }
+
+    /// Ждёт фоновые задачи (перенос файлов черновиков, импорт) не дольше `limit`: вызывается перед
+    /// закрытием БД. Сначала отменяет `shutdown_token` — то, что можно прервать без вреда, прерывается.
+    /// Зависшая задача не должна держать остановку — по истечении срока пишет предупреждение и
+    /// возвращает `false`.
     pub async fn wait_background(&self, limit: std::time::Duration) -> bool {
+        self.shutdown.cancel();
         self.background.close();
         let done = tokio::time::timeout(limit, self.background.wait())
             .await
@@ -166,6 +186,41 @@ mod tests {
     use tokio::time::timeout;
 
     use super::*;
+
+    /// Остановка отменяет знак и ждёт задачу, запущенную через `spawn_background`.
+    #[tokio::test]
+    async fn waiting_for_background_cancels_the_token_and_waits_for_tracked_tasks() {
+        for (label, db) in mw_db::testing::all_backends().await {
+            let core = Core::open(db, Arc::new(crate::SystemClock), "UTC")
+                .await
+                .unwrap();
+            let token = core.shutdown_token();
+            let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+            let task = core.spawn_background(async move {
+                token.cancelled().await;
+                rx.await.ok();
+            });
+            let waiter = {
+                let core = core.clone();
+                tokio::spawn(async move { core.wait_background(Duration::from_secs(10)).await })
+            };
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            assert!(
+                !waiter.is_finished(),
+                "{label}: ожидание не дождалось задачи"
+            );
+            tx.send(()).unwrap();
+            assert!(
+                timeout(Duration::from_secs(5), waiter)
+                    .await
+                    .unwrap()
+                    .unwrap(),
+                "{label}"
+            );
+            task.await.unwrap();
+            assert!(core.shutdown_token().is_cancelled(), "{label}");
+        }
+    }
 
     #[tokio::test]
     async fn second_writer_waits_for_first_to_finish() {

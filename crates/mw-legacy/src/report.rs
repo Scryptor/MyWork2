@@ -184,18 +184,21 @@ fn backup_text<S: Serializer>(p: &Option<PathBuf>, s: S) -> Result<S::Ok, S::Err
 }
 
 /// Часть отчёта, известная до записи в базу (пишется в `legacy_imports.report`; сводку `summary`
-/// добавляет `Core::import_bundle`).
+/// добавляет `Core::import_bundle`). `staging` — имя промежуточной папки: по нему запуск сервера
+/// узнаёт, что база этой папки записана.
 pub(crate) fn stored_report(
     schema: &SchemaSummary,
     warnings: &[Warning],
     files: &FileStats,
     backup: Option<&Path>,
+    staging: &str,
 ) -> Value {
     json!({
         "schema": schema,
         "files": files,
         "warnings": warnings,
         "backup": backup.map(|p| p.to_string_lossy()),
+        "staging": staging,
     })
 }
 

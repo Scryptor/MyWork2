@@ -8,7 +8,9 @@ use axum::http::Method;
 use common::*;
 use mw_core::{Actor, NewClient};
 use mw_domain::permission::Permission;
+use mw_legacy::ImportStage;
 use mw_legacy::fixture::{FixtureOptions, FixtureVersion, write_fixture};
+use mw_legacy::testing::hold;
 use serde_json::{Value, json};
 use tempfile::TempDir;
 
@@ -176,18 +178,154 @@ async fn import_runs_in_the_background_and_its_report_is_listed() {
 #[tokio::test]
 async fn second_start_while_running_is_refused() {
     for t in apis(Listen::Loopback).await {
-        let src = fixture(300).await;
+        let src = fixture(0).await;
+        let held = hold(src.path(), ImportStage::Copying);
         let body = json!({ "path": path_of(&src), "replace": false });
         let first = t.send(Method::POST, START, None, Some(body.clone())).await;
         assert_eq!(first.status, 202, "{}: {}", t.label, first.body);
+        held.reached.await.unwrap();
         let second = t.send(Method::POST, START, None, Some(body)).await;
         assert_eq!(second.status, 409, "{}: {}", t.label, second.body);
         assert_eq!(
             (&second.body["code"], &second.body["message"]),
             (&json!("conflict"), &json!("Импорт уже идёт"))
         );
+        // Второй видит тот же ход.
+        assert_eq!(t.get(CURRENT, None).await.body["stage"], "copying");
+        held.release.send(()).unwrap();
         let job = wait_finished(&t, &mut None).await;
         assert!(job["error"].is_null(), "{}: {job}", t.label);
+    }
+}
+
+/// Промежуточные папки `.import-*` в папке вложений.
+fn staging_dirs(t: &TestApi) -> Vec<String> {
+    let att = t.core.data_dir_path().unwrap().join("attachments");
+    let Ok(entries) = std::fs::read_dir(att) else {
+        return Vec::new();
+    };
+    entries
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|n| n.starts_with(".import"))
+        .collect()
+}
+
+/// Остановка сервера (`Server::serve` после последнего запроса) — `Core::wait_background`.
+fn begin_shutdown(t: &TestApi) -> tokio::task::JoinHandle<bool> {
+    let core = t.core.clone();
+    tokio::spawn(async move { core.wait_background(Duration::from_secs(30)).await })
+}
+
+async fn wait_cancelled(t: &TestApi) {
+    for _ in 0..500 {
+        if t.core.shutdown_token().is_cancelled() {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    panic!("{}: остановка не началась", t.label);
+}
+
+#[tokio::test]
+async fn shutdown_while_copying_cancels_the_import_and_leaves_nothing() {
+    for t in apis(Listen::Loopback).await {
+        let src = fixture(0).await;
+        let held = hold(src.path(), ImportStage::Copying);
+        let body = json!({ "path": path_of(&src), "replace": false });
+        let started = t.send(Method::POST, START, None, Some(body)).await;
+        assert_eq!(started.status, 202, "{}: {}", t.label, started.body);
+        held.reached.await.unwrap();
+        let shutdown = begin_shutdown(&t);
+        wait_cancelled(&t).await;
+        let released = std::time::Instant::now();
+        held.release.send(()).unwrap();
+        let waited = tokio::time::timeout(Duration::from_secs(5), shutdown)
+            .await
+            .expect("остановка не дождалась отмены")
+            .unwrap();
+        assert!(waited, "{}", t.label);
+        assert!(released.elapsed() < Duration::from_secs(5));
+        let job = t.get(CURRENT, None).await.body;
+        assert_eq!(
+            (&job["stage"], &job["error"], &job["import_id"]),
+            (
+                &json!("copying"),
+                &json!("Импорт прерван: программа закрывается"),
+                &Value::Null
+            ),
+            "{}",
+            t.label
+        );
+        assert!(t.core.import_target_state().await.unwrap().is_empty());
+        assert!(
+            t.core
+                .list_legacy_imports(&Actor::unrestricted("Тест"))
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        assert!(staging_dirs(&t).is_empty(), "{}", t.label);
+        let att = t.core.data_dir_path().unwrap().join("attachments");
+        assert!(!att.join("orders").exists());
+    }
+}
+
+#[tokio::test]
+async fn shutdown_while_writing_waits_for_the_commit() {
+    for t in apis(Listen::Loopback).await {
+        let src = fixture(0).await;
+        let held = hold(src.path(), ImportStage::Writing);
+        let body = json!({ "path": path_of(&src), "replace": false });
+        let started = t.send(Method::POST, START, None, Some(body)).await;
+        assert_eq!(started.status, 202, "{}: {}", t.label, started.body);
+        held.reached.await.unwrap();
+        let shutdown = begin_shutdown(&t);
+        wait_cancelled(&t).await;
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        assert!(
+            !shutdown.is_finished(),
+            "{}: остановка не ждёт записи",
+            t.label
+        );
+        held.release.send(()).unwrap();
+        let waited = tokio::time::timeout(Duration::from_secs(30), shutdown)
+            .await
+            .expect("остановка не закончилась")
+            .unwrap();
+        assert!(waited, "{}", t.label);
+        let job = wait_finished(&t, &mut None).await;
+        assert!(job["error"].is_null(), "{}: {job}", t.label);
+        assert!(job["import_id"].is_i64());
+        assert_eq!(t.core.import_target_state().await.unwrap().orders, 11);
+        let att = t.core.data_dir_path().unwrap().join("attachments");
+        assert!(att.join("orders/1/photo.jpg").exists() && staging_dirs(&t).is_empty());
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn files_not_placed_gives_the_error_and_the_import_number() {
+    for t in apis(Listen::Loopback).await {
+        let att = t.core.data_dir_path().unwrap().join("attachments");
+        std::fs::create_dir_all(&att).unwrap();
+        // Висячая ссылка: базу записать можно, а поставить файлы на место — нет.
+        std::os::unix::fs::symlink(att.join("nowhere"), att.join("orders")).unwrap();
+        let src = fixture(0).await;
+        let body = json!({ "path": path_of(&src), "replace": false });
+        let started = t.send(Method::POST, START, None, Some(body)).await;
+        assert_eq!(started.status, 202, "{}: {}", t.label, started.body);
+        let mut token = None;
+        let job = wait_finished(&t, &mut token).await;
+        let error = job["error"].as_str().expect("ошибка установки файлов");
+        assert!(
+            error.contains("файлы не поставлены на место"),
+            "{}: {error}",
+            t.label
+        );
+        let id = job["import_id"].as_i64().expect("номер импорта");
+        let list = t.get(LIST, token.as_deref()).await;
+        assert_eq!(list.body[0]["id"], id, "{}: {}", t.label, list.body);
+        assert_eq!(staging_dirs(&t).len(), 1, "{}", t.label);
     }
 }
 

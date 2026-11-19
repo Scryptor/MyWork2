@@ -16,16 +16,20 @@ mod view;
 #[cfg(feature = "fixtures")]
 pub mod fixture;
 
+#[cfg(feature = "testing")]
+pub mod testing;
+
 #[cfg(test)]
 mod test_support;
 
 use std::path::{Path, PathBuf};
 
 use mw_core::{Actor, Core, DatabaseKind, ImportMode};
+use tokio_util::sync::CancellationToken;
 
 pub use check::{FolderCheck, check_folder};
 pub use error::{LegacyError, StartedFrom, import_error_message};
-pub use files::{StagingCleanup, remove_abandoned_staging};
+pub use files::StagingCleanup;
 pub use progress::{ImportJob, ImportStage, Progress};
 pub use report::{FileStats, ImportReport, Severity, Warning, WarningCode};
 pub use report_files::{REPORTS_DIR, write_report_files};
@@ -45,6 +49,9 @@ pub struct ImportOptions {
     pub replace: bool,
     /// Ход по этапам; `Done` приходит последним и только при успехе.
     pub progress: Option<Progress>,
+    /// Отмена (остановка программы): проверяется между этапами и файлами до начала записи в базу;
+    /// с начала записи импорт доводится до конца.
+    pub cancel: Option<CancellationToken>,
 }
 
 impl std::fmt::Debug for ImportOptions {
@@ -55,6 +62,7 @@ impl std::fmt::Debug for ImportOptions {
             .field("backups_dir", &self.backups_dir)
             .field("replace", &self.replace)
             .field("progress", &self.progress.is_some())
+            .field("cancel", &self.cancel.is_some())
             .finish()
     }
 }
@@ -64,6 +72,21 @@ impl ImportOptions {
         if let Some(progress) = &self.progress {
             progress(stage, percent);
         }
+    }
+
+    fn control(&self) -> files::Control {
+        files::Control {
+            progress: self.progress.clone(),
+            cancel: self.cancel.clone(),
+        }
+    }
+
+    /// Отмена до начала записи: ошибка `Cancelled`.
+    fn check_cancelled(&self) -> Result<(), LegacyError> {
+        if self.control().cancelled() {
+            return Err(LegacyError::Cancelled);
+        }
+        Ok(())
     }
 }
 
@@ -161,6 +184,7 @@ pub async fn import_folder(
     let db = source::read_database(&folder.db_file).await?;
     tracing::info!(tables = db.tables.len(), "импорт: старая база прочитана");
     options.emit(ImportStage::Reading, 100);
+    options.check_cancelled()?;
 
     if options.replace && core.database_kind() != DatabaseKind::Sqlite {
         return Err(LegacyError::ReplaceUnsupported);
@@ -188,6 +212,7 @@ pub async fn import_folder(
     .await
     .map_err(interrupted("Разбор данных прерван"))?;
     options.emit(ImportStage::Converting, 100);
+    options.check_cancelled()?;
     tracing::info!(
         orders = conversion.bundle.orders.len(),
         clients = conversion.bundle.clients.len(),
@@ -198,11 +223,11 @@ pub async fn import_folder(
 
     let attachments_dir = options.attachments_dir.clone();
     let stage_stamp = stamp.clone();
-    let (staging, rows, file_stats, warnings) = tokio::task::spawn_blocking({
+    let (mut staging, rows, file_stats, warnings) = tokio::task::spawn_blocking({
         let folder = folder.clone();
         let planned = std::mem::take(&mut conversion.files);
         let mut warnings = std::mem::take(&mut conversion.warnings);
-        let progress = options.progress.clone();
+        let control = options.control();
         move || {
             let staged = files::stage(
                 &folder,
@@ -210,7 +235,7 @@ pub async fn import_folder(
                 &attachments_dir,
                 &stage_stamp,
                 &mut warnings,
-                progress.as_ref(),
+                &control,
             );
             staged.map(|(s, r, f)| (s, r, f, warnings))
         }
@@ -225,9 +250,19 @@ pub async fn import_folder(
         "импорт: файлы скопированы в промежуточную папку"
     );
 
+    if let Err(e) = options.check_cancelled() {
+        staging.abort();
+        tracing::info!("импорт прерван до записи в базу, промежуточная папка удалена");
+        return Err(e);
+    }
     let backup = options
         .replace
         .then(|| backup_folder(&options.backups_dir, &stamp));
+    // Без предварительной отметки запуск сервера удалил бы папку, даже если база успеет записаться.
+    if let Err(e) = staging.mark_pending(backup.as_deref()) {
+        staging.abort();
+        return Err(e);
+    }
     let mut bundle = conversion.bundle;
     bundle.legacy_rows.extend(rows);
     bundle.report = report::stored_report(
@@ -235,6 +270,7 @@ pub async fn import_folder(
         warnings.list(),
         &file_stats,
         backup.as_deref(),
+        &staging.name(),
     );
     let mode = match &backup {
         Some(dir) => ImportMode::Replace {
@@ -242,7 +278,15 @@ pub async fn import_folder(
         },
         None => ImportMode::IntoEmpty,
     };
+    // С этого места импорт не отменяется: остановка программы ждёт его.
     options.emit(ImportStage::Writing, 0);
+    #[cfg(feature = "testing")]
+    {
+        let root = folder.root.clone();
+        tokio::task::spawn_blocking(move || testing::pause(&root, ImportStage::Writing))
+            .await
+            .ok();
+    }
     let summary = match core.import_bundle(actor, bundle, mode).await {
         Ok(summary) => summary,
         Err(e) => {
@@ -257,7 +301,6 @@ pub async fn import_folder(
         history = summary.history,
         "импорт: данные записаны в базу"
     );
-    options.emit(ImportStage::Writing, 100);
 
     let mut report = ImportReport {
         started_at,
@@ -270,6 +313,26 @@ pub async fn import_folder(
     };
     let previous = report.backup.as_ref().map(|dir| dir.join("attachments"));
     let staging_path = staging.path().to_path_buf();
+    // Отметка с номером импорта; если не записалась, файлы не ставим (папку доустановит запуск сервера
+    // по предварительной отметке и имени папки в отчёте).
+    if let Err(e) = staging.mark_written(report.summary.import_id) {
+        let mut note = report::Warnings::default();
+        note.push(
+            WarningCode::FileUnreadable,
+            "file",
+            &staging_path.display().to_string(),
+            "",
+            "",
+            &format!("Файлы не поставлены на место: {e}."),
+        );
+        report.warnings.extend(note.list().iter().cloned());
+        tracing::info!("импорт: отметка промежуточной папки не записана, файлы не поставлены");
+        return Err(LegacyError::FilesNotPlaced {
+            staging: staging_path,
+            report: Box::new(report),
+        });
+    }
+    options.emit(ImportStage::Writing, 100);
     options.emit(ImportStage::Placing, 0);
     let attachments_dir = options.attachments_dir.clone();
     let placing = tokio::task::spawn_blocking(move || {
@@ -305,6 +368,28 @@ pub async fn import_folder(
     options.emit(ImportStage::Placing, 100);
     options.emit(ImportStage::Done, 100);
     Ok(report)
+}
+
+/// При запуске сервера: разбирает промежуточные папки оборванных импортов в `attachments_dir`.
+/// Папку последнего импорта в базе доустанавливает, остальные удаляет (см. `StagingCleanup`).
+/// Если базу прочитать не удалось, папки не трогает.
+pub async fn finish_interrupted_imports(
+    core: &Core,
+    attachments_dir: &Path,
+) -> Result<StagingCleanup, LegacyError> {
+    let latest = core
+        .list_legacy_imports(&Actor::unrestricted("Запуск MyWork 3"))
+        .await?
+        .into_iter()
+        .next()
+        .map(|r| files::LatestImport {
+            id: r.id,
+            staging: r.report["staging"].as_str().map(str::to_owned),
+        });
+    let dir = attachments_dir.to_path_buf();
+    tokio::task::spawn_blocking(move || files::finish_staging(&dir, latest.as_ref()))
+        .await
+        .map_err(interrupted("Разбор промежуточных папок прерван"))
 }
 
 #[cfg(test)]

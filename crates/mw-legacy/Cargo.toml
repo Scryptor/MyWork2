@@ -24,13 +24,16 @@ tracing = { workspace = true }
 tempfile = { workspace = true }
 ts-rs = { workspace = true }
 utoipa = { workspace = true }
+tokio-util = "0.7"
 
 [features]
 # Код-генератор синтетической папки MyWork 2 (для тестов и примера).
 fixtures = []
+# Точки остановки импорта для тестов других крейтов (`mw_legacy::testing`).
+testing = ["tokio/sync"]
 
 [dev-dependencies]
-mw-legacy = { path = ".", features = ["fixtures"] }
+mw-legacy = { path = ".", features = ["fixtures", "testing"] }
 mw-core = { path = "../mw-core", features = ["testing"] }
 mw-db = { path = "../mw-db" }
 sea-orm = { workspace = true }

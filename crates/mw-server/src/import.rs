@@ -58,6 +58,7 @@ pub async fn run_import_with_db(
         backups_dir: config.data_dir.join("backups"),
         replace,
         progress: None,
+        cancel: None,
     };
     match import_folder(&core, &actor, &options).await {
         Ok(report) => match write_reports(config, &core, &report) {

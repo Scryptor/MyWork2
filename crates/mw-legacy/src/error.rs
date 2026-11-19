@@ -33,6 +33,8 @@ pub enum LegacyError {
     ReplaceUnsupported,
     #[error("Папка {0} лежит внутри старой папки MyWork 2: в неё ничего не записывается")]
     InsideSource(PathBuf),
+    #[error("Импорт прерван: программа закрывается")]
+    Cancelled,
     #[error(
         "База импортирована, но файлы не поставлены на место: они лежат в папке {}",
         .staging.display()

@@ -27,7 +27,7 @@ tower = { workspace = true }
 tower-http = { workspace = true }
 
 [dev-dependencies]
-mw-legacy = { path = "../mw-legacy", features = ["fixtures"] }
+mw-legacy = { path = "../mw-legacy", features = ["fixtures", "testing"] }
 mw-db = { path = "../mw-db" }
 mw-core = { path = "../mw-core", features = ["testing"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

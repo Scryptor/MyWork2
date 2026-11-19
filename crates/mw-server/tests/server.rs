@@ -317,3 +317,80 @@ async fn staging_left_by_an_interrupted_import_is_removed_at_start() {
         drop(server);
     }
 }
+
+#[tokio::test]
+async fn import_interrupted_before_placing_files_is_finished_at_start() {
+    use mw_core::{Actor, AttachmentVariant, Core, SystemClock};
+    use mw_legacy::fixture::{FixtureOptions, FixtureVersion, write_fixture};
+    use mw_legacy::{ImportOptions, ImportStage};
+    use std::sync::Arc;
+
+    for (label, db) in mw_db::testing::all_backends().await {
+        let dir = temp_dir(label);
+        let src = tempfile::tempdir().unwrap();
+        write_fixture(
+            src.path(),
+            &FixtureOptions {
+                version: FixtureVersion::V32,
+                extra_orders: 0,
+            },
+        )
+        .await
+        .unwrap();
+        let core = Core::open(db.clone(), Arc::new(SystemClock), "UTC")
+            .await
+            .unwrap()
+            .with_attachments_dir(dir.clone());
+        let options = ImportOptions {
+            source: src.path().to_path_buf(),
+            attachments_dir: dir.join("attachments"),
+            backups_dir: dir.join("backups"),
+            replace: false,
+            // Обрыв (как падение процесса) сразу после записи базы, перед установкой файлов.
+            progress: Some(Arc::new(|stage, _| {
+                if stage == ImportStage::Placing {
+                    panic!("проверка: обрыв перед установкой файлов");
+                }
+            })),
+            cancel: None,
+        };
+        let crashed = tokio::spawn(async move {
+            mw_legacy::import_folder(&core, &Actor::unrestricted("Тест"), &options).await
+        })
+        .await;
+        assert!(crashed.unwrap_err().is_panic(), "{label}");
+        assert!(!dir.join("attachments/orders").exists(), "{label}");
+
+        let server = Server::start_with_db(&config(dir.clone()), db)
+            .await
+            .unwrap();
+        assert!(
+            dir.join("attachments/orders/1/photo.jpg").exists(),
+            "{label}"
+        );
+        let left: Vec<_> = std::fs::read_dir(dir.join("attachments"))
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|n| n.starts_with(".import"))
+            .collect();
+        assert!(left.is_empty(), "{label}: {left:?}");
+        let actor = Actor::unrestricted("Тест");
+        let files = server
+            .core()
+            .list_order_attachments(&actor, 1)
+            .await
+            .unwrap();
+        assert!(
+            !files.is_empty() && files.iter().all(|a| !a.missing),
+            "{label}"
+        );
+        for a in files {
+            let file = server
+                .core()
+                .attachment_file(&actor, a.id, AttachmentVariant::Full)
+                .await
+                .unwrap();
+            assert!(file.path.exists(), "{label}");
+        }
+    }
+}
