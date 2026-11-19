@@ -27,10 +27,16 @@ async function perform(entry: Entry): Promise<void> {
  * while its toast is on screen (6 s, longer under the pointer), each one once.
  */
 export const undo = {
-	push(label: string, run: () => Promise<void>, onclose?: () => void): void {
+	/** Returns the end of the offer: the action can no longer be undone, its toast goes. */
+	push(label: string, run: () => Promise<void>, onclose?: () => void): () => void {
 		const entry: Entry = { run, toastId: '' };
 		entry.toastId = toast.undoable(label, () => perform(entry), onclose);
 		entries = [...entries, entry];
+		return () => {
+			if (!entries.includes(entry)) return;
+			entries = entries.filter((e) => e !== entry);
+			toast.dismiss(entry.toastId);
+		};
 	},
 
 	/** Undoes the newest action whose toast is still shown; nothing when there is none. */

@@ -465,15 +465,19 @@
 		const form = $state.snapshot(draft);
 		const pointId = point;
 		const photos = media;
-		// The photos still on their way and the list of the draft come first («Загружаю фото…»): the
-		// order takes what the draft has. A list that did not load may have some, so the draft goes then too.
+		// The photos still on their way, the list of the draft and the deletions waiting for their toast
+		// come first («Загружаю фото…»): the order takes what the draft has, and a photo deleted just now
+		// is not in it. A list that did not load may have some, so the draft goes then too.
 		const withPhotos = () =>
 			photos !== null && (photos.photos.length > 0 || photos.error !== null || photos.loading);
 		// The form is inert until the answer (`intake.formLocked`): the field it was sent from loses focus.
 		const from = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 		const answer = await intake.submit(
 			(signal) => createOrder(toNewOrder(form, pointId, withPhotos()), signal),
-			{ ready: photos === null ? undefined : () => photos.idle() }
+			{
+				ready:
+					photos === null ? undefined : () => Promise.all([photos.idle(), photos.flushDeletes()])
+			}
 		);
 		void refocus(from);
 		if (answer === null) return;

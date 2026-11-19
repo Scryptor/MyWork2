@@ -42,8 +42,9 @@ export function hasUnsaved(): boolean {
 }
 
 /**
- * Sends what every queue holds and waits (up to `timeoutMs`) until nothing is left. True when nothing
- * is unsaved after it; false when something could not be sent in time or at all.
+ * Sends what every queue holds and waits (up to `timeoutMs`) until nothing is left. True when every
+ * queue sent all it had and nothing is unsaved after it; false when something could not be sent in time
+ * or at all (a refused deletion too, though nothing is left waiting after it).
  */
 export async function settleQueues(timeoutMs = SETTLE_TIMEOUT_MS): Promise<boolean> {
 	const all = [...queues];
@@ -51,12 +52,16 @@ export async function settleQueues(timeoutMs = SETTLE_TIMEOUT_MS): Promise<boole
 	const timeout = new Promise<false>((resolve) => {
 		timer = setTimeout(() => resolve(false), timeoutMs);
 	});
+	let flushed: boolean;
 	try {
-		await Promise.race([Promise.all(all.map((q) => q.flush().catch(() => false))), timeout]);
+		flushed = await Promise.race([
+			Promise.all(all.map((q) => q.flush().catch(() => false))).then((r) => r.every(Boolean)),
+			timeout
+		]);
 	} finally {
 		clearTimeout(timer);
 	}
-	return !hasUnsaved();
+	return flushed && !hasUnsaved();
 }
 
 /** «Выйти без сохранения»: the unsaved changes of every open record are given up. */

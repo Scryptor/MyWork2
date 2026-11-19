@@ -662,6 +662,54 @@ test('a photo chosen in intake goes to the accepted order', async ({ page, reque
 	await expect(photoTilesOf(page)).toHaveCount(0);
 });
 
+test('a photo deleted just before «Принять» is not in the order, and its history has no deletion', async ({
+	page,
+	request
+}) => {
+	await openIntake(page);
+	await phoneOf(page).fill(uniqPhone());
+	await fillDevice(page);
+	await malfunctionOf(page).fill(uniq('Разбит экран'));
+	await photoZoneOf(page)
+		.locator('input[type=file]')
+		.setInputFiles([png('keep.png', 41), png('gone.png', 42)]);
+	await expect(photoTilesOf(page)).toHaveCount(2);
+	// Which went first: the deletion of the draft's photo or the order.
+	const sent: string[] = [];
+	page.on('request', (r) => {
+		if (r.method() === 'POST' && new URL(r.url()).pathname === '/api/v1/orders') sent.push('order');
+	});
+	page.on('requestfinished', (r) => {
+		if (r.method() === 'DELETE' && r.url().includes('/api/v1/attachments/')) sent.push('delete');
+	});
+	await sheetOf(page)
+		.getByRole('button', { name: /^Удалить фото: gone\./ })
+		.click();
+	await expect(photoTilesOf(page)).toHaveCount(1);
+	// At once, while «Фото удалено · Отменить» is still there (6 s).
+	await sheetOf(page)
+		.getByRole('button', { name: /^Принять/ })
+		.click();
+	const id = await acceptedNumber(page);
+	expect(sent).toEqual(['delete', 'order']);
+	const photos = (await (await request.get(`/api/v1/orders/${id}/attachments`)).json()) as {
+		name: string;
+	}[];
+	// The server keeps a photo as JPEG: «keep.png» is «keep.jpg».
+	expect(photos.map((p) => p.name.replace(/\..*$/, ''))).toEqual(['keep']);
+	// Nothing is left to undo, and nothing is deleted from the order later.
+	await expect(toastsOf(page).getByText('Фото удалено')).toHaveCount(0);
+	await page.waitForTimeout(7000);
+	expect(sent).toEqual(['delete', 'order']);
+	const history = (await (await request.get(`/api/v1/orders/${id}/history`)).json()) as {
+		items: { action: string }[];
+	};
+	expect(history.items.map((e) => e.action)).not.toContain('attachment.deleted');
+	expect(
+		((await (await request.get(`/api/v1/orders/${id}/attachments`)).json()) as unknown[]).length
+	).toBe(1);
+});
+
 test('N right after «Принять» opens the next intake, though suggestions were open in the sheet', async ({
 	page
 }) => {

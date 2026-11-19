@@ -77,26 +77,41 @@ export interface DraftGuard {
 	locked: () => string | null;
 }
 
-/** A deletion waiting for its toast to go: sent now, or given up. */
+/** A deletion waiting for its toast to go: sent now, or given up. `of`: the instance it belongs to. */
 interface WaitingDelete {
-	commit: (keepalive: boolean) => Promise<void>;
+	of: object;
+	/** Sends it (once); true when the file is gone, false when the server refused. */
+	commit: (keepalive: boolean) => Promise<boolean>;
 	drop: () => void;
 }
 /** Deletions waiting for their toast to go: the page being left sends them at once. */
 // eslint-disable-next-line svelte/prefer-svelte-reactivity -- bookkeeping, nothing renders it
 const waiting = new Set<WaitingDelete>();
+/** Deletions on their way, with the instance each belongs to. */
+// eslint-disable-next-line svelte/prefer-svelte-reactivity -- bookkeeping, nothing renders it
+const sending = new Map<Promise<boolean>, object>();
 if (typeof window !== 'undefined')
 	window.addEventListener('pagehide', () => {
 		for (const w of [...waiting]) void w.commit(true);
 	});
+
+/**
+ * Sends the waiting deletions now (of one instance, or all) and waits for them and for those already on
+ * their way; false when one of them was refused (its tile is back, a toast says why).
+ */
+async function settleDeletes(of?: object): Promise<boolean> {
+	const mine = (owner: object) => of === undefined || owner === of;
+	for (const w of [...waiting]) if (mine(w.of)) void w.commit(false);
+	const runs = [...sending].filter(([, owner]) => mine(owner)).map(([run]) => run);
+	return (await Promise.all(runs)).every(Boolean);
+}
+
 // Signing out sends the waiting deletions while the token is still there (`settleQueues`): the toast
 // that offers «Отменить» is cleared with the session, and a deletion sent after it would have no token.
+// A refused one keeps the user asking (the dialog of unsaved edits) instead of signing out at once.
 trackQueue({
 	unsaved: () => waiting.size > 0,
-	flush: async () => {
-		await Promise.all([...waiting].map((w) => w.commit(false)));
-		return waiting.size === 0;
-	},
+	flush: async () => (await settleDeletes()) && waiting.size === 0,
 	discard: () => {
 		for (const w of [...waiting]) w.drop();
 	}
@@ -111,6 +126,8 @@ interface Detached {
 }
 
 function createMedia<K>(owner: K, api: MediaApi<K>, left?: Detached, guard?: DraftGuard) {
+	/** This instance among the deletions of the page. */
+	const self = {};
 	let attachments = $state.raw<Attachment[]>([]);
 	let pending = $state.raw<PendingUpload[]>([]);
 	let loading = $state(false);
@@ -273,20 +290,31 @@ function createMedia<K>(owner: K, api: MediaApi<K>, left?: Detached, guard?: Dra
 			const at = Math.min(index, attachments.length);
 			attachments = [...attachments.slice(0, at), before, ...attachments.slice(at)];
 		};
-		const commit = async (keepalive: boolean): Promise<void> => {
-			if (settled) return;
-			settled = true;
-			waiting.delete(entry);
+		const send = async (keepalive: boolean): Promise<boolean> => {
 			try {
 				await (keepalive ? api.remove(id, true) : api.remove(id));
+				return true;
 			} catch (e) {
 				// Already gone is what was wanted.
-				if (e instanceof ApiError && e.status === 404) return;
+				if (e instanceof ApiError && e.status === 404) return true;
 				restore();
 				toast.show({ message: about(errorMessage(e)), tone: 'danger' });
+				return false;
 			}
 		};
+		const commit = (keepalive: boolean): Promise<boolean> => {
+			if (settled) return Promise.resolve(true);
+			settled = true;
+			waiting.delete(entry);
+			// Sent before its toast went (accepting the intake, leaving): nothing is left to undo.
+			forgetUndo();
+			const run = send(keepalive);
+			sending.set(run, self);
+			void run.finally(() => sending.delete(run));
+			return run;
+		};
 		const entry: WaitingDelete = {
+			of: self,
 			commit,
 			// Signing out without saving: the deletion is given up, the file stays on the server.
 			drop: () => {
@@ -295,7 +323,7 @@ function createMedia<K>(owner: K, api: MediaApi<K>, left?: Detached, guard?: Dra
 			}
 		};
 		waiting.add(entry);
-		undo.push(
+		const forgetUndo = undo.push(
 			about(before.kind === 'file' ? ru.media.fileDeleted : ru.media.photoDeleted),
 			async () => {
 				if (settled) return;
@@ -307,6 +335,15 @@ function createMedia<K>(owner: K, api: MediaApi<K>, left?: Detached, guard?: Dra
 			() => queueMicrotask(() => void commit(false))
 		);
 		return Promise.resolve();
+	}
+
+	/**
+	 * Sends this instance's deletions that wait for their toast now and waits for them (and for those
+	 * already on their way): «Принять» of the intake hands the draft's photos to the order only after it.
+	 * False when one was refused: its tile is back, and it goes with the order.
+	 */
+	function flushDeletes(): Promise<boolean> {
+		return settleDeletes(self);
 	}
 
 	void reload();
@@ -329,6 +366,7 @@ function createMedia<K>(owner: K, api: MediaApi<K>, left?: Detached, guard?: Dra
 		},
 		add,
 		idle,
+		flushDeletes,
 		detach,
 		retire,
 		caption,

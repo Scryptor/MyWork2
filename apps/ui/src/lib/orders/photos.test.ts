@@ -197,6 +197,21 @@ describe('createOrderMedia', () => {
 		expect(messages()).toEqual([]);
 	});
 
+	it('a deletion refused while signing out keeps asking: the queue is not settled', async () => {
+		vi.useFakeTimers();
+		const api = fakeApi({
+			remove: vi.fn().mockRejectedValue(new ApiError(500, 'internal', 'Сбой', null))
+		});
+		const m = createOrderMedia(7, api);
+		await m.reload();
+		await m.remove(1);
+		await expect(settleQueues(1000)).resolves.toBe(false);
+		expect(api.remove).toHaveBeenCalledOnce();
+		// The photo is back: it stays on the server.
+		expect(m.photos.map((a) => a.id)).toEqual([1]);
+		resetSession();
+	});
+
 	it('a toast that is gone (pushed out by others) sends the request: nothing is left to undo', async () => {
 		vi.useFakeTimers();
 		const api = fakeApi();
@@ -334,6 +349,78 @@ describe('createDraftMedia', () => {
 		expect(m.photos.map((a) => a.name)).toEqual(['p1.png', 'a.png']);
 		await m.remove(1);
 		expect(messages()).toEqual(['Фото удалено']);
+	});
+
+	it('flushDeletes sends the waiting deletion now and waits for it: nothing is left to undo', async () => {
+		vi.useFakeTimers();
+		const gate = deferred<undefined>();
+		const api = draftApi({ remove: vi.fn(() => gate.promise) });
+		const m = createDraftMedia('k-1', api);
+		await m.reload();
+		await m.remove(1);
+		expect(messages()).toEqual(['Фото удалено']);
+		let done: boolean | null = null;
+		const flushing = m.flushDeletes().then((ok) => (done = ok));
+		expect(api.remove).toHaveBeenCalledWith(1);
+		// The toast with «Отменить» is gone at once: the photo is being deleted.
+		expect(messages()).toEqual([]);
+		await vi.advanceTimersByTimeAsync(0);
+		expect(done).toBeNull();
+		gate.resolve(undefined);
+		await flushing;
+		expect(done).toBe(true);
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(api.remove).toHaveBeenCalledOnce();
+		expect(m.photos).toEqual([]);
+	});
+
+	it('flushDeletes waits for a deletion already on its way', async () => {
+		vi.useFakeTimers();
+		const gate = deferred<undefined>();
+		const api = draftApi({ remove: vi.fn(() => gate.promise) });
+		const m = createDraftMedia('k-1', api);
+		await m.reload();
+		await m.remove(1);
+		// The toast went: the request is out, the answer has not come.
+		await vi.advanceTimersByTimeAsync(6100);
+		expect(api.remove).toHaveBeenCalledOnce();
+		let done = false;
+		const flushing = m.flushDeletes().then(() => (done = true));
+		await vi.advanceTimersByTimeAsync(0);
+		expect(done).toBe(false);
+		gate.resolve(undefined);
+		await flushing;
+		expect(api.remove).toHaveBeenCalledOnce();
+	});
+
+	it('flushDeletes leaves the deletions of other photos and orders waiting', async () => {
+		vi.useFakeTimers();
+		const draft = draftApi();
+		const order = fakeApi();
+		const m = createDraftMedia('k-1', draft);
+		const other = createOrderMedia(7, order);
+		await Promise.all([m.reload(), other.reload()]);
+		await other.remove(1);
+		await m.remove(1);
+		await m.flushDeletes();
+		expect(draft.remove).toHaveBeenCalledOnce();
+		expect(order.remove).not.toHaveBeenCalled();
+		expect(messages()).toEqual(['Фото удалено']);
+		await vi.advanceTimersByTimeAsync(6100);
+		expect(order.remove).toHaveBeenCalledOnce();
+	});
+
+	it('a deletion refused by flushDeletes puts the photo back: it goes with the order', async () => {
+		vi.useFakeTimers();
+		const m = createDraftMedia(
+			'k-1',
+			draftApi({ remove: vi.fn().mockRejectedValue(new ApiError(500, 'internal', 'Сбой', null)) })
+		);
+		await m.reload();
+		await m.remove(1);
+		await expect(m.flushDeletes()).resolves.toBe(false);
+		expect(m.photos.map((a) => a.id)).toEqual([1]);
+		expect(messages()).toEqual(['Сбой']);
 	});
 
 	it('idle waits for the list too: until it comes, the draft may have photos', async () => {

@@ -40,6 +40,13 @@ describe('queues', () => {
 		off();
 	});
 
+	it('a queue whose send failed asks, though nothing waits in it any more (a refused deletion)', async () => {
+		const off = trackQueue({ unsaved: () => false, flush: async () => false, discard: () => {} });
+		expect(hasUnsaved()).toBe(false);
+		expect(await settleQueues(1000)).toBe(false);
+		off();
+	});
+
 	it('a queue that hangs is given up after the timeout', async () => {
 		vi.useFakeTimers();
 		const off = trackQueue({
