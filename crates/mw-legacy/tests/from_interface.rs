@@ -23,7 +23,7 @@ async fn check_folder_counts_match_the_import() -> Res {
         let (src, outer) = (fixture_dir(V32).await, tempfile::tempdir()?);
         let data = outer.path().join("MyWork3");
         let before = hash_tree(src.path());
-        let c = check_folder(src.path(), &data).await;
+        let c = check_folder(src.path(), &data, false).await;
         assert!(c.ok && c.problem.is_none(), "{c:?}");
         assert_eq!(c.schema_version.as_deref(), Some("колонок в заказах — 32"));
         assert_eq!(
@@ -68,29 +68,29 @@ async fn check_folder_explains_what_is_wrong() {
     };
     let empty = tempfile::tempdir().unwrap();
     let data = tempfile::tempdir().unwrap();
-    let text = problem(check_folder(empty.path(), &data.path().join("d")).await);
+    let text = problem(check_folder(empty.path(), &data.path().join("d"), false).await);
     assert!(text.contains("В папке нет baza.sqlite"), "{text}");
 
     let src = fixture_dir(V32).await;
     let inside = src.path().join("MyWork3");
-    let text = problem(check_folder(src.path(), &inside).await);
+    let text = problem(check_folder(src.path(), &inside, false).await);
     assert!(
         text.contains("Папка данных MyWork 3 лежит внутри папки MyWork 2"),
         "{text}"
     );
     assert!(!inside.exists());
 
-    let text = problem(check_folder(data.path(), data.path()).await);
+    let text = problem(check_folder(data.path(), data.path(), false).await);
     assert!(text.contains("Выбрана папка данных MyWork 3"), "{text}");
 
-    let text = problem(check_folder(&empty.path().join("нет такой"), data.path()).await);
+    let text = problem(check_folder(&empty.path().join("нет такой"), data.path(), false).await);
     assert!(text.contains("Папка не найдена"), "{text}");
 
-    let text = problem(check_folder(Path::new("MyWork2"), data.path()).await);
+    let text = problem(check_folder(Path::new("MyWork2"), data.path(), false).await);
     assert!(text.contains("Укажите полный путь"), "{text}");
 
     std::fs::write(empty.path().join("baza.sqlite"), b"not a database").unwrap();
-    problem(check_folder(empty.path(), data.path()).await);
+    problem(check_folder(empty.path(), data.path(), false).await);
 }
 
 #[tokio::test]
@@ -155,7 +155,7 @@ async fn stored_report_gives_the_list_item_groups_and_the_command_text() -> Res 
             t.label
         );
 
-        let view = report_view(&records[0]);
+        let view = report_view(&records[0], Some(&data.path().join("attachments")));
         assert_eq!(
             (view.orders, view.clients, view.users),
             (r.summary.orders, r.summary.clients, r.summary.users)
@@ -578,6 +578,49 @@ async fn not_empty_target_gets_a_hint_for_the_command_and_for_the_interface() ->
             interface.contains("с заменой") && !interface.contains("--replace"),
             "{interface}"
         );
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn occupied_attachments_folder_is_a_problem_for_check_and_import_alike() -> Res {
+    for t in cores().await {
+        for name in ["orders", "stock", "legacy"] {
+            let (src, data) = (fixture_dir(V32).await, tempfile::tempdir()?);
+            let occupied = data.path().join("attachments").join(name);
+            std::fs::create_dir_all(occupied.join("1"))?;
+            std::fs::write(occupied.join("1/user.jpg"), b"user")?;
+
+            let c = check_folder(src.path(), data.path(), false).await;
+            assert!(!c.ok, "{name}: {c:?}");
+            let text = c.problem.unwrap();
+            assert!(text.contains(&occupied.display().to_string()), "{text}");
+
+            let r =
+                import_folder(&t.core, &admin(), &options(src.path(), data.path(), false)).await;
+            let Err(e @ LegacyError::AttachmentsNotEmpty(_)) = r else {
+                panic!("{}: {r:?}", t.label);
+            };
+            assert_eq!(
+                import_error_message(&e, StartedFrom::Interface),
+                text,
+                "{}",
+                t.label
+            );
+            assert!(
+                t.core.import_target_state().await?.is_empty(),
+                "{}",
+                t.label
+            );
+
+            // При замене прежние файлы уходят в копию, проверка их не считает помехой.
+            if t.core.database_kind() == mw_core::DatabaseKind::Sqlite {
+                assert!(
+                    check_folder(src.path(), data.path(), true).await.ok,
+                    "{name}"
+                );
+            }
+        }
     }
     Ok(())
 }

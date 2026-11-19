@@ -27,6 +27,7 @@ sea-orm = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "signal", "sync", "time"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+tracing-appender = { workspace = true }
 clap = { workspace = true }
 rpassword = { workspace = true }
 iana-time-zone = { workspace = true }

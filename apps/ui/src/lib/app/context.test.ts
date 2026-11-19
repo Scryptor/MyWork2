@@ -10,6 +10,7 @@ const SERVER: ServerInfo = {
 	api_version: 1,
 	auth_required: true,
 	has_users: true,
+	setup_required: false,
 	server_time: '2026-11-15T10:24:00'
 };
 const SETTINGS = { ready_stale_days: 30, default_warranty: '30 дней' } as AppSettings;

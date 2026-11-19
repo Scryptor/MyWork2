@@ -137,6 +137,7 @@ async fn import_runs_in_the_background_and_its_report_is_listed() {
         assert_eq!(report.status, 200, "{}: {}", t.label, report.body);
         let r = &report.body;
         assert_eq!(r["orders"], 11);
+        assert_eq!(r["files_pending"], json!(false), "{}", t.label);
         assert_eq!(
             (&r["files"]["copied"], &r["files"]["missing"]),
             (&json!(6), &json!(1))
@@ -327,6 +328,43 @@ async fn files_not_placed_gives_the_error_and_the_import_number() {
         let list = t.get(LIST, token.as_deref()).await;
         assert_eq!(list.body[0]["id"], id, "{}: {}", t.label, list.body);
         assert_eq!(staging_dirs(&t).len(), 1, "{}", t.label);
+        let report = t.get(&format!("{LIST}/{id}"), token.as_deref()).await;
+        assert_eq!(report.status, 200, "{}: {}", t.label, report.body);
+        assert_eq!(report.body["files_pending"], json!(true), "{}", t.label);
+    }
+}
+
+#[tokio::test]
+async fn check_names_an_occupied_attachments_folder_unless_replacing() {
+    for t in apis(Listen::Loopback).await {
+        let occupied = t.core.data_dir_path().unwrap().join("attachments/stock");
+        std::fs::create_dir_all(occupied.join("1")).unwrap();
+        std::fs::write(occupied.join("1/user.jpg"), b"user").unwrap();
+        let src = fixture(0).await;
+        let r = t
+            .send(
+                Method::POST,
+                CHECK,
+                None,
+                Some(json!({ "path": path_of(&src) })),
+            )
+            .await;
+        assert_eq!(r.status, 200, "{}: {}", t.label, r.body);
+        assert_eq!(r.body["ok"], json!(false), "{}", t.label);
+        let problem = r.body["problem"].as_str().unwrap();
+        assert!(
+            problem.contains(&occupied.display().to_string()),
+            "{problem}"
+        );
+        let r = t
+            .send(
+                Method::POST,
+                CHECK,
+                None,
+                Some(json!({ "path": path_of(&src), "replace": true })),
+            )
+            .await;
+        assert_eq!(r.body["ok"], json!(true), "{}: {}", t.label, r.body);
     }
 }
 

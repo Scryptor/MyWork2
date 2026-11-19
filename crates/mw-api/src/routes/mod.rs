@@ -14,6 +14,7 @@ mod clients;
 mod legacy_import;
 mod meta;
 mod orders;
+mod setup;
 mod users;
 
 pub(crate) fn api_routes() -> OpenApiRouter<AppState> {
@@ -40,6 +41,7 @@ pub(crate) fn api_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(meta::server_info))
         .routes(routes!(meta::openapi_json))
         .routes(routes!(meta::about))
+        .routes(routes!(setup::run_setup))
         .routes(routes!(auth::login))
         .routes(routes!(auth::logout))
         .routes(routes!(auth::me))

@@ -46,6 +46,7 @@ impl Control {
 /// Какие прежние папки унести в копию, решает только отметка, а не то, что сейчас на диске: после
 /// обрыва в `attachments` могли появиться файлы, загруженные уже после импорта.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 struct StagingMark {
     /// Папка копии `backups/<время>` при замене: прежние файлы уходят в её `attachments`.
     backup: Option<PathBuf>,
@@ -67,6 +68,15 @@ pub(crate) struct Staging {
 
 fn io_error(context: String) -> impl FnOnce(std::io::Error) -> LegacyError {
     move |source| LegacyError::Io { context, source }
+}
+
+/// Первая из папок `orders`, `stock`, `legacy` в `attachments_dir`, которая не пуста: в неё нельзя
+/// поставить файлы импорта в пустую базу.
+pub(crate) fn occupied_import_dir(attachments_dir: &Path) -> Option<PathBuf> {
+    IMPORT_DIRS
+        .iter()
+        .map(|name| attachments_dir.join(name))
+        .find(|dir| dir_has_entries(dir))
 }
 
 /// Папка не пуста (или не читается: тогда считаем занятой).
@@ -482,7 +492,11 @@ fn place(
                 }
             }
             mark.moved.push(name);
-            write_mark(dir, mark)?;
+            // Не записалось — не повод бросать установку: прежней папки на месте уже нет, а запуск
+            // сервера считает отмеченную, но отсутствующую папку унесённой.
+            if let Err(e) = write_mark(dir, mark) {
+                tracing::warn!("импорт: отметка промежуточной папки не обновлена: {e}");
+            }
         }
     }
     for name in IMPORT_DIRS {
@@ -862,6 +876,32 @@ mod tests {
         assert!(att.join("orders/1/merged.jpg").exists() && att.join("stock/1/new.jpg").exists());
         assert!(!staging.exists());
         assert_eq!(read_mark(&staging), Ok(None));
+    }
+
+    #[test]
+    fn a_failed_mark_update_after_moving_an_old_folder_still_places_the_files() {
+        let att = tempfile::tempdir().unwrap();
+        let att = att.path();
+        write(att.join("orders/1/old.jpg"), "old");
+        let staging = att.join(".import-x");
+        write(staging.join("orders/1/new.jpg"), "new");
+        let mut m = replace_mark(att, &["orders"], &[]);
+        write_mark(&staging, &m).unwrap();
+        // На месте временного файла отметки — папка: запись отметки не удаётся.
+        std::fs::create_dir(staging.join(format!("{MARK}.tmp"))).unwrap();
+        place(&staging, att, &mut m, &mut Warnings::default()).unwrap();
+        assert!(att.join("backup/attachments/orders/1/old.jpg").exists());
+        assert!(att.join("orders/1/new.jpg").exists());
+        assert!(!staging.exists());
+    }
+
+    #[test]
+    fn marks_written_by_earlier_builds_still_read() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join(MARK), br#"{"backup":null,"import_id":7}"#).unwrap();
+        let mark = read_mark(dir.path()).unwrap().unwrap();
+        assert_eq!(mark.import_id, Some(7));
+        assert!(mark.previous.is_empty() && mark.moved.is_empty());
     }
 
     #[tokio::test]

@@ -28,6 +28,7 @@ pub(super) async fn server_info(
         api_version: crate::API_VERSION,
         auth_required: !(state.config.loopback() && open_mode),
         has_users: !open_mode,
+        setup_required: state.core.setup_required().await?,
         server_time: state.core.now().format("%Y-%m-%dT%H:%M:%S").to_string(),
     }))
 }

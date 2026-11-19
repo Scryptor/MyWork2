@@ -29,6 +29,12 @@ pub struct Cli {
     /// Папка собранного интерфейса: сервер отдаёт его с того же адреса, что и API.
     #[arg(long, env = "MW_UI_DIR")]
     pub ui_dir: Option<PathBuf>,
+    /// Папка журнала (по умолчанию — `logs` в папке данных); `none` — писать только в вывод.
+    #[arg(long, global = true, value_name = "ПАПКА|none")]
+    pub log_dir: Option<String>,
+    /// Завершаться, когда закрыт стандартный ввод (родитель умер); для тестов и десктопа.
+    #[arg(long, global = true, hide = true)]
+    pub exit_on_stdin_close: bool,
     #[command(subcommand)]
     pub command: Option<Command>,
 }
@@ -45,6 +51,8 @@ impl std::fmt::Debug for Cli {
             )
             .field("timezone", &self.timezone)
             .field("ui_dir", &self.ui_dir)
+            .field("log_dir", &self.log_dir)
+            .field("exit_on_stdin_close", &self.exit_on_stdin_close)
             .field("command", &self.command)
             .finish()
     }
@@ -71,6 +79,20 @@ pub enum Command {
 }
 
 impl Cli {
+    /// Запускается ли сервер (подкоманда `serve` или без подкоманды).
+    pub fn is_serve(&self) -> bool {
+        matches!(self.command, None | Some(Command::Serve))
+    }
+
+    /// Папка журнала: `--log-dir`, по умолчанию `logs` в папке данных; `none` — без файла.
+    pub fn resolve_log_dir(&self, data_dir: &std::path::Path) -> Option<PathBuf> {
+        match self.log_dir.as_deref() {
+            Some(value) if value.eq_ignore_ascii_case("none") => None,
+            Some(value) => Some(PathBuf::from(value)),
+            None => Some(data_dir.join("logs")),
+        }
+    }
+
     pub fn config(&self) -> Result<Config, ServerError> {
         if let Some(name) = &self.timezone {
             validate_timezone(name)?;
@@ -96,10 +118,40 @@ impl Cli {
     }
 }
 
+/// Ждёт закрытия стандартного ввода: так сервер узнаёт, что родительский процесс умер.
+/// Читает обычный поток, а не задачу рантайма: зависшее чтение не задерживает выход процесса.
+async fn stdin_closed() {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    std::thread::spawn(move || {
+        use std::io::Read;
+        let mut sink = [0u8; 256];
+        let mut stdin = std::io::stdin().lock();
+        while matches!(stdin.read(&mut sink), Ok(n) if n > 0) {}
+        let _ = tx.send(());
+    });
+    if rx.await.is_err() {
+        std::future::pending::<()>().await;
+    }
+    tracing::info!("стандартный ввод закрыт: родительский процесс завершился");
+}
+
 pub async fn run(cli: Cli) -> Result<(), ServerError> {
     let config = cli.config()?;
     match cli.command {
-        None | Some(Command::Serve) => Server::start(&config).await?.serve(shutdown_signal()).await,
+        None | Some(Command::Serve) => {
+            let server = Server::start(&config).await?;
+            if cli.exit_on_stdin_close {
+                let stop = async {
+                    tokio::select! {
+                        () = shutdown_signal() => {},
+                        () = stdin_closed() => {},
+                    }
+                };
+                server.serve(stop).await
+            } else {
+                server.serve(shutdown_signal()).await
+            }
+        }
         Some(Command::CreateAdmin { login, name }) => {
             let password = ask_password()?;
             let db = connect_and_migrate(&config).await?;
@@ -213,6 +265,31 @@ mod tests {
         .unwrap();
         assert!(
             matches!(cli.command, Some(Command::CreateAdmin { ref login, .. }) if login == "boss")
+        );
+    }
+
+    #[test]
+    fn parses_log_dir_and_exit_on_stdin_close() {
+        let cli = Cli::try_parse_from(["mw-server"]).unwrap();
+        assert!(!cli.exit_on_stdin_close);
+        assert_eq!(
+            cli.resolve_log_dir(std::path::Path::new("/d")),
+            Some(PathBuf::from("/d/logs"))
+        );
+        let cli = Cli::try_parse_from([
+            "mw-server",
+            "serve",
+            "--log-dir",
+            "none",
+            "--exit-on-stdin-close",
+        ])
+        .unwrap();
+        assert!(cli.exit_on_stdin_close);
+        assert_eq!(cli.resolve_log_dir(std::path::Path::new("/d")), None);
+        let cli = Cli::try_parse_from(["mw-server", "--log-dir", "/x"]).unwrap();
+        assert_eq!(
+            cli.resolve_log_dir(std::path::Path::new("/d")),
+            Some(PathBuf::from("/x"))
         );
     }
 

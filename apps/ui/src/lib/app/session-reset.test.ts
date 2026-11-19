@@ -99,6 +99,7 @@ describe('resetSession', () => {
 				api_version: 1,
 				auth_required: true,
 				has_users: true,
+				setup_required: false,
 				server_time: '2026-11-15T10:24:00'
 			},
 			me: user(),

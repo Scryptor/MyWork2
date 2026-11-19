@@ -3384,6 +3384,45 @@
         ]
       }
     },
+    "/api/v1/setup": {
+      "post": {
+        "tags": [
+          "Сервер"
+        ],
+        "summary": "Начальная настройка: название фирмы, первая точка и мастера одной транзакцией. Повтор после\nнастройки (или импорта) — 409 (право `settings_manage`).",
+        "operationId": "run_setup",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Настроено"
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/statuses": {
       "get": {
         "tags": [
@@ -4813,7 +4852,8 @@
           "users",
           "files",
           "groups",
-          "warnings_text"
+          "warnings_text",
+          "files_pending"
         ],
         "properties": {
           "clients": {
@@ -4825,6 +4865,10 @@
           "files": {
             "$ref": "#/components/schemas/FileStats",
             "description": "Файлы: скопировано, байт, не найдено."
+          },
+          "files_pending": {
+            "type": "boolean",
+            "description": "Файлы импорта ещё лежат в промежуточной папке (например, их место занято): их доведёт запуск\nпрограммы или перенесёт человек."
           },
           "groups": {
             "type": "array",
@@ -4905,6 +4949,10 @@
           "path": {
             "type": "string",
             "description": "Полный путь к папке MyWork 2 (или к файлу `baza.sqlite` в ней) на компьютере сервера."
+          },
+          "replace": {
+            "type": "boolean",
+            "description": "Проверка для переноса с заменой: непустые папки вложений тогда не мешают. По умолчанию — нет."
           }
         },
         "additionalProperties": false
@@ -6195,6 +6243,7 @@
           "api_version",
           "auth_required",
           "has_users",
+          "setup_required",
           "server_time"
         ],
         "properties": {
@@ -6219,6 +6268,10 @@
           "server_time": {
             "type": "string",
             "description": "Текущее время предприятия (местное, без смещения), как все даты API."
+          },
+          "setup_required": {
+            "type": "boolean",
+            "description": "Нужна ли начальная настройка: нет отметки «настроено» и в базе нет заказов, клиентов и импортов."
           },
           "version": {
             "type": "string",
@@ -6365,6 +6418,33 @@
           "timezone": {
             "type": "string",
             "description": "Часовой пояс предприятия (имя IANA)."
+          }
+        },
+        "additionalProperties": false
+      },
+      "SetupRequest": {
+        "type": "object",
+        "description": "Начальная настройка при первом запуске.",
+        "required": [
+          "firm_name",
+          "point_name",
+          "masters"
+        ],
+        "properties": {
+          "firm_name": {
+            "type": "string",
+            "description": "Название фирмы (печатные формы)."
+          },
+          "masters": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Мастера для справочника; повторы (без учёта регистра) и пустые строки отбрасываются."
+          },
+          "point_name": {
+            "type": "string",
+            "description": "Первая точка обслуживания; она же точка по умолчанию."
           }
         },
         "additionalProperties": false

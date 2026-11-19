@@ -4,7 +4,7 @@
 //! сводка записанного. Отчёт, записанный более старой версией, читается с нулями вместо недостающего.
 
 use std::collections::BTreeSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use chrono::NaiveDateTime;
 use mw_core::{ImportSummary, LegacyImportMode, LegacyImportRecord};
@@ -58,6 +58,9 @@ pub struct ImportReportView {
     pub groups: Vec<ReportGroup>,
     /// Полный текст отчёта, как в файле команды `import-legacy` (содержит данные клиентов).
     pub warnings_text: String,
+    /// Файлы импорта ещё лежат в промежуточной папке (например, их место занято): их доведёт запуск
+    /// программы или перенесёт человек.
+    pub files_pending: bool,
 }
 
 /// Отчёт в `legacy_imports.report`.
@@ -69,6 +72,7 @@ struct StoredReport {
     warnings: Vec<Warning>,
     backup: Option<String>,
     summary: ImportSummary,
+    staging: Option<String>,
 }
 
 impl StoredReport {
@@ -101,8 +105,17 @@ pub fn import_item(record: &LegacyImportRecord) -> LegacyImportItem {
 }
 
 /// Отчёт по записи импорта: итоги, группы с номерами заказов и текст отчёта команды.
-pub fn report_view(record: &LegacyImportRecord) -> ImportReportView {
+///
+/// `attachments_dir` — папка вложений: по ней видно, осталась ли промежуточная папка этого импорта.
+pub fn report_view(
+    record: &LegacyImportRecord,
+    attachments_dir: Option<&Path>,
+) -> ImportReportView {
     let stored = StoredReport::parse(record);
+    let files_pending = match (attachments_dir, stored.staging.as_deref()) {
+        (Some(dir), Some(name)) if is_staging_name(name) => dir.join(name).is_dir(),
+        _ => false,
+    };
     let groups = WarningCode::ALL
         .iter()
         .filter_map(|code| {
@@ -141,7 +154,13 @@ pub fn report_view(record: &LegacyImportRecord) -> ImportReportView {
         files: report.files,
         groups,
         warnings_text: report.full_text(),
+        files_pending,
     }
+}
+
+/// Имя промежуточной папки без путей: отчёт пишет сервер, но имя всё равно не доверяется.
+fn is_staging_name(name: &str) -> bool {
+    name.starts_with(".import-") && !name.contains(['/', '\\']) && !name.contains("..")
 }
 
 /// Номера заказов предупреждения: ключ, если источник — заказы (`Catalog`) и ключ — номер заказа.
@@ -232,7 +251,7 @@ mod tests {
             ],
             "summary": ImportSummary { orders: 4, clients: 2, users: 1, ..Default::default() },
         }));
-        let view = report_view(&r);
+        let view = report_view(&r, None);
         assert_eq!(
             view.groups,
             [
@@ -259,9 +278,31 @@ mod tests {
     }
 
     #[test]
+    fn files_are_pending_while_the_staging_folder_is_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let r = record(json!({ "staging": ".import-20261111-090000" }));
+        assert!(
+            !report_view(&r, Some(dir.path())).files_pending,
+            "папки нет"
+        );
+        std::fs::create_dir(dir.path().join(".import-20261111-090000")).unwrap();
+        assert!(report_view(&r, Some(dir.path())).files_pending);
+        assert!(
+            !report_view(&r, None).files_pending,
+            "папка вложений неизвестна"
+        );
+        let other = record(json!({ "staging": "../.import-x" }));
+        assert!(
+            !report_view(&other, Some(dir.path())).files_pending,
+            "чужие пути не смотрим"
+        );
+        assert!(!report_view(&record(json!({})), Some(dir.path())).files_pending);
+    }
+
+    #[test]
     fn old_or_broken_reports_are_read_with_zeros() {
         for report in [json!({ "warnings": [] }), json!(null), json!("x")] {
-            let view = report_view(&record(report));
+            let view = report_view(&record(report), None);
             assert_eq!((view.orders, view.groups.len()), (0, 0));
             assert!(view.warnings_text.contains("Перенесено"));
             assert_eq!(import_item(&record(json!(null))).warnings, 0);

@@ -7,4 +7,8 @@ export type LegacyImportCheck = {
 /**
  * Полный путь к папке MyWork 2 (или к файлу `baza.sqlite` в ней) на компьютере сервера.
  */
-path: string, };
+path: string, 
+/**
+ * Проверка для переноса с заменой: непустые папки вложений тогда не мешают. По умолчанию — нет.
+ */
+replace?: boolean, };

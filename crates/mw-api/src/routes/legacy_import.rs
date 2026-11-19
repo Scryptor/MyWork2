@@ -51,7 +51,12 @@ pub(super) async fn check_legacy_folder(
 ) -> Result<Json<FolderCheck>, ApiError> {
     let data_dir = local_import_allowed(&state, &actor)?;
     Ok(Json(
-        mw_legacy::check_folder(FsPath::new(&body.path), &data_dir).await,
+        mw_legacy::check_folder(
+            FsPath::new(&body.path),
+            &data_dir,
+            body.replace.unwrap_or(false),
+        )
+        .await,
     ))
 }
 
@@ -154,7 +159,14 @@ pub(super) async fn get_legacy_import(
     Path(id): Path<i64>,
 ) -> Result<Json<ImportReportView>, ApiError> {
     let record = state.core.legacy_import(&actor, id).await?;
-    Ok(Json(mw_legacy::report_view(&record)))
+    Ok(Json(mw_legacy::report_view(
+        &record,
+        state
+            .core
+            .data_dir_path()
+            .map(|dir| dir.join("attachments"))
+            .as_deref(),
+    )))
 }
 
 /// Если задача импорта оборвалась (паника), ход не должен остаться «идёт» навсегда.

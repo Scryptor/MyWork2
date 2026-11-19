@@ -44,9 +44,11 @@ impl FolderCheck {
 
 /// Проверяет папку MyWork 2 (или файл `baza.sqlite` в ней) для переноса в папку данных `data_dir`:
 /// читает базу и файлы и считает, что будет перенесено. Ни в папку MyWork 2, ни в папку данных
-/// ничего не пишет (база читается из копии во временной папке).
-pub async fn check_folder(source: &Path, data_dir: &Path) -> FolderCheck {
-    match check(source, data_dir).await {
+/// ничего не пишет (база читается из копии во временной папке). При переносе в пустую базу
+/// (`replace = false`) папки вложений `orders`, `stock` и `legacy` должны быть пусты, иначе это проблема;
+/// при замене прежние файлы уходят в копию.
+pub async fn check_folder(source: &Path, data_dir: &Path, replace: bool) -> FolderCheck {
+    match check(source, data_dir, replace).await {
         Ok(found) => found,
         Err(problem) => FolderCheck::problem(problem),
     }
@@ -56,7 +58,7 @@ fn same_dir(a: &Path, b: &Path) -> bool {
     matches!((a.canonicalize(), b.canonicalize()), (Ok(a), Ok(b)) if a == b)
 }
 
-async fn check(source: &Path, data_dir: &Path) -> Result<FolderCheck, String> {
+async fn check(source: &Path, data_dir: &Path, replace: bool) -> Result<FolderCheck, String> {
     if !source.is_absolute() {
         return Err("Укажите полный путь к папке MyWork 2".into());
     }
@@ -82,6 +84,9 @@ async fn check(source: &Path, data_dir: &Path) -> Result<FolderCheck, String> {
              не записывается, перенос невозможен"
                 .into(),
         );
+    }
+    if !replace && let Some(dir) = files::occupied_import_dir(&data_dir.join("attachments")) {
+        return Err(LegacyError::AttachmentsNotEmpty(dir).to_string());
     }
     let db = source::read_database(&folder.db_file)
         .await

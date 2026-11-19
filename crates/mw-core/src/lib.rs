@@ -18,6 +18,7 @@ mod patch;
 mod search_index;
 mod service_points;
 mod settings;
+mod setup;
 mod sql;
 mod statuses;
 mod usage;
@@ -54,6 +55,7 @@ pub use page::{Page, PageRequest};
 pub use search_index::{ReindexStats, SEARCH_INDEX_VERSION};
 pub use service_points::{ServicePoint, ServicePointPatch};
 pub use settings::{AppSettings, SettingsPatch};
+pub use setup::SetupRequest;
 pub use statuses::{NewStatus, Status, StatusPatch};
 pub use usage::CatalogUsage;
 

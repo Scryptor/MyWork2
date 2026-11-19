@@ -22,6 +22,8 @@ pub struct ServerInfo {
     pub auth_required: bool,
     /// Есть ли в базе активные пользователи.
     pub has_users: bool,
+    /// Нужна ли начальная настройка: нет отметки «настроено» и в базе нет заказов, клиентов и импортов.
+    pub setup_required: bool,
     /// Текущее время предприятия (местное, без смещения), как все даты API.
     pub server_time: String,
 }
@@ -526,6 +528,11 @@ impl From<mw_core::Page<mw_core::AuditEntry>> for AuditPage {
 pub struct LegacyImportCheck {
     /// Полный путь к папке MyWork 2 (или к файлу `baza.sqlite` в ней) на компьютере сервера.
     pub path: String,
+    /// Проверка для переноса с заменой: непустые папки вложений тогда не мешают. По умолчанию — нет.
+    #[serde(default)]
+    #[ts(optional)]
+    #[schema(nullable = false)]
+    pub replace: Option<bool>,
 }
 
 /// Запуск переноса из MyWork 2.

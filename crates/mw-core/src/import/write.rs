@@ -536,6 +536,8 @@ async fn write_settings(
         put(conn, key, value).await?;
     }
     put(conn, "search_index_version", &json!(SEARCH_INDEX_VERSION)).await?;
+    // Импорт заменяет начальную настройку.
+    put(conn, crate::setup::SETUP_DONE_KEY, &json!(true)).await?;
     Ok(())
 }
 

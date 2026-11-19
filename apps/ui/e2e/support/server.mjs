@@ -51,24 +51,6 @@ const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mw-e2e-'));
 // A fixed enterprise time zone keeps dates deterministic.
 const common = ['--data-dir', dataDir, '--timezone', 'UTC'];
 
-if (withAdmin) {
-	const created = spawnSync(
-		binary,
-		[...common, 'create-admin', '--login', ADMIN_LOGIN, '--name', 'Администратор'],
-		{ input: `${ADMIN_PASSWORD}\n`, stdio: ['pipe', 'inherit', 'inherit'] }
-	);
-	if (created.status !== 0) {
-		await fs.rm(dataDir, { recursive: true, force: true });
-		process.exit(created.status ?? 1);
-	}
-}
-
-const child = spawn(
-	binary,
-	['--listen', `127.0.0.1:${port}`, ...common, '--ui-dir', uiDir, 'serve'],
-	{ stdio: 'inherit' }
-);
-
 let cleaned = false;
 async function cleanup() {
 	if (cleaned) return;
@@ -76,14 +58,64 @@ async function cleanup() {
 	await fs.rm(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }
 
-process.on('SIGINT', () => child.kill('SIGINT'));
-process.on('SIGTERM', () => child.kill('SIGTERM'));
-child.on('exit', async (code, signal) => {
+// The child that is running right now (create-admin first, then the server). Signal handlers are
+// installed before the first child starts, so a signal during create-admin still cleans up.
+/** @type {import('node:child_process').ChildProcess | null} */
+let current = null;
+let stopping = false;
+/** @param {NodeJS.Signals} signal */
+function stop(signal) {
+	stopping = true;
+	if (current) current.kill(signal);
+	else cleanup().finally(() => process.exit(1));
+}
+process.on('SIGINT', () => stop('SIGINT'));
+process.on('SIGTERM', () => stop('SIGTERM'));
+
+// Children get a stdin pipe and run with --exit-on-stdin-close: when this launcher dies (even by
+// SIGKILL) the pipe closes and mw-server exits instead of staying behind as an orphan.
+/**
+ * @param {string[]} argv
+ * @param {string} [input]
+ * @returns {Promise<{ code: number | null, signal: NodeJS.Signals | null }>}
+ */
+function run(argv, input) {
+	return new Promise((resolve) => {
+		const proc = spawn(binary, argv, { stdio: ['pipe', 'inherit', 'inherit'] });
+		current = proc;
+		proc.on('error', (error) => {
+			console.error(error);
+			resolve({ code: 1, signal: null });
+		});
+		proc.on('exit', (code, signal) => resolve({ code, signal }));
+		// An EPIPE here only means the child is already gone.
+		proc.stdin.on('error', () => {});
+		if (input !== undefined) proc.stdin.end(input);
+	});
+}
+
+/** @param {number} code */
+async function finish(code) {
 	await cleanup();
-	process.exit(code ?? (signal ? 1 : 0));
-});
-child.on('error', async (error) => {
-	console.error(error);
-	await cleanup();
-	process.exit(1);
-});
+	process.exit(code);
+}
+
+if (withAdmin) {
+	const created = await run(
+		[...common, 'create-admin', '--login', ADMIN_LOGIN, '--name', 'Администратор'],
+		`${ADMIN_PASSWORD}\n`
+	);
+	if (stopping) await finish(1);
+	if (created.code !== 0) await finish(created.code ?? 1);
+}
+
+const served = await run([
+	'--listen',
+	`127.0.0.1:${port}`,
+	...common,
+	'--ui-dir',
+	uiDir,
+	'--exit-on-stdin-close',
+	'serve'
+]);
+await finish(served.code ?? (served.signal ? 1 : 0));

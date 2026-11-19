@@ -194,11 +194,8 @@ pub async fn import_folder(
         if !target.is_empty() {
             return Err(LegacyError::TargetNotEmpty(target));
         }
-        for name in files::IMPORT_DIRS {
-            let dir = options.attachments_dir.join(name);
-            if files::dir_has_entries(&dir) {
-                return Err(LegacyError::AttachmentsNotEmpty(dir));
-            }
+        if let Some(dir) = files::occupied_import_dir(&options.attachments_dir) {
+            return Err(LegacyError::AttachmentsNotEmpty(dir));
         }
     }
 

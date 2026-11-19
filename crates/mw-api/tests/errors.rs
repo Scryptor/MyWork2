@@ -38,7 +38,7 @@ async fn server_info_tells_whether_login_is_needed() {
         assert_eq!(
             r.body,
             json!({ "app": "mw", "version": env!("CARGO_PKG_VERSION"), "api_version": 1,
-                    "auth_required": false, "has_users": false,
+                    "auth_required": false, "has_users": false, "setup_required": true,
                     "server_time": "2026-11-11T09:00:00" }),
             "{}",
             t.label

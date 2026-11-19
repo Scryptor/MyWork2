@@ -74,6 +74,7 @@ pub fn export_typescript(dir: &Path) -> Result<(), ts_rs::ExportError> {
     mw_core::NewRole::export_all(&cfg)?;
     mw_core::RolePatch::export_all(&cfg)?;
     mw_core::Role::export_all(&cfg)?;
+    mw_core::SetupRequest::export_all(&cfg)?;
     mw_core::AppSettings::export_all(&cfg)?;
     mw_core::SettingsPatch::export_all(&cfg)?;
     mw_core::Status::export_all(&cfg)?;
