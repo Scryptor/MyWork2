@@ -628,51 +628,30 @@ impl Core {
             .one(tx)
             .await?;
         if to_issued {
-            // «Обязательно при выдаче» действует при переходе в «Выдан» из другого вида; мастер и
-            // выполненные работы нужны при выдаче всегда.
-            let from_issued = old_status
-                .as_ref()
-                .is_some_and(|s| s.kind == StatusKind::Issued.as_str());
-            let required = if from_issued {
-                Vec::new()
-            } else {
-                crate::settings::load(tx).await?.issue_required
+            // «Обязательно при выдаче» задаёт весь набор: проверяется при каждом переходе в вид «Выдан».
+            let required = crate::settings::load(tx).await?.issue_required;
+            let empty = |req: IssueRequirement| match req {
+                IssueRequirement::FinalPrice => current.final_price.is_none(),
+                IssueRequirement::Master => current.master.trim().is_empty(),
+                IssueRequirement::WorkDone => current.work_done.trim().is_empty(),
+                IssueRequirement::Warranty => current.warranty_text.trim().is_empty(),
             };
-            let mut errors = Vec::new();
-            let mut check = |req: IssueRequirement, empty: bool, always: bool| {
-                let listed = required.contains(&req);
-                if empty && (listed || always) {
-                    errors.push(if listed {
-                        FieldError::with_message(
-                            req.as_str(),
-                            "required_for_issue",
-                            "Заполните перед выдачей",
-                        )
-                    } else {
-                        FieldError::new(req.as_str(), "required")
-                    });
-                }
-            };
-            check(
+            let errors: Vec<FieldError> = [
                 IssueRequirement::FinalPrice,
-                current.final_price.is_none(),
-                false,
-            );
-            check(
                 IssueRequirement::Master,
-                current.master.trim().is_empty(),
-                true,
-            );
-            check(
                 IssueRequirement::WorkDone,
-                current.work_done.trim().is_empty(),
-                true,
-            );
-            check(
                 IssueRequirement::Warranty,
-                current.warranty_text.trim().is_empty(),
-                false,
-            );
+            ]
+            .into_iter()
+            .filter(|r| required.contains(r) && empty(*r))
+            .map(|r| {
+                FieldError::with_message(
+                    r.as_str(),
+                    "required_for_issue",
+                    "Заполните перед выдачей",
+                )
+            })
+            .collect();
             if !errors.is_empty() {
                 return Err(CoreError::Validation(errors));
             }

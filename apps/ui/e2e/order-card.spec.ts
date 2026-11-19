@@ -90,7 +90,7 @@ test('warranty case on an issued order', async ({ page, request }) => {
 		status_id: await statusId(request, 'Готов'),
 		master: 'Тестов'
 	});
-	const filled = await patchOrder(request, o.id, { work_done: 'Чистка' });
+	const filled = await patchOrder(request, o.id, { work_done: 'Чистка', final_price: 100000 });
 	const issuedResponse = await request.post(
 		`/api/v1/orders/${o.id}/issue?version=${filled.version}`,
 		{

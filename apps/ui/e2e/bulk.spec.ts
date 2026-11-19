@@ -27,14 +27,14 @@ async function selectAll(page: Page, marker: string, ids: number[]) {
 	await expect(barOf(page)).toContainText(`Выбрано ${ids.length}`);
 }
 
-/** An order ready to be issued: master and work done are filled in. */
+/** An order ready to be issued: price, master and work done are filled in. */
 async function readyOrder(request: Parameters<typeof createOrder>[0], model: string) {
 	const o = await createOrder(request, {
 		model,
 		status_id: await statusId(request, 'Готов'),
 		master: 'Тестов'
 	});
-	return patchOrder(request, o.id, { work_done: 'Чистка' });
+	return patchOrder(request, o.id, { work_done: 'Чистка', final_price: 100000 });
 }
 
 test('bulk issue without date leaves the issue date empty', async ({ page, request }) => {
@@ -70,7 +70,7 @@ test('bulk issue now stamps the date and reports an order it could not issue', a
 	const ready = await statusId(request, 'Готов');
 	const issued = await statusId(request, 'Выдан');
 	const good = await readyOrder(request, m);
-	// No master: the server does not issue it.
+	// No price, master and work done: the server does not issue it.
 	const bad = await createOrder(request, { model: m, status_id: ready });
 	await selectAll(page, m, [good.id, bad.id]);
 
@@ -83,7 +83,7 @@ test('bulk issue now stamps the date and reports an order it could not issue', a
 
 	await expect(toastsOf(page)).toContainText('Статус «Выдан» у 1 заказа');
 	await expect(toastsOf(page)).toContainText(
-		`Не удалось у 1 заказа: № ${bad.id} — заполните: мастер`
+		`Не удалось у 1 заказа: № ${bad.id} — заполните: итоговая цена, мастер, выполненные работы`
 	);
 	const done = await fetchOrder(request, good.id);
 	expect(done.status_id).toBe(issued);

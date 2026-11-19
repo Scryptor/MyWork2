@@ -18,6 +18,7 @@ async fn issued_order(t: &TestCore) -> Result<mw_core::Order, CoreError> {
             OrderPatch {
                 master: Some("Антон".into()),
                 work_done: Some("Замена дисплея".into()),
+                final_price: Some(Some(mw_domain::money::Money::from_kopecks(100_000))),
                 ..Default::default()
             },
         )

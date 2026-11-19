@@ -442,7 +442,7 @@ test('an issued order goes back to work with the status it had before', async ({
 	const m = uniq('M');
 	const ready = await statusId(request, 'Готов');
 	const o = await createOrder(request, { model: m, status_id: ready, master: 'Тестов' });
-	const filled = await patchOrder(request, o.id, { work_done: 'Чистка' });
+	const filled = await patchOrder(request, o.id, { work_done: 'Чистка', final_price: 100000 });
 	const issuedResponse = await request.post(
 		`/api/v1/orders/${o.id}/issue?version=${filled.version}`,
 		{ headers: { 'Content-Type': 'application/json' } }
@@ -552,7 +552,7 @@ test.describe('on a phone', () => {
 		const m = uniq('M');
 		const ready = await statusId(request, 'Готов');
 		const o = await createOrder(request, { model: m, status_id: ready, master: 'Тестов' });
-		const filled = await patchOrder(request, o.id, { work_done: 'Чистка' });
+		const filled = await patchOrder(request, o.id, { work_done: 'Чистка', final_price: 100000 });
 		const issuedResponse = await request.post(
 			`/api/v1/orders/${o.id}/issue?version=${filled.version}`,
 			{ headers: { 'Content-Type': 'application/json' } }

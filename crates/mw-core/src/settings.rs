@@ -50,7 +50,7 @@ pub struct AppSettings {
     pub issue_terms: String,
     /// Часовой пояс предприятия (имя IANA).
     pub timezone: String,
-    /// Что должно быть заполнено в заказе перед выдачей; пусто — ничего сверх обычного.
+    /// Что должно быть заполнено в заказе перед выдачей: весь набор требований, пусто — ничего.
     pub issue_required: Vec<IssueRequirement>,
 }
 
@@ -72,7 +72,11 @@ impl Default for AppSettings {
             intake_terms: String::new(),
             issue_terms: String::new(),
             timezone: "UTC".to_owned(),
-            issue_required: Vec::new(),
+            issue_required: vec![
+                IssueRequirement::FinalPrice,
+                IssueRequirement::Master,
+                IssueRequirement::WorkDone,
+            ],
         }
     }
 }

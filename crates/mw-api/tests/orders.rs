@@ -190,14 +190,15 @@ async fn edits_status_issue_delete_with_versions() {
             (
                 422,
                 &json!([
-                    { "field": "master", "code": "required", "message": "Заполните поле" },
-                    { "field": "work_done", "code": "required", "message": "Заполните поле" }])
+                    { "field": "final_price", "code": "required_for_issue", "message": "Заполните перед выдачей" },
+                    { "field": "master", "code": "required_for_issue", "message": "Заполните перед выдачей" },
+                    { "field": "work_done", "code": "required_for_issue", "message": "Заполните перед выдачей" }])
             )
         );
         assert_eq!(
             patch(
                 3,
-                json!({ "master": "Антон", "work_done": "Замена дисплея" })
+                json!({ "master": "Антон", "work_done": "Замена дисплея", "final_price": 100000 })
             )
             .await
             .body["version"],
@@ -357,7 +358,9 @@ async fn order_ready_to_issue(t: &common::TestApi, token: &str) -> (i64, i64) {
             Method::PATCH,
             &format!("/api/v1/orders/{id}?version=1"),
             Some(token),
-            Some(json!({ "master": "Антон", "work_done": "Замена дисплея" })),
+            Some(
+                json!({ "master": "Антон", "work_done": "Замена дисплея", "final_price": 100000 }),
+            ),
         )
         .await;
     assert_eq!(r.status, 200, "{}: {}", t.label, r.body);

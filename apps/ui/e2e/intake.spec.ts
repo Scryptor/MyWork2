@@ -798,7 +798,7 @@ test('«Этот IMEI уже был» marks a past order under warranty', async 
 		warranty: '30 дней',
 		model: uniq('M')
 	});
-	await patchOrder(request, past.id, { work_done: 'Замена разъёма' });
+	await patchOrder(request, past.id, { work_done: 'Замена разъёма', final_price: 100000 });
 	await setStatus(request, past.id, await statusId(request, 'Выдан'));
 
 	await openIntake(page);

@@ -5,7 +5,7 @@
 	export interface IssueValues {
 		work_done: string;
 		master: string;
-		final_price: number;
+		final_price: number | null;
 		discount: number;
 		warranty: string;
 	}
@@ -93,13 +93,18 @@
 		});
 	});
 
-	/** «Обязательно при выдаче» (spec 6.8): the warranty is required only when the setting says so. */
-	const warrantyRequired = $derived(app.settings.issue_required.includes('warranty'));
+	/** «Обязательно при выдаче» (spec 6.8): the settings give the whole set of what is required. */
+	const needs = $derived({
+		work: app.settings.issue_required.includes('work_done'),
+		master: app.settings.issue_required.includes('master'),
+		price: app.settings.issue_required.includes('final_price'),
+		warranty: app.settings.issue_required.includes('warranty')
+	});
 	const missing = $derived({
-		work: work.trim() === '',
-		master: master.trim() === '',
-		price: price === null,
-		warranty: warrantyRequired && warranty.trim() === ''
+		work: needs.work && work.trim() === '',
+		master: needs.master && master.trim() === '',
+		price: needs.price && price === null,
+		warranty: needs.warranty && warranty.trim() === ''
 	});
 	/** What stops the issue, in the order of the fields: an empty required field or a wrong amount. */
 	const blocking = $derived<Record<Key, boolean>>({
@@ -133,7 +138,6 @@
 			document.getElementById(IDS[first])?.focus();
 			return;
 		}
-		if (price === null) return;
 		busy = true;
 		serverErrors = {};
 		failure = null;
@@ -150,7 +154,7 @@
 			const shown: Partial<Record<Key, string>> = {};
 			for (const f of fields) {
 				const k = SERVER_FIELDS[f.field];
-				if (k) shown[k] ??= f.code.startsWith('required') ? t.required : f.message;
+				if (k) shown[k] ??= f.code === 'required_for_issue' ? t.required : f.message;
 			}
 			serverErrors = shown;
 			const known = Object.keys(shown) as Key[];
@@ -173,7 +177,7 @@
 			<Textarea
 				id={IDS.work}
 				label={t.workDone}
-				required
+				required={needs.work}
 				bind:value={
 					() => work,
 					(v) => {
@@ -186,7 +190,7 @@
 			<Combobox
 				id={IDS.master}
 				label={t.master}
-				required
+				required={needs.master}
 				items={masterItems}
 				bind:value={
 					() => master,
@@ -201,7 +205,7 @@
 				<MoneyInput
 					id={IDS.price}
 					label={t.issuePrice}
-					required
+					required={needs.price}
 					bind:value={
 						() => price,
 						(v) => {
@@ -243,7 +247,7 @@
 			<Combobox
 				id={IDS.warranty}
 				label={t.warranty}
-				required={warrantyRequired}
+				required={needs.warranty}
 				items={warrantyItems}
 				hint={noWarranty ? t.noWarranty : undefined}
 				bind:value={
