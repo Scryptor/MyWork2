@@ -11,6 +11,7 @@ import {
 	uploadOrderAttachment
 } from '#lib/api/attachments.js';
 import { ApiError, errorMessage } from '#lib/api/client.js';
+import { trackQueue } from '#lib/app/session-reset.js';
 import { undo } from '#lib/app/undo.svelte.js';
 import { countLabel } from '#lib/format/plural.js';
 import { ru } from '#lib/i18n/ru.js';
@@ -76,13 +77,30 @@ export interface DraftGuard {
 	locked: () => string | null;
 }
 
+/** A deletion waiting for its toast to go: sent now, or given up. */
+interface WaitingDelete {
+	commit: (keepalive: boolean) => Promise<void>;
+	drop: () => void;
+}
 /** Deletions waiting for their toast to go: the page being left sends them at once. */
 // eslint-disable-next-line svelte/prefer-svelte-reactivity -- bookkeeping, nothing renders it
-const waiting = new Set<(keepalive: boolean) => Promise<void>>();
+const waiting = new Set<WaitingDelete>();
 if (typeof window !== 'undefined')
 	window.addEventListener('pagehide', () => {
-		for (const commit of [...waiting]) void commit(true);
+		for (const w of [...waiting]) void w.commit(true);
 	});
+// Signing out sends the waiting deletions while the token is still there (`settleQueues`): the toast
+// that offers «Отменить» is cleared with the session, and a deletion sent after it would have no token.
+trackQueue({
+	unsaved: () => waiting.size > 0,
+	flush: async () => {
+		await Promise.all([...waiting].map((w) => w.commit(false)));
+		return waiting.size === 0;
+	},
+	discard: () => {
+		for (const w of [...waiting]) w.drop();
+	}
+});
 
 /** What an instance that was left says about itself: whose uploads these are. */
 interface Detached {
@@ -258,7 +276,7 @@ function createMedia<K>(owner: K, api: MediaApi<K>, left?: Detached, guard?: Dra
 		const commit = async (keepalive: boolean): Promise<void> => {
 			if (settled) return;
 			settled = true;
-			waiting.delete(commit);
+			waiting.delete(entry);
 			try {
 				await (keepalive ? api.remove(id, true) : api.remove(id));
 			} catch (e) {
@@ -268,13 +286,21 @@ function createMedia<K>(owner: K, api: MediaApi<K>, left?: Detached, guard?: Dra
 				toast.show({ message: about(errorMessage(e)), tone: 'danger' });
 			}
 		};
-		waiting.add(commit);
+		const entry: WaitingDelete = {
+			commit,
+			// Signing out without saving: the deletion is given up, the file stays on the server.
+			drop: () => {
+				settled = true;
+				waiting.delete(entry);
+			}
+		};
+		waiting.add(entry);
 		undo.push(
 			about(before.kind === 'file' ? ru.media.fileDeleted : ru.media.photoDeleted),
 			async () => {
 				if (settled) return;
 				settled = true;
-				waiting.delete(commit);
+				waiting.delete(entry);
 				restore();
 			},
 			// The button and Ctrl/⌘+Z dismiss the toast first and undo right after: the undo wins.

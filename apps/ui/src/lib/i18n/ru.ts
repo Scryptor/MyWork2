@@ -223,7 +223,6 @@ export const ru = {
 		phonesGroup: 'Телефоны после объединения',
 		phoneKeep: (phone: string) => `Оставить номер ${phone}`,
 		phonesLeft: (kept: number, max: number) => `Останется ${kept} из ${max}`,
-		trimFailed: (message: string) => `Номера не сняты, клиенты не объединены: ${message}`,
 		pickerTitle: 'Объединить с…',
 		pickerClient: 'Клиент',
 		pickerPlaceholder: 'ФИО или телефон',

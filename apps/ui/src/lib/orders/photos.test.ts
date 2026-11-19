@@ -1,6 +1,8 @@
 import type { Attachment } from '$api/Attachment';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '#lib/api/client.js';
+import { resetSession } from '#lib/app/session-reset.js';
+import { settleQueues } from '#lib/app/session-reset.js';
 import { toast } from '#lib/ui/toast/toast.svelte.js';
 import {
 	createDraftMedia,
@@ -175,6 +177,24 @@ describe('createOrderMedia', () => {
 		expect(api.remove).toHaveBeenCalledWith(1, true);
 		await vi.advanceTimersByTimeAsync(10_000);
 		expect(api.remove).toHaveBeenCalledOnce();
+	});
+
+	it('signing out sends the waiting deletions while the token is there, once', async () => {
+		vi.useFakeTimers();
+		const api = fakeApi();
+		const m = createOrderMedia(7, api);
+		await m.reload();
+		await m.remove(1);
+		expect(api.remove).not.toHaveBeenCalled();
+		await expect(settleQueues(1000)).resolves.toBe(true);
+		expect(api.remove).toHaveBeenCalledOnce();
+		expect(api.remove).toHaveBeenCalledWith(1);
+		// The session is reset after: the cleared toast does not send it again nor restore the photo.
+		resetSession();
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(api.remove).toHaveBeenCalledOnce();
+		expect(m.photos).toEqual([]);
+		expect(messages()).toEqual([]);
 	});
 
 	it('a toast that is gone (pushed out by others) sends the request: nothing is left to undo', async () => {

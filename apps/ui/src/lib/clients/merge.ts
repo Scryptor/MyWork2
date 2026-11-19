@@ -34,7 +34,11 @@ export function defaultChoice(clients: readonly MergeClient[]): MergeChoice {
 	return { targetId: target.id, from };
 }
 
-export function toMergeRequest(choice: MergeChoice, clients: readonly Client[]): MergeClients {
+export function toMergeRequest(
+	choice: MergeChoice,
+	clients: readonly Client[],
+	dropped: ReadonlySet<string> = new Set()
+): MergeClients {
 	const byId = (id: number) => clients.find((c) => c.id === id);
 	const target = byId(choice.targetId);
 	if (!target) throw new Error(`client ${choice.targetId} is not in the merge`);
@@ -49,7 +53,9 @@ export function toMergeRequest(choice: MergeChoice, clients: readonly Client[]):
 		address: pick('address'),
 		note: pick('note'),
 		source: pick('source'),
-		blacklisted: pick('blacklisted')
+		blacklisted: pick('blacklisted'),
+		// The numbers the user unchecked: the server leaves them out in the same step as the merge.
+		drop_phones: [...dropped]
 	};
 }
 
@@ -77,23 +83,6 @@ export function keptMergedPhones(
 	dropped: ReadonlySet<string>
 ): ClientPhone[] {
 	return mergedPhones(clients, targetId).filter((p) => !dropped.has(phoneKey(p.phone)));
-}
-
-/**
- * The merge takes every number of every client: to leave some out they go from their clients first.
- * The clients that have unchecked numbers, with the numbers they keep.
- */
-export function phonesToTrim(
-	clients: readonly Client[],
-	dropped: ReadonlySet<string>
-): { id: number; version: number; phones: ClientPhone[] }[] {
-	return clients
-		.filter((c) => c.phones.some((p) => dropped.has(phoneKey(p.phone))))
-		.map((c) => ({
-			id: c.id,
-			version: c.version,
-			phones: c.phones.filter((p) => !dropped.has(phoneKey(p.phone)))
-		}));
 }
 
 /** The choice after the clients were read again: values the user picked stay while their client is there. */

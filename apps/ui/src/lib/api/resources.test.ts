@@ -51,7 +51,8 @@ it('edits a client with its version; similar and merge have their own paths', as
 		address: '',
 		note: '',
 		source: '',
-		blacklisted: false
+		blacklisted: false,
+		drop_phones: []
 	});
 	expect(call(fn)[0]).toBe('/api/v1/clients/merge');
 	expect(call(fn)[1].method).toBe('POST');

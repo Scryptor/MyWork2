@@ -5,7 +5,7 @@
 	import { untrack } from 'svelte';
 	import type { Client } from '$api/Client';
 	import { ApiError, errorMessage } from '#lib/api/client.js';
-	import { getClient, mergeClients, updateClient } from '#lib/api/clients.js';
+	import { getClient, mergeClients } from '#lib/api/clients.js';
 	import { listOrders } from '#lib/api/orders.js';
 	import { submitShortcut } from '#lib/design/hotkeys.svelte.js';
 	import { countLabel, displayName, formatPhone, plural } from '#lib/format/index.js';
@@ -23,7 +23,6 @@
 		keptMergedPhones,
 		MAX_CLIENT_PHONES,
 		mergedPhones,
-		phonesToTrim,
 		toMergeRequest,
 		type MergeChoice,
 		type MergeClient,
@@ -126,7 +125,7 @@
 		return c[f] || t.empty;
 	}
 
-	const request = $derived(clients && choice ? toMergeRequest(choice, clients) : null);
+	const request = $derived(clients && choice ? toMergeRequest(choice, clients, dropped) : null);
 	/** Every number of the clients joined; more than a client may have: some have to be left out. */
 	const joined = $derived(clients && choice ? mergedPhones(clients, choice.targetId) : []);
 	const kept = $derived(joined.filter((p) => !dropped.has(phoneKey(p.phone))));
@@ -161,32 +160,7 @@
 	async function merge() {
 		if (!request || !clients || tooMany) return;
 		try {
-			let sent = request;
-			// The numbers left out go from their clients first: the merge takes every number there is.
-			const trims = phonesToTrim(clients, dropped);
-			if (trims.length > 0) {
-				try {
-					// eslint-disable-next-line svelte/prefer-svelte-reactivity -- local, nothing renders it
-					const versions = new Map<number, number>();
-					for (const trim of trims) {
-						const saved = await updateClient(trim.id, trim.version, { phones: trim.phones });
-						versions.set(trim.id, saved.version);
-					}
-					sent = {
-						...request,
-						target_version: versions.get(request.target_id) ?? request.target_version,
-						sources: request.sources.map((s) => ({
-							...s,
-							version: versions.get(s.id) ?? s.version
-						}))
-					};
-				} catch (e) {
-					if (e instanceof ApiError && e.status === 409) throw e;
-					toast.show({ message: t.trimFailed(errorMessage(e)), tone: 'danger' });
-					return;
-				}
-			}
-			const merged = await mergeClients(sent);
+			const merged = await mergeClients(request);
 			open = false;
 			onmerged(merged);
 		} catch (e) {

@@ -295,6 +295,15 @@ export function photoLock(d: IntakeDraft): 'accepted' | 'unanswered' | null {
 }
 
 /**
+ * The photos of the draft may be the order's: it is accepted, or an attempt got no answer and its
+ * `POST /orders` may still attach them. Their key is not released (deleted) when the draft goes — the
+ * server's cleanup after 24 h takes what is left.
+ */
+export function photosMayBeOrders(d: IntakeDraft): boolean {
+	return d.acceptedAs !== null || d.attempt !== null;
+}
+
+/**
  * «Принять» got its order back. `close`: the order is the draft as it is. `keep`: the order was made by
  * an earlier attempt of this key and the draft was changed since, so the changes are not in it — the
  * sheet stays and says so.

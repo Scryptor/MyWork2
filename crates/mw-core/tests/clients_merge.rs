@@ -19,6 +19,7 @@ fn merge(target: &mw_core::Client, sources: &[(i64, i64)]) -> MergeClients {
         note: String::new(),
         source: String::new(),
         blacklisted: false,
+        drop_phones: Vec::new(),
     }
 }
 
@@ -214,6 +215,94 @@ async fn similar_clients_are_at_most_twenty_by_name() -> Result<(), CoreError> {
         let names: Vec<String> = similar.iter().map(|c| c.full_name.clone()).collect();
         let expected: Vec<String> = (1..=20).map(|i| format!("Клиент {i:02}")).collect();
         assert_eq!(names, expected, "{}", t.label);
+    }
+    Ok(())
+}
+
+fn numbers(from: u32, n: u32) -> Vec<String> {
+    (from..from + n).map(|i| format!("8911{i:07}")).collect()
+}
+
+#[tokio::test]
+async fn merge_drops_phones_so_that_twelve_become_ten() -> Result<(), CoreError> {
+    for t in cores().await {
+        let own = numbers(1, 6);
+        let other = numbers(100, 6);
+        let a = make_client(
+            &t,
+            "Анна",
+            &own.iter().map(String::as_str).collect::<Vec<_>>(),
+        )
+        .await;
+        let b = make_client(
+            &t,
+            "Анна",
+            &other.iter().map(String::as_str).collect::<Vec<_>>(),
+        )
+        .await;
+        // Без отбрасывания 12 номеров не помещаются: 422, ничего не изменилось.
+        assert_validation(
+            t.core
+                .merge_clients(&admin(), merge(&a, &[(b.id, b.version)]))
+                .await,
+            &[("phones", "out_of_range")],
+        );
+        // Ключ пишется иначе (+7…), чем номер (8…): ключ один.
+        let m = MergeClients {
+            drop_phones: vec![format!("+7{}", &own[0][1..]), other[5].clone()],
+            ..merge(&a, &[(b.id, b.version)])
+        };
+        let kept = t.core.merge_clients(&admin(), m).await?;
+        assert_eq!(kept.phones.len(), 10, "{}", t.label);
+        let digits: Vec<&str> = kept.phones.iter().map(|p| p.phone.as_str()).collect();
+        assert!(!digits.contains(&own[0].as_str()) && !digits.contains(&other[5].as_str()));
+        assert_eq!(digits[0], own[1], "порядок остальных сохранён");
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_failed_merge_leaves_every_phone_in_place() -> Result<(), CoreError> {
+    for t in cores().await {
+        let own = numbers(1, 3);
+        let other = numbers(100, 3);
+        let a = make_client(
+            &t,
+            "Анна",
+            &own.iter().map(String::as_str).collect::<Vec<_>>(),
+        )
+        .await;
+        let b = make_client(
+            &t,
+            "Анна",
+            &other.iter().map(String::as_str).collect::<Vec<_>>(),
+        )
+        .await;
+        let m = MergeClients {
+            drop_phones: vec![own[0].clone(), other[0].clone()],
+            ..merge(&a, &[(b.id, b.version - 1)])
+        };
+        assert!(matches!(
+            t.core.merge_clients(&admin(), m).await,
+            Err(CoreError::Conflict { id, .. }) if id == b.id
+        ));
+        assert_eq!(t.core.get_client(&admin(), a.id).await?, a);
+        assert_eq!(t.core.get_client(&admin(), b.id).await?, b);
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn an_unknown_key_in_drop_phones_is_ignored() -> Result<(), CoreError> {
+    for t in cores().await {
+        let a = make_client(&t, "Анна", &["89110000001"]).await;
+        let b = make_client(&t, "Анна", &["89110000002"]).await;
+        let m = MergeClients {
+            drop_phones: vec!["89990000000".into(), "не номер".into(), String::new()],
+            ..merge(&a, &[(b.id, b.version)])
+        };
+        let kept = t.core.merge_clients(&admin(), m).await?;
+        assert_eq!(kept.phones.len(), 2, "{}", t.label);
     }
     Ok(())
 }

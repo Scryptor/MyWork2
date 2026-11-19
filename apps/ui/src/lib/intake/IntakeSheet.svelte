@@ -42,6 +42,7 @@
 		newDraftKey,
 		parseDraft,
 		photoLock,
+		photosMayBeOrders,
 		readRecord,
 		startsAnotherOrder,
 		toNewOrder,
@@ -172,7 +173,7 @@
 		// the page was loaded again meanwhile): its photos go now, not in a day.
 		const before = storedKey(raw);
 		if (before !== null && before !== draft.key) {
-			if (stored.acceptedAs !== null) settled.add(before);
+			if (photosMayBeOrders(stored)) settled.add(before);
 			release(before);
 		}
 		photosOf(draft.key);
@@ -222,8 +223,8 @@
 	/** The draft becomes another one (another client, an attempt the server refuses): a new key. */
 	function renew() {
 		const old = draft.key;
-		// An accepted draft's photos are the order's now.
-		if (draft.acceptedAs !== null) settled.add(old);
+		// An accepted draft's photos are the order's; an attempt without an answer may still take them.
+		if (photosMayBeOrders(draft)) settled.add(old);
 		release(old);
 		draft.key = newDraftKey();
 		draft.attempt = null;
@@ -346,6 +347,7 @@
 	function cancel() {
 		// Still waiting for its photos: the order is not sent.
 		intake.callOff();
+		if (photosMayBeOrders(draft)) settled.add(draft.key);
 		release(draft.key);
 		discard();
 		intake.close();

@@ -232,3 +232,31 @@ test('more than 10 phones together: the dialog says so and the extra ones are un
 	const kept = await fetchClient(request, Math.min(a.id, b.id));
 	expect(kept.phones).toHaveLength(10);
 });
+
+test('a merge that fails after unchecking phones leaves every phone where it was', async ({
+	page,
+	request
+}) => {
+	const marker = uniq('f');
+	const phones = (n: number) => Array.from({ length: n }, () => ({ phone: uniqPhone(), note: '' }));
+	const a = await createClient(request, { full_name: `Атомарный ${marker}`, phones: phones(6) });
+	const b = await createClient(request, { full_name: `Атомарный ${marker}`, phones: phones(6) });
+	await page.goto(`/clients?q=${marker}`);
+	await expect(gridOf(page).getByRole('row').filter({ hasText: marker })).toHaveCount(2);
+	await gridOf(page).getByRole('checkbox', { name: 'Выбрать все видимые' }).click();
+	await page.getByRole('button', { name: 'Объединить', exact: true }).click();
+	const dialog = mergeOf(page);
+	const boxes = dialog
+		.getByRole('group', { name: 'Телефоны после объединения' })
+		.getByRole('checkbox');
+	await expect(boxes).toHaveCount(12);
+	await boxes.nth(10).uncheck();
+	await boxes.nth(11).uncheck();
+	// Someone changes a client while the dialog is open: the merge is a 409.
+	await patchClient(request, b.id, { address: 'ул. Новая, 5' });
+	await dialog.getByRole('button', { name: 'Объединить', exact: true }).click();
+	await confirmOf(page).getByRole('button', { name: 'Объединить' }).click();
+	await expect(dialog.getByText(/Клиента изменили, пока вы выбирали/)).toBeVisible();
+	expect((await fetchClient(request, a.id)).phones).toHaveLength(6);
+	expect((await fetchClient(request, b.id)).phones).toHaveLength(6);
+});

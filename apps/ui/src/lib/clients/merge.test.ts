@@ -7,7 +7,6 @@ import {
 	keptMergedPhones,
 	MAX_CLIENT_PHONES,
 	mergedPhones,
-	phonesToTrim,
 	toMergeRequest,
 	type MergeClient
 } from './merge.js';
@@ -67,7 +66,8 @@ describe('toMergeRequest', () => {
 			address: 'ул. 1',
 			note: '',
 			source: '',
-			blacklisted: false
+			blacklisted: false,
+			drop_phones: []
 		});
 	});
 });
@@ -129,14 +129,11 @@ describe('the limit of phones', () => {
 		);
 	});
 
-	it('says which clients have to be saved without the unchecked numbers first', () => {
+	it('sends the unchecked numbers with the merge, nothing else is changed first', () => {
 		const all = mergedPhones([a, b], 1);
-		// A number both have (…0001) goes from both; a number of b only goes from b.
-		const trims = phonesToTrim([a, b], new Set([phoneKey(all[0]!.phone), phoneKey(all[6]!.phone)]));
-		expect(trims.map((t) => [t.id, t.version, t.phones.length])).toEqual([
-			[1, 3, 5],
-			[2, 5, 2]
-		]);
-		expect(phonesToTrim([a, b], new Set())).toEqual([]);
+		const dropped = new Set([phoneKey(all[0]!.phone), phoneKey(all[6]!.phone)]);
+		const choice = defaultChoice([a, b]);
+		expect(toMergeRequest(choice, [a, b], dropped).drop_phones).toEqual([...dropped]);
+		expect(toMergeRequest(choice, [a, b]).drop_phones).toEqual([]);
 	});
 });

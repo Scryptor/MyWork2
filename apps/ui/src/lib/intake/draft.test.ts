@@ -16,6 +16,7 @@ import {
 	parseDraft,
 	phoneQuery,
 	photoLock,
+	photosMayBeOrders,
 	REQUIRED_LABELS,
 	serialHits,
 	startsAnotherOrder,
@@ -544,6 +545,14 @@ describe('an earlier «Принять» of the draft that may have made the orde
 		// No answer in time: whether the order is there is not known yet.
 		expect(photoLock({ ...d, attempt: attemptOf(d) })).toBe('unanswered');
 		expect(photoLock({ ...d, attempt: attemptOf(d), acceptedAs: mark(d, 1) })).toBe('accepted');
+	});
+
+	it('its photos are not released when the draft goes: the order may still take them', () => {
+		const d = filled();
+		expect(photosMayBeOrders(d)).toBe(false);
+		// No answer yet: the POST /orders may still attach them; the server's 24 h cleanup is the way out.
+		expect(photosMayBeOrders({ ...d, attempt: attemptOf(d) })).toBe(true);
+		expect(photosMayBeOrders({ ...d, acceptedAs: mark(d, 1) })).toBe(true);
 	});
 
 	it('the order it made closes the sheet, unless the draft was changed since', () => {

@@ -57,6 +57,10 @@ pub struct MergeClients {
     pub source: String,
     /// Итоговый клиент в чёрном списке.
     pub blacklisted: bool,
+    /// Номера, которые не попадут в итогового клиента (по ключу номера: `8…` и `+7…` — один номер).
+    /// Лишний, неизвестный ключ пропускается. Нужен, когда вместе больше десяти телефонов.
+    #[serde(default)]
+    pub drop_phones: Vec<String>,
 }
 
 impl Core {
@@ -163,6 +167,7 @@ impl Core {
         }
 
         // Телефоны цели, затем источников по порядку; номера с одинаковым ключом не повторяются.
+        let dropped: HashSet<String> = m.drop_phones.iter().map(|p| phone_key(p)).collect();
         let mut seen = HashSet::new();
         let mut merged_phones: Vec<ClientPhone> = Vec::new();
         let target_phones = phone_map.remove(&target.id).unwrap_or_default();
@@ -170,7 +175,8 @@ impl Core {
             .iter()
             .chain(snapshots.iter().flat_map(|c| c.phones.iter()))
         {
-            if seen.insert(phone_key(&p.phone)) {
+            let key = phone_key(&p.phone);
+            if !dropped.contains(&key) && seen.insert(key) {
                 merged_phones.push(p.clone());
             }
         }
