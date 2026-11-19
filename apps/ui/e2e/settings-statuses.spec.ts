@@ -25,7 +25,14 @@ async function addStatus(page: Page, name: string, hue?: string) {
 			.getByRole('button', { name: /^Цвет „.*“: / })
 			.first()
 			.click();
-		await page.getByRole('dialog', { name: 'Цвет' }).getByRole('radio', { name: hue }).check();
+		// A click, not `check()`: the choice closes the palette, and `check()` would wait for the radio it
+		// can no longer find to show the new state.
+		const palette = page.getByRole('dialog', { name: 'Цвет' });
+		await palette.getByRole('radio', { name: hue }).click();
+		await expect(palette).toBeHidden();
+		await expect(
+			page.getByRole('button', { name: new RegExp(`^Цвет „.*“: ${hue.toLowerCase()}$`) }).first()
+		).toBeVisible();
 	}
 	await page.getByRole('button', { name: 'Добавить статус' }).click();
 	await expect(rowOf(page, name)).toBeVisible();
