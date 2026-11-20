@@ -1,4 +1,4 @@
-<!-- «Справочники» (spec 6.8): the ten dictionaries of the intake form. The kind is in the address (`?kind=`);
+<!-- «Справочники» (spec 6.8): the nine dictionaries of the intake form. The kind is in the address (`?kind=`);
      the values are searched, added, dragged, renamed in place, archived, deleted and merged. -->
 <script lang="ts">
 	import Merge from '@lucide/svelte/icons/merge';
@@ -28,7 +28,9 @@
 	import { toast } from '#lib/ui/toast/toast.svelte.js';
 
 	const t = ru.dictionaries;
-	const KINDS = Object.keys(t.kindNames) as DictionaryKind[];
+	/** `master` is closed on the server: masters are users. */
+	type Kind = Exclude<DictionaryKind, 'master'>;
+	const KINDS = Object.keys(t.kindNames) as Kind[];
 	const catalog = createCatalog(undefined, () => app.can('settings_manage'));
 
 	const kind = $derived.by(() => {
@@ -65,15 +67,15 @@
 	const nothing = $derived(!catalog.loading && !catalog.loadError && rows.length === 0);
 	const where = $derived(ofClients ? t.atClientsWhere : t.inOrdersWhere);
 	const changedForms = $derived(ofClients ? t.changedClients : t.changedOrders);
-	/** «Мастер» and «Гарантия» are also the defaults of a new order: those follow a rename and a merge. */
-	const followsDefaults = $derived(kind === 'master' || kind === 'warranty');
+	/** «Гарантия» is also the default of a new order: it follows a rename and a merge. */
+	const followsDefaults = $derived(kind === 'warranty');
 
 	/** The program's copy of the settings, after the server moved a default along with its value. */
 	function defaultsMoved() {
 		if (followsDefaults) void app.refreshCatalogs().catch(() => {});
 	}
 
-	function pickKind(k: DictionaryKind | null) {
+	function pickKind(k: Kind | null) {
 		if (!k || k === kind) return;
 		const search = new URLSearchParams({ kind: k });
 		void goto(resolve(`settings/dictionaries?${search}`), { replace: true, reset: false });
@@ -178,6 +180,13 @@
 </div>
 
 {#if readonly}<Callout tone="info">{ru.settings.readOnly}</Callout>{/if}
+
+<p class="masters">
+	{t.mastersAreUsers}
+	{#if app.can('users_manage')}
+		<a href={resolve('settings/users')}>{t.mastersLink}</a>
+	{/if}
+</p>
 
 <div class="screen" class:narrow={display.narrow}>
 	{#if display.narrow}
@@ -304,6 +313,14 @@
 		margin: 0;
 		font-size: var(--text-xl);
 		font-weight: 600;
+	}
+	.masters {
+		margin: 0;
+		color: var(--text-2);
+		font-size: var(--text-md);
+	}
+	.masters a {
+		color: var(--accent-text);
 	}
 	.screen {
 		display: grid;

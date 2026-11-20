@@ -349,7 +349,11 @@ export const ru = {
 		showPassword: 'Показать пароль',
 		hidePassword: 'Скрыть пароль',
 		removeTag: (value: string) => `Убрать «${value}»`,
-		noMaster: 'Не выбран'
+		noMaster: 'Не выбран',
+		/** A master who is disabled now but still the master of an older order. */
+		masterDisabled: (name: string) => `${name} (отключён)`,
+		masterLoading: 'Загрузка…',
+		masterNumber: (id: number) => `Мастер № ${id}`
 	},
 	save: {
 		saving: 'Сохраняю…',
@@ -440,6 +444,7 @@ export const ru = {
 		master: 'Мастер',
 		point: 'Точка',
 		pointFromTopBar: 'Как в верхней панели',
+		anyMaster: 'Любой',
 		status: 'Статус',
 		statuses: 'Статусы',
 		received: 'Принят',
@@ -769,6 +774,9 @@ export const ru = {
 		markOffDone: (label: string, orders: string) => `Отметка «${label}» снята у ${orders}`,
 		failed: (orders: string, details: string) => `Не удалось у ${orders}: ${details}`,
 		nothingChanged: (_orders: string, details: string) => `Ничего не изменено: ${details}`,
+		/** An order cannot get back its previous master: he is disabled now. */
+		undoMasterDisabled: (was: string, now: string) =>
+			`мастер «${was}» отключён, остаётся ${now ? `«${now}»` : 'без мастера'}`,
 		undoFailed: (orders: string, details: string) => `Не удалось отменить у ${orders}: ${details}`,
 		failure: (id: number, message: string) => `№ ${id} — ${message}`,
 		andMore: (n: number) => `и ещё ${n}`,
@@ -927,7 +935,7 @@ export const ru = {
 			'Порядок точек меняется перетаскиванием. «Точка по умолчанию» выбирается в настройках «Заказы».'
 		],
 		dictionaries: [
-			'Справочник — список готовых значений для приёма заказа: типы устройств, бренды, мастера и так далее. Они подсказываются при вводе, чтобы не печатать одно и то же по-разному.',
+			'Справочник — список готовых значений для приёма заказа: типы устройств, бренды, цвета и так далее. Они подсказываются при вводе, чтобы не печатать одно и то же по-разному.',
 			'Значение в архиве не подсказывается, но в прежних заказах остаётся. Удалить можно только то, чем никто не пользуется.',
 			'Если одно значение записано дважды («Самсунг» и «Samsung»), выделите оба и нажмите «Объединить выбранные»: останется то, что вы выберете. Переименование и объединение можно сразу применить и в заказах, где значение уже стоит.',
 			'Обычное переименование меняет значение только в справочнике, а в прежних заказах остаётся старое написание. «И в заказах» (заменить везде) меняет его ещё и там, где оно уже стоит; окно подтверждения заранее показывает, в скольких записях.'
@@ -1340,10 +1348,12 @@ export const ru = {
 			condition: 'Состояние',
 			malfunction: 'Неисправности',
 			work_done: 'Выполненные работы',
-			master: 'Мастера',
 			client_source: 'Откуда узнали',
 			warranty: 'Гарантия'
 		},
+		/** The place of the removed «Мастера» section. */
+		mastersAreUsers: 'Мастера теперь — пользователи с отметкой «Мастер».',
+		mastersLink: 'Пользователи',
 		search: 'Найти',
 		add: 'Добавить значение',
 		duplicate: 'Такое значение уже есть — объедините их',

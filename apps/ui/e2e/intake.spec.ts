@@ -6,6 +6,7 @@ import {
 	createOrder,
 	deleteOrder,
 	fetchOrder,
+	masterId,
 	patchOrder,
 	setStatus,
 	statusId,
@@ -1013,4 +1014,25 @@ test('an order the server already had says «уже был принят», not �
 	await expect(toastsOf(page).getByText(/^Заказ № \d+ уже был принят$/)).toBeVisible();
 	await expect(toastsOf(page).getByText(/^Принят № \d+$/)).toHaveCount(0);
 	await expect(sheetOf(page)).toBeHidden();
+});
+
+test('the master is chosen from the masters and is the same in the accepted order', async ({
+	page,
+	request
+}) => {
+	const master = uniq('Мастер');
+	await masterId(request, master);
+	await openIntake(page);
+	await phoneOf(page).fill(uniqPhone());
+	await nameOf(page).fill(`Тестов ${uniq('П')}`);
+	await fillDevice(page);
+	await malfunctionOf(page).fill('Не заряжается');
+	await sheetOf(page).getByRole('combobox', { name: 'Мастер' }).click();
+	await page.getByRole('option', { name: master, exact: true }).click();
+	await page.keyboard.press(`${await mod(page)}+Enter`);
+	await expect(sheetOf(page)).toBeHidden();
+	const id = await acceptedNumber(page);
+	expect((await fetchOrder(request, id)).master).toBe(master);
+	await toastsOf(page).getByRole('button', { name: 'Открыть' }).click();
+	await expect(panelOf(page, id).getByRole('combobox', { name: 'Мастер' })).toContainText(master);
 });

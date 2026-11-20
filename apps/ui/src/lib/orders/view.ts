@@ -27,6 +27,8 @@ export type Period = [string | null, string | null];
 export interface OrderFilters {
 	deviceType?: string;
 	brand?: string;
+	/** A master user; the filter of a saved view of the old kind has the name in `master`. */
+	masterId?: number;
 	master?: string;
 	pointId?: number;
 	statusIds?: number[];
@@ -121,6 +123,7 @@ export function viewToQuery(
 		device_type: f.deviceType || undefined,
 		brand: f.brand || undefined,
 		master: f.master || undefined,
+		master_user_id: f.masterId,
 		received_from: dayStart(f.received?.[0]),
 		received_to: dayEnd(f.received?.[1]),
 		issued_from: dayStart(f.issued?.[0]),
@@ -179,6 +182,7 @@ export function viewFromSearch(p: Pick<URLSearchParams, 'get'>): OrdersView {
 		deviceType: text(p.get('type')),
 		brand: text(p.get('brand')),
 		master: text(p.get('master')),
+		masterId: positive(p.get('master_id')),
 		pointId: positive(p.get('point')),
 		statusIds: statusIds.length > 0 ? [...new Set(statusIds)] : undefined,
 		received: period(p.get('rf'), p.get('rt')),
@@ -209,6 +213,7 @@ export function viewToSearch(v: OrdersView): string {
 	put('type', f.deviceType || undefined);
 	put('brand', f.brand || undefined);
 	put('master', f.master || undefined);
+	put('master_id', f.masterId);
 	put('point', f.pointId);
 	if (f.statusIds?.length) put('st', f.statusIds.join(','));
 	put('rf', f.received?.[0]);
@@ -254,6 +259,8 @@ export interface AppliedFilter {
 export interface AppliedContext {
 	statusName: (id: number) => string | undefined;
 	pointName: (id: number) => string | undefined;
+	/** The name of a master user; before the masters are loaded it is unknown. */
+	masterName?: (id: number) => string | undefined;
 	/** null while the client is being loaded. */
 	clientName: string | null;
 }
@@ -275,6 +282,10 @@ export function appliedFilters(v: OrdersView, ctx: AppliedContext): AppliedFilte
 		out.push({ id: 'client', label: `${t.client}: ${ctx.clientName ?? '…'}` });
 	if (f.deviceType) out.push({ id: 'deviceType', label: `${t.deviceType}: ${f.deviceType}` });
 	if (f.brand) out.push({ id: 'brand', label: `${t.brand}: ${f.brand}` });
+	if (f.masterId !== undefined) {
+		const name = ctx.masterName?.(f.masterId) ?? `№ ${f.masterId}`;
+		out.push({ id: 'masterId', label: `${t.master}: ${name}` });
+	}
 	if (f.master) out.push({ id: 'master', label: `${t.master}: ${f.master}` });
 	if (f.pointId !== undefined) {
 		out.push({

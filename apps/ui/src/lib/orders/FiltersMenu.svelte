@@ -4,7 +4,9 @@
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import ListFilter from '@lucide/svelte/icons/list-filter';
 	import { tick, untrack } from 'svelte';
+	import type { MasterUser } from '$api/MasterUser';
 	import type { OrderValueField } from '$api/OrderValueField';
+	import { listMasters } from '#lib/api/masters.js';
 	import { orderValues } from '#lib/api/orders.js';
 	import { app } from '#lib/app/context.svelte.js';
 	import { submitShortcut } from '#lib/design/hotkeys.svelte.js';
@@ -38,10 +40,15 @@
 	const SUGGEST_MS = 150;
 	/** «Как в верхней панели»; point ids start at 1. */
 	const TOP_BAR_POINT = 0;
+	/** «Любой» master, and the name of an old saved view; master ids start at 1. */
+	const ANY_MASTER = 0;
+	const BY_NAME = -1;
 
 	interface Draft {
 		deviceType: string;
 		brand: string;
+		/** A master user, or the name of an old saved view. */
+		masterId: number | undefined;
 		master: string;
 		pointId: number;
 		statusIds: number[];
@@ -54,6 +61,7 @@
 	const toDraft = (f: OrderFilters): Draft => ({
 		deviceType: f.deviceType ?? '',
 		brand: f.brand ?? '',
+		masterId: f.masterId,
 		master: f.master ?? '',
 		pointId: f.pointId ?? TOP_BAR_POINT,
 		statusIds: [...(f.statusIds ?? [])],
@@ -68,7 +76,8 @@
 		const f: OrderFilters = {
 			deviceType: d.deviceType.trim() || undefined,
 			brand: d.brand.trim() || undefined,
-			master: d.master.trim() || undefined,
+			masterId: d.masterId,
+			master: d.masterId === undefined ? d.master.trim() || undefined : undefined,
 			pointId: d.pointId === TOP_BAR_POINT ? undefined : d.pointId,
 			statusIds: d.statusIds.length > 0 ? [...d.statusIds] : undefined,
 			received: period(d.received),
@@ -116,7 +125,34 @@
 	}
 	const types = suggestions('device_type', () => draft.deviceType);
 	const brands = suggestions('brand', () => draft.brand);
-	const masters = suggestions('master', () => draft.master);
+
+	// The masters are read when the menu opens: disabled ones stay, an old order may have them.
+	let masters = $state.raw<MasterUser[]>([]);
+	$effect(() => {
+		if (!open) return;
+		let current = true;
+		listMasters().then(
+			(list) => {
+				if (current) masters = list;
+			},
+			// Without them the filter is only «Любой».
+			() => {}
+		);
+		return () => {
+			current = false;
+		};
+	});
+	/** «Любой», the masters, and the name of an old saved view as one more choice. */
+	const masterOptions = $derived([
+		{ value: ANY_MASTER, label: t.anyMaster },
+		...masters.map((m) => ({
+			value: m.id,
+			label: m.active ? m.display_name : ru.fields.masterDisabled(m.display_name)
+		})),
+		...(draft.master && draft.masterId === undefined
+			? [{ value: BY_NAME, label: draft.master }]
+			: [])
+	]);
 
 	const pointItems = $derived([
 		{ value: TOP_BAR_POINT, label: t.pointFromTopBar },
@@ -196,7 +232,18 @@
 		<div class="fields">
 			<Combobox label={t.deviceType} bind:value={draft.deviceType} items={types.items} />
 			<Combobox label={t.brand} bind:value={draft.brand} items={brands.items} />
-			<Combobox label={t.master} bind:value={draft.master} items={masters.items} />
+			<Select
+				label={t.master}
+				items={masterOptions}
+				bind:value={
+					() => draft.masterId ?? (draft.master ? BY_NAME : ANY_MASTER),
+					(v) => {
+						if (v === BY_NAME) return;
+						draft.masterId = v === null || v === ANY_MASTER ? undefined : v;
+						draft.master = '';
+					}
+				}
+			/>
 			{#if pointItems.length > 1}
 				<Select
 					label={t.point}

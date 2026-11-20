@@ -373,6 +373,46 @@ describe('performBulk', () => {
 		]);
 	});
 
+	it('undo says which orders could not get their master back because he is disabled now', async () => {
+		const { api } = fakeServer([
+			order(1, { master_user_id: 3, master: 'Антон' }),
+			order(2, { master_user_id: 3, master: 'Антон' }),
+			order(3, { master_user_id: null })
+		]);
+		const h = harness();
+		await performBulk(
+			[item(1), item(2), item(3)],
+			{ kind: 'master', masterId: 5, name: 'Борис' },
+			{ statusName, canClearIssuedAt: true },
+			{ api, ...h.deps }
+		);
+		// «Антон» was disabled meanwhile: the server refuses him as a new choice.
+		const real = api.updateOrder.getMockImplementation()!;
+		api.updateOrder.mockImplementation((id, version, p) =>
+			p.master_user_id === 3
+				? Promise.reject(
+						apiError('validation', {
+							fields: [
+								{
+									field: 'master_user_id',
+									code: 'invalid',
+									message: 'Мастер не найден или отключён'
+								}
+							]
+						})
+					)
+				: real(id, version, p)
+		);
+		await h.undo[0]!.run();
+		expect(h.toasts).toEqual([
+			{
+				message:
+					'Не удалось отменить у 2 заказов: № 1 — мастер «Антон» отключён, остаётся «Борис»; № 2 — мастер «Антон» отключён, остаётся «Борис»',
+				tone: 'danger'
+			}
+		]);
+	});
+
 	it('undo puts back what the orders had before the batch, not what the list showed', async () => {
 		// The list was loaded when the master was «Антон»; meanwhile someone else made it «Виктор».
 		const { api, db } = fakeServer([

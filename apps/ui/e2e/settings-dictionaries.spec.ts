@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { addDictionaryItem, createOrder, fetchOrder, uniq } from './support/api';
 
-// «Настройки → Справочники»: the values of the ten dictionaries — counts, order, rename, archive, merge.
+// «Настройки → Справочники»: the values of the nine dictionaries — counts, order, rename, archive, merge.
 // The dictionaries of the shared servers are global: every value here carries `uniq()`.
 
 test.use({ screen: { width: 1280, height: 720 }, viewport: { width: 1280, height: 720 } });
@@ -20,6 +20,18 @@ async function add(page: Page, value: string) {
 	await field.fill(value);
 	await field.press('Enter');
 }
+
+test('there is no «Мастера» section: a line leads to «Пользователи»', async ({ page }) => {
+	await openBrands(page);
+	await expect(page.getByRole('button', { name: 'Мастера', exact: true })).toHaveCount(0);
+	await expect(page.getByText('Мастера теперь — пользователи с отметкой «Мастер»')).toBeVisible();
+	await page
+		.getByRole('paragraph')
+		.filter({ hasText: 'Мастера теперь' })
+		.getByRole('link', { name: 'Пользователи' })
+		.click();
+	await expect(page).toHaveURL(/\/settings\/users/);
+});
 
 test('«Привести написание в заказах» makes the orders spell the value as the dictionary does', async ({
 	page,

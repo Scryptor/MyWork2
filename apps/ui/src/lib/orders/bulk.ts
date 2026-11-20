@@ -180,7 +180,25 @@ async function putBack(
 			return o;
 		}
 		case 'master':
-			return api.updateOrder(row.id, row.version, { master_user_id: before.master_user_id });
+			try {
+				return await api.updateOrder(row.id, row.version, {
+					master_user_id: before.master_user_id
+				});
+			} catch (e) {
+				// The previous master was disabled since: the server does not take him as a new choice.
+				const refused =
+					e instanceof ApiError &&
+					e.code === 'validation' &&
+					e.body?.fields.some((f) => f.field === 'master_user_id');
+				if (!refused || before.master_user_id === null) throw e;
+				const text = ru.bulk.undoMasterDisabled(before.master, change.name);
+				throw new ApiError(
+					e.status,
+					e.code,
+					text,
+					e.body && { ...e.body, message: text, fields: [] }
+				);
+			}
 		case 'flag':
 			return api.updateOrder(row.id, row.version, { [change.flag]: before[change.flag] });
 	}

@@ -27,9 +27,16 @@ vi.mock('$app/state', () => ({
 }));
 vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
 vi.mock('$app/paths', () => ({ resolve: (p: string) => `/${p}` }));
-const rights = vi.hoisted(() => ({ manage: false, refreshCatalogs: vi.fn(async () => {}) }));
+const rights = vi.hoisted(() => ({
+	manage: false,
+	users: true,
+	refreshCatalogs: vi.fn(async () => {})
+}));
 vi.mock('#lib/app/context.svelte.js', () => ({
-	app: { can: () => rights.manage, refreshCatalogs: rights.refreshCatalogs }
+	app: {
+		can: (p: string) => (p === 'users_manage' ? rights.users : rights.manage),
+		refreshCatalogs: rights.refreshCatalogs
+	}
 }));
 
 import { toast } from '#lib/ui/toast/toast.svelte.js';
@@ -57,6 +64,7 @@ const forbidden = () =>
 beforeEach(() => {
 	for (const f of Object.values(api)) f.mockReset();
 	rights.manage = false;
+	rights.users = true;
 	rights.refreshCatalogs.mockClear();
 	nav.kind = 'brand';
 	api.listDictionary.mockResolvedValue([item(1, 'Alpha'), item(2, 'Beta'), item(3, 'Old', true)]);
@@ -124,19 +132,30 @@ describe('«Справочники» for an administrator', () => {
 		api.dictionaryUsage.mockResolvedValue([]);
 	});
 
-	it('a renamed master: the program reads its settings again (the default follows)', async () => {
-		nav.kind = 'master';
-		api.listDictionary.mockResolvedValue([item(1, 'Иванов')]);
-		api.updateDictionaryItem.mockResolvedValue(item(1, 'Петров'));
+	it('has no «Мастера» section: masters are users, with a link to «Пользователи»', async () => {
 		render(Page);
-		await userEvent.click(await screen.findByRole('button', { name: 'Иванов' }));
-		const field = screen.getByRole('textbox', { name: 'Значение „Иванов“' });
-		await userEvent.clear(field);
-		await userEvent.type(field, 'Петров{Enter}');
-		await waitFor(() =>
-			expect(api.updateDictionaryItem).toHaveBeenCalledWith(1, { value: 'Петров' })
+		await screen.findByText('Alpha');
+		expect(screen.queryByRole('button', { name: 'Мастера' })).not.toBeInTheDocument();
+		expect(screen.getByText(/Мастера теперь — пользователи с отметкой «Мастер»/)).toBeVisible();
+		expect(screen.getByRole('link', { name: 'Пользователи' })).toHaveAttribute(
+			'href',
+			'/settings/users'
 		);
-		await waitFor(() => expect(rights.refreshCatalogs).toHaveBeenCalled());
+	});
+
+	it('an old address with ?kind=master opens the first dictionary', async () => {
+		nav.kind = 'master';
+		render(Page);
+		expect(await screen.findByText('Alpha')).toBeInTheDocument();
+		expect(api.listDictionary.mock.calls[0]?.[0]).toBe('device_type');
+	});
+
+	it('the link to «Пользователи» is only for those who manage users', async () => {
+		rights.users = false;
+		render(Page);
+		await screen.findByText('Alpha');
+		expect(screen.getByText(/Мастера теперь — пользователи с отметкой «Мастер»/)).toBeVisible();
+		expect(screen.queryByRole('link', { name: 'Пользователи' })).not.toBeInTheDocument();
 	});
 
 	it('a brand is not a default: nothing more is read', async () => {

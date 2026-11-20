@@ -18,7 +18,7 @@
 	import { readStorage, removeStorage, writeStorage } from '#lib/design/storage.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import { emitOrderChanged } from '#lib/orders/events.js';
-	import { masterItems, masterOf, masterValue } from '#lib/orders/masters.js';
+	import { masterItems, masterOf, masterValue, pendingMasterItems } from '#lib/orders/masters.js';
 	import { orderPanel } from '#lib/orders/panel.svelte.js';
 	import { createDraftMedia, type Media } from '#lib/orders/photos.svelte.js';
 	import Button from '#lib/ui/Button.svelte';
@@ -122,7 +122,9 @@
 
 	let draft = $state<IntakeDraft>(emptyDraft(app.settings, app.statuses));
 	let dictionaries = $state.raw(noDictionaries());
-	let masters = $state.raw<MasterUser[]>([]);
+	/** `null` until the masters are loaded; `[]` when loading failed (`mastersFailed`). */
+	let masters = $state.raw<MasterUser[] | null>(null);
+	let mastersFailed = $state(false);
 	let attempted = $state(false);
 	let submitError = $state<string | null>(null);
 	/** The draft as it was when `submitError` was shown: any edit since then hides it. */
@@ -278,11 +280,18 @@
 			) as Record<Kind, string[]>;
 		});
 		// Without them only «Не выбран» is offered.
-		void listMasters()
-			.catch(() => [])
-			.then((list) => {
-				if (mine === dictionarySeq) masters = list;
-			});
+		void listMasters().then(
+			(list) => {
+				if (mine !== dictionarySeq) return;
+				masters = list;
+				mastersFailed = false;
+			},
+			() => {
+				if (mine !== dictionarySeq) return;
+				masters = [];
+				mastersFailed = true;
+			}
+		);
 	}
 
 	$effect(() => {
@@ -414,7 +423,11 @@
 	const brandItems = $derived(items(mergeSuggestions(dictionaries.brand, brands.values)));
 	const modelItems = $derived(items(models.values));
 	const colorItems = $derived(items(dictionaries.color));
-	const masterOptions = $derived(masterItems(masters, draft.masterId));
+	const masterOptions = $derived(
+		masters === null || mastersFailed
+			? pendingMasterItems(draft.masterId, mastersFailed)
+			: masterItems(masters, draft.masterId)
+	);
 	const warrantyItems = $derived(
 		items(mergeSuggestions(dictionaries.warranty, [app.settings.default_warranty]))
 	);

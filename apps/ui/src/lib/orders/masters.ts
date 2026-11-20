@@ -24,7 +24,12 @@ export function masterItems(
 	for (const m of masters) if (m.active) items.push({ value: m.id, label: m.display_name });
 	if (current !== null && !items.some((i) => i.value === current)) {
 		const known = masters.find((m) => m.id === current);
-		items.push({ value: current, label: known?.display_name ?? currentName, disabled: true });
+		const name = known?.display_name ?? currentName;
+		items.push({
+			value: current,
+			label: name ? ru.fields.masterDisabled(name) : '',
+			disabled: true
+		});
 	}
 	return items;
 }
@@ -44,4 +49,17 @@ export function masterName(
 ): string {
 	if (id === null) return '';
 	return masters.find((m) => m.id === id)?.display_name ?? fallback;
+}
+
+/**
+ * The items before the masters are known: while they load, or when loading failed, the chosen master has
+ * no name yet — «Загрузка…», or «Мастер № 4» after a failure.
+ */
+export function pendingMasterItems(current: number | null, failed: boolean): MasterItem[] {
+	const items: MasterItem[] = [{ value: NO_MASTER, label: ru.fields.noMaster }];
+	if (current !== null) {
+		const label = failed ? ru.fields.masterNumber(current) : ru.fields.masterLoading;
+		items.push({ value: current, label, disabled: true });
+	}
+	return items;
 }

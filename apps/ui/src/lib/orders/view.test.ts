@@ -146,6 +146,15 @@ describe('viewToQuery', () => {
 			client_id: undefined
 		});
 	});
+
+	it('the master filter goes by the user; an old text filter still goes by the name', () => {
+		const byUser = viewToQuery({ ...defaultView(), filters: { masterId: 5 } }, STATUSES, null);
+		expect(byUser.master_user_id).toBe(5);
+		expect(byUser.master).toBeUndefined();
+		const byName = viewToQuery({ ...defaultView(), filters: { master: 'Антон' } }, STATUSES, null);
+		expect(byName.master).toBe('Антон');
+		expect(byName.master_user_id).toBeUndefined();
+	});
 });
 
 describe('the view in the address', () => {
@@ -169,6 +178,7 @@ describe('the view in the address', () => {
 				deviceType: 'Ноутбук',
 				brand: 'Asus',
 				master: 'Антон',
+				masterId: 5,
 				pointId: 2,
 				statusIds: [1, 3],
 				received: [null, '2026-11-15'],
@@ -282,7 +292,8 @@ describe('applied filters', () => {
 	const ctx = {
 		statusName: (id: number) => STATUSES.find((s) => s.id === id)?.name,
 		pointName: (id: number) => (id === 1 ? 'Центр' : undefined),
-		clientName: 'Тестова Анна'
+		clientName: 'Тестова Анна',
+		masterName: (id: number) => (id === 5 ? 'Борис' : undefined)
 	};
 
 	it('each chosen filter is a chip; removing one leaves the others', () => {
@@ -320,6 +331,16 @@ describe('applied filters', () => {
 		const noBrand = withoutFilter(v, chips.find((c) => c.label.startsWith('Бренд'))!.id);
 		expect(noBrand.filters.brand).toBeUndefined();
 		expect(noBrand.filters.master).toBe('Антон');
+	});
+
+	it('the master of the filter is named; an unknown one by number; an old view by its text', () => {
+		const chip = (filters: OrdersView['filters']) =>
+			appliedFilters({ ...defaultView(), filters }, ctx).map((c) => c.label);
+		expect(chip({ masterId: 5 })).toEqual(['Мастер: Борис']);
+		expect(chip({ masterId: 9 })).toEqual(['Мастер: № 9']);
+		expect(chip({ master: 'Антон' })).toEqual(['Мастер: Антон']);
+		const v: OrdersView = { ...defaultView(), filters: { masterId: 5 } };
+		expect(withoutFilter(v, 'masterId')).toEqual(defaultView());
 	});
 
 	it('one status, a period from a day, a client still loading', () => {

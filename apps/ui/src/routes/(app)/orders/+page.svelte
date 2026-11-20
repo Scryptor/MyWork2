@@ -180,11 +180,26 @@
 			current = false;
 		};
 	});
+	// The names of the masters for the chips of the filters; without them a chip says «№ 5».
+	let allMasters = $state.raw<MasterUser[]>([]);
+	$effect(() => {
+		let current = true;
+		listMasters().then(
+			(list) => {
+				if (current) allMasters = list;
+			},
+			() => {}
+		);
+		return () => {
+			current = false;
+		};
+	});
 	const applied = $derived(
 		appliedFilters(view, {
 			statusName: (id) => app.statusById(id)?.name,
 			pointName: (id) => app.points.find((p) => p.id === id)?.name,
-			clientName
+			clientName,
+			masterName: (id) => allMasters.find((m) => m.id === id)?.display_name
 		})
 	);
 	const filtered = $derived(hasFilters(view));
