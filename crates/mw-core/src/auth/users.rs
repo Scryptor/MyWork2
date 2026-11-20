@@ -41,6 +41,8 @@ pub struct User {
     pub can_sign_in: bool,
     /// Отметка «Мастер»: пользователя можно выбрать мастером заказа.
     pub is_master: bool,
+    /// Пароль задан: без него войти нельзя (у прежнего пользователя из MyWork 2 его может не быть).
+    pub has_password: bool,
     /// Когда создан (местное время предприятия).
     pub created_at: NaiveDateTime,
     /// Версия записи для проверки конфликтов правок.
@@ -57,6 +59,7 @@ impl From<user::Model> for User {
             active: m.active,
             can_sign_in: m.can_sign_in,
             is_master: m.is_master,
+            has_password: !m.password_hash.is_empty(),
             created_at: m.created_at,
             version: m.version,
         }

@@ -34,6 +34,10 @@ can_sign_in: boolean,
  */
 is_master: boolean, 
 /**
+ * Пароль задан: без него войти нельзя (у прежнего пользователя из MyWork 2 его может не быть).
+ */
+has_password: boolean, 
+/**
  * Когда создан (местное время предприятия).
  */
 created_at: string, 

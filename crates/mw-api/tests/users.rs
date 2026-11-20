@@ -14,7 +14,10 @@ async fn users_and_roles() {
         let admin = t.admin_token().await;
         let users = t.get("/api/v1/users", Some(&admin)).await.body;
         assert_eq!(users.as_array().unwrap().len(), 1, "{}", t.label);
-        assert!(!users.to_string().contains("password"));
+        // Ни хэша, ни схемы пароля; только признак «пароль задан».
+        let text = users.to_string();
+        assert!(!text.contains("password_hash") && !text.contains("password_scheme"));
+        assert_eq!(users[0]["has_password"], json!(true), "{}", t.label);
         let r = t
             .send(
                 Method::POST,

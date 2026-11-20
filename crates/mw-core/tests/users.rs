@@ -405,3 +405,44 @@ async fn enabling_user_without_rights_in_open_mode_is_refused() -> Result<(), Co
     }
     Ok(())
 }
+
+#[tokio::test]
+async fn user_tells_whether_it_has_a_password() -> Result<(), CoreError> {
+    for t in cores().await {
+        let role = role_id_by_name(&t.core, "Администратор").await;
+        let with = t
+            .core
+            .create_user(
+                &admin(),
+                NewUser {
+                    login: "с-паролем".into(),
+                    display_name: String::new(),
+                    role_id: role,
+                    password: "1234".into(),
+                    can_sign_in: true,
+                    is_master: false,
+                },
+            )
+            .await?;
+        let without = t
+            .core
+            .create_user(
+                &admin(),
+                NewUser {
+                    login: String::new(),
+                    display_name: "Мастер".into(),
+                    role_id: role,
+                    password: String::new(),
+                    can_sign_in: false,
+                    is_master: true,
+                },
+            )
+            .await?;
+        assert!(with.has_password, "{}", t.label);
+        assert!(!without.has_password, "{}", t.label);
+        let listed = t.core.list_users(&admin()).await?;
+        assert!(listed.iter().any(|u| u.id == with.id && u.has_password));
+        assert!(listed.iter().any(|u| u.id == without.id && !u.has_password));
+    }
+    Ok(())
+}

@@ -462,6 +462,45 @@ const catalogRows = (page: Page) => [
 	page.getByRole('main').locator('.catalog-head')
 ];
 
+/** «Пользователи»: long names and logins, no sign-in, no password, a disabled one; then the edit dialog. */
+async function usersScenes(page: Page, c: ScreenCase, bars: Locator[], pending: () => number) {
+	const long = 'Константинопольский-Вячеславович '.repeat(3).trim();
+	const user = (id: number, over: Record<string, unknown>) => ({
+		id,
+		login: `login${id}`,
+		display_name: `Пользователь ${id}`,
+		role_id: 1,
+		active: true,
+		can_sign_in: true,
+		is_master: false,
+		has_password: true,
+		created_at: '2026-01-01T00:00:00',
+		version: 1,
+		...over
+	});
+	const users = [
+		user(1, { display_name: long, login: long.replace(/ /g, ''), is_master: true }),
+		user(2, { login: '', can_sign_in: false, is_master: true, has_password: false }),
+		user(3, { has_password: false }),
+		user(4, { active: false })
+	];
+	const roles = [{ id: 1, name: long, permissions: [], version: 1 }];
+	await page.route('**/api/v1/users', (route) => route.fulfill({ json: users }));
+	await page.route('**/api/v1/roles', (route) => route.fulfill({ json: roles }));
+	await page.goto('/settings/users');
+	await expect(page.getByRole('heading', { name: 'Пользователи' })).toBeVisible();
+	await expect(page.getByRole('list', { name: 'Отключённые' })).toBeVisible();
+	await scene(page, c, 'users', [...bars, page.getByRole('main').getByRole('listitem')], pending);
+	await page.getByRole('button', { name: 'Изменить: Пользователь 3' }).click();
+	const dialog = page.getByRole('dialog', { name: 'Пользователь' });
+	await expect(dialog.getByText('Пароля нет', { exact: false })).toBeVisible();
+	await scene(page, c, 'users-edit', [], pending);
+	await page.keyboard.press('Escape');
+	await expect(dialog).toBeHidden();
+	await page.unroute('**/api/v1/users');
+	await page.unroute('**/api/v1/roles');
+}
+
 /** «Настройки → Общие», «Заказы» and «О программе»: each once its fields are filled from the server. */
 async function serverSettingsScenes(
 	page: Page,
@@ -502,6 +541,8 @@ async function serverSettingsScenes(
 	await expect(page.getByRole('heading', { name: 'Точки' })).toBeVisible();
 	await expect(page.getByRole('main').getByRole('listitem').first()).toBeVisible();
 	await scene(page, c, 'points', [...bars, ...catalogRows(page)], pending);
+
+	await usersScenes(page, c, bars, pending);
 
 	await page.goto('/settings/about');
 	await expect(page.getByRole('heading', { name: 'О программе' })).toBeVisible();

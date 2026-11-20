@@ -6818,6 +6818,7 @@
           "active",
           "can_sign_in",
           "is_master",
+          "has_password",
           "created_at",
           "version"
         ],
@@ -6838,6 +6839,10 @@
           "display_name": {
             "type": "string",
             "description": "Отображаемое имя."
+          },
+          "has_password": {
+            "type": "boolean",
+            "description": "Пароль задан: без него войти нельзя (у прежнего пользователя из MyWork 2 его может не быть)."
           },
           "id": {
             "type": "integer",

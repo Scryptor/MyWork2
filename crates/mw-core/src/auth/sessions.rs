@@ -337,6 +337,7 @@ mod tests {
                 active: true,
                 can_sign_in: true,
                 is_master: false,
+                has_password: true,
                 created_at: Default::default(),
                 version: 1,
             },
