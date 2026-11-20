@@ -5,6 +5,7 @@ import Info from '@lucide/svelte/icons/info';
 import ListOrdered from '@lucide/svelte/icons/list-ordered';
 import MapPin from '@lucide/svelte/icons/map-pin';
 import Palette from '@lucide/svelte/icons/palette';
+import ShieldCheck from '@lucide/svelte/icons/shield-check';
 import Settings2 from '@lucide/svelte/icons/settings-2';
 import Users from '@lucide/svelte/icons/users';
 import type { Component } from 'svelte';
@@ -33,6 +34,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
 	{ id: 'statuses', label: ru.settings.statuses, icon: CircleDot, href: 'settings/statuses' },
 	{ id: 'points', label: ru.settings.points, icon: MapPin, href: 'settings/points' },
 	{ id: 'users', label: ru.settings.users, icon: Users, href: 'settings/users' },
+	{ id: 'roles', label: ru.settings.roles, icon: ShieldCheck, href: 'settings/roles' },
 	{ id: 'import', label: ru.settings.import, icon: FolderInput, href: 'settings/import' },
 	{ id: 'about', label: ru.settings.about, icon: Info, href: 'settings/about' }
 ];

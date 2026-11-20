@@ -501,6 +501,31 @@ async function usersScenes(page: Page, c: ScreenCase, bars: Locator[], pending: 
 	await page.unroute('**/api/v1/roles');
 }
 
+/** «Роли»: a long name, no users, many users, the rights in groups with their hints; then the edit dialog. */
+async function rolesScenes(page: Page, c: ScreenCase, bars: Locator[], pending: () => number) {
+	const long = 'Константинопольский-Вячеславович '.repeat(3).trim();
+	const roles = [
+		{ id: 1, name: long, permissions: ['orders_edit', 'users_manage'], version: 1 },
+		{ id: 2, name: 'Мастер', permissions: ['orders_edit'], version: 1 },
+		{ id: 3, name: 'Пустая', permissions: [], version: 1 }
+	];
+	const users = [1, 2, 3].map((id) => ({ id, role_id: id === 3 ? 1 : 2 }));
+	await page.route('**/api/v1/users', (route) => route.fulfill({ json: users }));
+	await page.route('**/api/v1/roles', (route) => route.fulfill({ json: roles }));
+	await page.goto('/settings/roles');
+	await expect(page.getByRole('heading', { name: 'Роли' })).toBeVisible();
+	await expect(page.getByRole('list', { name: 'Роли' })).toBeVisible();
+	await scene(page, c, 'roles', [...bars, page.getByRole('main').getByRole('listitem')], pending);
+	await page.getByRole('button', { name: 'Изменить: Мастер' }).click();
+	const dialog = page.getByRole('dialog', { name: 'Роль', exact: true });
+	await expect(dialog.getByRole('checkbox', { name: 'Изменение заказов' })).toBeChecked();
+	await scene(page, c, 'roles-edit', [], pending);
+	await page.keyboard.press('Escape');
+	await expect(dialog).toBeHidden();
+	await page.unroute('**/api/v1/users');
+	await page.unroute('**/api/v1/roles');
+}
+
 /** «Настройки → Общие», «Заказы» and «О программе»: each once its fields are filled from the server. */
 async function serverSettingsScenes(
 	page: Page,
@@ -543,6 +568,7 @@ async function serverSettingsScenes(
 	await scene(page, c, 'points', [...bars, ...catalogRows(page)], pending);
 
 	await usersScenes(page, c, bars, pending);
+	await rolesScenes(page, c, bars, pending);
 
 	await page.goto('/settings/about');
 	await expect(page.getByRole('heading', { name: 'О программе' })).toBeVisible();

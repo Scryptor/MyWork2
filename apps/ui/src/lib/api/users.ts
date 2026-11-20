@@ -1,5 +1,7 @@
 import type { NewUser } from '$api/NewUser';
+import type { NewRole } from '$api/NewRole';
 import type { Role } from '$api/Role';
+import type { RolePatch } from '$api/RolePatch';
 import type { User } from '$api/User';
 import type { UserPatch } from '$api/UserPatch';
 import { request } from './client.js';
@@ -17,3 +19,12 @@ export const setUserPassword = (id: number, password: string) =>
 	request<void>('PUT', `/users/${id}/password`, { body: { password } });
 
 export const listRoles = () => request<Role[]>('GET', '/roles');
+
+export const createRole = (body: NewRole) => request<Role>('POST', '/roles', { body });
+
+export const updateRole = (id: number, version: number, patch: RolePatch) =>
+	request<Role>('PATCH', `/roles/${id}`, { query: { version }, body: patch });
+
+/** Only a role without users goes; the server says why not (users in it, the last «Пользователи и права»). */
+export const deleteRole = (id: number, version: number) =>
+	request<void>('DELETE', `/roles/${id}`, { query: { version } });
