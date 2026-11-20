@@ -191,3 +191,58 @@ for (const path of [
 		}
 	});
 }
+
+test.describe('a touch screen', () => {
+	test.use({
+		hasTouch: true,
+		isMobile: true,
+		screen: { width: 1024, height: 768 },
+		viewport: { width: 1024, height: 768 }
+	});
+
+	test('the 44px icon of a hint does not push its field down: fields side by side stay level', async ({
+		page
+	}) => {
+		await page.goto('/orders');
+		expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(true);
+		await expect(page.getByRole('grid', { name: 'Заказы' })).toBeVisible();
+		await page.keyboard.press('n');
+		const sheet = page.getByRole('dialog', { name: 'Новый заказ' });
+		await expect(sheet.getByRole('textbox', { name: 'Телефон' })).toBeFocused();
+		const top = async (control: Locator) => {
+			await control.scrollIntoViewIfNeeded();
+			return (await control.boundingBox())!.y;
+		};
+		// «Мастер» has no hint and «Статус» next to it has one; «Оценка от» has one, «Оценка до» has not.
+		const pairs: [Locator, Locator][] = [
+			[
+				sheet.getByRole('combobox', { name: 'Мастер' }),
+				sheet.getByRole('combobox', { name: 'Статус' })
+			],
+			[
+				sheet.getByRole('textbox', { name: 'Оценка от' }),
+				sheet.getByRole('textbox', { name: 'Оценка до' })
+			]
+		];
+		for (const [a, b] of pairs) {
+			const [ya, yb] = [await top(a), await top(b)];
+			expect(Math.abs(ya - yb), `${ya} / ${yb}`).toBeLessThanOrEqual(1);
+		}
+		// The icon is still a whole finger target, and the field under it still takes a tap at its top.
+		const icon = sheet.getByRole('button', { name: 'Что такое «Статус»' });
+		const box = (await icon.boundingBox())!;
+		expect(Math.min(box.width, box.height)).toBeGreaterThanOrEqual(44);
+		const status = sheet.getByRole('combobox', { name: 'Статус' });
+		const field = (await status.boundingBox())!;
+		// The point is under both: the icon reaches over the top of the field, and the field is on top.
+		expect(box.y + box.height).toBeGreaterThan(field.y + 2);
+		const tapped = await status.evaluate(
+			(el, [x, y]) => {
+				const hit = document.elementFromPoint(x!, y!);
+				return hit !== null && el.contains(hit);
+			},
+			[box.x + box.width / 2, field.y + 2]
+		);
+		expect(tapped, 'a tap at the top of «Статус» goes to the field').toBe(true);
+	});
+});

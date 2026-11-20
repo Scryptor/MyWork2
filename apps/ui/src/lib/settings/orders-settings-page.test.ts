@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ru } from '#lib/i18n/ru.js';
 
 // «Настройки → Заказы»: «Гарантия по умолчанию» is a list of the dictionary of warranties, with «Не задана» first;
 // a saved value that the dictionary does not have stays shown and chosen.
@@ -123,6 +124,18 @@ describe('«Гарантия по умолчанию»', () => {
 			'30 дней'
 		]);
 		expect(api.updateSettings).not.toHaveBeenCalled();
+	});
+
+	it('«Что это?» says where the values are written: the dictionary, with a number and a unit', async () => {
+		render(Page);
+		await userEvent.click(
+			screen.getByRole('button', { name: ru.help.open('Гарантия по умолчанию') })
+		);
+		const hint = await screen.findByRole('dialog', { name: 'Гарантия по умолчанию' });
+		const where = `«Настройки → ${ru.dictionaries.kinds} → ${ru.dictionaries.kindNames.warranty}»`;
+		expect(hint).toHaveTextContent(where);
+		expect(hint).toHaveTextContent('«30 дней», «3 мес.»');
+		expect(hint).not.toHaveTextContent('пишите его');
 	});
 
 	it('the dictionary not read: the saved value is shown as it is, without a mark', async () => {

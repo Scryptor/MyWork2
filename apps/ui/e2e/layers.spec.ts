@@ -322,6 +322,27 @@ test.describe('layers', () => {
 		await expect(menu).toBeHidden();
 	});
 
+	test('dropdown menu: a heading names the group of its items; arrows go over it', async ({
+		page
+	}) => {
+		const trigger = page.locator('#layers').getByRole('button', { name: 'Ещё', exact: true });
+		await trigger.focus();
+		await page.keyboard.press('Enter');
+		const menu = page.getByRole('menu', { name: 'Ещё статусы' });
+		await expect(menu).toBeVisible();
+		const issued = menu.getByRole('group', { name: 'Выданные по статусам' });
+		await expect(issued.getByRole('menuitem')).toHaveText([
+			'Выдан без ремонта · 12',
+			'Выдан по гарантии · 3'
+		]);
+		await expect(menu.getByRole('menuitem', { name: 'Ждёт запчасть' })).toBeFocused();
+		await page.keyboard.press('ArrowDown');
+		await page.keyboard.press('ArrowDown');
+		await expect(issued.getByRole('menuitem').first()).toBeFocused();
+		await page.keyboard.press('Escape');
+		await expect(menu).toBeHidden();
+	});
+
 	test('popover opens from its trigger and Esc closes it', async ({ page }) => {
 		const trigger = page.locator('#layers').getByRole('button', { name: 'Подробнее' });
 		await trigger.click();

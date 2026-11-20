@@ -40,10 +40,13 @@ test('the key N does not open the intake while a hint is open', async ({ page })
 	await expect(page.getByRole('dialog', { name: 'Новый заказ' })).toHaveCount(0);
 	await page.keyboard.press('Escape');
 	await expect(page.getByRole('dialog', { name: 'Долгая диагностика, дней' })).toBeHidden();
-	// With the hint closed the same key works (the scan gap of the first press has passed).
-	await page.waitForTimeout(500);
-	await page.keyboard.press('n');
-	await expect(page.getByRole('dialog', { name: 'Новый заказ' })).toBeVisible();
+	// With the hint closed the same key works; a press inside the scan gap of the one before counts as a scan,
+	// so the press is tried again until the intake opens.
+	const intake = page.getByRole('dialog', { name: 'Новый заказ' });
+	await expect(async () => {
+		await page.keyboard.press('n');
+		await expect(intake).toBeVisible({ timeout: 1000 });
+	}).toPass();
 });
 
 test('the sidebar «Требуют внимания» explains its four rules', async ({ page }) => {

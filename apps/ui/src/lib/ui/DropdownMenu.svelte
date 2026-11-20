@@ -11,7 +11,28 @@
 				danger?: boolean;
 		  }
 		| { separator: true }
+		/** Names the items after it, up to the next separator or heading: a group for screen readers. */
 		| { heading: string };
+
+	type Action = Exclude<MenuItem, { separator: true } | { heading: string }>;
+	type Block = { separator: true } | { action: Action } | { heading: string; actions: Action[] };
+
+	/** The flat list as the menu shows it: a heading with its items is one group. */
+	function blocks(items: readonly MenuItem[]): Block[] {
+		const out: Block[] = [];
+		let group: { heading: string; actions: Action[] } | null = null;
+		for (const item of items) {
+			if ('separator' in item) {
+				group = null;
+				out.push(item);
+			} else if ('heading' in item) {
+				group = { heading: item.heading, actions: [] };
+				out.push(group);
+			} else if (group) group.actions.push(item);
+			else out.push({ action: item });
+		}
+		return out;
+	}
 </script>
 
 <script lang="ts">
@@ -40,6 +61,21 @@
 	});
 </script>
 
+{#snippet menuItem(item: Action)}
+	{@const Icon = item.icon}
+	<DropdownMenu.Item
+		class="mw-option mw-menu-item"
+		data-danger={item.danger ? '' : undefined}
+		disabled={item.disabled}
+		textValue={item.label}
+		onSelect={item.onselect}
+	>
+		{#if Icon}<Icon size={18} aria-hidden="true" />{/if}
+		<span class="mw-menu-label">{item.label}</span>
+		{#if item.shortcut}<Kbd shortcut={item.shortcut} />{/if}
+	</DropdownMenu.Item>
+{/snippet}
+
 <DropdownMenu.Root bind:open>
 	<DropdownMenu.Trigger>
 		{#snippet child({ props })}{@render trigger(props)}{/snippet}
@@ -52,24 +88,18 @@
 			collisionPadding={8}
 			aria-label={label}
 		>
-			{#each items as item, i (i)}
-				{#if 'separator' in item}
+			{#each blocks(items) as block, i (i)}
+				{#if 'separator' in block}
 					<DropdownMenu.Separator class="mw-menu-sep" />
-				{:else if 'heading' in item}
-					<div class="mw-menu-heading" role="presentation">{item.heading}</div>
+				{:else if 'heading' in block}
+					<DropdownMenu.Group>
+						<DropdownMenu.GroupHeading class="mw-menu-heading"
+							>{block.heading}</DropdownMenu.GroupHeading
+						>
+						{#each block.actions as action, j (j)}{@render menuItem(action)}{/each}
+					</DropdownMenu.Group>
 				{:else}
-					{@const Icon = item.icon}
-					<DropdownMenu.Item
-						class="mw-option mw-menu-item"
-						data-danger={item.danger ? '' : undefined}
-						disabled={item.disabled}
-						textValue={item.label}
-						onSelect={item.onselect}
-					>
-						{#if Icon}<Icon size={18} aria-hidden="true" />{/if}
-						<span class="mw-menu-label">{item.label}</span>
-						{#if item.shortcut}<Kbd shortcut={item.shortcut} />{/if}
-					</DropdownMenu.Item>
+					{@render menuItem(block.action)}
 				{/if}
 			{/each}
 		</DropdownMenu.Content>

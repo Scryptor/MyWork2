@@ -57,12 +57,10 @@
 		min-width: 0;
 	}
 	/* The icon does not make the line of its label taller: fields side by side stay level, with a hint
-	   or without. A finger needs the whole button, so on a touch screen the line grows instead. */
-	@media (pointer: fine) {
-		.help {
-			display: inline-flex;
-			margin-block: calc((var(--text-sm) * var(--leading-normal) - var(--control-sm)) / 2);
-		}
+	   or without. On a touch screen the button is still 44px: it reaches over the gap above and below. */
+	.help {
+		display: inline-flex;
+		margin-block: calc((var(--text-sm) * var(--leading-normal) - var(--control-sm)) / 2);
 	}
 	label {
 		font-size: var(--text-sm);

@@ -44,6 +44,14 @@
 		{ separator: true },
 		{ label: 'Удалить', icon: Trash2, danger: true, onselect: () => (picked = 'Удалить') }
 	];
+	/** A heading names the items after it (a group for screen readers); arrows go over it. */
+	const GROUPED: MenuItem[] = [
+		{ label: 'Ждёт запчасть', onselect: () => (picked = 'Ждёт запчасть') },
+		{ label: 'Согласование', onselect: () => (picked = 'Согласование') },
+		{ heading: 'Выданные по статусам' },
+		{ label: 'Выдан без ремонта · 12', onselect: () => (picked = 'Выдан без ремонта') },
+		{ label: 'Выдан по гарантии · 3', onselect: () => (picked = 'Выдан по гарантии') }
+	];
 
 	let dialogOpen = $state(false);
 	let comment = $state('');
@@ -131,6 +139,11 @@
 	<DropdownMenu items={MENU} label="Действия с заказом">
 		{#snippet trigger(props)}
 			<Button {...props} iconEnd={ChevronDown}>Действия</Button>
+		{/snippet}
+	</DropdownMenu>
+	<DropdownMenu items={GROUPED} label="Ещё статусы">
+		{#snippet trigger(props)}
+			<Button {...props} variant="ghost" iconEnd={ChevronDown}>Ещё</Button>
 		{/snippet}
 	</DropdownMenu>
 	<span class="muted">Выбрано: {picked || 'ничего'}</span>
