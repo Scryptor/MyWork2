@@ -21,3 +21,8 @@ export function takeLoginNotices(): LoginNotice[] {
 	waiting = [];
 	return out;
 }
+
+/** Drops what waits: a new session end starts clean, a notice of an earlier one must not turn up later. */
+export function clearLoginNotices(): void {
+	waiting = [];
+}

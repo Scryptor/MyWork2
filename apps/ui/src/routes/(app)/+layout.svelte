@@ -35,7 +35,7 @@
 	import ChangePasswordDialog from '#lib/app/ChangePasswordDialog.svelte';
 	import { app } from '#lib/app/context.svelte.js';
 	import { loginPath } from '#lib/app/login.js';
-	import { queueLoginNotice } from '#lib/app/login-notice.js';
+	import { clearLoginNotices, queueLoginNotice } from '#lib/app/login-notice.js';
 	import { discardQueues, resetSession, settleQueues } from '#lib/app/session-reset.js';
 	import UnsavedLogoutDialog from '#lib/app/UnsavedLogoutDialog.svelte';
 	import {
@@ -99,7 +99,10 @@
 		// The token this tab had is closed on the server (nobody else uses it); an expired one is dead.
 		if (reason === 'changed') void revokeToken(token);
 		discardQueues();
-		// The login page shows the notice after its own reset (which clears toasts).
+		// The login page shows the notice after its own reset (which clears toasts). `loginPath` always
+		// leads to `/login`, and this layout is not mounted there, so the page does mount and takes it;
+		// a notice left from an earlier end that never reached the page is dropped first.
+		clearLoginNotices();
 		queueLoginNotice({
 			message: reason === 'expired' ? ru.auth.sessionExpired : ru.auth.sessionChanged
 		});
@@ -163,6 +166,7 @@
 		clearToken();
 		const to = resolve(loginPath(here()));
 		// The login page resets the session (and its toasts): it shows the notice after that.
+		clearLoginNotices();
 		queueLoginNotice({ message: ru.password.changed, tone: 'success' });
 		await goto(to);
 	}
