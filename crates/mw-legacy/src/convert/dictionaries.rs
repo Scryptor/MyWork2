@@ -5,12 +5,13 @@
 //! Поля — те же, что у счёта использования (`usage_target` в `mw-core/src/usage.rs`). Поля-списки
 //! заказа к этому моменту уже в виде MyWork 3 «пункт, пункт» (`crate::parse::lists`) и делятся так
 //! же, как там (`mw_domain::dictionary::list_items`). Удалённые заказы не считаются, как и там.
-//! - Короткие поля (тип устройства, бренд, цвет, гарантия, «Откуда узнали») — каждое значение;
-//!   поля-списки — пункт хотя бы из двух заказов (одноразовые фразы в справочник не идут).
+//! - Значение (пункт поля-списка) — хотя бы из двух заказов, у «Откуда узнали» — хотя бы у двух
+//!   клиентов: значения одного заказа — чаще опечатки или модель в поле бренда, в справочник не
+//!   идут (их число — в отчёте). Значения файлов и стандартные значения MyWork 3 добавляются всегда.
 //! - Значения сводятся без учёта регистра (`normalize_search`), у списков — ещё и без конечных
-//!   «.», «;», «/», «,» (и в строках файла); гарантии с одним сроком (`parse_warranty_term`:
-//!   «90» и «90 дней») — одно значение. Текст без букв («-», «?», «0») — не значение, кроме гарантии
-//!   со сроком («90» — 90 дней).
+//!   «.», «;», «/», «,» (`dictionary_item`, и в строках файла); гарантии с одним сроком
+//!   (`parse_warranty_term`: «90» и «90 дней») — одно значение. Текст без букв («-», «?», «0») —
+//!   не значение, кроме гарантии со сроком («90» — 90 дней).
 //! - Написание — из списка, если там есть такое значение, иначе самое частое в заказах, при
 //!   равенстве — первое (`mw_domain::spelling::Spellings::most_frequent`; заглавные не уступают:
 //!   «LG»); у гарантии — с единицей срока, если такое есть («30 дней», а не «30»).
@@ -27,7 +28,8 @@ use mw_domain::spelling::{Spellings, has_letter, tidy};
 use mw_domain::warranty::parse_warranty_term;
 
 use super::catalogs::ListedValues;
-use crate::parse::lists::clean_item;
+use super::orders::ListRewrites;
+use crate::parse::lists::dictionary_item;
 use crate::report::{WarningCode, Warnings};
 
 /// Одно значение в заказах: ключ, написания, сколько заказов (клиентов).
@@ -133,13 +135,14 @@ fn merge(kind: DictionaryKind, texts: &[&str], listed: &ListedValues) -> Merged 
     let mut tally = Tally::default();
     for text in texts {
         let items: Vec<String> = if list {
-            list_items(text).map(clean_item).collect()
+            list_items(text).map(dictionary_item).collect()
         } else {
             vec![tidy(text)]
         };
         tally.add_record(kind, items.into_iter().filter(|item| is_value(kind, item)));
     }
-    let least = if list { 2 } else { 1 };
+    // Значение из одного заказа (клиента) — чаще опечатка или модель в поле бренда: не берётся.
+    let least = 2;
     let mut used: Vec<&Counted> = tally.values.iter().filter(|c| c.records >= least).collect();
     // Сортировка устойчивая: при равном числе — по первому появлению.
     used.sort_by_key(|c| Reverse(c.records));
@@ -148,7 +151,7 @@ fn merge(kind: DictionaryKind, texts: &[&str], listed: &ListedValues) -> Merged 
     let listed_values: Vec<String> = listed
         .values
         .iter()
-        .map(|v| if list { clean_item(v) } else { v.clone() })
+        .map(|v| if list { dictionary_item(v) } else { v.clone() })
         .filter(|v| !v.is_empty())
         .collect();
     let mut by_key: HashMap<String, &str> = HashMap::new();
@@ -187,11 +190,14 @@ fn merge(kind: DictionaryKind, texts: &[&str], listed: &ListedValues) -> Merged 
 }
 
 /// Справочники пакета импорта: каждый вид из `listed` ровно один раз (мастера — пустой список) и
-/// строка отчёта на вид — сколько значений из заказов и сколько из списка.
+/// строка отчёта на вид — сколько значений из заказов, сколько из списка, сколько значений одного
+/// заказа не взято; у полей-списков — ещё сколько заказов получили поле в виде «пункт, пункт»
+/// (`rewrites`).
 pub(crate) fn build_dictionaries(
     listed: &[(DictionaryKind, ListedValues)],
     orders: &[ImportedOrder],
     clients: &[ImportedClient],
+    rewrites: &ListRewrites,
     w: &mut Warnings,
 ) -> Vec<(DictionaryKind, Vec<String>)> {
     let mut live: Vec<&ImportedOrder> = orders.iter().filter(|o| o.deleted_at.is_none()).collect();
@@ -207,17 +213,20 @@ pub(crate) fn build_dictionaries(
             let list = is_list(*kind);
             let m = merge(*kind, &texts, list_values);
             let clients = *kind == DictionaryKind::ClientSource;
-            let (records, first) = match (clients, list) {
+            let (records, once, first) = match (clients, list) {
                 (true, _) => (
                     "из клиентов",
-                    "Сначала все значения из карточек клиентов — по числу клиентов",
+                    "значений у одного клиента",
+                    "Сначала значения, которые есть хотя бы у двух клиентов, — по числу клиентов",
                 ),
                 (false, false) => (
                     "из заказов",
-                    "Сначала все значения из заказов — по числу заказов",
+                    "значений из одного заказа",
+                    "Сначала значения, которые есть хотя бы в двух заказах, — по числу заказов",
                 ),
                 (false, true) => (
                     "из заказов",
+                    "пунктов из одного заказа",
                     "Сначала пункты, которые есть хотя бы в двух заказах, — по числу заказов",
                 ),
             };
@@ -226,9 +235,19 @@ pub(crate) fn build_dictionaries(
             } else {
                 ("из файла", "значения файла MyWork 2")
             };
-            let mut counts = format!("{records} — {}, {rest} — {}", m.from_orders, m.from_list);
+            let mut counts = format!(
+                "{records} — {}, {rest} — {}, {once} — {}",
+                m.from_orders, m.from_list, m.once
+            );
+            let mut message = format!("{first}, затем {rest_text}, которых среди них нет.");
             if list {
-                counts.push_str(&format!(", пунктов из одного заказа — {}", m.once));
+                counts.push_str(&format!(
+                    ", заказов с переписанным полем — {}",
+                    rewrites.count(*kind)
+                ));
+                message.push_str(
+                    " Поле заказа, где MyWork 2 разделяла пункты иначе, записано через запятую.",
+                );
             }
             w.push(
                 WarningCode::DictionaryFromOrders,
@@ -236,7 +255,7 @@ pub(crate) fn build_dictionaries(
                 kind.label_ru(),
                 "",
                 &counts,
-                &format!("{first}, затем {rest_text}, которых среди них нет."),
+                &message,
             );
             (*kind, m.values)
         })

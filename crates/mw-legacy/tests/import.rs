@@ -460,20 +460,12 @@ async fn dictionaries_are_written_in_the_order_of_use() -> Res {
         let brands = values(DictionaryKind::Brand).await;
         assert_eq!(
             brands.iter().map(|(_, v)| v.as_str()).collect::<Vec<_>>(),
-            [
-                "Nokia",
-                "Samsung",
-                "LG",
-                "Бренд 9",
-                "Бренд 10",
-                "Бренд 12",
-                "Apple"
-            ],
+            ["Nokia", "Samsung", "LG", "Apple"],
             "{}",
             t.label
         );
         // Счёт использования видит значения из заказов: «Nokia» — в трёх заказах; пункт «Нет
-        // изображения» (в MyWork 2 — «Нет изображения/ Шумит/ » и «нет изображения.») — в двух.
+        // изображения» (в MyWork 2 — «Нет изображения/ Шумит/ » и «нет изображения/ ») — в двух.
         let count = |kind, id| {
             let core = &t.core;
             async move {
@@ -497,7 +489,7 @@ async fn dictionaries_are_written_in_the_order_of_use() -> Res {
                 .iter()
                 .map(|(_, v)| v.as_str())
                 .collect::<Vec<_>>(),
-            ["Нет изображения", "Не включается"],
+            ["Нет изображения", "Шумит", "Не включается"],
             "{}",
             t.label
         );
@@ -507,8 +499,16 @@ async fn dictionaries_are_written_in_the_order_of_use() -> Res {
             "{}",
             t.label
         );
+        // «Шумит.» (№2) сохранил точку: счёт использования сравнивает пункты по тексту и видит только
+        // «Шумит» из №1, справочник при переносе считал оба.
         assert_eq!(
             count(DictionaryKind::Malfunction, malfunctions[1].0).await,
+            Some(1),
+            "{}",
+            t.label
+        );
+        assert_eq!(
+            count(DictionaryKind::Malfunction, malfunctions[2].0).await,
             Some(1),
             "{}",
             t.label
@@ -523,7 +523,9 @@ async fn dictionaries_are_written_in_the_order_of_use() -> Res {
         assert_eq!(r.count(WarningCode::DictionaryFromOrders), 9, "{}", t.label);
         let text = r.full_text();
         assert!(
-            text.contains("| dictionary | Бренды |  | из заказов — 6, из файла — 1 |"),
+            text.contains(
+                "| dictionary | Бренды |  | из заказов — 3, из файла — 1, значений из одного заказа — 3 |"
+            ),
             "{text}"
         );
     }

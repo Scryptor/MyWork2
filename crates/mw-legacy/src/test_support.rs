@@ -132,3 +132,22 @@ pub(crate) async fn conversion_with_text(
     let db = read_database(&folder.db_file).await.unwrap();
     crate::convert::convert(&db, &folder, dt("2026-11-12 10:00:00"))
 }
+
+/// Текст в Windows-1251, как файлы MyWork 2.
+pub(crate) fn cp1251(text: &str) -> Vec<u8> {
+    encoding_rs::WINDOWS_1251.encode(text).0.into_owned()
+}
+
+/// Как `conversion_of`, но перед чтением кладёт в папку фикстуры файлы (путь, содержимое).
+pub(crate) async fn conversion_with_files(
+    version: FixtureVersion,
+    files: &[(&str, &[u8])],
+) -> crate::convert::Conversion {
+    let dir = fixture(version).await;
+    for (relative, bytes) in files {
+        std::fs::write(dir.path().join(relative), bytes).unwrap();
+    }
+    let folder = scan_folder(dir.path()).unwrap();
+    let db = read_database(&folder.db_file).await.unwrap();
+    crate::convert::convert(&db, &folder, dt("2026-11-12 10:00:00"))
+}

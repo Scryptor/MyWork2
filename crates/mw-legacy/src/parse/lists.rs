@@ -4,6 +4,9 @@
 //! (`AddPosition.cs`; сама она делила это поле по «/»), выполненные работы — пункт и перевод строки
 //! (`Editor.cs`), состояние — «пункт, », комплектность — пункт без разделителя («Аппарат» + «АКБ» =
 //! «АппаратАКБ»). Кроме того, в эти поля писали руками — через запятую и с новой строки.
+//!
+//! В тексте заказа у пункта обрезаются только конечные разделители «/», «,», «;» (точка — часть
+//! текста: «1500 руб.»); пункт справочника — ещё и без конечной точки (`dictionary_item`).
 
 use mw_domain::spelling::tidy;
 
@@ -20,18 +23,28 @@ pub(crate) enum ListField {
     WorkDone,
 }
 
-/// Знаки, которые обрезаются в конце пункта.
-const TRAILING: [char; 4] = ['.', ';', '/', ','];
+/// Разделители, которые обрезаются в конце пункта заказа.
+const SEPARATORS: [char; 3] = [';', '/', ','];
 
-/// Пункт без краёв, повторных пробелов и конечных «.», «;», «/», «,»: «Не включается.» —
-/// «Не включается».
-pub(crate) fn clean_item(text: &str) -> String {
+/// Текст без краёв, повторных пробелов и конечных знаков из `trailing`.
+fn trimmed(text: &str, trailing: &[char]) -> String {
     let mut item = tidy(text);
-    while let Some(c) = item.chars().last().filter(|c| TRAILING.contains(c)) {
+    while let Some(c) = item.chars().last().filter(|c| trailing.contains(c)) {
         item.truncate(item.len() - c.len_utf8());
         item.truncate(item.trim_end().len());
     }
     item
+}
+
+/// Пункт текста заказа: без краёв, повторных пробелов и конечных «/», «,», «;»; точка остаётся.
+pub(crate) fn trim_item(text: &str) -> String {
+    trimmed(text, &SEPARATORS)
+}
+
+/// Пункт для справочника: как `trim_item`, и без конечной точки — «Не включается.» и «Не
+/// включается» одно значение.
+pub(crate) fn dictionary_item(text: &str) -> String {
+    trimmed(text, &['.', ';', '/', ','])
 }
 
 /// Разделитель пунктов в поле: запятая и перевод строки везде, «/» — у неисправности.
@@ -45,12 +58,12 @@ fn is_separator(field: ListField, c: char) -> bool {
 pub(crate) fn split_list(field: ListField, text: &str, offered: &[String]) -> Vec<String> {
     let mut items = Vec::new();
     for piece in text.split(|c| is_separator(field, c)) {
-        let piece = clean_item(piece);
+        let piece = trim_item(piece);
         if piece.is_empty() {
             continue;
         }
         match (field == ListField::Completeness)
-            .then(|| unglue(&piece, offered))
+            .then(|| unglue(&dictionary_item(&piece), offered))
             .flatten()
         {
             Some(parts) => items.extend(parts),
@@ -168,16 +181,27 @@ mod tests {
     }
 
     #[test]
-    fn trailing_punctuation_and_spaces_are_trimmed() {
-        assert_eq!(clean_item(" Не  включается. "), "Не включается");
-        assert_eq!(clean_item("Не включается;/ ,"), "Не включается");
-        assert_eq!(clean_item("т.д."), "т.д");
-        assert_eq!(clean_item("..."), "");
-        assert_eq!(clean_item("Wi-Fi"), "Wi-Fi");
+    fn order_text_keeps_its_final_dot_and_drops_trailing_separators() {
+        assert_eq!(trim_item(" Не  включается;/ ,"), "Не включается");
+        assert_eq!(trim_item("Не включается.;"), "Не включается.");
+        assert_eq!(
+            list_text(ListField::WorkDone, "Замена дисплея — 1500 руб.\r\n", &[]),
+            "Замена дисплея — 1500 руб."
+        );
+        assert_eq!(list_text(ListField::Malfunction, "Шумит.", &[]), "Шумит.");
         assert_eq!(
             items(ListField::Condition, "Царапины.\nсколы;"),
-            ["Царапины", "сколы"]
+            ["Царапины.", "сколы"]
         );
+    }
+
+    #[test]
+    fn a_dictionary_item_also_drops_the_final_dot() {
+        assert_eq!(dictionary_item(" Не  включается. "), "Не включается");
+        assert_eq!(dictionary_item("Не включается;/ ,."), "Не включается");
+        assert_eq!(dictionary_item("т.д."), "т.д");
+        assert_eq!(dictionary_item("..."), "");
+        assert_eq!(dictionary_item("Wi-Fi"), "Wi-Fi");
     }
 
     #[test]

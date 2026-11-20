@@ -146,8 +146,9 @@ pub(crate) struct ListedValues {
     pub values: Vec<String>,
     /// Стандартные значения MyWork 3: файла нет или он не менялся.
     pub standard: bool,
-    /// Строки, которые предлагал выпадающий список MyWork 2: файл без подсказок, а если его нет или
-    /// он не менялся — стартовое содержимое (MyWork 2 создавала его при запуске).
+    /// Строки, которые предлагал выпадающий список MyWork 2: файл без подсказок и стартовое
+    /// содержимое файла (MyWork 2 создавала его при запуске; заказы, принятые до правки файла,
+    /// склеены из него).
     pub offered: Vec<String>,
 }
 
@@ -324,8 +325,14 @@ fn convert_dictionaries(
                 }
                 Some((f, list)) => {
                     let values = clean_values(&list.lines, &format!("{SETTINGS_PREFIX}{f}"), w);
+                    let mut offered = values.clone();
+                    for line in legacy_default_lines(f) {
+                        if !offered.iter().any(|o| normalize_search(o) == normalize_search(&line)) {
+                            offered.push(line);
+                        }
+                    }
                     ListedValues {
-                        offered: values.clone(),
+                        offered,
                         values,
                         standard: false,
                     }

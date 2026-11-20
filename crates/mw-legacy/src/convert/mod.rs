@@ -371,11 +371,17 @@ pub(crate) fn convert(db: &LegacyDb, folder: &LegacyFolder, now: NaiveDateTime) 
     let issued = orders::issued_ids(db);
     let catalogs = catalogs::convert_catalogs(db, folder, &|id| issued.contains(&id), &mut w);
     let mut stage = clients::convert_clients(db, now, &mut w);
-    let converted = orders::convert_orders(db, &catalogs, &stage.order_client, &hints, now, &mut w);
+    let (converted, rewrites) =
+        orders::convert_orders(db, &catalogs, &stage.order_client, &hints, now, &mut w);
     clients::fill_created_at(&mut stage, &converted);
     catalogs::warn_junk_masters(&converted, &mut w);
-    let dictionary =
-        dictionaries::build_dictionaries(&catalogs.dictionary, &converted, &stage.clients, &mut w);
+    let dictionary = dictionaries::build_dictionaries(
+        &catalogs.dictionary,
+        &converted,
+        &stage.clients,
+        &rewrites,
+        &mut w,
+    );
     let history = history::convert_history(db, &converted, now, &mut w);
     warn_unknown_columns(db, &mut w);
     warn_text_cells(db, &mut w);
@@ -923,33 +929,24 @@ mod tests {
             .unwrap()
     }
 
-    /// Справочники — из значений заказов (по числу заказов), затем значения только из файлов.
+    /// Справочники — из значений хотя бы двух заказов (по числу заказов), затем значения файлов
+    /// (или стандартные MyWork 3), которых среди них нет.
     #[tokio::test]
     async fn dictionaries_come_from_orders_then_from_files() {
         use mw_domain::dictionary::DictionaryKind::*;
         let c = conversion_of(V32).await;
         // «Nokia» только в заказах (nokia, Nokia, Nokia) — одно значение, частое написание, первым;
         // «SAMSUNG» в заказах — «Samsung» из файла; «LG»/«Lg» поровну — первое, заглавные не
-        // мешают; «Apple» только в файле — в конце; удалённый заказ №8 не считается.
-        assert_eq!(
-            dictionary(&c, Brand),
-            [
-                "Nokia",
-                "Samsung",
-                "LG",
-                "Бренд 9",
-                "Бренд 10",
-                "Бренд 12",
-                "Apple"
-            ]
-        );
-        // Пункт списка — хотя бы из двух заказов: «Нет изображения/ » (№1) и «нет изображения.»
-        // (№3) — одно значение с написанием `neispravnost.txt`; «Шумит» (один заказ) и «Течёт»
-        // (дважды в одном заказе) — нет; «Не включается/ » (№5) — то же значение, что в файле, без
-        // повтора.
+        // мешают; «Бренд 9», «Бренд 10» — по одному заказу, не в справочнике; «apple» — тоже один
+        // заказ, но «Apple» есть в файле — в конце; удалённый заказ №8 не считается.
+        assert_eq!(dictionary(&c, Brand), ["Nokia", "Samsung", "LG", "Apple"]);
+        // Пункт списка — хотя бы из двух заказов: «Нет изображения/ » (№1) и «нет изображения/ »
+        // (№3) — одно значение с написанием `neispravnost.txt`; «Шумит/ » (№1) и «Шумит.» (№2) — одно;
+        // «Течёт» (дважды в одном заказе) — нет; «Не включается/ » (№5) — то же значение, что в файле,
+        // без повтора.
         assert_eq!(
             dictionary(&c, Malfunction),
-            ["Нет изображения", "Не включается"]
+            ["Нет изображения", "Шумит", "Не включается"]
         );
         // Выполненные работы — по строкам; состояние — через запятую.
         let mut work = vec!["Чистка"];
@@ -962,29 +959,24 @@ mod tests {
         let mut completeness = vec!["Аппарат"];
         completeness.extend(standard(Completeness));
         assert_eq!(dictionary(&c, Completeness), completeness);
-        // Гарантия: «90» и «90 дней» — один срок, написание с единицей, два заказа — первым;
-        // «3 мес» — «3 месяца» из файла; «0» — не значение.
+        // Гарантия: «90» и «90 дней» — один срок в двух заказах, написание с единицей, первым;
+        // «30 дней» и «3 мес» — по одному заказу (значения файла остаются); «0» — не значение.
         assert_eq!(
             dictionary(&c, Warranty),
             ["90 дней", "30 дней", "3 месяца", "Без гарантии"]
         );
-        // «Откуда узнали» — из клиентов: «Интернет»/«интернет» — одно значение со стандартным написанием.
+        // «Откуда узнали» — из клиентов: «Интернет»/«интернет» — одно значение со стандартным
+        // написанием; «Источник N» — у одного клиента, нет.
         let mut sources = vec!["Интернет"];
-        let numbered: Vec<String> = (3..=9).map(|id| format!("Источник {id}")).collect();
-        sources.extend(numbered.iter().map(String::as_str));
         sources.extend(
             standard(ClientSource)
                 .into_iter()
                 .filter(|v| *v != "Интернет"),
         );
         assert_eq!(dictionary(&c, ClientSource), sources);
-        let devices: Vec<String> = [1, 2, 3, 4, 5, 6, 7, 9, 10, 12]
-            .iter()
-            .map(|id| format!("Устройство {id}"))
-            .collect();
-        let mut device_types: Vec<&str> = devices.iter().map(String::as_str).collect();
-        device_types.extend(standard(DeviceType));
-        assert_eq!(dictionary(&c, DeviceType), device_types);
+        // «Устройство N», «ЦВЕТ N» — у каждого заказа своё: только стандартные значения.
+        assert_eq!(dictionary(&c, DeviceType), standard(DeviceType));
+        assert_eq!(dictionary(&c, Color), standard(Color));
         assert!(dictionary(&c, Master).is_empty());
 
         let info: Vec<(&str, &str)> = c
@@ -997,33 +989,52 @@ mod tests {
         assert_eq!(
             info,
             [
-                ("Типы устройств", "из заказов — 10, стандартных — 8"),
-                ("Бренды", "из заказов — 6, из файла — 1"),
-                ("Цвета", "из заказов — 10, стандартных — 8"),
+                (
+                    "Типы устройств",
+                    "из заказов — 0, стандартных — 8, значений из одного заказа — 10"
+                ),
+                (
+                    "Бренды",
+                    "из заказов — 3, из файла — 1, значений из одного заказа — 3"
+                ),
+                (
+                    "Цвета",
+                    "из заказов — 0, стандартных — 8, значений из одного заказа — 10"
+                ),
                 (
                     "Комплектность",
-                    "из заказов — 1, стандартных — 7, пунктов из одного заказа — 9"
+                    "из заказов — 1, стандартных — 7, пунктов из одного заказа — 9, \
+                     заказов с переписанным полем — 2"
                 ),
                 (
                     "Состояние",
-                    "из заказов — 1, стандартных — 4, пунктов из одного заказа — 9"
+                    "из заказов — 1, стандартных — 4, пунктов из одного заказа — 9, \
+                     заказов с переписанным полем — 1"
                 ),
                 (
                     "Неисправности",
-                    "из заказов — 1, из файла — 1, пунктов из одного заказа — 9"
+                    "из заказов — 2, из файла — 1, пунктов из одного заказа — 7, \
+                     заказов с переписанным полем — 4"
                 ),
                 (
                     "Выполненные работы",
-                    "из заказов — 1, стандартных — 5, пунктов из одного заказа — 9"
+                    "из заказов — 1, стандартных — 5, пунктов из одного заказа — 9, \
+                     заказов с переписанным полем — 1"
                 ),
-                ("Откуда узнали", "из клиентов — 8, стандартных — 4"),
-                ("Гарантия", "из заказов — 3, из файла — 1"),
+                (
+                    "Откуда узнали",
+                    "из клиентов — 1, стандартных — 4, значений у одного клиента — 7"
+                ),
+                (
+                    "Гарантия",
+                    "из заказов — 1, из файла — 3, значений из одного заказа — 2"
+                ),
             ]
         );
     }
 
     /// Поля-списки MyWork 2 («пункт/ », строки, «пункт, », пункты подряд) — в виде MyWork 3
-    /// «пункт, пункт»; исходный текст — в исходной строке заказа.
+    /// «пункт, пункт»; точка в конце текста остаётся; исходный текст — в исходной строке заказа.
     #[tokio::test]
     async fn list_fields_take_the_form_of_mywork3() {
         let c = conversion_of(V32).await;
@@ -1048,7 +1059,7 @@ mod tests {
         );
         assert_eq!(
             lists(2),
-            ("Поломка 2", "Чистка", "Царапины, Потёртости", "Аппарат")
+            ("Шумит.", "Чистка", "Царапины, Потёртости", "Аппарат")
         );
         assert_eq!(
             lists(3),
@@ -1068,6 +1079,23 @@ mod tests {
         assert_eq!(raw.raw["polomka"], "Нет изображения/ Шумит/ ");
         assert_eq!(raw.raw["vipolnenie_raboti"], "Замена дисплея\r\nЧистка\r\n");
         assert_eq!(raw.raw["komplektonst"], "АппаратАКБ");
+    }
+
+    /// Свой `komplektonst.txt` без «Аппарат» и «АКБ»: склейка из стартовых строк MyWork 2 (до правки
+    /// файла) всё равно делится.
+    #[tokio::test]
+    async fn completeness_glued_from_the_starter_lines_splits_after_the_file_was_edited() {
+        use mw_domain::dictionary::DictionaryKind::Completeness;
+        let c = crate::test_support::conversion_with_files(
+            V32,
+            &[(
+                "settings/komplektonst.txt",
+                crate::test_support::cp1251("Чехол\r\nПлёнка\r\n").as_slice(),
+            )],
+        )
+        .await;
+        assert_eq!(order(&c.bundle, 1).completeness, "Аппарат, АКБ");
+        assert_eq!(dictionary(&c, Completeness), ["Аппарат", "Чехол", "Плёнка"]);
     }
 
     /// Мастер по умолчанию без букв (`MasterDefault=?`) — не мастер, строка в отчёте.

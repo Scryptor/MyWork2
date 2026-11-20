@@ -22,6 +22,17 @@ use crate::source::{LegacyDb, LegacyTable, LegacyValue};
 
 const SOURCE: &str = "Catalog";
 
+/// Сколько заказов (в том числе удалённых) получили поле-список в другом виде, чем в MyWork 2: текст
+/// изменился при записи через «, ».
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct ListRewrites(BTreeMap<DictionaryKind, u64>);
+
+impl ListRewrites {
+    pub(crate) fn count(&self, kind: DictionaryKind) -> u64 {
+        self.0.get(&kind).copied().unwrap_or(0)
+    }
+}
+
 /// Строки `Catalog` с разобранным номером по возрастанию номера.
 pub(crate) fn catalog_rows(db: &LegacyDb) -> Vec<(i64, &[LegacyValue])> {
     let Some(table) = db.table(SOURCE) else {
@@ -237,11 +248,40 @@ struct Inputs<'a> {
 fn build_order(
     inp: &Inputs,
     w: &mut Warnings,
+    rewrites: &mut ListRewrites,
     id: i64,
     row: &[LegacyValue],
     received_at: NaiveDateTime,
 ) -> (ImportedOrder, Barcode) {
     let t = |name: &str| inp.table.text(row, name).trim().to_owned();
+    let mut list = |kind: DictionaryKind, field: ListField, column: &str| {
+        let raw = t(column);
+        let text = list_text(field, &raw, inp.catalogs.offered(kind));
+        if text != raw {
+            *rewrites.0.entry(kind).or_default() += 1;
+        }
+        text
+    };
+    let completeness = list(
+        DictionaryKind::Completeness,
+        ListField::Completeness,
+        "komplektonst",
+    );
+    let device_condition = list(
+        DictionaryKind::Condition,
+        ListField::Condition,
+        "sostoyanie",
+    );
+    let malfunction = list(
+        DictionaryKind::Malfunction,
+        ListField::Malfunction,
+        "polomka",
+    );
+    let work_done = list(
+        DictionaryKind::WorkDone,
+        ListField::WorkDone,
+        "vipolnenie_raboti",
+    );
     let key = id.to_string();
     let status_raw = inp.table.text(row, "Status_remonta");
     if status_raw.trim().is_empty() {
@@ -324,14 +364,10 @@ fn build_order(
         model: t("model"),
         serial: t("SerialNumber"),
         color: t("DeviceColour"),
-        completeness: list_text(
-            ListField::Completeness,
-            &t("komplektonst"),
-            inp.catalogs.offered(DictionaryKind::Completeness),
-        ),
-        device_condition: list_text(ListField::Condition, &t("sostoyanie"), &[]),
-        malfunction: list_text(ListField::Malfunction, &t("polomka"), &[]),
-        work_done: list_text(ListField::WorkDone, &t("vipolnenie_raboti"), &[]),
+        completeness,
+        device_condition,
+        malfunction,
+        work_done,
         internal_comment: comment,
         master: t("master"),
         barcode: barcode.value.clone(),
@@ -350,7 +386,7 @@ fn build_order(
     (order, barcode)
 }
 
-/// Заказы по возрастанию номера.
+/// Заказы по возрастанию номера и сколько заказов получили поля-списки в виде «пункт, пункт».
 pub(crate) fn convert_orders(
     db: &LegacyDb,
     catalogs: &Catalogs,
@@ -358,9 +394,10 @@ pub(crate) fn convert_orders(
     hints: &HistoryHints,
     now: NaiveDateTime,
     w: &mut Warnings,
-) -> Vec<ImportedOrder> {
+) -> (Vec<ImportedOrder>, ListRewrites) {
+    let mut rewrites = ListRewrites::default();
     let Some(table) = db.table(SOURCE) else {
-        return Vec::new();
+        return (Vec::new(), rewrites);
     };
     let rows = catalog_rows(db);
     let ids: Vec<i64> = rows.iter().map(|(id, _)| *id).collect();
@@ -384,9 +421,9 @@ pub(crate) fn convert_orders(
     let built: Vec<(ImportedOrder, Barcode)> = rows
         .iter()
         .zip(&received)
-        .map(|((id, row), at)| build_order(&inp, w, *id, row, *at))
+        .map(|((id, row), at)| build_order(&inp, w, &mut rewrites, *id, row, *at))
         .collect();
     let found: Vec<(i64, &Barcode)> = built.iter().map(|(o, b)| (o.id, b)).collect();
     warn_duplicate_barcodes(w, &found);
-    built.into_iter().map(|(o, _)| o).collect()
+    (built.into_iter().map(|(o, _)| o).collect(), rewrites)
 }

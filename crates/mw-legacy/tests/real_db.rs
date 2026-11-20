@@ -35,6 +35,37 @@ struct Expected {
     lists: Vec<(&'static str, HashMap<i64, String>)>,
 }
 
+/// Слова строки справочника в отчёте — подписи программы; другое слово было бы текстом базы.
+const DICTIONARY_LINE_WORDS: &[&str] = &[
+    "из",
+    "заказов",
+    "клиентов",
+    "файла",
+    "стандартных",
+    "значений",
+    "пунктов",
+    "одного",
+    "заказа",
+    "у",
+    "клиента",
+    "с",
+    "переписанным",
+    "полем",
+];
+
+/// Строка справочника печатается, только если название — справочник программы, а в числах нет
+/// слов, кроме подписей.
+fn dictionary_line_is_safe(key: &str, value: &str) -> bool {
+    let known = mw_domain::dictionary::DEFAULT_DICTIONARY
+        .iter()
+        .any(|(kind, _)| kind.label_ru() == key);
+    known
+        && value
+            .split(|c: char| !c.is_alphabetic())
+            .filter(|w| !w.is_empty())
+            .all(|w| DICTIONARY_LINE_WORDS.contains(&w))
+}
+
 /// Поля-списки: колонка `Catalog` → колонка `orders`.
 const LIST_COLUMNS: [(&str, &str); 4] = [
     ("komplektonst", "completeness"),
@@ -277,13 +308,19 @@ async fn check_backend(
             println!("[{label}] предупреждение {} — {n}", code.as_str());
         }
     }
-    // Справочники из заказов: название справочника и числа — подписи программы, не значения базы.
+    // Справочники из заказов: название справочника и числа — подписи программы, не значения базы;
+    // строка с другими словами не печатается.
+    let mut unsafe_lines = 0;
     for w in report
         .warnings
         .iter()
         .filter(|w| w.code == WarningCode::DictionaryFromOrders)
     {
-        println!("[{label}] справочник «{}» — {}", w.key, w.value);
+        if dictionary_line_is_safe(&w.key, &w.value) {
+            println!("[{label}] справочник «{}» — {}", w.key, w.value);
+        } else {
+            unsafe_lines += 1;
+        }
     }
     // Поля-списки, приведённые к виду «пункт, пункт»: сколько заказов изменили текст.
     for (column, cells) in &want.lists {
@@ -309,6 +346,11 @@ async fn check_backend(
     }
 
     let mut bad = Vec::new();
+    if unsafe_lines > 0 {
+        bad.push(format!(
+            "{label}: строк справочников не только с числами и подписями — {unsafe_lines}"
+        ));
+    }
     let mut eq = |name: &str, got: i128, expect: i128| {
         if got != expect {
             bad.push(format!(
@@ -350,6 +392,23 @@ async fn check_backend(
         ));
     }
     if bad.is_empty() { Ok(()) } else { Err(bad) }
+}
+
+#[test]
+fn a_dictionary_line_with_other_words_is_not_printed() {
+    assert!(dictionary_line_is_safe(
+        "Неисправности",
+        "из заказов — 2, из файла — 1, пунктов из одного заказа — 7, заказов с переписанным полем — 4"
+    ));
+    assert!(dictionary_line_is_safe(
+        "Откуда узнали",
+        "из клиентов — 1, стандартных — 4, значений у одного клиента — 7"
+    ));
+    assert!(!dictionary_line_is_safe(
+        "Бренды",
+        "из заказов — 3, Nokia — 1"
+    ));
+    assert!(!dictionary_line_is_safe("Иванов", "из заказов — 3"));
 }
 
 #[tokio::test]
