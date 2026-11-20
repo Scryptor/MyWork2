@@ -1,5 +1,6 @@
 <!-- The report of a transfer from MyWork 2 (spec 6.9): tiles of totals; the groups of «Требует внимания»
-     (then «Сведения»), each opens into the numbers of its orders, a number opens the order's panel;
+     (then «Сведения»). Each group has «Что это?» with the text of its code and opens into the numbers of its
+     orders (a number opens the order's panel) or, with no orders, into its entries (the first 200);
      «Сохранить отчёт» (the full text as a file) and «К заказам». -->
 <script lang="ts">
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
@@ -13,8 +14,10 @@
 	import Badge from '#lib/ui/Badge.svelte';
 	import Button from '#lib/ui/Button.svelte';
 	import Callout from '#lib/ui/Callout.svelte';
+	import HelpHint from '#lib/ui/HelpHint.svelte';
 	import StatTile from '#lib/ui/StatTile.svelte';
 	import {
+		entryWhere,
 		ORDERS_SHOWN,
 		reportFileName,
 		reportSections,
@@ -32,6 +35,7 @@
 	} = $props();
 
 	const t = ru.legacy;
+	const r = ru.importReport;
 	const uid = $props.id();
 	const tiles = $derived(reportTiles(report));
 	const sections = $derived(reportSections(report.groups));
@@ -65,24 +69,37 @@
 			<ul class="groups">
 				{#each section.groups as group (group.code)}
 					{@const expanded = open[group.code] === true}
+					{@const expandable = group.order_ids.length > 0 || group.entries.length > 0}
 					<li class="group">
-						{#if group.order_ids.length > 0}
-							<button
-								type="button"
-								class="row"
-								aria-expanded={expanded}
-								aria-controls="{uid}-{group.code}"
-								onclick={() => (open[group.code] = !expanded)}
-							>
-								<span class="chevron" class:expanded aria-hidden="true"
-									><ChevronRight size={16} /></span
+						<div class="line">
+							{#if expandable}
+								<button
+									type="button"
+									class="row"
+									aria-expanded={expanded}
+									aria-controls="{uid}-{group.code}"
+									onclick={() => (open[group.code] = !expanded)}
 								>
-								<span class="title">{group.title}</span>
-								<span class="count num">{groupDigits(String(group.count))}</span>
-							</button>
-							{#if expanded}
-								<div class="orders" id="{uid}-{group.code}">
-									<ul aria-label={t.groupOrders(group.title)}>
+									<span class="chevron" class:expanded aria-hidden="true"
+										><ChevronRight size={16} /></span
+									>
+									<span class="title">{group.title}</span>
+									<span class="count num">{groupDigits(String(group.count))}</span>
+								</button>
+							{:else}
+								<div class="row static">
+									<span class="chevron" aria-hidden="true"></span>
+									<span class="title">{group.title}</span>
+									<span class="count num">{groupDigits(String(group.count))}</span>
+								</div>
+							{/if}
+							<span class="hint"><HelpHint title={group.title} text={r.explain[group.code]} /></span
+							>
+						</div>
+						{#if expandable && expanded}
+							<div class="orders" id="{uid}-{group.code}">
+								{#if group.order_ids.length > 0}
+									<ul class="numbers" aria-label={t.groupOrders(group.title)}>
 										{#each visibleOrders(group.order_ids, all[group.code] === true) as id (id)}
 											<li>
 												<button
@@ -98,13 +115,24 @@
 											>{t.showAll(group.order_ids.length)}</Button
 										>
 									{/if}
-								</div>
-							{/if}
-						{:else}
-							<div class="row static">
-								<span class="chevron" aria-hidden="true"></span>
-								<span class="title">{group.title}</span>
-								<span class="count num">{groupDigits(String(group.count))}</span>
+								{:else}
+									<ul class="entries" aria-label={r.entries(group.title)}>
+										{#each group.entries as entry, i (i)}
+											<li class="entry">
+												<span class="where num">{entryWhere(entry)}</span>
+												{#if entry.value !== ''}
+													<span class="value"
+														><span class="label">{r.value}:</span> {entry.value}</span
+													>
+												{/if}
+												{#if entry.message !== ''}<span class="message">{entry.message}</span>{/if}
+											</li>
+										{/each}
+									</ul>
+									{#if group.entries.length < group.count}
+										<p class="cut">{r.cut(group.entries.length, group.count)}</p>
+									{/if}
+								{/if}
 							</div>
 						{/if}
 					</li>
@@ -186,12 +214,21 @@
 	.group + .group {
 		border-top: 1px solid var(--border);
 	}
+	.line {
+		display: flex;
+		align-items: center;
+	}
+	.hint {
+		flex: none;
+		padding-inline-end: var(--space-2);
+	}
 	.row {
 		display: flex;
+		flex: 1;
+		min-width: 0;
 		align-items: center;
 		gap: var(--space-2);
 		box-sizing: border-box;
-		width: 100%;
 		min-height: var(--control-lg);
 		padding: var(--space-1-5) var(--space-3);
 		border: 0;
@@ -234,12 +271,40 @@
 		padding: 0 var(--space-3) var(--space-3) calc(var(--space-3) + 1rem + var(--space-2));
 	}
 	.orders ul {
-		display: flex;
-		flex-wrap: wrap;
-		gap: var(--space-1-5);
 		margin: 0;
 		padding: 0;
 		list-style: none;
+	}
+	.numbers {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-1-5);
+	}
+	.entries {
+		display: flex;
+		flex-direction: column;
+		align-self: stretch;
+		gap: var(--space-1-5);
+	}
+	.entry {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-0-5);
+		min-width: 0;
+		overflow-wrap: anywhere;
+		font-size: var(--text-md);
+	}
+	.where {
+		color: var(--text);
+	}
+	.value,
+	.message {
+		color: var(--text-2);
+	}
+	.cut {
+		margin: 0;
+		color: var(--text-2);
+		font-size: var(--text-md);
 	}
 	.order {
 		box-sizing: border-box;

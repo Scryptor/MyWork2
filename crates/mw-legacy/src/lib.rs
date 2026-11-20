@@ -34,7 +34,9 @@ pub use progress::{ImportJob, ImportStage, Progress};
 pub use report::{FileStats, ImportReport, Severity, Warning, WarningCode};
 pub use report_files::{REPORTS_DIR, write_report_files};
 pub use source::SchemaSummary;
-pub use view::{ImportReportView, LegacyImportItem, ReportGroup, import_item, report_view};
+pub use view::{
+    ImportReportView, LegacyImportItem, ReportEntry, ReportGroup, import_item, report_view,
+};
 
 /// Папка копий перед заменой в папке данных (`<папка данных>/backups`); при замене в ней появляется
 /// `<время>/`. Одна для импорта командой и из интерфейса и для проверки папки, которая её называет.

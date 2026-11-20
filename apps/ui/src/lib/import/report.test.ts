@@ -4,6 +4,7 @@ import type { ReportGroup } from '$api/ReportGroup';
 import {
 	LATEST_REPORT,
 	ORDERS_SHOWN,
+	entryWhere,
 	reportFileName,
 	reportRoute,
 	reportSections,
@@ -17,6 +18,7 @@ const group = (over: Partial<ReportGroup>): ReportGroup => ({
 	title: 'Не разобрана дата',
 	count: 1,
 	order_ids: [],
+	entries: [],
 	...over
 });
 
@@ -99,5 +101,16 @@ describe('reportFileName and reportRoute', () => {
 		expect(reportRoute(7)).toBe('settings/import/7');
 		expect(reportRoute('latest')).toBe('settings/import/latest');
 		expect(LATEST_REPORT).toBe(`/${reportRoute('latest')}`);
+	});
+});
+
+describe('entryWhere', () => {
+	const e = { source: 'Catalog', key: '5', field: 'ClientId', value: '', message: '' };
+	it('the table, the key and the field; the field is left out when it is the key itself', () => {
+		expect(entryWhere(e)).toBe('Catalog · 5 · ClientId');
+		expect(entryWhere({ ...e, source: 'Catalog', key: 'Phone', field: 'Phone' })).toBe(
+			'Catalog · Phone'
+		);
+		expect(entryWhere({ ...e, key: '', field: '' })).toBe('Catalog');
 	});
 });

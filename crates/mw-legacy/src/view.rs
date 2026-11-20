@@ -37,6 +37,26 @@ pub struct ReportGroup {
     pub count: u64,
     /// Номера заказов, к которым относятся предупреждения группы, по возрастанию без повторов.
     pub order_ids: Vec<i64>,
+    /// Первые `REPORT_GROUP_ENTRIES` предупреждений группы в порядке отчёта; `count` — все.
+    pub entries: Vec<ReportEntry>,
+}
+
+/// Сколько предупреждений группы отдаёт отчёт для показа; полный список — в `warnings_text`.
+pub const REPORT_GROUP_ENTRIES: usize = 200;
+
+/// Одно предупреждение группы: что и где найдено в старой базе.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
+pub struct ReportEntry {
+    /// Таблица или файл старой базы (`Catalog`, `Users`, `file`, …).
+    pub source: String,
+    /// Номер записи, имя файла или другой ключ.
+    pub key: String,
+    /// Поле (колонка), если предупреждение о поле.
+    pub field: String,
+    /// Значение из старой базы.
+    pub value: String,
+    /// Что сделал перенос.
+    pub message: String,
 }
 
 /// Отчёт прошлого импорта.
@@ -130,6 +150,17 @@ pub fn report_view(
                     .flat_map(|w| order_ids(w))
                     .collect::<BTreeSet<_>>()
                     .into_iter()
+                    .collect(),
+                entries: list
+                    .iter()
+                    .take(REPORT_GROUP_ENTRIES)
+                    .map(|w| ReportEntry {
+                        source: w.source.clone(),
+                        key: w.key.clone(),
+                        field: w.field.clone(),
+                        value: w.value.clone(),
+                        message: w.message.clone(),
+                    })
                     .collect(),
             })
         })
@@ -227,6 +258,40 @@ mod tests {
         }
     }
 
+    fn entry(source: &str, key: &str, value: &str) -> ReportEntry {
+        ReportEntry {
+            source: source.into(),
+            key: key.into(),
+            field: String::new(),
+            value: value.into(),
+            message: String::new(),
+        }
+    }
+
+    #[test]
+    fn a_group_gives_its_first_entries_in_report_order_and_counts_all() {
+        let warnings: Vec<_> = (0..REPORT_GROUP_ENTRIES + 50)
+            .map(|n| warning(WarningCode::FileMissing, "file", &format!("f{n}"), "v"))
+            .chain([warning(WarningCode::NextNumber, "Catalog", "Catalog", "9")])
+            .collect();
+        let view = report_view(&record(json!({ "warnings": warnings })), None);
+        let group = view
+            .groups
+            .iter()
+            .find(|g| g.code == WarningCode::FileMissing)
+            .unwrap();
+        assert_eq!(group.count, 250);
+        assert_eq!(group.entries.len(), REPORT_GROUP_ENTRIES);
+        assert_eq!(group.entries[0].key, "f0");
+        assert_eq!(group.entries[199].key, "f199");
+        let next = view
+            .groups
+            .iter()
+            .find(|g| g.code == WarningCode::NextNumber)
+            .unwrap();
+        assert_eq!((next.count, next.entries.len()), (1, 1));
+    }
+
     fn record(report: serde_json::Value) -> LegacyImportRecord {
         LegacyImportRecord {
             id: 3,
@@ -261,6 +326,11 @@ mod tests {
                     title: "Не разобрана дата".into(),
                     count: 3,
                     order_ids: vec![2, 9],
+                    entries: vec![
+                        entry("Catalog", "9", "x"),
+                        entry("Catalog", "2", "y"),
+                        entry("Catalog", "9", "z"),
+                    ],
                 },
                 ReportGroup {
                     code: WarningCode::StatusCustom,
@@ -268,6 +338,7 @@ mod tests {
                     title: "Добавлен статус из старой базы".into(),
                     count: 1,
                     order_ids: vec![],
+                    entries: vec![entry("Catalog", "Свой", "Свой")],
                 },
             ]
         );

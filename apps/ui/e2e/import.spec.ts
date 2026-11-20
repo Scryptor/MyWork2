@@ -117,7 +117,7 @@ test('transfer: what was found, the progress, sign-in as a user of MyWork 2, the
 		String(found.orders)
 	);
 	await expect(page.getByRole('heading', { name: 'Требует внимания' })).toBeVisible();
-	const dates = page.getByRole('button', { name: /Не разобрана дата/ });
+	const dates = page.getByRole('button', { name: /^Не разобрана дата/ });
 	await expect(dates).toHaveAttribute('aria-expanded', 'false');
 	await dates.click();
 	await expect(dates).toHaveAttribute('aria-expanded', 'true');
@@ -132,6 +132,21 @@ test('transfer: what was found, the progress, sign-in as a user of MyWork 2, the
 	await expect(panel).toBeVisible();
 	await page.keyboard.press('Escape');
 	await expect(panel).toBeHidden();
+
+	// A group without orders opens into its entries too; «Что это?» of a group explains its code.
+	const next = page.getByRole('button', { name: /^Следующий номер заказа/ });
+	await expect(next).toHaveAttribute('aria-expanded', 'false');
+	await next.click();
+	await expect(next).toHaveAttribute('aria-expanded', 'true');
+	const entries = page.getByRole('list', { name: 'Записи: Следующий номер заказа' });
+	await expect(entries.getByRole('listitem')).toHaveCount(1);
+	await expect(entries).toContainText('Catalog');
+	await expect(entries).toContainText('Следующий заказ получит этот номер.');
+	await page.getByRole('button', { name: 'Что такое «Не разобрана дата»' }).click();
+	const help = page.getByRole('dialog', { name: 'Не разобрана дата' });
+	await expect(help).toContainText('Перенос даты не угадывал');
+	await help.getByRole('button', { name: 'Понятно' }).click();
+	await expect(help).toBeHidden();
 
 	// «Сохранить отчёт»: the text of the report as a file.
 	const saving = page.waitForEvent('download');

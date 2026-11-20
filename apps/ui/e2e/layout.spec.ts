@@ -316,6 +316,8 @@ const SAMPLE_IMPORTS: LegacyImportItem[] = [
 	}
 ];
 const ids = (from: number, n: number) => Array.from({ length: n }, (_, i) => from + i * 7);
+const LONG_NOTE =
+	'Клиента с таким номером нет в ClientsMap, он восстановлен из полей заказа — длинное пояснение, которое должно переноситься по словам и не раздвигать строку';
 const SAMPLE_REPORT: ImportReportView = {
 	id: 9002,
 	imported_at: '2026-11-19T14:05:09',
@@ -331,35 +333,57 @@ const SAMPLE_REPORT: ImportReportView = {
 			severity: 'warning',
 			title: 'Не разобрана дата',
 			count: 150,
-			order_ids: ids(10001, 150)
+			order_ids: ids(10001, 150),
+			entries: []
 		},
 		{
 			code: 'barcode_duplicate',
 			severity: 'warning',
 			title: 'Одинаковый штрихкод у нескольких заказов',
 			count: 277,
-			order_ids: ids(10003, 40)
+			order_ids: ids(10003, 40),
+			entries: []
 		},
 		{
 			code: 'client_missing',
 			severity: 'warning',
 			title: 'Клиент не найден — восстановлен из заказа',
 			count: 3,
-			order_ids: []
+			order_ids: [],
+			entries: [
+				{
+					source: 'Catalog',
+					key: '10005',
+					field: 'ClientId',
+					value: '4021',
+					message: LONG_NOTE
+				},
+				{ source: 'Catalog', key: '10012', field: 'ClientId', value: '4033', message: '' }
+			]
 		},
 		{
 			code: 'phone_split',
 			severity: 'info',
 			title: 'Телефоны разложены по номерам',
 			count: 812,
-			order_ids: ids(10010, 12)
+			order_ids: ids(10010, 12),
+			entries: []
 		},
 		{
 			code: 'status_custom',
 			severity: 'info',
 			title: 'Добавлен статус из старой базы',
 			count: 2,
-			order_ids: []
+			order_ids: [],
+			entries: [
+				{
+					source: 'Catalog',
+					key: 'Согласование с клиентом',
+					field: 'Status_remonta',
+					value: 'Согласование с клиентом',
+					message: ''
+				}
+			]
 		}
 	],
 	warnings_text: 'Отчёт',
@@ -382,6 +406,8 @@ async function importScenes(page: Page, c: ScreenCase, bars: Locator[], pending:
 	await expect(page.getByRole('heading', { name: 'Отчёт о переносе' })).toBeVisible();
 	await page.getByRole('button', { name: /^Не разобрана дата/ }).click();
 	await expect(page.getByRole('button', { name: /^Показать все/ })).toBeVisible();
+	await page.getByRole('button', { name: /^Клиент не найден/ }).click();
+	await expect(page.getByRole('list', { name: /^Записи:/ })).toBeVisible();
 	await scene(page, c, 'import-report', bars, pending);
 	await page.unroute('**/api/v1/legacy-imports');
 	await page.unroute('**/api/v1/legacy-imports/9002');

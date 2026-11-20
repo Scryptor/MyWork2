@@ -6146,6 +6146,39 @@
         },
         "additionalProperties": false
       },
+      "ReportEntry": {
+        "type": "object",
+        "description": "Одно предупреждение группы: что и где найдено в старой базе.",
+        "required": [
+          "source",
+          "key",
+          "field",
+          "value",
+          "message"
+        ],
+        "properties": {
+          "field": {
+            "type": "string",
+            "description": "Поле (колонка), если предупреждение о поле."
+          },
+          "key": {
+            "type": "string",
+            "description": "Номер записи, имя файла или другой ключ."
+          },
+          "message": {
+            "type": "string",
+            "description": "Что сделал перенос."
+          },
+          "source": {
+            "type": "string",
+            "description": "Таблица или файл старой базы (`Catalog`, `Users`, `file`, …)."
+          },
+          "value": {
+            "type": "string",
+            "description": "Значение из старой базы."
+          }
+        }
+      },
       "ReportGroup": {
         "type": "object",
         "description": "Группа предупреждений одного кода.",
@@ -6154,7 +6187,8 @@
           "severity",
           "title",
           "count",
-          "order_ids"
+          "order_ids",
+          "entries"
         ],
         "properties": {
           "code": {
@@ -6164,6 +6198,13 @@
             "type": "integer",
             "format": "int64",
             "minimum": 0
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReportEntry"
+            },
+            "description": "Первые `REPORT_GROUP_ENTRIES` предупреждений группы в порядке отчёта; `count` — все."
           },
           "order_ids": {
             "type": "array",

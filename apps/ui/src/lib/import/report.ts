@@ -1,6 +1,7 @@
 // The report of a transfer from MyWork 2 (spec 6.9): totals as tiles, the groups of warnings by what they
 // need, the numbers of their orders.
 import type { ImportReportView } from '$api/ImportReportView';
+import type { ReportEntry } from '$api/ReportEntry';
 import type { ReportGroup } from '$api/ReportGroup';
 import { formatBytes } from '#lib/format/bytes.js';
 import { groupDigits } from '#lib/format/digits.js';
@@ -81,4 +82,12 @@ export function reportFileName(r: Pick<ImportReportView, 'imported_at'>): string
 		? `${at.year}-${p2(at.month)}-${p2(at.day)}-${p2(at.hour)}${p2(at.minute)}`
 		: r.imported_at.replace(/\D/g, '');
 	return `mywork2-import-${stamp}.txt`;
+}
+
+/** Where an entry comes from: «Catalog · 5 · ClientId» (the table or file, the key, the field if it differs). */
+export function entryWhere(e: ReportEntry): string {
+	return [e.source, e.key, e.field !== e.key ? e.field : '']
+		.map((part) => part.trim())
+		.filter((part) => part !== '')
+		.join(' · ');
 }
