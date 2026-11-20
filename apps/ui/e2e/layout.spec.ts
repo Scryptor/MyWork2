@@ -463,6 +463,80 @@ async function phoneScenes(page: Page, c: ScreenCase, seed: Seed, pending: () =>
 	await setupScenes(page, c, pending);
 }
 
+/** The thumb of a switch sits in the middle of its track: the same gap above, below and on the side. */
+async function expectThumbCentred(page: Page, label: string) {
+	const sw = page.getByRole('switch', { name: label });
+	await expect(sw).toBeEnabled();
+	for (const checked of [false, true]) {
+		// The state of the input only, without an event: the setting on the server stays as it is.
+		await sw.evaluate((el, on) => ((el as HTMLInputElement).checked = on), checked);
+		const g = await sw.evaluate(async (el) => {
+			// The thumb slides: measure it where it stops.
+			await Promise.all(el.parentElement!.getAnimations({ subtree: true }).map((a) => a.finished));
+			const track = el.parentElement!.querySelector('.track')!.getBoundingClientRect();
+			const thumb = el.parentElement!.querySelector('.thumb')!.getBoundingClientRect();
+			return {
+				top: thumb.top - track.top,
+				bottom: track.bottom - thumb.bottom,
+				left: thumb.left - track.left,
+				right: track.right - thumb.right
+			};
+		});
+		const on = checked ? 'on' : 'off';
+		expect(
+			Math.abs(g.top - g.bottom),
+			`${on}: above and below ${JSON.stringify(g)}`
+		).toBeLessThanOrEqual(0.5);
+		const side = checked ? g.right : g.left;
+		expect(
+			Math.abs(side - g.top),
+			`${on}: side and above ${JSON.stringify(g)}`
+		).toBeLessThanOrEqual(0.5);
+	}
+}
+
+for (const scale of [1, 1.25]) {
+	test(`the thumb of a switch is centred in its track at ${scale}`, async ({ page }) => {
+		await page.addInitScript(
+			(v) => localStorage.setItem('mw.prefs', JSON.stringify({ v: 2, scale: v })),
+			scale
+		);
+		await page.goto('/settings/orders');
+		await expectThumbCentred(page, 'Проверять обязательные поля при приёме');
+	});
+}
+
+test.describe('a touch screen', () => {
+	test.use({ hasTouch: true, isMobile: true });
+	test('the thumb of a switch is centred in its track', async ({ page }) => {
+		await page.goto('/settings/orders');
+		await expectThumbCentred(page, 'Проверять обязательные поля при приёме');
+	});
+});
+
+/** The search of the top bar: in the middle of the window when there is room, never over its neighbours. */
+async function expectSearchPlace(page: Page, c: ScreenCase) {
+	const r = await page.getByRole('banner').evaluate((bar) => {
+		const rect = (el: Element | null) => el!.getBoundingClientRect();
+		const search = rect(bar.querySelector('.find'));
+		const title = rect(bar.querySelector('.title'));
+		const actions = rect(bar.querySelector('.actions'));
+		return {
+			centre: (search.left + search.right) / 2,
+			window: window.innerWidth / 2,
+			overTitle: search.left < title.right - 0.5,
+			overActions: search.right > actions.left + 0.5
+		};
+	});
+	expect(r.overTitle, 'the search runs over the title').toBe(false);
+	expect(r.overActions, 'the search runs over the actions').toBe(false);
+	if (['md', 'lg', 'xl'].includes(c.band))
+		expect(
+			Math.abs(r.centre - r.window),
+			'the search is in the middle of the window'
+		).toBeLessThanOrEqual(1);
+}
+
 for (const c of SCREEN_CASES) {
 	test.describe(c.name, () => {
 		test.use({
@@ -501,6 +575,7 @@ for (const c of SCREEN_CASES) {
 				).toBeVisible();
 			else await expect(grid.getByRole('row').nth(12)).toBeVisible();
 			await scene(page, c, 'orders', listBars(), pending);
+			await expectSearchPlace(page, c);
 			// A finger cannot hover: the card's whole title is on the screen, not only in its hint.
 			if (c.touch) {
 				const title = page.getByRole('main').locator('.card .title').first();

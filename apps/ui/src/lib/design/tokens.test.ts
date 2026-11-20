@@ -124,6 +124,7 @@ describe('tokens: denser defaults (spec 3.3, 3.4, decision 48)', () => {
 			'--sidebar-width': '13rem',
 			'--rail-width': '3rem',
 			'--topbar-named-max': '14rem',
+			'--topbar-search-max': '24rem',
 			'--panel-width': '28rem',
 			'--sheet-width': '64rem'
 		};

@@ -13,6 +13,7 @@ import {
 	isOverdueDiagnostics,
 	issueWarranty,
 	parseSavedViews,
+	moreFilterMenu,
 	quickFilterItems,
 	resetFilters,
 	toPay,
@@ -343,7 +344,7 @@ describe('quick filters', () => {
 		...STATUSES.slice(2)
 	];
 
-	it('«В работе», statuses in order with counts, «Выданы», «Все»', () => {
+	it('«В работе», statuses in order with counts, «Выданные», «Все»', () => {
 		const { main, more } = quickFilterItems(WITH_AGREED, summaryOf({ 1: 4, 2: 3, 5: 1, 3: 10 }));
 		expect(main).toEqual([
 			{ id: 'work', label: 'В работе', count: 8 },
@@ -351,11 +352,71 @@ describe('quick filters', () => {
 			{ id: '2', label: 'Диагностика', count: 3, color: 'blue' },
 			{ id: '5', label: 'Согласовано', count: 1, color: 'indigo' },
 			{ id: '3', label: 'Готов', count: 10, color: 'green' },
-			{ id: 'issued', label: 'Выданы' },
+			{ id: 'issued', label: 'Выданные', count: 0 },
 			{ id: 'all', label: 'Все' }
 		]);
-		// Issued statuses are «Выданы»; each of them can still be picked.
-		expect(more).toEqual([{ id: '4', label: 'Выдан', count: 0, color: 'slate' }]);
+		// Issued statuses are «Выданные»; each of them can still be picked.
+		expect(more).toEqual([{ id: '4', label: 'Выдан', count: 0, color: 'slate', issued: true }]);
+	});
+
+	it('«Выданные» counts the orders of every issued status, archived ones too', () => {
+		const two: Status[] = [
+			...WITH_AGREED,
+			{
+				id: 7,
+				name: 'Выдан по гарантии',
+				kind: 'issued',
+				color: 'slate',
+				sort_order: 9,
+				archived: false
+			},
+			{ id: 8, name: 'Выдан давно', kind: 'issued', color: 'slate', sort_order: 10, archived: true }
+		];
+		const { main } = quickFilterItems(two, summaryOf({ 4: 50, 7: 5, 8: 2 }));
+		expect(main.find((i) => i.id === 'issued')).toEqual({
+			id: 'issued',
+			label: 'Выданные',
+			count: 57
+		});
+	});
+
+	it('the menu puts issued statuses under «Выданные по статусам»', () => {
+		const { more } = quickFilterItems(WITH_AGREED, summaryOf({ 1: 4, 2: 3, 3: 10, 4: 50 }));
+		expect(moreFilterMenu(more, [])).toEqual([
+			{ item: more[0] },
+			{ heading: 'Выданные по статусам' },
+			{ item: more[1] }
+		]);
+	});
+
+	it('the menu has no heading without issued statuses', () => {
+		const { more } = quickFilterItems(
+			WITH_AGREED.filter((s) => s.kind !== 'issued'),
+			summaryOf({ 1: 4, 2: 3, 3: 10 })
+		);
+		expect(moreFilterMenu(more, []).every((e) => 'item' in e)).toBe(true);
+	});
+
+	it('one issued status and nothing else: no menu', () => {
+		const { more } = quickFilterItems(WITH_AGREED, summaryOf({ 1: 4, 2: 3, 5: 1, 3: 10 }));
+		expect(more.map((i) => i.id)).toEqual(['4']);
+		expect(moreFilterMenu(more, [])).toEqual([]);
+		// Two issued statuses are worth a menu.
+		const two: Status[] = [
+			...WITH_AGREED,
+			{
+				id: 7,
+				name: 'Выдан по гарантии',
+				kind: 'issued',
+				color: 'slate',
+				sort_order: 9,
+				archived: false
+			}
+		];
+		const both = quickFilterItems(two, summaryOf({ 1: 4, 2: 3, 5: 1, 3: 10 })).more;
+		expect(moreFilterMenu(both, []).length).toBe(3);
+		// A picked one is on the chips, so one is left.
+		expect(moreFilterMenu(both, ['4'])).toEqual([]);
 	});
 
 	it('statuses without orders go to more', () => {
@@ -363,7 +424,7 @@ describe('quick filters', () => {
 		expect(main.map((i) => i.id)).toEqual(['work', '1', '2', '3', 'issued', 'all']);
 		expect(more).toEqual([
 			{ id: '5', label: 'Согласовано', count: 0, color: 'indigo' },
-			{ id: '4', label: 'Выдан', count: 50, color: 'slate' }
+			{ id: '4', label: 'Выдан', count: 50, color: 'slate', issued: true }
 		]);
 	});
 

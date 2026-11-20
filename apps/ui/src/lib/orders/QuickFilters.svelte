@@ -6,7 +6,7 @@
 	import Button from '#lib/ui/Button.svelte';
 	import DropdownMenu, { type MenuItem } from '#lib/ui/DropdownMenu.svelte';
 	import FilterChips from '#lib/ui/FilterChips.svelte';
-	import type { QuickFilterItem } from './view.js';
+	import { moreFilterMenu, type QuickFilterItem } from './view.js';
 
 	let {
 		items,
@@ -22,18 +22,20 @@
 	const shown = $derived.by(() => {
 		const picked = items.more.filter((i) => selected.includes(i.id));
 		if (picked.length === 0) return items.main;
-		// Before «Выданы» and «Все»: among the statuses.
+		// Before «Выданные» and «Все»: among the statuses.
 		const tail = items.main.filter((i) => i.id === 'issued' || i.id === 'all');
 		const head = items.main.filter((i) => !tail.includes(i));
 		return [...head, ...picked, ...tail];
 	});
 	const rest = $derived<MenuItem[]>(
-		items.more
-			.filter((i) => !selected.includes(i.id))
-			.map((i) => ({
-				label: i.count === undefined ? i.label : `${i.label} · ${i.count}`,
-				onselect: () => onchange([i.id])
-			}))
+		moreFilterMenu(items.more, selected).map((e) =>
+			'heading' in e
+				? e
+				: {
+						label: e.item.count === undefined ? e.item.label : `${e.item.label} · ${e.item.count}`,
+						onselect: () => onchange([e.item.id])
+					}
+		)
 	);
 </script>
 

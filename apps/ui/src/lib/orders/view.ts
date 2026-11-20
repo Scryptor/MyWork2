@@ -314,11 +314,13 @@ export interface QuickFilterItem {
 	label: string;
 	count?: number;
 	color?: string;
+	/** A status of the «Выдан» kind: listed in «Ещё» under its own heading. */
+	issued?: boolean;
 }
 
 /**
  * Quick filters (spec 6.1): «В работе», every status that is not archived in its order with its count,
- * «Выданы», «Все». Statuses without orders and issued statuses (they are «Выданы») go to `more`.
+ * «Выданные» (the sum of the issued statuses), «Все». Statuses without orders and issued statuses go to `more`.
  * Before the summary comes there are no counts and nothing is hidden for being empty.
  */
 export function quickFilterItems(
@@ -334,12 +336,43 @@ export function quickFilterItems(
 	const more: QuickFilterItem[] = [];
 	const listed = statuses.filter((s) => !s.archived).sort((a, b) => a.sort_order - b.sort_order);
 	for (const s of listed) {
-		const entry = { id: String(s.id), label: s.name, count: countOf(s.id), color: s.color };
-		if (s.kind === 'issued' || entry.count === 0) more.push(entry);
+		const entry: QuickFilterItem = {
+			id: String(s.id),
+			label: s.name,
+			count: countOf(s.id),
+			color: s.color
+		};
+		if (s.kind === 'issued') more.push({ ...entry, issued: true });
+		else if (entry.count === 0) more.push(entry);
 		else main.push(entry);
 	}
-	main.push({ id: 'issued', label: ru.orders.issued }, { id: 'all', label: ru.orders.all });
+	const issued = summary
+		? statuses.filter((s) => s.kind === 'issued').reduce((n, s) => n + (counts.get(s.id) ?? 0), 0)
+		: undefined;
+	main.push(
+		{ id: 'issued', label: ru.orders.issued, count: issued },
+		{ id: 'all', label: ru.orders.all }
+	);
 	return { main, more };
+}
+
+/**
+ * The «Ещё» menu: statuses without orders first, then the issued ones under their heading.
+ * Empty when the only thing left would be one issued status: «Выданные» already covers it.
+ */
+export function moreFilterMenu(
+	more: readonly QuickFilterItem[],
+	selected: readonly string[]
+): ({ item: QuickFilterItem } | { heading: string })[] {
+	const rest = more.filter((i) => !selected.includes(i.id));
+	const plain = rest.filter((i) => !i.issued);
+	const issued = rest.filter((i) => i.issued);
+	if (plain.length === 0 && issued.length <= 1) return [];
+	return [
+		...plain.map((item) => ({ item })),
+		...(issued.length > 0 ? [{ heading: ru.orders.issuedByStatus }] : []),
+		...issued.map((item) => ({ item }))
+	];
 }
 
 // Cells.

@@ -63,9 +63,12 @@
 	let chosenReplace = $state(false);
 	const replacing = $derived(replace || chosenReplace);
 
+	/** The words of the server's time limit (`ApiError::timed_out`): other 503 have their own. */
+	const SERVER_TIMEOUT = 'Сервер не успел обработать запрос, повторите';
 	/** No answer to the request (cut by the webview, the connection) or the server's time limit. */
 	const cutShort = (err: unknown) =>
-		err instanceof ApiError && (err.code === 'network' || err.code === 'unavailable');
+		err instanceof ApiError &&
+		(err.code === 'network' || (err.code === 'unavailable' && err.message === SERVER_TIMEOUT));
 
 	function follow(from: ImportJob) {
 		stop?.();

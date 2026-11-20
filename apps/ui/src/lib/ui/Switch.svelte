@@ -45,13 +45,23 @@
 		cursor: not-allowed;
 		color: var(--text-disabled);
 	}
+	/* The thumb is centred by the flex track; the gap on every side is the same, border included. */
 	.track-wrap {
+		--switch-width: 2.25rem;
+		--switch-height: 1.25rem;
+		--switch-thumb: 0.875rem;
+		--switch-gap: calc((var(--switch-height) - var(--switch-thumb)) / 2);
 		position: relative;
 		display: inline-flex;
 		flex: none;
-		width: 2.25rem;
-		height: 1.25rem;
+		width: var(--switch-width);
+		height: var(--switch-height);
 		margin-top: 0.125rem;
+	}
+	@media (pointer: coarse) {
+		.track-wrap {
+			margin-top: 0;
+		}
 	}
 	input {
 		position: absolute;
@@ -61,9 +71,12 @@
 		cursor: inherit;
 	}
 	.track {
+		display: flex;
+		align-items: center;
 		width: 100%;
 		height: 100%;
 		box-sizing: border-box;
+		padding: 0 calc(var(--switch-gap) - 1px);
 		border: 1px solid var(--border-strong);
 		border-radius: var(--radius-full);
 		background: var(--surface-3);
@@ -72,9 +85,9 @@
 	}
 	.thumb {
 		display: block;
-		width: 0.875rem;
-		height: 0.875rem;
-		margin: 0.1875rem 0 0 0.1875rem;
+		flex: none;
+		width: var(--switch-thumb);
+		height: var(--switch-thumb);
 		border-radius: var(--radius-full);
 		background: var(--surface);
 		box-shadow: var(--shadow-xs);
@@ -85,7 +98,7 @@
 		border-color: var(--accent);
 	}
 	input:checked + .track .thumb {
-		transform: translateX(1rem);
+		transform: translateX(calc(var(--switch-width) - var(--switch-thumb) - 2 * var(--switch-gap)));
 	}
 	input:disabled + .track {
 		opacity: 0.5;

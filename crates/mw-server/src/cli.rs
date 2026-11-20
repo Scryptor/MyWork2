@@ -234,11 +234,11 @@ pub async fn run(cli: Cli) -> Result<(), ServerError> {
 }
 
 /// Подсказка после импорта командой: сервер на SQLite этой папки данных во время импорта не запущен
-/// (импорт держит замок папки), а с базой, заданной адресом (PostgreSQL), может работать сервер с другой
+/// (импорт держит замок папки), а с базой, заданной адресом, может работать сервер с другой
 /// папкой данных — у него старый кэш настроек.
 fn restart_hint(config: &Config) -> Option<&'static str> {
     config.database_url.is_some().then_some(
-        "Если с этой базой (PostgreSQL) уже работает сервер с другой папкой данных, перезапустите его",
+        "Если с базой, заданной адресом, уже работает сервер с другой папкой данных, перезапустите его",
     )
 }
 
@@ -353,7 +353,8 @@ mod tests {
         ])
         .unwrap();
         let hint = restart_hint(&cli.config().unwrap()).unwrap();
-        assert!(hint.contains("PostgreSQL"), "{hint}");
+        assert!(hint.contains("с базой, заданной адресом"), "{hint}");
+        assert!(!hint.contains("PostgreSQL"), "{hint}");
     }
 
     #[test]

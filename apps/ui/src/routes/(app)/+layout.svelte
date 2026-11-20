@@ -35,6 +35,7 @@
 	import ChangePasswordDialog from '#lib/app/ChangePasswordDialog.svelte';
 	import { app } from '#lib/app/context.svelte.js';
 	import { loginPath } from '#lib/app/login.js';
+	import { queueLoginNotice } from '#lib/app/login-notice.js';
 	import { discardQueues, resetSession, settleQueues } from '#lib/app/session-reset.js';
 	import UnsavedLogoutDialog from '#lib/app/UnsavedLogoutDialog.svelte';
 	import {
@@ -98,11 +99,12 @@
 		// The token this tab had is closed on the server (nobody else uses it); an expired one is dead.
 		if (reason === 'changed') void revokeToken(token);
 		discardQueues();
-		await goto(resolve(loginPath(here())));
-		resetSession();
-		toast.show({
+		// The login page shows the notice after its own reset (which clears toasts).
+		queueLoginNotice({
 			message: reason === 'expired' ? ru.auth.sessionExpired : ru.auth.sessionChanged
 		});
+		// The login page resets everything the user left in memory when it opens.
+		await goto(resolve(loginPath(here())));
 	}
 
 	// Signing out (spec 6.11): the edits still on their way go first, under this user's token; what cannot
@@ -160,9 +162,9 @@
 	async function passwordChanged() {
 		clearToken();
 		const to = resolve(loginPath(here()));
-		// The login page resets the session (and its toasts): the notice comes after it.
+		// The login page resets the session (and its toasts): it shows the notice after that.
+		queueLoginNotice({ message: ru.password.changed, tone: 'success' });
 		await goto(to);
-		toast.show({ message: ru.password.changed, tone: 'success' });
 	}
 
 	// Counts of the sidebar (and of the quick filters): at the start, for another point, after edits.

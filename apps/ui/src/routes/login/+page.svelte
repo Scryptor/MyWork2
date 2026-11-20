@@ -7,18 +7,22 @@
 	import { ApiError } from '#lib/api/client.js';
 	import { adoptStored, setSessionFoundHandler, setToken } from '#lib/api/session.js';
 	import { safeNext } from '#lib/app/login.js';
+	import { takeLoginNotices } from '#lib/app/login-notice.js';
 	import { resetSession } from '#lib/app/session-reset.js';
 	import '#lib/app/page-card.css';
 	import { ru } from '#lib/i18n/ru.js';
 	import Button from '#lib/ui/Button.svelte';
 	import Checkbox from '#lib/ui/Checkbox.svelte';
 	import TextInput from '#lib/ui/TextInput.svelte';
+	import { toast } from '#lib/ui/toast/toast.svelte.js';
 
 	// Nobody is signed in here: whatever the previous user left in memory (also after an expired session)
 	// is gone before the next one signs in. Signing in in another tab signs this one in too: it goes on
 	// where it was going.
 	onMount(() => {
 		resetSession();
+		// After the reset: it clears the toasts.
+		for (const n of takeLoginNotices()) toast.show(n);
 		setSessionFoundHandler(() => {
 			if (adoptStored() !== null) void goToNext();
 		});

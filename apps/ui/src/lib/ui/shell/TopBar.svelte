@@ -11,10 +11,13 @@
 </header>
 
 <style>
+	/* The search is in the middle of the window when there is room: the side columns are equal. When
+	   there is not, they grow with their content and the search shrinks (min-width 0), never over them. */
 	.topbar {
-		display: flex;
+		display: grid;
+		grid-template-columns: 1fr minmax(0, var(--topbar-search-max)) 1fr;
 		align-items: center;
-		gap: var(--space-3);
+		column-gap: var(--space-3);
 		box-sizing: border-box;
 		height: var(--topbar-height);
 		padding: 0 var(--space-3);
@@ -22,18 +25,18 @@
 		background: var(--surface);
 	}
 	.title {
-		flex: none;
+		justify-self: start;
 		font-size: var(--text-lg);
 		font-weight: 600;
+		white-space: nowrap;
 	}
 	.search {
-		flex: 1;
 		display: flex;
 		justify-content: center;
 		min-width: 0;
 	}
 	.actions {
-		flex: none;
+		justify-self: end;
 		display: flex;
 		align-items: center;
 		gap: var(--space-2);

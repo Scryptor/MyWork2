@@ -58,6 +58,8 @@ test('quick filters and counts follow the server', async ({ page, request }) => 
 
 	const count = Number(await chip(page, 'Готов').locator('.count').textContent());
 	expect(count).toBeGreaterThanOrEqual(1);
+	// «Выданные» is a sum over the issued statuses and has a number like «В работе».
+	await expect(chip(page, 'Выданные').locator('.count')).toHaveText(/^\d+$/);
 });
 
 test('filters menu narrows by brand ignoring case', async ({ page, request }) => {

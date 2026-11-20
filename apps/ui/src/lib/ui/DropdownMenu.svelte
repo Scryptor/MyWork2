@@ -10,7 +10,8 @@
 				disabled?: boolean;
 				danger?: boolean;
 		  }
-		| { separator: true };
+		| { separator: true }
+		| { heading: string };
 </script>
 
 <script lang="ts">
@@ -54,6 +55,8 @@
 			{#each items as item, i (i)}
 				{#if 'separator' in item}
 					<DropdownMenu.Separator class="mw-menu-sep" />
+				{:else if 'heading' in item}
+					<div class="mw-menu-heading" role="presentation">{item.heading}</div>
 				{:else}
 					{@const Icon = item.icon}
 					<DropdownMenu.Item
@@ -88,6 +91,11 @@
 	:global(.mw-menu-label) {
 		flex: 1;
 		min-width: 0;
+	}
+	:global(.mw-menu-heading) {
+		padding: var(--space-1-5) var(--space-2) var(--space-1);
+		font-size: var(--text-sm);
+		color: var(--text-3);
 	}
 	:global(.mw-menu-sep) {
 		height: 1px;

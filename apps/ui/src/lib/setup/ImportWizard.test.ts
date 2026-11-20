@@ -142,6 +142,25 @@ describe('ImportWizard on a base that already has users', () => {
 		expect(screen.queryByText('Нет связи с сервером')).not.toBeInTheDocument();
 	});
 
+	it('the server time limit counts as a cut check, other 503 keep the words of the server', async () => {
+		api.checkLegacyFolder.mockRejectedValueOnce(
+			new ApiError(503, 'unavailable', 'Сервер не успел обработать запрос, повторите', null)
+		);
+		render(ImportWizard, {});
+		await check();
+		expect(await screen.findByText(/Проверка не успела закончиться/)).toBeInTheDocument();
+	});
+
+	it('503 «папка данных не задана» is shown as the server says it', async () => {
+		api.checkLegacyFolder.mockRejectedValueOnce(
+			new ApiError(503, 'unavailable', 'Папка данных сервера не задана', null)
+		);
+		render(ImportWizard, {});
+		await check();
+		expect(await screen.findByText('Папка данных сервера не задана')).toBeInTheDocument();
+		expect(screen.queryByText(/Проверка не успела закончиться/)).not.toBeInTheDocument();
+	});
+
 	it('other errors of the check keep the words of the server', async () => {
 		api.checkLegacyFolder.mockRejectedValueOnce(
 			new ApiError(403, 'forbidden', 'Импорт по пути доступен только на этом компьютере', null)

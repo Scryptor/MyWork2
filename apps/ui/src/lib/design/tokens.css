@@ -101,6 +101,7 @@
 	/* A finger target: at least 44px at any size (2.75rem is 39.6px at 90 %). */
 	--touch-target: max(2.75rem, 44px);
 	--topbar-named-max: 14rem;
+	--topbar-search-max: 24rem;
 	--panel-width: 28rem;
 	--sheet-width: 64rem;
 	--bottom-nav-height: 3.5rem;

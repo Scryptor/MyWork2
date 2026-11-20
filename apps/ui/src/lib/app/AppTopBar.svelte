@@ -114,7 +114,7 @@
 		align-items: center;
 		gap: var(--space-2);
 		box-sizing: border-box;
-		width: min(24rem, 100%);
+		width: 100%;
 		height: var(--control-md);
 		padding: 0 var(--space-3);
 		border: 1px solid var(--border-strong);
