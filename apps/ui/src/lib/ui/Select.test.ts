@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/svelte';
+import { render, screen, waitFor, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { beforeAll, describe, expect, it } from 'vitest';
 import Select from './Select.svelte';
@@ -73,6 +73,38 @@ describe('Select', () => {
 		await userEvent.click(option('Б'));
 		expect(value).toBe('b');
 		expect(screen.queryByRole('group', hidden)).not.toBeInTheDocument();
+	});
+
+	it('typing the first letters of an option in the open list goes to it, Enter chooses it', async () => {
+		let value: string | null = 'Europe/Berlin';
+		render(Select<string>, {
+			label: 'Часовой пояс',
+			items: [
+				{
+					label: 'Россия',
+					options: [
+						{ value: 'Europe/Moscow', label: 'Москва (UTC+03:00)' },
+						{ value: 'Europe/Samara', label: 'Самара (UTC+04:00)' }
+					]
+				},
+				{
+					label: 'Европа',
+					options: [{ value: 'Europe/Berlin', label: 'Берлин (UTC+01:00)' }]
+				}
+			],
+			get value() {
+				return value;
+			},
+			set value(v) {
+				value = v;
+			}
+		});
+		await open(screen.getByRole('combobox', { name: 'Часовой пояс' }));
+		await screen.findAllByRole('option', hidden);
+		await userEvent.keyboard('Сам');
+		await waitFor(() => expect(option('Самара (UTC+04:00)')).toHaveAttribute('data-highlighted'));
+		await userEvent.keyboard('{Enter}');
+		expect(value).toBe('Europe/Samara');
 	});
 
 	it('groups: a heading over the options of each, the value shown by its label', async () => {

@@ -294,14 +294,14 @@ test.describe('server settings', () => {
 			list.getByRole('group', { name: 'Европа' }).getByRole('option', {
 				name: /— Europe\/Berlin$/
 			})
-		).toHaveText(/^\(UTC\+0[12]:00\) /);
-		await list.getByRole('option', { name: '(UTC+04:00) Самара', exact: true }).click();
+		).toHaveText(/^Центральная Европа, .* \(UTC\+0[12]:00\) — Europe\/Berlin$/);
+		await list.getByRole('option', { name: 'Самара (UTC+04:00)', exact: true }).click();
 		await expect(list).toBeHidden();
-		await expect(zone).toHaveText('(UTC+04:00) Самара');
+		await expect(zone).toHaveText('Самара (UTC+04:00)');
 		await expect.poll(() => sent).toEqual([{ timezone: 'Europe/Samara' }]);
 		await page.reload();
 		await expect(page.getByRole('combobox', { name: 'Часовой пояс' })).toHaveText(
-			'(UTC+04:00) Самара'
+			'Самара (UTC+04:00)'
 		);
 	});
 

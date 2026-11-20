@@ -6,9 +6,9 @@ afterEach(() => vi.unstubAllGlobals());
 // Winter: no summer time in Europe, the offsets below are the standard ones.
 const NOW = new Date('2026-01-15T12:00:00Z');
 
-/** «(UTC+03:00) …» → minutes east of UTC. */
+/** «Москва (UTC+03:00)» → minutes east of UTC. */
 function minutes(label: string): number {
-	const m = /^\(UTC([+-])(\d{2}):(\d{2})\)/.exec(label);
+	const m = /\(UTC([+-])(\d{2}):(\d{2})\)/.exec(label);
 	if (!m) throw new Error(`no offset in «${label}»`);
 	return (m[1] === '-' ? -1 : 1) * (Number(m[2]) * 60 + Number(m[3]));
 }
@@ -18,24 +18,24 @@ const find = (groups: TimezoneGroup[], value: string) =>
 	groups.flatMap((g) => g.options).find((o) => o.value === value);
 
 describe('timezoneOptions', () => {
-	it('«Россия» first: its own names, west to east, with the offset in front', () => {
+	it('«Россия» first: its own names, west to east, the offset after the name', () => {
 		const groups = timezoneOptions(NOW, 'Europe/Moscow');
 		expect(groups[0]!.label).toBe('Россия');
 		expect(labels(groups[0]!)).toEqual([
-			'(UTC+02:00) Калининград',
-			'(UTC+03:00) Москва',
-			'(UTC+04:00) Самара',
-			'(UTC+05:00) Екатеринбург',
-			'(UTC+06:00) Омск',
-			'(UTC+07:00) Новосибирск',
-			'(UTC+07:00) Красноярск',
-			'(UTC+08:00) Иркутск',
-			'(UTC+09:00) Якутск',
-			'(UTC+10:00) Владивосток',
-			'(UTC+11:00) Магадан',
-			'(UTC+12:00) Камчатка'
+			'Калининград (UTC+02:00)',
+			'Москва (UTC+03:00)',
+			'Самара (UTC+04:00)',
+			'Екатеринбург (UTC+05:00)',
+			'Омск (UTC+06:00)',
+			'Новосибирск (UTC+07:00)',
+			'Красноярск (UTC+07:00)',
+			'Иркутск (UTC+08:00)',
+			'Якутск (UTC+09:00)',
+			'Владивосток (UTC+10:00)',
+			'Магадан (UTC+11:00)',
+			'Камчатка (UTC+12:00)'
 		]);
-		expect(groups[0]!.options[1]).toEqual({ value: 'Europe/Moscow', label: '(UTC+03:00) Москва' });
+		expect(groups[0]!.options[1]).toEqual({ value: 'Europe/Moscow', label: 'Москва (UTC+03:00)' });
 	});
 
 	it('the rest by the part of the name before «/», in Russian; a zone of Russia is in no other group', () => {
@@ -63,7 +63,7 @@ describe('timezoneOptions', () => {
 		expect(all.filter((v) => v === 'Europe/Moscow')).toHaveLength(1);
 		expect(find(groups, 'Europe/Berlin')).toEqual({
 			value: 'Europe/Berlin',
-			label: '(UTC+01:00) Центральная Европа, стандартное время — Europe/Berlin'
+			label: 'Центральная Европа, стандартное время (UTC+01:00) — Europe/Berlin'
 		});
 		expect(groups.find((g) => g.label === 'Европа')!.options.map((o) => o.value)).toContain(
 			'Europe/Berlin'
@@ -89,9 +89,9 @@ describe('timezoneOptions', () => {
 	it('a negative offset and a zero one are written as UTC', () => {
 		const groups = timezoneOptions(NOW, 'Europe/Moscow');
 		expect(find(groups, 'America/New_York')!.label).toMatch(
-			/^\(UTC-05:00\) .* — America\/New_York$/
+			/^[^(]+ \(UTC-05:00\) — America\/New_York$/
 		);
-		expect(find(groups, 'Africa/Abidjan')!.label).toMatch(/^\(UTC\+00:00\) /);
+		expect(find(groups, 'Africa/Abidjan')!.label).toMatch(/ \(UTC\+00:00\) — Africa\/Abidjan$/);
 	});
 
 	it('a saved zone that is not in the list stays: a group of its own, first, named by the zone', () => {
@@ -111,8 +111,34 @@ describe('timezoneOptions', () => {
 		expect(groups[0]!.label).toBe('Россия');
 		const other = groups.find((g) => g.label === 'Другие')!;
 		expect(other.options.filter((o) => o.value === 'UTC')).toEqual([
-			{ value: 'UTC', label: '(UTC+00:00) Всемирное координированное время — UTC' }
+			{ value: 'UTC', label: 'Всемирное координированное время (UTC+00:00) — UTC' }
 		]);
+	});
+
+	it('a name that is only an offset again is left out: the zone, then the offset', () => {
+		// The engine names some zones by the offset alone («GMT+01:00»); the label then starts with the zone.
+		for (const o of timezoneOptions(NOW, '').flatMap((g) => g.options))
+			expect(o.label, o.value).not.toMatch(/^(GMT|UTC)[+-]/);
+	});
+
+	it('typing the first letters finds a zone: every label starts with its name', () => {
+		for (const g of timezoneOptions(NOW, ''))
+			for (const o of g.options) expect(o.label, o.value).toMatch(/^[^(\s]/);
+	});
+
+	it('the list is made once a day: another saved zone only adds or drops «Сейчас выбран»', () => {
+		const base = timezoneOptions(NOW, 'Europe/Moscow');
+		const spy = vi.spyOn(Intl, 'DateTimeFormat');
+		const other = timezoneOptions(new Date('2026-01-15T18:00:00Z'), 'Europe/Berlin');
+		const custom = timezoneOptions(NOW, 'Etc/Custom');
+		expect(spy).not.toHaveBeenCalled();
+		spy.mockRestore();
+		expect(other).toEqual(base);
+		other.forEach((g, i) => expect(g).toBe(base[i]));
+		custom.slice(1).forEach((g, i) => expect(g).toBe(base[i]));
+		// Another day: made again, with the offsets of that day (summer time in Berlin).
+		const summer = timezoneOptions(new Date('2026-07-15T12:00:00Z'), 'Europe/Moscow');
+		expect(find(summer, 'Europe/Berlin')!.label).toContain('(UTC+02:00)');
 	});
 
 	it('without Intl.supportedValuesOf nothing is listed: the name is typed as before', () => {

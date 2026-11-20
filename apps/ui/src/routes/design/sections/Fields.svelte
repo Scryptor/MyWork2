@@ -72,9 +72,9 @@
 		{
 			label: 'Россия',
 			options: [
-				{ value: 'Europe/Kaliningrad', label: '(UTC+02:00) Калининград' },
-				{ value: 'Europe/Moscow', label: '(UTC+03:00) Москва' },
-				{ value: 'Europe/Samara', label: '(UTC+04:00) Самара' }
+				{ value: 'Europe/Kaliningrad', label: 'Калининград (UTC+02:00)' },
+				{ value: 'Europe/Moscow', label: 'Москва (UTC+03:00)' },
+				{ value: 'Europe/Samara', label: 'Самара (UTC+04:00)' }
 			]
 		},
 		{
@@ -82,7 +82,7 @@
 			options: [
 				{
 					value: 'Europe/Berlin',
-					label: '(UTC+01:00) Центральная Европа, стандартное время — Europe/Berlin'
+					label: 'Центральная Европа, стандартное время (UTC+01:00) — Europe/Berlin'
 				}
 			]
 		}
