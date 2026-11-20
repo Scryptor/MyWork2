@@ -84,10 +84,35 @@ export function reportFileName(r: Pick<ImportReportView, 'imported_at'>): string
 	return `mywork2-import-${stamp}.txt`;
 }
 
-/** Where an entry comes from: «Catalog · 5 · ClientId» (the table or file, the key, the field if it differs). */
+const isNumber = (s: string) => /^\d+$/.test(s);
+
+/**
+ * Where an entry comes from, in the words of the program: «Заказ № 5 · Клиент», «Файл · 1/1/a.jpg».
+ * The key goes into the name of an order or a client, else after the source; no text is said twice (the key that
+ * is the source or the value, the field that is in the key or is the value is left out). Unknown names stay raw.
+ */
 export function entryWhere(e: ReportEntry): string {
-	return [e.source, e.key, e.field !== e.key ? e.field : '']
-		.map((part) => part.trim())
+	const rr = ru.importReport;
+	const source = e.source.trim();
+	const key = e.key.trim();
+	const value = e.value.trim();
+	const field = e.field.trim();
+	const known = Object.hasOwn(rr.sources, source);
+	let head = known ? rr.sources[source] : source;
+	let keyUsed = key === '' || key === source || key === value;
+	if (!keyUsed && isNumber(key) && source === 'Catalog') {
+		head = rr.orderNumber(key);
+		keyUsed = true;
+	} else if (!keyUsed && isNumber(key) && source === 'ClientsMap') {
+		head = rr.clientNumber(key);
+		keyUsed = true;
+	}
+	const label = Object.hasOwn(rr.fields, field) ? rr.fields[field] : field;
+	return [
+		head,
+		keyUsed ? '' : key,
+		field === '' || key.includes(field) || field === value ? '' : label
+	]
 		.filter((part) => part !== '')
 		.join(' · ');
 }

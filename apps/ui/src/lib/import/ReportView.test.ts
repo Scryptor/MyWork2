@@ -61,8 +61,7 @@ describe('ReportView groups', () => {
 		const list = screen.getByRole('list', { name: ru.importReport.entries(g.title) });
 		const rows = within(list).getAllByRole('listitem');
 		expect(rows).toHaveLength(2);
-		expect(rows[0]).toHaveTextContent('Catalog');
-		expect(rows[0]).toHaveTextContent('ClientId');
+		expect(rows[0]).toHaveTextContent('Заказ № 5 · Клиент');
 		expect(rows[0]).toHaveTextContent('77');
 		expect(rows[0]).toHaveTextContent('Клиента нет в ClientsMap.');
 		expect(

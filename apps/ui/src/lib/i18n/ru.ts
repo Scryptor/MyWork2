@@ -1028,7 +1028,49 @@ export const ru = {
 		cut: (shown: number, total: number) =>
 			`Показаны первые ${shown} из ${total}; полный список — в «Сохранить отчёт»`,
 		value: 'Значение',
-		noKey: '—'
+		/** The sources of MyWork 2 in the words of the program; the key is a number of an order or a client. */
+		orderNumber: (id: string) => `Заказ № ${id}`,
+		clientNumber: (id: string) => `Клиент № ${id}`,
+		sources: {
+			Catalog: 'Заказ',
+			ClientsMap: 'Клиент',
+			StatesMap: 'Статус',
+			HistoryBD: 'История',
+			Users: 'Пользователь',
+			GroupDostup: 'Группа прав',
+			Stock: 'Склад',
+			'Config.ini': 'Настройки MyWork 2',
+			file: 'Файл'
+		} as Record<string, string>,
+		/** The fields of MyWork 2 that the transfer names, in the words the program uses for them. */
+		fields: {
+			ClientId: 'Клиент',
+			Phone: 'Телефон',
+			FIO: 'ФИО',
+			Barcode: 'Штрихкод',
+			Data_priema: 'Дата приёма',
+			Data_vidachi: 'Дата выдачи',
+			Data_predoplaty: 'Дата предоплаты',
+			Status_remonta: 'Статус',
+			predvaritelnaya_stoimost: 'Предварительная стоимость',
+			okonchatelnaya_stoimost_remonta: 'Итоговая цена',
+			Predoplata: 'Предоплата',
+			Zatrati: 'Затраты',
+			Skidka: 'Скидка',
+			Image_key: 'Позвонить',
+			wait_zakaz: 'Заказать запчасть',
+			Deleted: 'Удалён',
+			Blist: 'Чёрный список',
+			kommentarij: 'Комментарий',
+			date: 'Дата',
+			DATA: 'Дата',
+			clientId: 'Заказ',
+			IDINCATALOG: 'Заказ',
+			name: 'Логин',
+			grName: 'Название группы',
+			id_gruppi_dostupa: 'Группа доступа',
+			user_pwd: 'Пароль'
+		} as Record<string, string>
 	},
 	dictionaries: {
 		kinds: 'Справочники',

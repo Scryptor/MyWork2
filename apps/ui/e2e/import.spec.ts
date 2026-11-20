@@ -140,7 +140,8 @@ test('transfer: what was found, the progress, sign-in as a user of MyWork 2, the
 	await expect(next).toHaveAttribute('aria-expanded', 'true');
 	const entries = page.getByRole('list', { name: 'Записи: Следующий номер заказа' });
 	await expect(entries.getByRole('listitem')).toHaveCount(1);
-	await expect(entries).toContainText('Catalog');
+	await expect(entries.getByRole('listitem').first()).toHaveText(/^Заказ/);
+	await expect(entries).not.toContainText('Catalog');
 	await expect(entries).toContainText('Следующий заказ получит этот номер.');
 	await page.getByRole('button', { name: 'Что такое «Не разобрана дата»' }).click();
 	const help = page.getByRole('dialog', { name: 'Не разобрана дата' });

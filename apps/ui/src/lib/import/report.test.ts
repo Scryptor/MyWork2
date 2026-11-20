@@ -105,12 +105,46 @@ describe('reportFileName and reportRoute', () => {
 });
 
 describe('entryWhere', () => {
-	const e = { source: 'Catalog', key: '5', field: 'ClientId', value: '', message: '' };
-	it('the table, the key and the field; the field is left out when it is the key itself', () => {
-		expect(entryWhere(e)).toBe('Catalog · 5 · ClientId');
-		expect(entryWhere({ ...e, source: 'Catalog', key: 'Phone', field: 'Phone' })).toBe(
-			'Catalog · Phone'
+	const e = { source: 'Catalog', key: '5', field: 'ClientId', value: '77', message: '' };
+	it('an order: «Заказ № 5», the field in the words of the program', () => {
+		expect(entryWhere(e)).toBe('Заказ № 5 · Клиент');
+		expect(entryWhere({ ...e, field: 'Data_priema' })).toBe('Заказ № 5 · Дата приёма');
+		expect(entryWhere({ ...e, field: 'Barcode' })).toBe('Заказ № 5 · Штрихкод');
+	});
+	it('a client, a user, a file, a setting', () => {
+		expect(entryWhere({ ...e, source: 'ClientsMap', key: '12', field: 'Phone' })).toBe(
+			'Клиент № 12 · Телефон'
 		);
-		expect(entryWhere({ ...e, key: '', field: '' })).toBe('Catalog');
+		expect(entryWhere({ ...e, source: 'Users', key: '3', field: 'user_pwd' })).toBe(
+			'Пользователь · 3 · Пароль'
+		);
+		expect(entryWhere({ ...e, source: 'file', key: '1/1/a.jpg', field: '', value: '' })).toBe(
+			'Файл · 1/1/a.jpg'
+		);
+		expect(entryWhere({ ...e, source: 'Config.ini', key: '[A] b', field: 'b', value: 'x' })).toBe(
+			'Настройки MyWork 2 · [A] b'
+		);
+	});
+	it('the same text is never repeated: status_custom', () => {
+		const text = 'Согласование с клиентом';
+		expect(
+			entryWhere({
+				source: 'Catalog',
+				key: text,
+				field: 'Status_remonta',
+				value: text,
+				message: ''
+			})
+		).toBe('Заказ · Статус');
+	});
+	it('next_number has no «Catalog · Catalog»', () => {
+		expect(
+			entryWhere({ source: 'Catalog', key: 'Catalog', field: '', value: '16', message: '' })
+		).toBe('Заказ');
+	});
+	it('an unknown source and field stay as they are', () => {
+		expect(entryWhere({ source: 'Zzz', key: 'k', field: 'Weird', value: 'v', message: '' })).toBe(
+			'Zzz · k · Weird'
+		);
 	});
 });
