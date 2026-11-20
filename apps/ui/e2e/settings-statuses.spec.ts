@@ -109,7 +109,7 @@ test('a new status shows in the filters at once; a change of kind warns and Canc
 			.locator('a[href="/orders"]')
 			.first()
 			.click();
-		await page.getByRole('button', { name: 'Фильтры' }).click();
+		await page.getByRole('button', { name: 'Фильтры', exact: true }).click();
 		await expect(page.getByRole('checkbox', { name })).toBeVisible();
 		await page.keyboard.press('Escape');
 
@@ -346,7 +346,7 @@ test('dragging changes the order of the statuses and it survives a reload', asyn
 			.locator('a[href="/orders"]')
 			.first()
 			.click();
-		await page.getByRole('button', { name: 'Фильтры' }).click();
+		await page.getByRole('button', { name: 'Фильтры', exact: true }).click();
 		const checks = page.getByRole('checkbox', { name: new RegExp(`-${id}$`) });
 		await expect(checks).toHaveCount(2);
 		await expect(checks.first()).toHaveAccessibleName(`Второй-${id}`);

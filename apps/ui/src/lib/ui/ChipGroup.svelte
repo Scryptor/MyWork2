@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { normalizeSearch } from '#lib/format/search.js';
 	import { ru } from '#lib/i18n/ru.js';
+	import HelpHint from './HelpHint.svelte';
 
 	let {
 		selected = $bindable([]),
@@ -8,6 +9,7 @@
 		label,
 		allowCustom = false,
 		customLabel = ru.fields.custom,
+		help,
 		oncreate
 	}: {
 		selected: string[];
@@ -15,6 +17,8 @@
 		label: string;
 		allowCustom?: boolean;
 		customLabel?: string;
+		/** «Что это?»: an icon at the end of the row (the group has no visible title), named by `label`. */
+		help?: string | readonly string[];
 		oncreate?: (value: string) => void;
 	} = $props();
 
@@ -85,6 +89,7 @@
 			<button type="button" class="chip add" onclick={() => (adding = true)}>{customLabel}</button>
 		{/if}
 	{/if}
+	{#if help}<span class="help"><HelpHint title={label} text={help} /></span>{/if}
 </div>
 
 <style>
@@ -115,6 +120,10 @@
 		background: var(--accent-soft);
 		border-color: var(--accent);
 		color: var(--accent-text);
+	}
+	.help {
+		display: inline-flex;
+		align-items: center;
 	}
 	.add {
 		border-style: dashed;

@@ -68,7 +68,14 @@
 		required
 		autofocus
 	/>
-	<TextInput label={t.point} hint={t.pointHint} bind:value={point} error={pointError} required />
+	<TextInput
+		label={t.point}
+		hint={t.pointHint}
+		help={ru.help.setup.point}
+		bind:value={point}
+		error={pointError}
+		required
+	/>
 	<TagInput label={t.masters} hint={t.mastersHint} bind:values={masters} />
 	{#if failure}<Callout tone="danger">{failure}</Callout>{/if}
 	<div class="actions">

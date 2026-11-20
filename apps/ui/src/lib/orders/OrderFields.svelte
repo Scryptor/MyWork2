@@ -113,6 +113,14 @@
 	] as const satisfies readonly OrderField[];
 	const DEVICE_ALL = [...DEVICE, ...DEVICE_NOTES];
 	const idOf = (f: OrderField) => `${idPrefix}-${f}`;
+	/** «Что это?» of the fields whose meaning the label does not tell. */
+	const HELP: Partial<Record<OrderField, readonly string[]>> = {
+		final_price: ru.help.order.finalPrice,
+		extra_costs: ru.help.order.extraCosts,
+		warranty: ru.help.order.warranty,
+		need_call: ru.help.order.needCall,
+		need_parts: ru.help.order.needParts
+	};
 
 	/** Device fields chosen from a dictionary; the others are typed. */
 	type DeviceChoice = 'device_type' | 'brand' | 'color';
@@ -395,6 +403,7 @@
 					<MoneyInput
 						id={idOf(f)}
 						label={LABELS[f]}
+						help={HELP[f]}
 						nullable={f === 'final_price'}
 						disabled={readonly}
 						bind:invalid={invalid[f]}
@@ -419,6 +428,7 @@
 			<Combobox
 				id={idOf('warranty')}
 				label={t.warrantyTerm}
+				help={HELP.warranty}
 				items={warrantyItems}
 				disabled={readonly}
 				hint={isNoWarranty(order) && shown('warranty') === order.warranty
@@ -437,6 +447,7 @@
 				<div class="flashable" class:flash={flash([f])} onanimationend={() => endFlash([f])}>
 					<Switch
 						label={LABELS[f] ?? f}
+						help={HELP[f]}
 						disabled={readonly}
 						bind:checked={() => shown(f), (v) => autosave.commit(f, v)}
 					/>

@@ -13,6 +13,7 @@
 	import ImportWizard from '#lib/setup/ImportWizard.svelte';
 	import { jobState } from '#lib/setup/progress.js';
 	import SetupForm from '#lib/setup/SetupForm.svelte';
+	import HelpHint from '#lib/ui/HelpHint.svelte';
 	import OptionCard from '#lib/ui/OptionCard.svelte';
 	import { toast } from '#lib/ui/toast/toast.svelte.js';
 
@@ -47,7 +48,10 @@
 	<div class="card">
 		<h1>{title}</h1>
 		{#if step === 'choose'}
-			<p class="intro">{t.intro}</p>
+			<div class="intro">
+				<p>{t.intro}</p>
+				<HelpHint title={t.choiceHelp} text={ru.help.setup.choice} />
+			</div>
 			<div class="options">
 				<OptionCard
 					icon={FilePlus}
@@ -109,8 +113,13 @@
 		font-weight: 600;
 	}
 	.intro {
-		margin: 0;
+		display: flex;
+		align-items: center;
+		gap: var(--space-1);
 		color: var(--text-2);
+	}
+	.intro p {
+		margin: 0;
 	}
 	.options {
 		display: flex;

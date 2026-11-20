@@ -113,6 +113,7 @@
 		<Textarea
 			id={IDS.complaint}
 			label={t.complaint}
+			help={ru.help.order.complaint}
 			required
 			bind:value={
 				() => complaint,

@@ -616,7 +616,7 @@ for (const c of SCREEN_CASES) {
 			const listBars = () => [
 				banner(page),
 				page.getByRole('group', { name: 'Быстрые фильтры' }),
-				rowWith(page, filter, page.getByRole('button', { name: 'Фильтры' })),
+				rowWith(page, filter, page.getByRole('button', { name: 'Фильтры', exact: true })),
 				...(c.phone ? [bottomNav(page)] : [])
 			];
 
@@ -774,7 +774,7 @@ for (const c of SCREEN_CASES) {
 						rowWith(
 							page,
 							page.getByRole('searchbox', { name: 'Фильтр списка' }),
-							page.getByRole('button', { name: 'Фильтры' })
+							page.getByRole('button', { name: 'Фильтры', exact: true })
 						),
 						...(c.phone ? [bottomNav(page)] : [])
 					],

@@ -6,6 +6,7 @@
 	import Button from '#lib/ui/Button.svelte';
 	import DropdownMenu, { type MenuItem } from '#lib/ui/DropdownMenu.svelte';
 	import FilterChips from '#lib/ui/FilterChips.svelte';
+	import HelpHint from '#lib/ui/HelpHint.svelte';
 	import { moreFilterMenu, type QuickFilterItem } from './view.js';
 
 	let {
@@ -58,6 +59,7 @@
 			{/snippet}
 		</DropdownMenu>
 	{/if}
+	<HelpHint title={ru.orders.quickFilters} text={ru.help.list.quickFilters} />
 </div>
 
 <style>

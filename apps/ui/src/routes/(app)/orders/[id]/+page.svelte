@@ -295,7 +295,7 @@
 					</Section>
 				</div>
 				<div class="s4">
-					<Section title={c.warrantyCases} region>
+					<Section title={c.warrantyCases} help={ru.help.order.warrantyCases} region>
 						{#if cases.length === 0}
 							<p class="muted">{c.noWarrantyCases}</p>
 						{:else}

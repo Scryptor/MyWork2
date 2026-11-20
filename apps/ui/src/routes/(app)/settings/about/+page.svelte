@@ -11,6 +11,7 @@
 	import Button from '#lib/ui/Button.svelte';
 	import Callout from '#lib/ui/Callout.svelte';
 	import Card from '#lib/ui/Card.svelte';
+	import HelpHint from '#lib/ui/HelpHint.svelte';
 	import { toast } from '#lib/ui/toast/toast.svelte.js';
 
 	const t = ru.settings;
@@ -56,7 +57,10 @@
 			<dd>{about.version}</dd>
 			<dt>{t.database}</dt>
 			<dd>{about.database}</dd>
-			<dt>{t.dataDir}</dt>
+			<dt class="with-help">
+				{t.dataDir}
+				<HelpHint title={t.dataDir} text={ru.help.dataDir} />
+			</dt>
 			<dd class="dir">
 				{#if about.data_dir}
 					<span class="path">{about.data_dir}</span>
@@ -89,6 +93,11 @@
 	}
 	dt {
 		color: var(--text-3);
+	}
+	.with-help {
+		display: flex;
+		align-items: center;
+		gap: var(--space-1);
 	}
 	dd {
 		margin: 0;

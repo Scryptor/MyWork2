@@ -213,7 +213,11 @@
 				error={errors.contact ?? errors.phones}
 			/>
 			{#if newForm}
-				<TextInput label={t.phoneNote} bind:value={draft.phones[0]!.note} />
+				<TextInput
+					label={t.phoneNote}
+					help={ru.help.intake.phoneNote}
+					bind:value={draft.phones[0]!.note}
+				/>
 			{/if}
 		</div>
 

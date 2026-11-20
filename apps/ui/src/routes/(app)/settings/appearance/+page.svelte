@@ -67,7 +67,10 @@
 			</div>
 		{/if}
 		<div class="field">
-			<span class="label">{t.density}</span>
+			<span class="head">
+				<span class="label">{t.density}</span>
+				<HelpHint title={t.density} text={ru.help.appearance.density} />
+			</span>
 			<SegmentedControl
 				label={t.density}
 				options={DENSITIES}

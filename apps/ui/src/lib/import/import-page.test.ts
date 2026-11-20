@@ -12,7 +12,7 @@ vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
 vi.mock('$app/paths', () => ({ resolve: (p: string) => `/${p}` }));
 vi.mock('#lib/app/context.svelte.js', () => ({ app: { can: () => true } }));
 
-import Page from '../../routes/(app)/settings/import/+page.svelte';
+import Page from './ImportPageHarness.test-helper.svelte';
 
 const about = (database: string) => ({
 	version: '0.1.0',
@@ -50,6 +50,10 @@ describe('«Импорт из MyWork 2» in the settings', () => {
 		render(Page);
 		expect(
 			await screen.findByRole('button', { name: 'Перенести из MyWork 2' })
+		).toBeInTheDocument();
+		// What the replacement does is a hint next to its words.
+		expect(
+			screen.getByRole('button', { name: 'Что такое «Перенос с заменой»' })
 		).toBeInTheDocument();
 	});
 });

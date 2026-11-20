@@ -204,7 +204,13 @@
 	<PhoneInput bind:value={phoneReception} label="Телефон клиента" />
 	<DateInput bind:value={dateReception} label="Дата приёма" />
 </div>
-<ChipGroup bind:selected={kitReception} options={KIT} label="Комплектность" allowCustom />
+<ChipGroup
+	bind:selected={kitReception}
+	options={KIT}
+	label="Комплектность"
+	allowCustom
+	help="У ряда кнопок нет видимого заголовка: значок подсказки стоит в конце ряда."
+/>
 <p class="muted">Выбрано: {kit.join(', ') || 'ничего'}</p>
 <ChipGroup bind:selected={kit} options={KIT} label="Комплектность, пример" />
 

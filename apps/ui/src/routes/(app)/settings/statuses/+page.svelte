@@ -32,6 +32,7 @@
 	import Card from '#lib/ui/Card.svelte';
 	import ConfirmDialog from '#lib/ui/ConfirmDialog.svelte';
 	import EmptyState from '#lib/ui/EmptyState.svelte';
+	import HelpHint from '#lib/ui/HelpHint.svelte';
 	import Select from '#lib/ui/Select.svelte';
 	import Skeleton from '#lib/ui/Skeleton.svelte';
 	import TextInput from '#lib/ui/TextInput.svelte';
@@ -129,7 +130,10 @@
 	const nothing = $derived(!catalog.loading && !catalog.loadError && catalog.rows.length === 0);
 </script>
 
-<h1 class="title">{ru.settings.statuses}</h1>
+<div class="heading">
+	<h1 class="title">{ru.settings.statuses}</h1>
+	<HelpHint title={ru.settings.statuses} text={ru.help.statuses} />
+</div>
 
 {#if readonly}<Callout tone="info">{ru.settings.readOnly}</Callout>{/if}
 
@@ -249,6 +253,11 @@
 />
 
 <style>
+	.heading {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+	}
 	.title {
 		margin: 0;
 		font-size: var(--text-xl);

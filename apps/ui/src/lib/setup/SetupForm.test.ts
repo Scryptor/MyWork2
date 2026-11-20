@@ -6,7 +6,7 @@ import { ApiError } from '#lib/api/client.js';
 const api = vi.hoisted(() => ({ runSetup: vi.fn() }));
 vi.mock('#lib/api/setup.js', () => api);
 
-import SetupForm from './SetupForm.svelte';
+import SetupForm from './SetupFormHarness.test-helper.svelte';
 
 // A block body: a function returned from beforeEach is called as its cleanup.
 beforeEach(() => {

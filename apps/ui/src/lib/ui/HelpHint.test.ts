@@ -70,4 +70,14 @@ describe('help prop', () => {
 			screen.getByRole('button', { name: 'Что такое «Требуют внимания»' })
 		).toBeInTheDocument();
 	});
+
+	it('ChipGroup: the icon ends the row of chips and does not press a chip', async () => {
+		render(Harness, { kind: 'chips', text: 'Что сдано с устройством' });
+		const button = screen.getByRole('button', { name: 'Что такое «Комплектность»' });
+		await userEvent.click(button);
+		expect(await screen.findByRole('dialog', { name: 'Комплектность' })).toHaveTextContent(
+			'Что сдано с устройством'
+		);
+		expect(screen.getByRole('button', { name: 'Чехол' })).toHaveAttribute('aria-pressed', 'false');
+	});
 });

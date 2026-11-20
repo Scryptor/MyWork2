@@ -61,10 +61,15 @@
 	const FREQUENT = 12;
 
 	type MoneyKey = 'estimateFrom' | 'estimateTo' | 'prepayment';
-	const MONEY_FIELDS: Record<MoneyKey, { label: string; id: string }> = {
-		estimateFrom: { label: t.estimateFrom, id: 'intake-estimate-from' },
+	/** «Оценка до» shares the hint of «Оценка от», next to it. */
+	const MONEY_FIELDS: Record<MoneyKey, { label: string; id: string; help?: readonly string[] }> = {
+		estimateFrom: {
+			label: t.estimateFrom,
+			id: 'intake-estimate-from',
+			help: ru.help.intake.estimate
+		},
 		estimateTo: { label: t.estimateTo, id: 'intake-estimate-to' },
-		prepayment: { label: t.prepayment, id: 'intake-prepayment' }
+		prepayment: { label: t.prepayment, id: 'intake-prepayment', help: ru.help.intake.prepayment }
 	};
 	const MONEY_KEYS = Object.keys(MONEY_FIELDS) as MoneyKey[];
 
@@ -613,7 +618,12 @@
 						error={errors.model}
 					/>
 					<Combobox label={t.color} items={colorItems} bind:value={draft.color} />
-					<TextInput label={t.serial} autocomplete="off" bind:value={draft.serial} />
+					<TextInput
+						label={t.serial}
+						help={ru.help.intake.serial}
+						autocomplete="off"
+						bind:value={draft.serial}
+					/>
 					<TextInput
 						label={t.password}
 						type="password"
@@ -624,6 +634,7 @@
 				</div>
 				<ChipGroup
 					label={t.completeness}
+					help={ru.help.intake.completeness}
 					options={completeness}
 					allowCustom
 					bind:selected={draft.completeness}
@@ -631,6 +642,7 @@
 				/>
 				<ChipGroup
 					label={t.condition}
+					help={ru.help.intake.condition}
 					options={condition}
 					allowCustom
 					bind:selected={draft.condition}
@@ -647,7 +659,12 @@
 					error={errors.malfunction}
 				/>
 				{#if frequent.length > 0}
-					<ChipGroup label={t.frequent} options={frequent} bind:selected={draft.malfunctionChips} />
+					<ChipGroup
+						label={t.frequent}
+						help={ru.help.intake.frequent}
+						options={frequent}
+						bind:selected={draft.malfunctionChips}
+					/>
 				{/if}
 			</Section>
 
@@ -666,15 +683,22 @@
 					<Select
 						id={FIELDS.status}
 						label={t.status}
+						help={ru.help.intake.status}
 						items={statusItems}
 						bind:value={draft.statusId}
 						error={errors.status}
 					/>
-					<Combobox label={t.warranty} items={warrantyItems} bind:value={draft.warranty} />
+					<Combobox
+						label={t.warranty}
+						help={ru.help.order.warranty}
+						items={warrantyItems}
+						bind:value={draft.warranty}
+					/>
 					{#each MONEY_KEYS as key (key)}
 						<MoneyInput
 							id={MONEY_FIELDS[key].id}
 							label={MONEY_FIELDS[key].label}
+							help={MONEY_FIELDS[key].help}
 							bind:value={draft[key]}
 							bind:invalid={wrongMoney[key]}
 							error={errors[key]}

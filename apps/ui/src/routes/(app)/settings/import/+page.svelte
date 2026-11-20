@@ -21,6 +21,7 @@
 	import Button from '#lib/ui/Button.svelte';
 	import Callout from '#lib/ui/Callout.svelte';
 	import Card from '#lib/ui/Card.svelte';
+	import HelpHint from '#lib/ui/HelpHint.svelte';
 	import Skeleton from '#lib/ui/Skeleton.svelte';
 
 	const t = ru.legacy;
@@ -70,7 +71,10 @@
 		</Card>
 	{:else if replaceable}
 		<div class="again">
-			<p class="hint">{t.againHint}</p>
+			<p class="hint">
+				{t.againHint}
+				<HelpHint title={t.replaceHelp} text={ru.help.import.replace} />
+			</p>
 			<Button onclick={() => (wizard = true)}>{items?.length ? t.again : t.first}</Button>
 		</div>
 	{:else if notHere}
@@ -129,6 +133,11 @@
 		margin: 0;
 		color: var(--text-3);
 		font-size: var(--text-md);
+	}
+	.again .hint {
+		display: flex;
+		align-items: center;
+		gap: var(--space-1);
 	}
 	.past {
 		display: flex;

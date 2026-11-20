@@ -16,7 +16,7 @@ vi.mock('#lib/api/import.js', () => api);
 vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
 vi.mock('$app/paths', () => ({ resolve: (p: string) => `/${p}` }));
 
-import ImportWizard from './ImportWizard.svelte';
+import ImportWizard from './ImportWizardHarness.test-helper.svelte';
 
 const PATH = '/Users/u/MyWork2';
 const found = (over: Partial<FolderCheck> = {}): FolderCheck => ({
@@ -78,6 +78,18 @@ describe('ImportWizard on a base that already has users', () => {
 		expect(api.startLegacyImport).not.toHaveBeenCalled();
 		await userEvent.click(within(dialog).getByRole('button', { name: 'Заменить' }));
 		expect(api.startLegacyImport).toHaveBeenCalledWith({ path: PATH, replace: true });
+	});
+
+	it('«Перенести с заменой» has a hint: what is replaced and where the copy goes', async () => {
+		api.checkLegacyFolder.mockResolvedValueOnce(notEmpty(true));
+		render(ImportWizard, {});
+		await check();
+		await userEvent.click(
+			await screen.findByRole('button', { name: 'Что такое «Перенос с заменой»' })
+		);
+		const hint = await screen.findByRole('dialog', { name: 'Перенос с заменой' });
+		expect(hint).toHaveTextContent('пользователи и пароли');
+		expect(hint).toHaveTextContent('backups');
 	});
 
 	it('a new path forgets the replacement chosen for the old one', async () => {

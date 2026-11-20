@@ -33,6 +33,7 @@
 	import EmptyState from '#lib/ui/EmptyState.svelte';
 	import FilterChips from '#lib/ui/FilterChips.svelte';
 	import FlagIcons from '#lib/ui/FlagIcons.svelte';
+	import HelpHint from '#lib/ui/HelpHint.svelte';
 	import InfiniteList from '#lib/ui/InfiniteList.svelte';
 	import Kbd from '#lib/ui/Kbd.svelte';
 	import ListCard from '#lib/ui/ListCard.svelte';
@@ -255,14 +256,17 @@
 {/snippet}
 
 {#snippet chips()}
-	<FilterChips
-		label={t.chips}
-		items={[
-			{ id: 'all', label: t.all },
-			{ id: 'similar', label: t.similar }
-		]}
-		bind:selected={() => shownChips(view), (next) => change((v) => withChips(v, next))}
-	/>
+	<div class="chips">
+		<FilterChips
+			label={t.chips}
+			items={[
+				{ id: 'all', label: t.all },
+				{ id: 'similar', label: t.similar }
+			]}
+			bind:selected={() => shownChips(view), (next) => change((v) => withChips(v, next))}
+		/>
+		<HelpHint title={t.similar} text={ru.help.clients.similar} />
+	</div>
 {/snippet}
 
 <svelte:head><title>{t.title}</title></svelte:head>
@@ -383,6 +387,12 @@
 		flex: 1;
 		min-width: 0;
 		max-width: 36rem;
+	}
+	.chips {
+		display: flex;
+		align-items: center;
+		gap: var(--space-1);
+		min-width: 0;
 	}
 	.phone .filter {
 		max-width: none;

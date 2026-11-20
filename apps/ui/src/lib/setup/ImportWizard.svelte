@@ -25,6 +25,7 @@
 	import Button from '#lib/ui/Button.svelte';
 	import Callout from '#lib/ui/Callout.svelte';
 	import ConfirmDialog from '#lib/ui/ConfirmDialog.svelte';
+	import HelpHint from '#lib/ui/HelpHint.svelte';
 	import KeyValue from '#lib/ui/KeyValue.svelte';
 	import TextInput from '#lib/ui/TextInput.svelte';
 	import ImportProgress from './ImportProgress.svelte';
@@ -217,6 +218,7 @@
 			{found.problem}
 			{#snippet actions()}
 				<Button busy={checking} onclick={chooseReplace}>{t.replaceOffer}</Button>
+				<HelpHint title={t.replaceHelp} text={ru.help.import.replace} />
 			{/snippet}
 		</Callout>
 	{:else if found && !found.ok}

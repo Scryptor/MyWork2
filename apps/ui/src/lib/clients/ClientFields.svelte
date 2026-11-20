@@ -216,7 +216,7 @@
 			</div>
 		{/if}
 	{/snippet}
-	<Section title={t.phones}>
+	<Section title={t.phones} help={ru.help.clients.phones}>
 		{@render flashable('phones', list)}
 	</Section>
 
@@ -247,6 +247,7 @@
 		<Textarea
 			id="client-note"
 			label={t.note}
+			help={ru.help.clients.note}
 			minRows={2}
 			disabled={readonly}
 			bind:value={() => shown('note'), (v) => autosave.edit('note', v)}
@@ -257,6 +258,7 @@
 	{#snippet blacklisted()}
 		<Switch
 			label={t.blacklisted}
+			help={ru.help.clients.blacklisted}
 			disabled={readonly}
 			bind:checked={() => shown('blacklisted'), (v) => autosave.commit('blacklisted', v)}
 		/>

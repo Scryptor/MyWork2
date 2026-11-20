@@ -95,7 +95,9 @@
 						items: attentionItems.length > 0 ? attentionItems : [allClear]
 					}
 				]),
-		...(views.length > 0 ? [{ title: ru.app.views, items: views }] : []),
+		...(views.length > 0
+			? [{ title: ru.app.views, help: ru.help.list.savedViews, items: views }]
+			: []),
 		{
 			bottom: true,
 			items: [{ id: 'settings', label: ru.app.settings, icon: Settings, href: SETTINGS }]
