@@ -91,6 +91,7 @@
 			: [
 					{
 						title: ru.app.attention,
+						help: ru.help.attention,
 						items: attentionItems.length > 0 ? attentionItems : [allClear]
 					}
 				]),

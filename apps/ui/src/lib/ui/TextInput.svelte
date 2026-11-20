@@ -26,6 +26,7 @@
 		onblur,
 		label,
 		hint,
+		help,
 		error,
 		required = false,
 		disabled = false,
@@ -52,6 +53,8 @@
 		onblur?: () => void;
 		label?: string;
 		hint?: string;
+		/** «Что это?»: an icon right of the label with an explanation. */
+		help?: string | readonly string[];
 		error?: string;
 		required?: boolean;
 		disabled?: boolean;
@@ -64,7 +67,7 @@
 	const shownType = $derived(type === 'password' && revealed ? 'text' : type);
 </script>
 
-<Field {label} {hint} {error} {required} id={fid}>
+<Field {label} {hint} {help} {error} {required} id={fid}>
 	{#snippet children(f)}
 		<div class="mw-box {size}" class:invalid={f.invalid} class:disabled>
 			{#if prefix}<span class="mw-affix">{@render prefix()}</span>{/if}

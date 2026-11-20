@@ -19,6 +19,7 @@ export { default as FileDrop } from './FileDrop.svelte';
 export { default as FileList } from './FileList.svelte';
 export { default as FilterChips } from './FilterChips.svelte';
 export { default as FlagIcons } from './FlagIcons.svelte';
+export { default as HelpHint } from './HelpHint.svelte';
 export { default as IconButton } from './IconButton.svelte';
 export { default as InfiniteList } from './InfiniteList.svelte';
 export { default as Kbd } from './Kbd.svelte';

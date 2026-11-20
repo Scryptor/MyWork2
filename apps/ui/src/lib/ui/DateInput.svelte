@@ -17,6 +17,7 @@
 		max,
 		label,
 		hint,
+		help,
 		error,
 		required = false,
 		disabled = false,
@@ -29,6 +30,8 @@
 		max?: string;
 		label?: string;
 		hint?: string;
+		/** «Что это?»: an icon right of the label with an explanation. */
+		help?: string | readonly string[];
 		error?: string;
 		required?: boolean;
 		disabled?: boolean;
@@ -134,7 +137,7 @@
 	}
 </script>
 
-<Field {label} {hint} error={error ?? problem} {required} id={fid}>
+<Field {label} {hint} {help} error={error ?? problem} {required} id={fid}>
 	{#snippet children(f)}
 		<div class="mw-box" class:invalid={f.invalid} class:disabled>
 			<input

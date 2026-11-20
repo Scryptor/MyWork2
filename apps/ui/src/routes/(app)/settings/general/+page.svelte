@@ -48,6 +48,7 @@
 	<div class="fields">
 		<TextInput
 			label={t.firmName}
+			help={ru.help.general.firmName}
 			disabled={locked}
 			error={editor.fieldError('firm_name')}
 			bind:value={
@@ -57,6 +58,7 @@
 		/>
 		<TextInput
 			label={t.currency}
+			help={ru.help.general.currency}
 			disabled={locked}
 			maxlength={8}
 			error={editor.fieldError('currency_symbol')}
@@ -68,6 +70,7 @@
 		/>
 		<Combobox
 			label={t.timezone}
+			help={ru.help.general.timezone}
 			items={zones.items}
 			allowCustom={zones.free}
 			disabled={locked}
@@ -91,6 +94,7 @@
 				<TextInput
 					label={t.nextOrder}
 					hint={t.nextOrderHint}
+					help={ru.help.general.nextOrder}
 					inputmode="numeric"
 					error={nextOrder.error}
 					bind:value={() => nextOrder.text, (v) => (nextOrder.text = v)}
@@ -100,6 +104,7 @@
 		{/if}
 		<TextInput
 			label={t.masterPercent}
+			help={ru.help.general.masterPercent}
 			inputmode="numeric"
 			disabled={locked}
 			error={editor.fieldError('master_percent')}

@@ -10,6 +10,7 @@
 	import Card from '#lib/ui/Card.svelte';
 	import Checkbox from '#lib/ui/Checkbox.svelte';
 	import Combobox from '#lib/ui/Combobox.svelte';
+	import HelpHint from '#lib/ui/HelpHint.svelte';
 	import Select from '#lib/ui/Select.svelte';
 	import Switch from '#lib/ui/Switch.svelte';
 	import TextInput from '#lib/ui/TextInput.svelte';
@@ -64,6 +65,7 @@
 	<div class="fields">
 		<Select
 			label={t.defaultPoint}
+			help={ru.help.orders.defaultPoint}
 			items={points}
 			disabled={locked}
 			error={editor.fieldError('default_service_point_id')}
@@ -74,6 +76,7 @@
 		/>
 		<Combobox
 			label={t.defaultMaster}
+			help={ru.help.orders.defaultMaster}
 			items={masters}
 			disabled={locked}
 			error={editor.fieldError('default_master')}
@@ -85,6 +88,7 @@
 		/>
 		<Combobox
 			label={t.defaultWarranty}
+			help={ru.help.orders.defaultWarranty}
 			items={warranties}
 			disabled={locked}
 			error={editor.fieldError('default_warranty')}
@@ -96,6 +100,7 @@
 		/>
 		<TextInput
 			label={t.diagnosticsDays}
+			help={ru.help.orders.diagnosticsDays}
 			inputmode="numeric"
 			disabled={locked}
 			error={editor.fieldError('diagnostics_overdue_days')}
@@ -110,6 +115,7 @@
 		/>
 		<TextInput
 			label={t.readyDays}
+			help={ru.help.orders.readyDays}
 			inputmode="numeric"
 			disabled={locked}
 			error={editor.fieldError('ready_stale_days')}
@@ -124,6 +130,7 @@
 		/>
 		<Switch
 			label={t.requiredFields}
+			help={ru.help.orders.requiredFields}
 			disabled={locked}
 			bind:checked={
 				() => editor.value('intake_required_fields', s.intake_required_fields) ?? false,
@@ -131,7 +138,12 @@
 			}
 		/>
 		<fieldset class="group">
-			<legend>{t.issueRequired}</legend>
+			<legend>
+				<span class="legend">
+					{t.issueRequired}
+					<HelpHint title={t.issueRequired} text={ru.help.orders.issueRequired} />
+				</span>
+			</legend>
 			<p class="hint">{t.issueRequiredHint}</p>
 			{#each ISSUE_FIELDS as f (f)}
 				<Checkbox
@@ -162,6 +174,11 @@
 	.group legend {
 		padding: 0;
 		font-weight: 600;
+	}
+	.legend {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-1);
 	}
 	.hint {
 		margin: 0;

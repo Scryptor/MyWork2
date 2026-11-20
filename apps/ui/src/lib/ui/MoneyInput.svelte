@@ -12,6 +12,7 @@
 		placeholder,
 		label,
 		hint,
+		help,
 		error,
 		required = false,
 		disabled = false,
@@ -25,6 +26,8 @@
 		placeholder?: string;
 		label?: string;
 		hint?: string;
+		/** «Что это?»: an icon right of the label with an explanation. */
+		help?: string | readonly string[];
 		error?: string;
 		required?: boolean;
 		disabled?: boolean;
@@ -102,6 +105,7 @@
 <Field
 	{label}
 	{hint}
+	{help}
 	error={error ?? (showError ? ru.fields.moneyError : undefined)}
 	{required}
 	id={fid}

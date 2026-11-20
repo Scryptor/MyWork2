@@ -5,9 +5,11 @@
 		ChipGroup,
 		Combobox,
 		DateInput,
+		HelpHint,
 		MoneyInput,
 		PhoneInput,
 		SegmentedControl,
+		Section,
 		Select,
 		Switch,
 		TagInput,
@@ -58,6 +60,8 @@
 	let seg = $state<'normal' | 'urgent' | 'express'>('normal');
 	let segSm = $state<'normal' | 'urgent' | 'express'>('urgent');
 	let kit = $state<string[]>(['Чехол']);
+	let helpText = $state('');
+	let helpSwitch = $state(false);
 	let kind = $state<string | null>(null);
 	let kindHint = $state<string | null>('tablet');
 	let kindErr = $state<string | null>(null);
@@ -148,6 +152,27 @@
 <div class="grid">
 	<TagInput bind:values={masters} label="Мастера" hint="Имя и Enter" />
 	<TagInput bind:values={mastersErr} label="Мастера с ошибкой" error="Добавьте хотя бы одного" />
+</div>
+
+<h3>Подсказки «Что это?»</h3>
+<div class="grid">
+	<TextInput
+		bind:value={helpText}
+		label="Долгая диагностика, дней"
+		help={[
+			'Сколько суток заказ может быть на диагностике, прежде чем попасть в «Долгая диагностика».',
+			'Подсказка может быть из нескольких абзацев.'
+		]}
+	/>
+	<Switch
+		bind:checked={helpSwitch}
+		label="Проверять обязательные поля"
+		help="Значок справа от подписи переключателя."
+	/>
+	<Section title="Раздел с подсказкой" help="Значок справа от заголовка раздела.">
+		<p class="muted">Содержимое раздела</p>
+	</Section>
+	<HelpHint title="Отдельный значок" text="Значок можно поставить рядом с любой подписью." />
 </div>
 
 <h3>Приём устройства</h3>

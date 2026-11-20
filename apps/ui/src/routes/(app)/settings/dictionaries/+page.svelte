@@ -22,6 +22,7 @@
 	import ConfirmDialog from '#lib/ui/ConfirmDialog.svelte';
 	import EmptyState from '#lib/ui/EmptyState.svelte';
 	import Select from '#lib/ui/Select.svelte';
+	import HelpHint from '#lib/ui/HelpHint.svelte';
 	import Skeleton from '#lib/ui/Skeleton.svelte';
 	import TextInput from '#lib/ui/TextInput.svelte';
 	import { toast } from '#lib/ui/toast/toast.svelte.js';
@@ -171,7 +172,10 @@
 	const removingLabel = $derived(catalog.all.find((r) => r.id === removing)?.label ?? '');
 </script>
 
-<h1 class="title">{ru.settings.dictionaries}</h1>
+<div class="heading">
+	<h1 class="title">{ru.settings.dictionaries}</h1>
+	<HelpHint title={ru.settings.dictionaries} text={ru.help.dictionaries} />
+</div>
 
 {#if readonly}<Callout tone="info">{ru.settings.readOnly}</Callout>{/if}
 
@@ -289,6 +293,11 @@
 />
 
 <style>
+	.heading {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+	}
 	.title {
 		margin: 0;
 		font-size: var(--text-xl);

@@ -14,6 +14,7 @@
 		label,
 		ariaLabel,
 		hint,
+		help,
 		error,
 		required = false,
 		disabled = false,
@@ -26,6 +27,8 @@
 		/** The name for assistive technology when the visible label is the same in many places. */
 		ariaLabel?: string;
 		hint?: string;
+		/** «Что это?»: an icon right of the label with an explanation. */
+		help?: string | readonly string[];
 		error?: string;
 		required?: boolean;
 		disabled?: boolean;
@@ -45,7 +48,7 @@
 	});
 </script>
 
-<Field {label} {hint} {error} {required} id={fid}>
+<Field {label} {hint} {help} {error} {required} id={fid}>
 	{#snippet children(f)}
 		<Select.Root
 			type="single"

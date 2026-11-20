@@ -19,6 +19,7 @@
 	import Callout from '#lib/ui/Callout.svelte';
 	import Card from '#lib/ui/Card.svelte';
 	import EmptyState from '#lib/ui/EmptyState.svelte';
+	import HelpHint from '#lib/ui/HelpHint.svelte';
 	import Skeleton from '#lib/ui/Skeleton.svelte';
 	import TextInput from '#lib/ui/TextInput.svelte';
 	import { toast } from '#lib/ui/toast/toast.svelte.js';
@@ -67,7 +68,10 @@
 	const nothing = $derived(!catalog.loading && !catalog.loadError && catalog.rows.length === 0);
 </script>
 
-<h1 class="title">{ru.settings.points}</h1>
+<div class="heading">
+	<h1 class="title">{ru.settings.points}</h1>
+	<HelpHint title={ru.settings.points} text={ru.help.points} />
+</div>
 
 {#if readonly}<Callout tone="info">{ru.settings.readOnly}</Callout>{/if}
 
@@ -118,6 +122,11 @@
 </Card>
 
 <style>
+	.heading {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+	}
 	.title {
 		margin: 0;
 		font-size: var(--text-xl);

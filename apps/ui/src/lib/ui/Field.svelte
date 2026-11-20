@@ -1,10 +1,12 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import './field.css';
+	import HelpHint from './HelpHint.svelte';
 
 	let {
 		label,
 		hint,
+		help,
 		error,
 		required = false,
 		id,
@@ -12,6 +14,8 @@
 	}: {
 		label?: string;
 		hint?: string;
+		/** «Что это?»: an icon right of the label that opens the explanation; needs a `label`. */
+		help?: string | readonly string[];
 		error?: string;
 		required?: boolean;
 		id: string;
@@ -26,9 +30,13 @@
 
 <div class="field">
 	{#if label}
-		<label for={id}
-			>{label}{#if required}&nbsp;<span class="req">*</span>{/if}</label
-		>
+		<!-- The icon is outside <label>: pressing it must not move focus into the field. -->
+		<div class="head">
+			<label for={id}
+				>{label}{#if required}&nbsp;<span class="req">*</span>{/if}</label
+			>
+			{#if help}<HelpHint title={label} text={help} />{/if}
+		</div>
 	{/if}
 	{@render children({ id, describedBy, invalid: Boolean(error) })}
 	{#if hint}<div class="hint" id="{id}-hint">{hint}</div>{/if}
@@ -39,6 +47,12 @@
 	.field {
 		display: flex;
 		flex-direction: column;
+		gap: var(--space-1);
+		min-width: 0;
+	}
+	.head {
+		display: flex;
+		align-items: center;
 		gap: var(--space-1);
 		min-width: 0;
 	}

@@ -3,6 +3,7 @@
 	import X from '@lucide/svelte/icons/x';
 	import type { Snippet } from 'svelte';
 	import { ru } from '#lib/i18n/ru.js';
+	import HelpHint from '../HelpHint.svelte';
 	import IconButton from '../IconButton.svelte';
 	import Tooltip from '../Tooltip.svelte';
 	import { getShellLayout } from './AppShell.svelte';
@@ -28,7 +29,10 @@
 	{#each sections as section, i (i)}
 		<div class="section" class:bottom={section.bottom}>
 			{#if section.title && !rail}
-				<div class="label-caps title">{section.title}</div>
+				<div class="title">
+					<span class="label-caps">{section.title}</span>
+					{#if section.help}<HelpHint title={section.title} text={section.help} />{/if}
+				</div>
 			{:else if i > 0 && rail}
 				<hr class="sep" />
 			{/if}
@@ -122,6 +126,10 @@
 		align-items: center;
 	}
 	.title {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--space-1);
 		padding: var(--space-1) var(--space-2);
 	}
 	.sep {

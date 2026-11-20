@@ -11,6 +11,7 @@
 		values = $bindable([]),
 		label,
 		hint,
+		help,
 		error,
 		placeholder,
 		disabled = false,
@@ -19,6 +20,8 @@
 		values: string[];
 		label: string;
 		hint?: string;
+		/** «Что это?»: an icon right of the label with an explanation. */
+		help?: string | readonly string[];
 		error?: string;
 		placeholder?: string;
 		disabled?: boolean;
@@ -55,7 +58,7 @@
 </script>
 
 <div class="tags">
-	<Field {label} {hint} {error} id={uid}>
+	<Field {label} {hint} {help} {error} id={uid}>
 		{#snippet children(f)}
 			<div class="mw-box" class:invalid={f.invalid} class:disabled>
 				<input

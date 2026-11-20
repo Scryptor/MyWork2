@@ -21,6 +21,7 @@
 		onblur,
 		label,
 		hint,
+		help,
 		error,
 		required = false,
 		disabled = false,
@@ -40,6 +41,8 @@
 		onblur?: () => void;
 		label?: string;
 		hint?: string;
+		/** «Что это?»: an icon right of the label with an explanation. */
+		help?: string | readonly string[];
 		error?: string;
 		required?: boolean;
 		disabled?: boolean;
@@ -97,7 +100,7 @@
 	}
 </script>
 
-<Field {label} {hint} {error} {required} id={fid}>
+<Field {label} {hint} {help} {error} {required} id={fid}>
 	{#snippet children(f)}
 		<Combobox.Root
 			type="single"

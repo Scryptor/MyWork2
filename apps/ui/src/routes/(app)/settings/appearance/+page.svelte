@@ -5,6 +5,7 @@
 	import { scaleLabel } from '#lib/settings/size.js';
 	import Card from '#lib/ui/Card.svelte';
 	import SegmentedControl from '#lib/ui/SegmentedControl.svelte';
+	import HelpHint from '#lib/ui/HelpHint.svelte';
 	import Select from '#lib/ui/Select.svelte';
 	import { UI_SCALES } from '#lib/design/display.js';
 
@@ -45,6 +46,7 @@
 			<div class="field wide">
 				<Select
 					label={t.size}
+					help={ru.help.appearance.size}
 					items={SIZES}
 					hint={autoHint}
 					bind:value={() => prefs.value.scale, (v) => v !== null && prefs.set({ scale: v })}
@@ -52,7 +54,10 @@
 			</div>
 		{:else}
 			<div class="field">
-				<span class="label">{t.size}</span>
+				<span class="head">
+					<span class="label">{t.size}</span>
+					<HelpHint title={t.size} text={ru.help.appearance.size} />
+				</span>
 				<SegmentedControl
 					label={t.size}
 					options={SIZES}
@@ -92,6 +97,11 @@
 	}
 	.field.wide {
 		align-self: stretch;
+	}
+	.head {
+		display: flex;
+		align-items: center;
+		gap: var(--space-1);
 	}
 	.label {
 		font-size: var(--text-sm);

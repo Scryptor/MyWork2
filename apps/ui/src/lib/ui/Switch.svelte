@@ -1,33 +1,51 @@
 <script lang="ts">
+	import HelpHint from './HelpHint.svelte';
+
 	let {
 		checked = $bindable(false),
 		label,
 		hint,
+		help,
 		disabled = false
-	}: { checked: boolean; label: string; hint?: string; disabled?: boolean } = $props();
+	}: {
+		checked: boolean;
+		label: string;
+		hint?: string;
+		/** «Что это?»: an icon right of the switch that opens the explanation. */
+		help?: string | readonly string[];
+		disabled?: boolean;
+	} = $props();
 
 	const uid = $props.id();
 </script>
 
-<label class="row" class:disabled>
-	<span class="track-wrap">
-		<input
-			type="checkbox"
-			role="switch"
-			aria-checked={checked}
-			bind:checked
-			{disabled}
-			aria-describedby={hint ? `${uid}-hint` : undefined}
-		/>
-		<span class="track" aria-hidden="true"><span class="thumb"></span></span>
-	</span>
-	<span class="text">
-		<span>{label}</span>
-		{#if hint}<span class="hint" id="{uid}-hint">{hint}</span>{/if}
-	</span>
-</label>
+<div class="wrap">
+	<label class="row" class:disabled>
+		<span class="track-wrap">
+			<input
+				type="checkbox"
+				role="switch"
+				aria-checked={checked}
+				bind:checked
+				{disabled}
+				aria-describedby={hint ? `${uid}-hint` : undefined}
+			/>
+			<span class="track" aria-hidden="true"><span class="thumb"></span></span>
+		</span>
+		<span class="text">
+			<span>{label}</span>
+			{#if hint}<span class="hint" id="{uid}-hint">{hint}</span>{/if}
+		</span>
+	</label>
+	{#if help}<HelpHint title={label} text={help} />{/if}
+</div>
 
 <style>
+	.wrap {
+		display: inline-flex;
+		align-items: flex-start;
+		gap: var(--space-1);
+	}
 	.row {
 		display: inline-flex;
 		align-items: flex-start;

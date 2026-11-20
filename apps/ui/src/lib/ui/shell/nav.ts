@@ -13,6 +13,8 @@ export interface NavItem {
 
 export interface NavSection {
 	title?: string;
+	/** «Что это?» next to the title; not shown on the icon rail, where the title is not. */
+	help?: string | readonly string[];
 	/** Pinned to the bottom of the sidebar («Настройки»). */
 	bottom?: boolean;
 	items: NavItem[];
