@@ -60,12 +60,16 @@
 	let resync = $state(0);
 	let confirming = $state(false);
 
-	async function act(patch: RolePatch) {
-		if (busy) return;
+	/** The patch is built from the newest record, also on the retry after a conflict (another administrator's rights stay). */
+	async function act(build: (current: Role) => RolePatch) {
+		if (busy) {
+			resync += 1;
+			return;
+		}
 		busy = true;
 		errors = {};
 		try {
-			await editor.run((version) => updateRole(rec.id, version, patch));
+			await editor.run((version) => updateRole(rec.id, version, build(editor.record)));
 		} catch (e) {
 			resync += 1;
 			errors = userFieldErrors(e);
@@ -78,8 +82,10 @@
 	}
 
 	function toggle(p: Permission, on: boolean) {
-		const next = on ? [...rec.permissions, p] : rec.permissions.filter((x) => x !== p);
-		void act({ permissions: ORDER.filter((x) => next.includes(x)) });
+		void act((current) => {
+			const next = on ? [...current.permissions, p] : current.permissions.filter((x) => x !== p);
+			return { permissions: ORDER.filter((x) => next.includes(x)) };
+		});
 	}
 
 	async function remove() {
@@ -122,7 +128,7 @@
 			bind:value={() => shownName, (v) => editor.autosave.edit('name', v)}
 		/>
 		<h3 class="rights">{t.permissions}</h3>
-		<PermissionChecks value={rec.permissions} disabled={busy} {resync} ontoggle={toggle} />
+		<PermissionChecks value={rec.permissions} {resync} ontoggle={toggle} />
 		{#if errors.permissions}<p class="error" role="alert">{errors.permissions}</p>{/if}
 		<div class="danger">
 			<div>

@@ -103,6 +103,29 @@ test('a role made with checkboxes is given to a user who sees only what it allow
 		await expect(user.page.getByRole('button', { name: 'Добавить роль' })).toHaveCount(0);
 		await user.page.goto('/settings/general');
 		await expect(user.page.getByText('Изменять настройки может администратор')).toBeVisible();
+
+		// An allowed action works: the intake button is there and the server answers the client list.
+		await user.page.goto('/orders');
+		await user.page
+			.getByRole('button', { name: /^Принять/ })
+			.first()
+			.click();
+		await expect(user.page.getByRole('dialog', { name: 'Новый заказ' })).toBeVisible();
+		const own = { Authorization: `Bearer ${(await sessionToken(user.page)) ?? ''}` };
+		expect((await user.page.request.get('/api/v1/clients', { headers: own })).status()).toBe(200);
+		// The rights that role lacks are refused by the server itself, not only hidden.
+		expect((await user.page.request.get('/api/v1/users', { headers: own })).status()).toBe(403);
+		expect(
+			(
+				await user.page.request.post('/api/v1/roles', {
+					headers: own,
+					data: { name: uniq('x'), permissions: [] }
+				})
+			).status()
+		).toBe(403);
+		expect(
+			(await user.page.request.patch('/api/v1/settings', { headers: own, data: {} })).status()
+		).toBe(403);
 	} finally {
 		await user.context.close();
 	}

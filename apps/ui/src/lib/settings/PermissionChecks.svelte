@@ -1,6 +1,7 @@
 <!-- The rights of a role as checkboxes in groups; each has «Что это?» with what it allows in the program now.
      The state is the caller's: a tick goes to `ontoggle`, the caller says what the server kept. -->
 <script lang="ts">
+	import { tick } from 'svelte';
 	import type { Permission } from '$api/Permission';
 	import { ru } from '#lib/i18n/ru.js';
 	import Checkbox from '#lib/ui/Checkbox.svelte';
@@ -19,10 +20,23 @@
 		resync?: number;
 		ontoggle: (permission: Permission, on: boolean) => void;
 	} = $props();
+
+	const ORDER = PERMISSION_GROUPS.flatMap((g) => g.permissions);
+	let root = $state<HTMLElement | null>(null);
+	let last: Permission | null = null;
+
+	// The boxes are drawn again after a refusal: the focus goes back to the box that was ticked.
+	$effect(() => {
+		if (resync === 0) return;
+		void tick().then(() => {
+			const index = last === null ? -1 : ORDER.indexOf(last);
+			root?.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')[index]?.focus();
+		});
+	});
 </script>
 
 {#key resync}
-	<div class="groups">
+	<div class="groups" bind:this={root}>
 		{#each PERMISSION_GROUPS as group (group.id)}
 			<fieldset class="group">
 				<legend>{group.label}</legend>
@@ -31,7 +45,7 @@
 						<Checkbox
 							label={ru.permissions[p].label}
 							{disabled}
-							bind:checked={() => value.includes(p), (v) => ontoggle(p, v)}
+							bind:checked={() => value.includes(p), (v) => ((last = p), ontoggle(p, v))}
 						/>
 						<HelpHint title={ru.permissions[p].label} text={ru.permissions[p].hint} />
 					</div>

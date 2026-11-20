@@ -188,4 +188,62 @@ describe('«Роли»', () => {
 		);
 		expect(await screen.findByRole('button', { name: 'Изменить: Курьер' })).toBeInTheDocument();
 	});
+	it("after a real conflict retries on the reloaded role: another administrator's right is kept", async () => {
+		api.updateRole
+			.mockRejectedValueOnce(new ApiError(409, 'conflict', 'Версия устарела', null))
+			.mockResolvedValueOnce(
+				role(2, 'Мастер', ['orders_create', 'orders_edit', 'clients_view'], 3)
+			);
+		// The other administrator added «clients_view» meanwhile: the reload shows it.
+		api.listRoles
+			.mockResolvedValueOnce([
+				role(1, 'Администратор'),
+				role(2, 'Мастер', ['orders_edit']),
+				role(3, 'Пустая')
+			])
+			.mockResolvedValue([
+				role(1, 'Администратор'),
+				role(2, 'Мастер', ['orders_edit', 'clients_view'], 2),
+				role(3, 'Пустая')
+			]);
+		const ui = userEvent.setup();
+		render(Page);
+		const dialog = await open(ui, 'Мастер');
+		await ui.click(within(dialog).getByRole('checkbox', { name: 'Добавление заказов' }));
+		await waitFor(() => expect(api.updateRole).toHaveBeenCalledTimes(2));
+		expect(api.updateRole.mock.calls[0]).toEqual([
+			2,
+			1,
+			{ permissions: ['orders_create', 'orders_edit'] }
+		]);
+		expect(api.updateRole.mock.calls[1]).toEqual([
+			2,
+			2,
+			{ permissions: ['orders_create', 'orders_edit', 'clients_view'] }
+		]);
+	});
+
+	it('keeps the focus on the ticked box, also after a refusal', async () => {
+		api.updateRole.mockResolvedValueOnce(role(2, 'Мастер', ['orders_create', 'orders_edit'], 2));
+		const ui = userEvent.setup();
+		render(Page);
+		const dialog = await open(ui, 'Мастер');
+		await ui.click(within(dialog).getByRole('checkbox', { name: 'Добавление заказов' }));
+		await waitFor(() => expect(api.updateRole).toHaveBeenCalledTimes(1));
+		expect(within(dialog).getByRole('checkbox', { name: 'Добавление заказов' })).toHaveFocus();
+		api.updateRole.mockRejectedValueOnce(
+			new ApiError(
+				409,
+				'conflict',
+				'Нельзя снять право «Пользователи и права» с последней роли, где оно есть',
+				null
+			)
+		);
+		api.updateRole.mockRejectedValueOnce(new ApiError(409, 'conflict', 'Нельзя', null));
+		await ui.click(within(dialog).getByRole('checkbox', { name: 'Изменение заказов' }));
+		await waitFor(() => expect(within(dialog).getByRole('alert')).toBeInTheDocument());
+		await waitFor(() =>
+			expect(within(dialog).getByRole('checkbox', { name: 'Изменение заказов' })).toHaveFocus()
+		);
+	});
 });
