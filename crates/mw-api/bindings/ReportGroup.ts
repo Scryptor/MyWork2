@@ -16,6 +16,11 @@ title: string, count: number,
  */
 order_ids: Array<number>, 
 /**
- * Первые `REPORT_GROUP_ENTRIES` предупреждений группы в порядке отчёта; `count` — все.
+ * Предупреждения группы без номера заказа (клиенты, история, файлы, …): первые
+ * `REPORT_GROUP_ENTRIES` в порядке отчёта. Предупреждения заказов видны по `order_ids`.
  */
-entries: Array<ReportEntry>, };
+entries: Array<ReportEntry>, 
+/**
+ * Сколько всего предупреждений группы без номера заказа; `count` — все предупреждения группы.
+ */
+entries_count: number, };

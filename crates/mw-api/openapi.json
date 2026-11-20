@@ -6188,7 +6188,8 @@
           "title",
           "count",
           "order_ids",
-          "entries"
+          "entries",
+          "entries_count"
         ],
         "properties": {
           "code": {
@@ -6204,7 +6205,13 @@
             "items": {
               "$ref": "#/components/schemas/ReportEntry"
             },
-            "description": "Первые `REPORT_GROUP_ENTRIES` предупреждений группы в порядке отчёта; `count` — все."
+            "description": "Предупреждения группы без номера заказа (клиенты, история, файлы, …): первые\n`REPORT_GROUP_ENTRIES` в порядке отчёта. Предупреждения заказов видны по `order_ids`."
+          },
+          "entries_count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Сколько всего предупреждений группы без номера заказа; `count` — все предупреждения группы.",
+            "minimum": 0
           },
           "order_ids": {
             "type": "array",

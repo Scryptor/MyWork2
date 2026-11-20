@@ -37,11 +37,14 @@ pub struct ReportGroup {
     pub count: u64,
     /// Номера заказов, к которым относятся предупреждения группы, по возрастанию без повторов.
     pub order_ids: Vec<i64>,
-    /// Первые `REPORT_GROUP_ENTRIES` предупреждений группы в порядке отчёта; `count` — все.
+    /// Предупреждения группы без номера заказа (клиенты, история, файлы, …): первые
+    /// `REPORT_GROUP_ENTRIES` в порядке отчёта. Предупреждения заказов видны по `order_ids`.
     pub entries: Vec<ReportEntry>,
+    /// Сколько всего предупреждений группы без номера заказа; `count` — все предупреждения группы.
+    pub entries_count: u64,
 }
 
-/// Сколько предупреждений группы отдаёт отчёт для показа; полный список — в `warnings_text`.
+/// Сколько предупреждений группы без заказа отдаёт отчёт для показа; полный список — в `warnings_text`.
 pub const REPORT_GROUP_ENTRIES: usize = 200;
 
 /// Одно предупреждение группы: что и где найдено в старой базе.
@@ -140,18 +143,26 @@ pub fn report_view(
         .iter()
         .filter_map(|code| {
             let list: Vec<&Warning> = stored.warnings.iter().filter(|w| w.code == *code).collect();
-            (!list.is_empty()).then(|| ReportGroup {
+            if list.is_empty() {
+                return None;
+            }
+            let mut orders = BTreeSet::new();
+            let mut without_order = Vec::new();
+            for w in &list {
+                let ids = order_ids(w);
+                if ids.is_empty() {
+                    without_order.push(*w);
+                }
+                orders.extend(ids);
+            }
+            Some(ReportGroup {
                 code: *code,
                 severity: code.severity(),
                 title: code.title_ru().to_owned(),
                 count: list.len() as u64,
-                order_ids: list
-                    .iter()
-                    .flat_map(|w| order_ids(w))
-                    .collect::<BTreeSet<_>>()
-                    .into_iter()
-                    .collect(),
-                entries: list
+                order_ids: orders.into_iter().collect(),
+                entries_count: without_order.len() as u64,
+                entries: without_order
                     .iter()
                     .take(REPORT_GROUP_ENTRIES)
                     .map(|w| ReportEntry {
@@ -280,7 +291,7 @@ mod tests {
             .iter()
             .find(|g| g.code == WarningCode::FileMissing)
             .unwrap();
-        assert_eq!(group.count, 250);
+        assert_eq!((group.count, group.entries_count), (250, 250));
         assert_eq!(group.entries.len(), REPORT_GROUP_ENTRIES);
         assert_eq!(group.entries[0].key, "f0");
         assert_eq!(group.entries[199].key, "f199");
@@ -290,6 +301,33 @@ mod tests {
             .find(|g| g.code == WarningCode::NextNumber)
             .unwrap();
         assert_eq!((next.count, next.entries.len()), (1, 1));
+    }
+
+    #[test]
+    fn entries_are_the_warnings_without_an_order() {
+        // «Не разобрана дата» — и у заказов, и у клиентов: заказы идут номерами, остальное — записями.
+        let warnings: Vec<_> = [
+            warning(WarningCode::DateUnparsed, "Catalog", "5", "a"),
+            warning(WarningCode::DateUnparsed, "Clients", "c0", "b"),
+            warning(WarningCode::DateUnparsed, "Catalog", "3", "c"),
+        ]
+        .into_iter()
+        .chain(
+            (1..REPORT_GROUP_ENTRIES + 50)
+                .map(|n| warning(WarningCode::DateUnparsed, "Clients", &format!("c{n}"), "v")),
+        )
+        .chain([warning(WarningCode::DateUnparsed, "Catalog", "9", "d")])
+        .collect();
+        let view = report_view(&record(json!({ "warnings": warnings })), None);
+        let group = &view.groups[0];
+        assert_eq!(group.code, WarningCode::DateUnparsed);
+        assert_eq!(group.count, 253);
+        assert_eq!(group.order_ids, [3, 5, 9]);
+        assert_eq!(group.entries_count, 250);
+        assert_eq!(group.entries.len(), REPORT_GROUP_ENTRIES);
+        assert_eq!(group.entries[0], entry("Clients", "c0", "b"));
+        assert_eq!(group.entries[199].key, "c199");
+        assert!(group.entries.iter().all(|e| e.source == "Clients"));
     }
 
     fn record(report: serde_json::Value) -> LegacyImportRecord {
@@ -326,11 +364,8 @@ mod tests {
                     title: "Не разобрана дата".into(),
                     count: 3,
                     order_ids: vec![2, 9],
-                    entries: vec![
-                        entry("Catalog", "9", "x"),
-                        entry("Catalog", "2", "y"),
-                        entry("Catalog", "9", "z"),
-                    ],
+                    entries: vec![],
+                    entries_count: 0,
                 },
                 ReportGroup {
                     code: WarningCode::StatusCustom,
@@ -339,6 +374,7 @@ mod tests {
                     count: 1,
                     order_ids: vec![],
                     entries: vec![entry("Catalog", "Свой", "Свой")],
+                    entries_count: 1,
                 },
             ]
         );

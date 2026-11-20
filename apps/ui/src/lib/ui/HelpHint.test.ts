@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import Harness from './HelpHintHarness.test-helper.svelte';
 
 describe('HelpHint', () => {
@@ -27,6 +27,38 @@ describe('HelpHint', () => {
 		await userEvent.click(screen.getByRole('button', { name: 'Что такое «Валюта»' }));
 		await userEvent.click(await screen.findByRole('button', { name: 'Понятно' }));
 		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+	});
+
+	describe('Ctrl/⌘+Enter while open', () => {
+		afterEach(() => {
+			vi.restoreAllMocks();
+		});
+
+		async function openInDialog() {
+			const onsubmit = vi.fn();
+			render(Harness, { kind: 'dialog', text: 'Что сломалось', onsubmit });
+			await userEvent.click(await screen.findByRole('button', { name: 'Что такое «Жалоба»' }));
+			expect(await screen.findByRole('dialog', { name: 'Жалоба' })).toBeInTheDocument();
+			return onsubmit;
+		}
+
+		it('Ctrl+Enter closes the hint, not the dialog underneath; then it is the dialog’s again', async () => {
+			const onsubmit = await openInDialog();
+			await userEvent.keyboard('{Control>}{Enter}{/Control}');
+			await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Жалоба' })).toBeNull());
+			expect(onsubmit).not.toHaveBeenCalled();
+			expect(screen.getByRole('dialog', { name: 'Принять' })).toBeInTheDocument();
+			await userEvent.keyboard('{Control>}{Enter}{/Control}');
+			expect(onsubmit).toHaveBeenCalledTimes(1);
+		});
+
+		it('⌘+Enter on a Mac closes the hint, not the dialog underneath', async () => {
+			vi.spyOn(navigator, 'platform', 'get').mockReturnValue('MacIntel');
+			const onsubmit = await openInDialog();
+			await userEvent.keyboard('{Meta>}{Enter}{/Meta}');
+			await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Жалоба' })).toBeNull());
+			expect(onsubmit).not.toHaveBeenCalled();
+		});
 	});
 
 	it('two paragraphs are two <p>', async () => {
