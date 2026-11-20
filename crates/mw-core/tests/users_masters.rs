@@ -590,3 +590,146 @@ async fn last_role_with_users_manage_is_not_deleted() -> Result<(), CoreError> {
     }
     Ok(())
 }
+
+#[tokio::test]
+async fn last_role_keeps_users_manage() -> Result<(), CoreError> {
+    const LAST: &str = "Нельзя снять право «Пользователи и права» с последней роли, где оно есть";
+    let only_orders = || RolePatch {
+        permissions: Some(PermissionSet::from_codes(["orders_create"])),
+        ..Default::default()
+    };
+    for t in cores().await {
+        let admin_role = role_id_by_name(&t.core, "Администратор").await;
+        // Режим без входа: пользователей нет, защита от потери доступа молчит — но роль с правом нужна.
+        assert!(t.core.is_open_mode().await?);
+        match t
+            .core
+            .update_role(&admin(), admin_role, 1, only_orders())
+            .await
+        {
+            Err(CoreError::InUse(message)) => assert_eq!(message, LAST, "{}", t.label),
+            other => panic!("{}: ожидался отказ, получено {other:?}", t.label),
+        }
+        // Переименовать последнюю роль с правом можно.
+        t.core
+            .update_role(
+                &admin(),
+                admin_role,
+                1,
+                RolePatch {
+                    name: Some("Админы".into()),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        let chiefs = t
+            .core
+            .create_role(
+                &admin(),
+                NewRole {
+                    name: "Начальство".into(),
+                    permissions: PermissionSet::from_codes(["users_manage"]),
+                },
+            )
+            .await?;
+        t.core
+            .update_role(&admin(), admin_role, 2, only_orders())
+            .await?;
+        match t
+            .core
+            .update_role(&admin(), chiefs.id, 1, only_orders())
+            .await
+        {
+            Err(CoreError::InUse(message)) => assert_eq!(message, LAST, "{}", t.label),
+            other => panic!("{}: ожидался отказ, получено {other:?}", t.label),
+        }
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn users_without_password_cannot_sign_in_and_do_not_count() -> Result<(), CoreError> {
+    for t in cores().await {
+        let admin_role = role_id_by_name(&t.core, "Администратор").await;
+        let clerk_role = role_id_by_name(&t.core, "Приёмщик").await;
+        // Как после импорта MyWork 2 с непереносимыми паролями: вход включён, хэшей нет.
+        insert_legacy_user(&t.core, "ира", "", admin_role).await;
+        insert_legacy_user(&t.core, "kassa", "", clerk_role).await;
+        let by_login = |users: Vec<mw_core::User>, login: &str| {
+            users.into_iter().find(|u| u.login == login).unwrap()
+        };
+        let users = t.core.list_users(&admin()).await?;
+        let (ira, kassa) = (by_login(users.clone(), "ира"), by_login(users, "kassa"));
+        assert!(t.core.is_open_mode().await?, "{}", t.label);
+
+        // Путь 1: отключить и снова включить администратора без пароля — режим без входа остаётся.
+        for (version, active) in [(1, false), (2, true)] {
+            t.core
+                .update_user(
+                    &admin(),
+                    ira.id,
+                    version,
+                    UserPatch {
+                        active: Some(active),
+                        ..Default::default()
+                    },
+                )
+                .await?;
+            assert!(t.core.is_open_mode().await?, "{}: {active}", t.label);
+        }
+        assert!(matches!(
+            t.core.login("ира", "", "x").await,
+            Err(CoreError::InvalidCredentials)
+        ));
+
+        // Пароль приёмщику первым — режим без входа кончился бы без администратора.
+        assert_validation(
+            t.core.set_password(&admin(), kassa.id, "1234").await,
+            &[("password", "last_admin")],
+        );
+        assert_validation(
+            t.core
+                .update_user(
+                    &admin(),
+                    kassa.id,
+                    1,
+                    UserPatch {
+                        password: Some("1234".into()),
+                        ..Default::default()
+                    },
+                )
+                .await,
+            &[("password", "last_admin")],
+        );
+        assert!(t.core.is_open_mode().await?);
+        // Пароль администратору — режим без входа кончается, войти можно.
+        t.core.set_password(&admin(), ira.id, "5678").await?;
+        assert!(!t.core.is_open_mode().await?, "{}", t.label);
+        t.core.login("ира", "5678", "x").await?;
+        t.core.set_password(&admin(), kassa.id, "1234").await?;
+
+        // Путь 2: администратор без пароля не заменяет настоящего.
+        insert_legacy_user(&t.core, "zam", "", admin_role).await;
+        assert_validation(
+            t.core
+                .update_user(
+                    &admin(),
+                    ira.id,
+                    3,
+                    UserPatch {
+                        active: Some(false),
+                        ..Default::default()
+                    },
+                )
+                .await,
+            &[("active", "last_admin")],
+        );
+        assert_validation(
+            t.core
+                .update_user(&admin(), ira.id, 3, patch_sign_in(false))
+                .await,
+            &[("can_sign_in", "last_admin")],
+        );
+    }
+    Ok(())
+}

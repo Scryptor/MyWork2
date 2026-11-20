@@ -16,6 +16,7 @@ use crate::{Actor, Core, CoreError, NewAuditEntry, write_audit};
 
 use super::password::{hash_password, verify_password};
 use super::roles::parse_permissions;
+use super::users::{signs_in_condition, user_signs_in};
 use super::{PasswordScheme, User};
 
 /// Сессия без обращений живёт столько дней.
@@ -83,12 +84,13 @@ impl Core {
         device_label: &str,
     ) -> Result<Session, CoreError> {
         let login = login.trim();
-        // Пользователь без входа отвечает так же, как неизвестный логин: тот же отказ за то же время.
+        // Кто не может войти (отключён, без входа, без пароля), отвечает так же, как неизвестный
+        // логин: тот же отказ за то же время.
         let found = user::Entity::find()
             .filter(user::Column::LoginKey.eq(normalize_search(login)))
             .one(&self.db)
             .await?
-            .filter(|u| u.can_sign_in);
+            .filter(user_signs_in);
 
         // Схема учётной записи; у неизвестного логина её нет.
         let scheme = found
@@ -105,7 +107,7 @@ impl Core {
                     }
                     None => false,
                 };
-                (ok && u.active).then_some(u)
+                ok.then_some(u)
             }
             None => None,
         };
@@ -158,8 +160,7 @@ impl Core {
                     )
                     .filter(user::Column::Id.eq(u.id))
                     .filter(user::Column::PasswordHash.eq(u.password_hash.clone()))
-                    .filter(user::Column::Active.eq(true))
-                    .filter(user::Column::CanSignIn.eq(true))
+                    .filter(signs_in_condition())
                     .exec(&tx)
                     .await?;
                 res.rows_affected == 1
@@ -167,9 +168,7 @@ impl Core {
             None => user::Entity::find_by_id(u.id)
                 .one(&tx)
                 .await?
-                .is_some_and(|cur| {
-                    cur.active && cur.can_sign_in && cur.password_hash == u.password_hash
-                }),
+                .is_some_and(|cur| user_signs_in(&cur) && cur.password_hash == u.password_hash),
         };
         if !still_valid {
             tx.rollback().await?;
@@ -262,7 +261,7 @@ impl Core {
         let u = user::Entity::find_by_id(s.user_id)
             .one(&self.db)
             .await?
-            .filter(|u| u.active && u.can_sign_in)
+            .filter(user_signs_in)
             .ok_or(CoreError::Unauthenticated)?;
         let permissions = match role::Entity::find_by_id(u.role_id).one(&self.db).await? {
             Some(r) => parse_permissions(&r.permissions),

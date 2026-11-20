@@ -9,7 +9,7 @@ use mw_domain::search::normalize_search;
 use mw_domain::validation::FieldError;
 use sea_orm::sea_query::Expr;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, NotSet, PaginatorTrait,
+    ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, EntityTrait, NotSet, PaginatorTrait,
     QueryFilter, QueryOrder, Set,
 };
 use serde::{Deserialize, Serialize};
@@ -204,8 +204,27 @@ pub(super) fn role_permissions(
         .collect()
 }
 
-/// (число пользователей, которые могут войти, — активных и с `can_sign_in`; число таких с правом
-/// `users_manage`).
+/// Может ли пользователь войти: учётная запись активна, вход разрешён (`can_sign_in`) и пароль
+/// задан. Единственное правило «может войти» — для режима без входа, защиты от потери доступа,
+/// входа и сеансов; пользователь без входа или без пароля доступ не вернёт и не считается.
+pub(super) fn signs_in(active: bool, can_sign_in: bool, password_hash: &str) -> bool {
+    active && can_sign_in && !password_hash.is_empty()
+}
+
+/// [`signs_in`] для записи пользователя.
+pub(super) fn user_signs_in(u: &user::Model) -> bool {
+    signs_in(u.active, u.can_sign_in, &u.password_hash)
+}
+
+/// [`signs_in`] условием SQL — для подсчёта и для обновлений «только если всё ещё может войти».
+pub(super) fn signs_in_condition() -> Condition {
+    Condition::all()
+        .add(user::Column::Active.eq(true))
+        .add(user::Column::CanSignIn.eq(true))
+        .add(user::Column::PasswordHash.ne(""))
+}
+
+/// (число пользователей, которые могут войти ([`signs_in`]); число таких с правом `users_manage`).
 fn access_counts(
     accounts: &[(bool, i64)],
     role_permissions: &HashMap<i64, PermissionSet>,
@@ -223,20 +242,38 @@ fn access_counts(
     (active, admins)
 }
 
-/// Пары (может войти, роль) всех пользователей. Войти может активный пользователь с
-/// `can_sign_in`; пользователь без входа не вернёт доступ, поэтому в защите не считается.
+/// Пары (может войти ([`signs_in`]), роль) всех пользователей.
 pub(super) fn accounts(users: &[user::Model]) -> Vec<(bool, i64)> {
     users
         .iter()
-        .map(|u| (u.active && u.can_sign_in, u.role_id))
+        .map(|u| (user_signs_in(u), u.role_id))
+        .collect()
+}
+
+/// [`accounts`] после изменения одного пользователя: `id` может ли войти и с какой ролью.
+fn accounts_after(
+    users: &[user::Model],
+    id: i64,
+    signs_in: bool,
+    role_id: i64,
+) -> Vec<(bool, i64)> {
+    users
+        .iter()
+        .map(|u| {
+            if u.id == id {
+                (signs_in, role_id)
+            } else {
+                (user_signs_in(u), u.role_id)
+            }
+        })
         .collect()
 }
 
 /// Истина, если изменение ведёт к блокировке: после него нет ни одного пользователя, который
-/// может войти (активен и с `can_sign_in`), с правом `users_manage`, хотя до него либо такой был,
-/// либо система была в открытом режиме (никто не может войти), а после кто-то может. Уже
-/// нарушенное состояние (входящие пользователи без администратора) посторонние правки не блокирует.
-/// Единственная проверка для `create_user`, `update_user` и `update_role`.
+/// может войти ([`signs_in`]), с правом `users_manage`, хотя до него либо такой был, либо система
+/// была в открытом режиме (никто не может войти), а после кто-то может. Уже нарушенное состояние
+/// (входящие пользователи без администратора) посторонние правки не блокирует.
+/// Единственная проверка для `create_user`, `update_user`, `set_password` и `update_role`.
 pub(super) fn would_lock_out(
     before: (&[(bool, i64)], &HashMap<i64, PermissionSet>),
     after: (&[(bool, i64)], &HashMap<i64, PermissionSet>),
@@ -259,12 +296,12 @@ fn too_short(password: &str) -> bool {
 }
 
 impl Core {
-    /// Истина, пока нет ни одного активного пользователя, который может входить: вход не
-    /// требуется. Пользователи без входа (мастера, которые в программе не работают) не считаются.
+    /// Истина, пока нет ни одного пользователя, который может войти ([`signs_in`]): вход не
+    /// требуется. Пользователи без входа (мастера, которые в программе не работают) и без пароля
+    /// (импорт MyWork 2 с непереносимым паролем) не считаются: войти они всё равно не могут.
     pub async fn is_open_mode(&self) -> Result<bool, CoreError> {
         let can_sign_in = user::Entity::find()
-            .filter(user::Column::Active.eq(true))
-            .filter(user::Column::CanSignIn.eq(true))
+            .filter(signs_in_condition())
             .count(&self.db)
             .await?;
         Ok(can_sign_in == 0)
@@ -333,8 +370,12 @@ impl Core {
         } else {
             let perms = role_permissions(&roles);
             let before = accounts(&all_users(&tx).await?);
+            let stored_hash = match &password_hash {
+                Ok(Some(hash)) => hash.as_str(),
+                _ => "",
+            };
             let mut after = before.clone();
-            after.push((new.can_sign_in, new.role_id));
+            after.push((signs_in(true, new.can_sign_in, stored_hash), new.role_id));
             if would_lock_out((&before, &perms), (&after, &perms)) {
                 errors.push(FieldError::new("role_id", "last_admin"));
             }
@@ -520,29 +561,25 @@ impl Core {
             return Err(CoreError::Validation(errors));
         }
 
-        if role_id != current.role_id
-            || active != current.active
-            || can_sign_in != current.can_sign_in
-        {
+        let could_sign_in = user_signs_in(&current);
+        let will_sign_in = signs_in(
+            active,
+            can_sign_in,
+            password_hash.as_deref().unwrap_or(&current.password_hash),
+        );
+        if role_id != current.role_id || will_sign_in != could_sign_in {
             let perms = role_permissions(&roles);
             let before = accounts(&users);
-            let after: Vec<(bool, i64)> = users
-                .iter()
-                .map(|u| {
-                    if u.id == id {
-                        (active && can_sign_in, role_id)
-                    } else {
-                        (u.active && u.can_sign_in, u.role_id)
-                    }
-                })
-                .collect();
+            let after = accounts_after(&users, id, will_sign_in, role_id);
             if would_lock_out((&before, &perms), (&after, &perms)) {
                 let field = if can_sign_in != current.can_sign_in {
                     "can_sign_in"
                 } else if active != current.active {
                     "active"
-                } else {
+                } else if role_id != current.role_id {
                     "role_id"
+                } else {
+                    "password"
                 };
                 return Err(CoreError::Validation(vec![FieldError::new(
                     field,
@@ -556,7 +593,6 @@ impl Core {
         };
 
         let label = audit_label(&current.login, &current.display_name);
-        let could_sign_in = current.active && current.can_sign_in;
         let password_changed = password_hash.is_some();
         let now = self.now();
         let mut model: user::ActiveModel = current.into();
@@ -574,7 +610,7 @@ impl Core {
         model.updated_at = Set(now);
         model.version = Set(expected_version + 1);
         let model = model.update(&tx).await?;
-        if (could_sign_in && !(active && can_sign_in)) || password_changed {
+        if (could_sign_in && !will_sign_in) || password_changed {
             // Отключённого пользователя и пользователя, которому выключили вход, выкидываем из
             // системы; после повторного включения нужен новый вход. Новый пароль тоже закрывает
             // сеансы, как сброс пароля.
@@ -617,14 +653,29 @@ impl Core {
         let plain = password.to_owned();
         let password_hash = self.hash_gate.run(move || hash_password(&plain)).await??;
         let tx = self.begin_write().await?;
+        let users = all_users(&tx).await?;
         let current =
-            user::Entity::find_by_id(user_id)
-                .one(&tx)
-                .await?
+            users
+                .iter()
+                .find(|u| u.id == user_id)
+                .cloned()
                 .ok_or(CoreError::NotFound {
                     entity: ENTITY,
                     id: user_id,
                 })?;
+        // Пароль пользователю без пароля может закончить режим без входа: только через защиту.
+        let will_sign_in = signs_in(current.active, current.can_sign_in, &password_hash);
+        if will_sign_in != user_signs_in(&current) {
+            let perms = role_permissions(&all_roles(&tx).await?);
+            let before = accounts(&users);
+            let after = accounts_after(&users, user_id, will_sign_in, current.role_id);
+            if would_lock_out((&before, &perms), (&after, &perms)) {
+                return Err(CoreError::Validation(vec![FieldError::new(
+                    "password",
+                    "last_admin",
+                )]));
+            }
+        }
         let label = audit_label(&current.login, &current.display_name);
         let now = self.now();
         let mut model: user::ActiveModel = current.into();
@@ -662,7 +713,7 @@ impl Core {
         let stored = user::Entity::find_by_id(user_id)
             .one(&self.db)
             .await?
-            .filter(|u| u.active && u.can_sign_in)
+            .filter(user_signs_in)
             .ok_or(CoreError::Unauthenticated)?;
         let invalid_current =
             || CoreError::Validation(vec![FieldError::new("current_password", "invalid")]);
@@ -698,8 +749,7 @@ impl Core {
             .col_expr(user::Column::UpdatedAt, Expr::value(now))
             .filter(user::Column::Id.eq(user_id))
             .filter(user::Column::PasswordHash.eq(stored.password_hash.clone()))
-            .filter(user::Column::Active.eq(true))
-            .filter(user::Column::CanSignIn.eq(true))
+            .filter(signs_in_condition())
             .exec(&tx)
             .await?;
         if res.rows_affected != 1 {

@@ -288,3 +288,28 @@ async fn last_users_manage_role_is_not_deleted_over_http() {
         );
     }
 }
+
+#[tokio::test]
+async fn last_users_manage_role_keeps_the_permission_over_http() {
+    for t in apis(Listen::Loopback).await {
+        let admin_role = role_id_by_name(&t.core, "Администратор").await;
+        let r = t
+            .send(
+                Method::PATCH,
+                &format!("/api/v1/roles/{admin_role}?version=1"),
+                None,
+                Some(json!({ "permissions": ["orders_create"] })),
+            )
+            .await;
+        assert_eq!(
+            (r.status, &r.body["code"], &r.body["message"]),
+            (
+                409,
+                &json!("conflict"),
+                &json!("Нельзя снять право «Пользователи и права» с последней роли, где оно есть")
+            ),
+            "{}",
+            t.label
+        );
+    }
+}

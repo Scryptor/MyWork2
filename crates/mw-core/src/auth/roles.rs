@@ -79,6 +79,12 @@ pub(super) async fn all_roles(conn: &impl ConnectionTrait) -> Result<Vec<role::M
         .await?)
 }
 
+/// Есть ли право `users_manage` у какой-нибудь роли, кроме `id`.
+fn another_role_manages_users(rows: &[role::Model], id: i64) -> bool {
+    rows.iter()
+        .any(|r| r.id != id && parse_permissions(&r.permissions).contains(Permission::UsersManage))
+}
+
 fn check_name(
     name: &str,
     others: &[role::Model],
@@ -199,6 +205,17 @@ impl Core {
                     "last_admin",
                 )]));
             }
+            // Даже когда войти некому (режим без входа), без роли с этим правом не создать
+            // администратора (`mw-server create-admin`, первый вход).
+            if old_permissions.contains(Permission::UsersManage)
+                && !permissions.contains(Permission::UsersManage)
+                && !another_role_manages_users(&rows, id)
+            {
+                return Err(CoreError::InUse(format!(
+                    "Нельзя снять право «{}» с последней роли, где оно есть",
+                    Permission::UsersManage.label_ru()
+                )));
+            }
         }
 
         let mut active: role::ActiveModel = current.into();
@@ -255,13 +272,8 @@ impl Core {
                 "В роли есть пользователи: {members}"
             )));
         }
-        let manages_users =
-            |r: &role::Model| parse_permissions(&r.permissions).contains(Permission::UsersManage);
-        if manages_users(&current)
-            && !all_roles(&tx)
-                .await?
-                .iter()
-                .any(|r| r.id != id && manages_users(r))
+        if parse_permissions(&current.permissions).contains(Permission::UsersManage)
+            && !another_role_manages_users(&all_roles(&tx).await?, id)
         {
             return Err(CoreError::InUse(format!(
                 "Нельзя удалить последнюю роль с правом «{}»",

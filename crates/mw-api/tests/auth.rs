@@ -406,3 +406,51 @@ async fn user_without_sign_in_is_refused_like_a_wrong_password_and_counted() {
         );
     }
 }
+
+#[tokio::test]
+async fn users_without_password_keep_open_mode() {
+    use mw_db::entity::user;
+    use sea_orm::{ActiveModelTrait, Set};
+    for t in apis(Listen::Loopback).await {
+        // Как после импорта MyWork 2 с непереносимым паролем: вход включён, хэша нет.
+        let role = common::role_id_by_name(&t.core, "Администратор").await;
+        let now = t.core.now();
+        user::ActiveModel {
+            login: Set("ира".into()),
+            login_key: Set("ира".into()),
+            role_id: Set(role),
+            password_hash: Set(String::new()),
+            password_scheme: Set("legacy_sha1".into()),
+            active: Set(true),
+            created_at: Set(now),
+            updated_at: Set(now),
+            ..Default::default()
+        }
+        .insert(t.core.db())
+        .await
+        .unwrap();
+        let info = t.get("/api/v1/server-info", None).await.body;
+        assert_eq!(
+            (&info["auth_required"], &info["has_users"]),
+            (&json!(false), &json!(false)),
+            "{}",
+            t.label
+        );
+        let me = t.get("/api/v1/auth/me", None).await;
+        assert_eq!(
+            (me.status, &me.body["open_mode"]),
+            (200, &json!(true)),
+            "{}",
+            t.label
+        );
+        let r = t
+            .send(
+                Method::POST,
+                "/api/v1/auth/login",
+                None,
+                Some(json!({ "login": "ира", "password": "", "device_label": "" })),
+            )
+            .await;
+        assert_eq!(r.status, 401, "{}", t.label);
+    }
+}
