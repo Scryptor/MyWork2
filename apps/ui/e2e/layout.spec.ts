@@ -158,6 +158,24 @@ async function makeSeed(request: APIRequestContext): Promise<Seed> {
 	await patchOrder(request, full.id, {
 		work_done: 'Диагностика, прошивка BIOS программатором, чистка системы охлаждения'
 	});
+	// A long name in the rows of «Статусы» and «Справочники»: archived at once, so no picker of another
+	// spec shows it, while the archive of the screen does.
+	const status = await request.post('/api/v1/statuses', {
+		data: {
+			name: `Согласование стоимости ремонта с клиентом по телефону, ${marker}`,
+			kind: 'diagnostics',
+			color: 'violet'
+		}
+	});
+	expect(status.ok(), await status.text()).toBe(true);
+	const statusIdOf = ((await status.json()) as { id: number }).id;
+	await request.patch(`/api/v1/statuses/${statusIdOf}`, { data: { archived: true } });
+	const value = await request.post('/api/v1/dictionaries/device_type', {
+		data: { value: `Многофункциональное устройство печати и сканирования ${marker}` }
+	});
+	expect(value.ok(), await value.text()).toBe(true);
+	const valueId = ((await value.json()) as { id: number }).id;
+	await request.patch(`/api/v1/dictionary-items/${valueId}`, { data: { archived: true } });
 	return { marker, point, full: full.id, ready: issuable.id, client };
 }
 
@@ -391,6 +409,15 @@ async function setupScenes(page: Page, c: ScreenCase, pending: () => number) {
 	await page.unroute(info);
 }
 
+/**
+ * The rows of statuses, points and dictionaries, and the row of their column titles: nothing in a row runs
+ * over its neighbour or out of the row. The form of a new status is a row of the same columns.
+ */
+const catalogRows = (page: Page) => [
+	page.getByRole('main').getByRole('listitem'),
+	page.getByRole('main').locator('.catalog-head')
+];
+
 /** «Настройки → Общие», «Заказы» and «О программе»: each once its fields are filled from the server. */
 async function serverSettingsScenes(
 	page: Page,
@@ -412,25 +439,25 @@ async function serverSettingsScenes(
 
 	await page.goto('/settings/dictionaries?kind=device_type');
 	await expect(page.getByRole('heading', { name: 'Справочники' })).toBeVisible();
-	// Loaded: the values, or «Значений пока нет» on a server that has none.
-	await expect(
-		page.getByRole('main').getByRole('listitem').first().or(page.getByText('Значений пока нет'))
-	).toBeVisible();
-	await scene(page, c, 'dictionaries', bars, pending);
+	// Loaded: the values with their counts (the archived one of the seed is there).
+	await expect(page.getByRole('main').getByRole('listitem').first()).toBeVisible();
+	await scene(page, c, 'dictionaries', [...bars, ...catalogRows(page)], pending);
 
 	await page.goto('/settings/statuses');
 	await expect(page.getByRole('heading', { name: 'Статусы' })).toBeVisible();
-	await expect(
-		page.getByRole('main').getByRole('listitem').first().or(page.getByText('Статусов пока нет'))
-	).toBeVisible();
-	await scene(page, c, 'statuses', bars, pending);
+	await expect(page.getByRole('main').getByRole('listitem').first()).toBeVisible();
+	await scene(
+		page,
+		c,
+		'statuses',
+		[...bars, ...catalogRows(page), page.getByRole('main').locator('.catalog-add')],
+		pending
+	);
 
 	await page.goto('/settings/points');
 	await expect(page.getByRole('heading', { name: 'Точки' })).toBeVisible();
-	await expect(
-		page.getByRole('main').getByRole('listitem').first().or(page.getByText('Точек пока нет'))
-	).toBeVisible();
-	await scene(page, c, 'points', bars, pending);
+	await expect(page.getByRole('main').getByRole('listitem').first()).toBeVisible();
+	await scene(page, c, 'points', [...bars, ...catalogRows(page)], pending);
 
 	await page.goto('/settings/about');
 	await expect(page.getByRole('heading', { name: 'О программе' })).toBeVisible();

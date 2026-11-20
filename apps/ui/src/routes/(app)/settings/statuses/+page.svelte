@@ -2,7 +2,7 @@
      before an order's kind is changed, how many orders are in each, archive, a new status. -->
 <script lang="ts">
 	import Plus from '@lucide/svelte/icons/plus';
-	import { onMount, untrack } from 'svelte';
+	import { onMount, untrack, type Snippet } from 'svelte';
 	import type { NewStatus } from '$api/NewStatus';
 	import type { Status } from '$api/Status';
 	import type { StatusKind } from '$api/StatusKind';
@@ -15,12 +15,18 @@
 		updateStatus
 	} from '#lib/api/catalogs.js';
 	import { app } from '#lib/app/context.svelte.js';
+	import { display } from '#lib/design/prefs.svelte.js';
 	import { countLabel as countOf } from '#lib/format/index.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import CatalogRows from '#lib/settings/CatalogRows.svelte';
 	import { createNamedCatalog } from '#lib/settings/named-catalog.svelte.js';
 	import StatusColorButton from '#lib/settings/StatusColorButton.svelte';
-	import { KIND_HINTS, startKindChange, STATUS_KINDS } from '#lib/settings/status-kind.js';
+	import {
+		KIND_HELP,
+		KIND_ICONS,
+		startKindChange,
+		STATUS_KINDS
+	} from '#lib/settings/status-kind.js';
 	import Button from '#lib/ui/Button.svelte';
 	import Callout from '#lib/ui/Callout.svelte';
 	import Card from '#lib/ui/Card.svelte';
@@ -127,39 +133,101 @@
 
 {#if readonly}<Callout tone="info">{ru.settings.readOnly}</Callout>{/if}
 
+<!-- The kind: its icon, then the list. -->
+{#snippet kindCell(k: StatusKind, select: Snippet)}
+	{@const Icon = KIND_ICONS[k]}
+	<span class="kind" style:grid-area="kind">
+		<Icon size={16} aria-hidden="true" class="kind-icon" />
+		<span class="select">{@render select()}</span>
+	</span>
+{/snippet}
+
+<!-- The form of a new status, in the columns of the rows: name, colour, kind, «Добавить». -->
+{#snippet addRow()}
+	<form
+		class="add"
+		onsubmit={(e) => {
+			e.preventDefault();
+			void add();
+		}}
+	>
+		<div class="cell" style:grid-area="name">
+			<TextInput
+				ariaLabel={t.add}
+				placeholder={t.addPlaceholder}
+				autocomplete="off"
+				error={nameError}
+				bind:value={() => name, (v) => ((name = v), (nameError = undefined))}
+			/>
+		</div>
+		<span class="cell" style:grid-area="color">
+			<StatusColorButton {color} name={name.trim() || t.addColor} onchange={(h) => (color = h)} />
+		</span>
+		{#snippet addKind()}
+			<Select
+				ariaLabel={t.addKind}
+				items={kindItems}
+				bind:value={() => kind, (v) => v && (kind = v)}
+			/>
+		{/snippet}
+		<span class="cell" style:grid-area="kind">{@render kindCell(kind, addKind)}</span>
+		<!-- Where «В архив» is: at the start of the column, at its end when a row takes two lines (narrow). -->
+		<span class="cell" class:end={display.narrow} style:grid-area="actions">
+			<!-- Words alone fit the column of «В архив»; on a phone, where they do not, the icon alone. -->
+			{#if display.phone}
+				<Button type="submit" size="sm" icon={Plus} busy={adding} aria-label={t.addButton} />
+			{:else}
+				<Button type="submit" size="sm" busy={adding} aria-label={t.addButton}>{t.addShort}</Button>
+			{/if}
+		</span>
+	</form>
+{/snippet}
+
 <Card>
 	<div class="body">
 		<p class="note">{t.hint}</p>
 
-		{#if !readonly}
-			<form
-				class="add"
-				onsubmit={(e) => {
-					e.preventDefault();
-					void add();
-				}}
-			>
-				<div class="grow">
-					<TextInput
-						ariaLabel={t.add}
-						placeholder={t.add}
-						autocomplete="off"
-						error={nameError}
-						bind:value={() => name, (v) => ((name = v), (nameError = undefined))}
-					/>
-				</div>
-				<div class="kind">
-					<Select
-						label={t.addKind}
-						items={kindItems}
-						bind:value={() => kind, (v) => v && (kind = v)}
-						hint={KIND_HINTS[kind]}
-					/>
-				</div>
-				<StatusColorButton {color} name={name.trim() || t.addColor} onchange={(h) => (color = h)} />
-				<Button type="submit" icon={Plus} busy={adding}>{t.addButton}</Button>
-			</form>
-		{/if}
+		<CatalogRows
+			rows={catalog.loadError ? [] : catalog.rows}
+			{countLabel}
+			{readonly}
+			columns={[
+				{ id: 'color', title: t.color, width: 'var(--status-color-width)' },
+				{ id: 'kind', title: t.kind, help: KIND_HELP, width: 'var(--status-kind-width)' }
+			]}
+			add={readonly ? undefined : addRow}
+			onrename={(id, label) => void patch(id, { name: label })}
+			onarchive={(id, archived) => void patch(id, { archived })}
+			onreorder={async (ids) => {
+				const error = await catalog.reorder(ids);
+				if (error) fail(error);
+			}}
+		>
+			{#snippet extra(id)}
+				{@const s = byId(id)}
+				{#if s}
+					<span class="color" style:grid-area="color">
+						<StatusColorButton
+							color={s.color}
+							name={s.name}
+							disabled={readonly}
+							onchange={(h) => void patch(s.id, { color: h })}
+						/>
+					</span>
+					{#key redraw[s.id] ?? 0}
+						{#snippet rowKind()}
+							<Select
+								ariaLabel={t.kindOf(s.name)}
+								items={kindItems}
+								disabled={readonly}
+								bind:value={() => s.kind, (v) => pickKind(s, v)}
+							/>
+						{/snippet}
+						{@render kindCell(s.kind, rowKind)}
+					{/key}
+				{/if}
+			{/snippet}
+		</CatalogRows>
 
 		{#if catalog.loadError}
 			<Callout tone="danger">{t.loadFailed}: {catalog.loadError}</Callout>
@@ -167,44 +235,6 @@
 			<Skeleton height="2rem" />
 		{:else if nothing}
 			<EmptyState title={t.empty} />
-		{:else}
-			<CatalogRows
-				rows={catalog.rows}
-				{countLabel}
-				{readonly}
-				onrename={(id, label) => void patch(id, { name: label })}
-				onarchive={(id, archived) => void patch(id, { archived })}
-				onreorder={async (ids) => {
-					const error = await catalog.reorder(ids);
-					if (error) fail(error);
-				}}
-			>
-				{#snippet extra(id)}
-					{@const s = byId(id)}
-					{#if s}
-						<span class="more">
-							<StatusColorButton
-								color={s.color}
-								name={s.name}
-								disabled={readonly}
-								onchange={(h) => void patch(s.id, { color: h })}
-							/>
-							{#key redraw[s.id] ?? 0}
-								<span class="kind">
-									<Select
-										label={t.kind}
-										ariaLabel={t.kindOf(s.name)}
-										items={kindItems}
-										disabled={readonly}
-										bind:value={() => s.kind, (v) => pickKind(s, v)}
-										hint={KIND_HINTS[s.kind]}
-									/>
-								</span>
-							{/key}
-						</span>
-					{/if}
-				{/snippet}
-			</CatalogRows>
 		{/if}
 	</div>
 </Card>
@@ -225,6 +255,9 @@
 		font-weight: 600;
 	}
 	.body {
+		/* The colour and the kind columns: the round button (its touch size too) and the icon with the list. */
+		--status-color-width: var(--control-md);
+		--status-kind-width: 10.25rem;
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-3);
@@ -235,28 +268,42 @@
 		font-size: var(--text-sm);
 		color: var(--text-3);
 	}
+	/* The cells of the form are those of the grid of the rows. */
 	.add {
+		display: contents;
+	}
+	.cell {
 		display: flex;
-		flex-wrap: wrap;
-		align-items: flex-start;
-		gap: var(--space-2);
+		align-items: center;
+		min-width: 0;
+		min-height: var(--control-md);
 	}
-	.grow {
-		flex: 1 1 14rem;
+	.cell > :global(*) {
+		flex: 1;
 		min-width: 0;
 	}
-	.add .kind {
-		flex: 1 1 14rem;
-		min-width: 0;
+	.cell > :global(button) {
+		flex: none;
 	}
-	.more {
+	.cell.end {
+		justify-content: flex-end;
+	}
+	.color {
 		display: flex;
-		flex: 1 1 18rem;
-		align-items: flex-start;
-		gap: var(--space-2);
-		min-width: 0;
+		align-items: center;
 	}
-	.more .kind {
+	.kind {
+		display: flex;
+		align-items: center;
+		gap: var(--space-1-5);
+		min-width: 0;
+		max-width: var(--status-kind-width);
+	}
+	.kind :global(.kind-icon) {
+		flex: none;
+		color: var(--text-3);
+	}
+	.select {
 		flex: 1;
 		min-width: 0;
 	}

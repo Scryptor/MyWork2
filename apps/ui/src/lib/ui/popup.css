@@ -39,6 +39,17 @@
 	font-size: var(--text-sm);
 	font-weight: 400;
 }
+/* The heading of a group of options: stays at the top while its options scroll under it. */
+.mw-group-heading {
+	position: sticky;
+	top: 0;
+	z-index: 1;
+	padding: var(--space-1-5) var(--space-2) var(--space-1);
+	background: var(--surface);
+	color: var(--text-3);
+	font-size: var(--text-sm);
+	font-weight: 600;
+}
 .mw-empty {
 	padding: var(--space-2);
 	color: var(--text-3);

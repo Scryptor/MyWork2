@@ -264,6 +264,47 @@ test.describe('server settings', () => {
 		}
 	});
 
+	// The time zone moves the clock of every test on the server: the save is answered here, the server's
+	// zone stays as it is.
+	test('«Часовой пояс» is a list with «Россия» first; another zone is chosen and saved', async ({
+		page
+	}) => {
+		let patched: Partial<AppSettings> = {};
+		const sent: unknown[] = [];
+		await page.route('**/api/v1/settings', async (route) => {
+			const patch = route.request().method() === 'PATCH';
+			if (patch) {
+				const body = route.request().postDataJSON() as Partial<AppSettings>;
+				sent.push(body);
+				patched = { ...patched, ...body };
+			}
+			// What the server has, with what was «saved» here on top.
+			const response = patch ? await page.request.get('/api/v1/settings') : await route.fetch();
+			const json = { ...((await response.json()) as AppSettings), ...patched };
+			await route.fulfill({ response, json });
+		});
+		await page.goto('/settings/general');
+		const zone = page.getByRole('combobox', { name: 'Часовой пояс' });
+		await expect(zone).toBeEnabled();
+		await zone.click();
+		const list = page.getByRole('listbox');
+		const groups = list.getByRole('group');
+		await expect(groups.first()).toHaveAccessibleName('Россия');
+		await expect(
+			list.getByRole('group', { name: 'Европа' }).getByRole('option', {
+				name: /— Europe\/Berlin$/
+			})
+		).toHaveText(/^\(UTC\+0[12]:00\) /);
+		await list.getByRole('option', { name: '(UTC+04:00) Самара', exact: true }).click();
+		await expect(list).toBeHidden();
+		await expect(zone).toHaveText('(UTC+04:00) Самара');
+		await expect.poll(() => sent).toEqual([{ timezone: 'Europe/Samara' }]);
+		await page.reload();
+		await expect(page.getByRole('combobox', { name: 'Часовой пояс' })).toHaveText(
+			'(UTC+04:00) Самара'
+		);
+	});
+
 	test('«Долгая диагностика, дней» 0 is a mistake under the field and is not kept', async ({
 		page,
 		request

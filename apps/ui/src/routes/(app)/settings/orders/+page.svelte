@@ -41,15 +41,34 @@
 	]);
 
 	let masters = $state<{ value: string }[]>([]);
-	let warranties = $state<{ value: string }[]>([]);
+	/** The warranties of the dictionary, not archived; `null` while not read (or not readable). */
+	let warranties = $state<string[] | null>(null);
 	onMount(async () => {
 		try {
 			const [m, w] = await Promise.all([listDictionary('master'), listDictionary('warranty')]);
 			masters = m.filter((i) => !i.archived).map((i) => ({ value: i.value }));
-			warranties = w.filter((i) => !i.archived).map((i) => ({ value: i.value }));
+			warranties = w.filter((i) => !i.archived).map((i) => i.value);
 		} catch {
-			// Without suggestions the fields are still free text.
+			// Without suggestions the master is still free text; the warranty list keeps the saved one.
 		}
+	});
+
+	const warranty = $derived(editor.value('default_warranty', s.default_warranty) ?? '');
+	/**
+	 * «Не задана» (empty), the saved warranty when the dictionary does not have it (marked so once the
+	 * dictionary is read), then the dictionary's.
+	 */
+	const warrantyItems = $derived.by(() => {
+		const list = warranties ?? [];
+		const saved =
+			warranty && !list.includes(warranty)
+				? [{ value: warranty, label: warranties ? t.notInDictionary(warranty) : warranty }]
+				: [];
+		return [
+			{ value: '', label: t.noWarranty },
+			...saved,
+			...list.map((w) => ({ value: w, label: w }))
+		];
 	});
 
 	onDestroy(() => {
@@ -86,17 +105,15 @@
 			}
 			onselect={(v) => editor.commit('default_master', v)}
 		/>
-		<Combobox
+		<Select
 			label={t.defaultWarranty}
 			help={ru.help.orders.defaultWarranty}
-			items={warranties}
+			items={warrantyItems}
 			disabled={locked}
 			error={editor.fieldError('default_warranty')}
 			bind:value={
-				() => editor.value('default_warranty', s.default_warranty) ?? '',
-				(v) => editor.edit('default_warranty', v)
+				() => warranty, (v) => v !== null && v !== warranty && editor.commit('default_warranty', v)
 			}
-			onselect={(v) => editor.commit('default_warranty', v)}
 		/>
 		<TextInput
 			label={t.diagnosticsDays}

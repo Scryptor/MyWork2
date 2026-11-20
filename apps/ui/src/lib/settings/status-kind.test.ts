@@ -1,5 +1,15 @@
+import Handshake from '@lucide/svelte/icons/handshake';
+import PackageCheck from '@lucide/svelte/icons/package-check';
+import Stethoscope from '@lucide/svelte/icons/stethoscope';
+import Wrench from '@lucide/svelte/icons/wrench';
 import { describe, expect, it } from 'vitest';
-import { KIND_HINTS, kindChangeWarning, startKindChange } from './status-kind.js';
+import {
+	KIND_HELP,
+	KIND_ICONS,
+	kindChangeWarning,
+	startKindChange,
+	STATUS_KINDS
+} from './status-kind.js';
 
 describe('kindChangeWarning', () => {
 	it('nothing to warn about when no order is in the status', () => {
@@ -38,10 +48,30 @@ describe('kindChangeWarning', () => {
 		);
 		expect(kindChangeWarning('open', 'open', null)).toBeNull();
 	});
+});
 
-	it('a hint for every kind', () => {
-		expect(Object.keys(KIND_HINTS).sort()).toEqual(['diagnostics', 'issued', 'open', 'ready']);
-		expect(KIND_HINTS.open).toBe('заказ в работе');
+describe('the kinds explained', () => {
+	it('one explanation for the four kinds: a paragraph for each, in the order of the choice', () => {
+		const names = STATUS_KINDS.map(
+			(k) =>
+				({
+					open: 'Открыт',
+					diagnostics: 'Диагностика',
+					ready: 'Готов',
+					issued: 'Выдан'
+				})[k]
+		);
+		const own = KIND_HELP.filter((p) => /^«[^»]+» — /.test(p));
+		expect(own.map((p) => /^«([^»]+)»/.exec(p)![1])).toEqual(names);
+	});
+
+	it('an icon for every kind', () => {
+		expect(KIND_ICONS).toEqual({
+			diagnostics: Stethoscope,
+			open: Wrench,
+			ready: PackageCheck,
+			issued: Handshake
+		});
 	});
 });
 

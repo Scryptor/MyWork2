@@ -247,6 +247,8 @@
 				<CatalogRows
 					{rows}
 					{countLabel}
+					nameTitle={ru.catalogRows.value}
+					countTitle={ofClients ? ru.catalogRows.clients : ru.catalogRows.orders}
 					selectable
 					bind:selected
 					{readonly}

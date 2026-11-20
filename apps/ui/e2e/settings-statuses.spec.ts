@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
+import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
 import type { ServicePoint } from '$api/ServicePoint';
 import type { Status } from '$api/Status';
 import { createOrder, uniq } from './support/api';
@@ -36,6 +36,20 @@ async function addStatus(page: Page, name: string, hue?: string) {
 	}
 	await page.getByRole('button', { name: 'Добавить статус' }).click();
 	await expect(rowOf(page, name)).toBeVisible();
+}
+
+/** The left edges of the colour buttons and of the kind lists: of every row and of the form of a new status. */
+async function columnEdges(page: Page) {
+	const main = page.getByRole('main');
+	const lefts = async (controls: Locator) =>
+		(await controls.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().left))).map(
+			(x) => Math.round(x * 10) / 10
+		);
+	return {
+		rows: await main.getByRole('listitem').count(),
+		color: await lefts(main.getByRole('button', { name: /^Цвет „/ })),
+		kind: await lefts(main.getByRole('combobox', { name: /^Вид / }))
+	};
 }
 
 async function archiveAll(request: APIRequestContext, ids: string[]) {
@@ -85,7 +99,9 @@ test('a new status shows in the filters at once; a change of kind warns and Canc
 		await expect(
 			rowOf(page, name).getByRole('button', { name: /^Цвет „.*“: синий$/ })
 		).toBeVisible();
-		await expect(rowOf(page, name)).toContainText('заказ в работе');
+		await expect(rowOf(page, name).getByRole('combobox', { name: /^Вид статуса/ })).toHaveText(
+			'Открыт'
+		);
 
 		// No reload: «Заказы» by the menu, the filter has the status.
 		await page
@@ -122,6 +138,73 @@ test('a new status shows in the filters at once; a change of kind warns and Canc
 		await archiveAll(request, [id]);
 	}
 });
+
+test('«Вид» is explained once, in the title of its column: all four kinds', async ({ page }) => {
+	await openStatuses(page);
+	// No label over every list and no text under it.
+	await expect(page.getByRole('main').getByText('заказ в работе')).toHaveCount(0);
+	await page.getByRole('button', { name: 'Что такое «Вид»' }).click();
+	const help = page.getByRole('dialog', { name: 'Вид', exact: true });
+	for (const kind of ['Открыт', 'Диагностика', 'Готов', 'Выдан'])
+		await expect(help.getByText(new RegExp(`^«${kind}» — `))).toBeVisible();
+	await page.keyboard.press('Escape');
+	await expect(help).toBeHidden();
+	await expect(page.getByRole('button', { name: 'Что такое «Вид»' })).toBeFocused();
+});
+
+// The rows differ in the length of the name and in the count: the colour and the kind stay in their columns.
+// md and xl, at 1 and 1.25 (the window's width divided by the scale gives the band).
+for (const c of [
+	{ band: 'md', scale: 1, width: 960 },
+	{ band: 'md', scale: 1.25, width: 1200 },
+	{ band: 'xl', scale: 1, width: 1280 },
+	{ band: 'xl', scale: 1.25, width: 1700 }
+]) {
+	test.describe(`${c.band} at ${c.scale}`, () => {
+		test.use({
+			viewport: { width: c.width, height: 900 },
+			screen: { width: c.width, height: 900 }
+		});
+
+		test('the colour and the kind of every status start at the same place', async ({
+			page,
+			request
+		}) => {
+			const id = uniq();
+			try {
+				const made = async (name: string, kind: string) =>
+					(await (
+						await request.post('/api/v1/statuses', { data: { name, kind, color: 'violet' } })
+					).json()) as Status;
+				await made(`Согласование стоимости ремонта с клиентом по телефону-${id}`, 'open');
+				const short = await made(`Ок-${id}`, 'ready');
+				await createOrder(request, { status_id: short.id });
+				await page.addInitScript(
+					(scale) => localStorage.setItem('mw.prefs', JSON.stringify({ v: 2, scale })),
+					c.scale
+				);
+				await openStatuses(page);
+				await expect(page.locator('html')).toHaveAttribute('data-width', c.band);
+				await expect(rowOf(page, `Ок-${id}`)).toContainText('в 1 заказе');
+				const edges = await columnEdges(page);
+				// Every row and the form: a colour and a kind each.
+				expect(edges.color).toHaveLength(edges.rows + 1);
+				expect(edges.kind).toHaveLength(edges.rows + 1);
+				for (const [what, xs] of [
+					['colour', edges.color],
+					['kind', edges.kind]
+				] as const) {
+					expect(
+						Math.max(...xs) - Math.min(...xs),
+						`${what}: ${xs.join(', ')}`
+					).toBeLessThanOrEqual(1);
+				}
+			} finally {
+				await archiveAll(request, [id]);
+			}
+		});
+	});
+}
 
 test('an archived status and point keep their orders: «В работе», the badge, the point name', async ({
 	page,

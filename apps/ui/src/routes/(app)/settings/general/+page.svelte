@@ -7,10 +7,11 @@
 	import SaveNote from '#lib/settings/SaveNote.svelte';
 	import { createNextOrder } from '#lib/settings/next-order.svelte.js';
 	import { createSettingsEditor } from '#lib/settings/settings-editor.svelte.js';
-	import { timezoneChoices } from '#lib/settings/timezones.js';
+	import { canListTimezones, timezoneOptions } from '#lib/settings/timezones.js';
 	import Callout from '#lib/ui/Callout.svelte';
 	import Card from '#lib/ui/Card.svelte';
 	import Combobox from '#lib/ui/Combobox.svelte';
+	import Select from '#lib/ui/Select.svelte';
 	import TextInput from '#lib/ui/TextInput.svelte';
 
 	const t = ru.settings;
@@ -22,7 +23,12 @@
 	const s = $derived(app.settings);
 	const locked = $derived(!editor.canEdit);
 
-	const zones = $derived(timezoneChoices(editor.value('timezone', s.timezone) ?? s.timezone));
+	// The offsets of the list are those of the moment the screen opens (summer time moves some of them).
+	const now = new Date();
+	const zone = $derived(editor.value('timezone', s.timezone) ?? s.timezone);
+	/** An engine that cannot list the zones gets the field of before: the name is typed, the server checks it. */
+	const listed = canListTimezones();
+	const zones = $derived(listed ? timezoneOptions(now, zone) : []);
 
 	// «Следующий номер заказа» is not a setting but a counter: it has its own requests.
 	const nextOrder = createNextOrder({
@@ -68,21 +74,29 @@
 			}
 			onblur={() => void editor.flush()}
 		/>
-		<Combobox
-			label={t.timezone}
-			help={ru.help.general.timezone}
-			items={zones.items}
-			allowCustom={zones.free}
-			disabled={locked}
-			error={editor.fieldError('timezone')}
-			bind:value={
-				() => editor.value('timezone', s.timezone) ?? '',
-				(v) => zones.free && editor.type('timezone', v)
-			}
-			onselect={(v) => editor.commit('timezone', v)}
-			onenter={() => editor.commitTyped('timezone')}
-			onblur={() => editor.commitTyped('timezone')}
-		/>
+		{#if listed}
+			<Select
+				label={t.timezone}
+				help={ru.help.general.timezone}
+				items={zones}
+				disabled={locked}
+				error={editor.fieldError('timezone')}
+				bind:value={() => zone || null, (v) => v && v !== zone && editor.commit('timezone', v)}
+			/>
+		{:else}
+			<Combobox
+				label={t.timezone}
+				help={ru.help.general.timezone}
+				items={zone ? [{ value: zone }] : []}
+				allowCustom
+				disabled={locked}
+				error={editor.fieldError('timezone')}
+				bind:value={() => zone, (v) => editor.type('timezone', v)}
+				onselect={(v) => editor.commit('timezone', v)}
+				onenter={() => editor.commitTyped('timezone')}
+				onblur={() => editor.commitTyped('timezone')}
+			/>
+		{/if}
 		<!-- The counter is read only with «settings_manage»: without it there is nothing to show. -->
 		{#if !locked}
 			<form

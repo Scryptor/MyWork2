@@ -67,6 +67,27 @@
 	let kindErr = $state<string | null>(null);
 	let kindOff = $state<string | null>('phone');
 	let kindSm = $state<string | null>(null);
+	/** Options in groups, as the time zones of «Общие». */
+	const ZONES = [
+		{
+			label: 'Россия',
+			options: [
+				{ value: 'Europe/Kaliningrad', label: '(UTC+02:00) Калининград' },
+				{ value: 'Europe/Moscow', label: '(UTC+03:00) Москва' },
+				{ value: 'Europe/Samara', label: '(UTC+04:00) Самара' }
+			]
+		},
+		{
+			label: 'Европа',
+			options: [
+				{
+					value: 'Europe/Berlin',
+					label: '(UTC+01:00) Центральная Европа, стандартное время — Europe/Berlin'
+				}
+			]
+		}
+	];
+	let zone = $state<string | null>('Europe/Moscow');
 	let combo = $state('');
 	let comboErr = $state('');
 	let comboOff = $state('Apple');
@@ -131,6 +152,7 @@
 	<Select bind:value={kindHint} items={KINDS} label="Выбор с подсказкой" hint="Из справочника" />
 	<Select bind:value={kindErr} items={KINDS} label="Выбор с ошибкой" error="Укажите тип" />
 	<Select bind:value={kindOff} items={KINDS} label="Выбор отключённый" disabled />
+	<Select bind:value={zone} items={ZONES} label="Выбор с группами" />
 	<Select bind:value={kindSm} items={KINDS} label="Выбор без значения" placeholder="Не выбрано" />
 	<Combobox bind:value={combo} items={BRANDS} label="Подсказки" placeholder="Начните вводить" />
 	<Combobox bind:value={comboErr} items={BRANDS} label="Подсказки с ошибкой" error="Нужен бренд" />
