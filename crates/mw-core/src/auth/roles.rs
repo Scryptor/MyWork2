@@ -224,7 +224,9 @@ impl Core {
     }
 
     /// Удаляет роль по версии записи. Роль, в которой есть пользователи (любые: отключённые и
-    /// без входа тоже), не удаляется — `InUse` с их числом.
+    /// без входа тоже), не удаляется — `InUse` с их числом. Последняя роль с правом
+    /// `users_manage` не удаляется даже пустой: без неё не создать администратора
+    /// (`mw-server create-admin`, первый пользователь в режиме без входа).
     pub async fn delete_role(
         &self,
         actor: &Actor,
@@ -251,6 +253,19 @@ impl Core {
         if members > 0 {
             return Err(CoreError::InUse(format!(
                 "В роли есть пользователи: {members}"
+            )));
+        }
+        let manages_users =
+            |r: &role::Model| parse_permissions(&r.permissions).contains(Permission::UsersManage);
+        if manages_users(&current)
+            && !all_roles(&tx)
+                .await?
+                .iter()
+                .any(|r| r.id != id && manages_users(r))
+        {
+            return Err(CoreError::InUse(format!(
+                "Нельзя удалить последнюю роль с правом «{}»",
+                Permission::UsersManage.label_ru()
             )));
         }
         role::Entity::delete_by_id(id).exec(&tx).await?;

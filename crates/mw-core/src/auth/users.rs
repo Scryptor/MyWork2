@@ -493,10 +493,13 @@ impl Core {
             }
             Some(key)
         };
+        // Логин и пароль проверяются, только когда вход включают (или убирают логин): прежних
+        // пользователей без хэша (импорт MyWork 2 с непереносимым паролем) можно править и дальше.
+        let turning_on = can_sign_in && !current.can_sign_in;
         if login.is_empty() {
-            if can_sign_in {
+            if can_sign_in && (turning_on || login != current.login) {
                 errors.push(FieldError::required("login"));
-            } else if display_name.is_empty() {
+            } else if !can_sign_in && display_name.is_empty() {
                 errors.push(FieldError::required("display_name"));
             }
         }
@@ -507,7 +510,7 @@ impl Core {
                 None
             }
             None => {
-                if can_sign_in && current.password_hash.is_empty() {
+                if turning_on && current.password_hash.is_empty() {
                     errors.push(FieldError::required("password"));
                 }
                 None

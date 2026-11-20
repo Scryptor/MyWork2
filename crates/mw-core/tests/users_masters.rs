@@ -472,3 +472,121 @@ async fn masters_list_active_first_then_by_name() -> Result<(), CoreError> {
     }
     Ok(())
 }
+
+#[tokio::test]
+async fn imported_user_without_password_stays_editable() -> Result<(), CoreError> {
+    for t in cores().await {
+        let admin_role = role_id_by_name(&t.core, "Администратор").await;
+        let master_role = role_id_by_name(&t.core, "Мастер").await;
+        let boss = t
+            .core
+            .create_user(&admin(), with_sign_in("boss", "Шеф", admin_role, "1234"))
+            .await?;
+        // Как после импорта MyWork 2 с непереносимым паролем: вход включён, хэша нет.
+        insert_legacy_user(&t.core, "ира", "", admin_role).await;
+        let ira = t
+            .core
+            .list_users(&admin())
+            .await?
+            .into_iter()
+            .find(|u| u.login == "ира")
+            .unwrap();
+        assert!(ira.can_sign_in, "{}", t.label);
+        let mut version = ira.version;
+        for patch in [
+            UserPatch {
+                display_name: Some("Ира".into()),
+                ..Default::default()
+            },
+            UserPatch {
+                is_master: Some(true),
+                ..Default::default()
+            },
+            UserPatch {
+                role_id: Some(master_role),
+                ..Default::default()
+            },
+            UserPatch {
+                login: Some("Ирина".into()),
+                ..Default::default()
+            },
+            UserPatch {
+                active: Some(false),
+                ..Default::default()
+            },
+            UserPatch {
+                active: Some(true),
+                ..Default::default()
+            },
+            patch_sign_in(false),
+        ] {
+            let label = format!("{}: {patch:?}", t.label);
+            version = t
+                .core
+                .update_user(&admin(), ira.id, version, patch)
+                .await
+                .unwrap_or_else(|e| panic!("{label}: {e:?}"))
+                .version;
+        }
+        // Снова включить вход без пароля нельзя.
+        assert_validation(
+            t.core
+                .update_user(&admin(), ira.id, version, patch_sign_in(true))
+                .await,
+            &[("password", "required")],
+        );
+        // Убрать логин у пользователя со входом нельзя.
+        assert_validation(
+            t.core
+                .update_user(
+                    &admin(),
+                    boss.id,
+                    1,
+                    UserPatch {
+                        login: Some(" ".into()),
+                        ..Default::default()
+                    },
+                )
+                .await,
+            &[("login", "required")],
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn last_role_with_users_manage_is_not_deleted() -> Result<(), CoreError> {
+    const LAST: &str = "Нельзя удалить последнюю роль с правом «Пользователи и права»";
+    for t in cores().await {
+        let admin_role = role_id_by_name(&t.core, "Администратор").await;
+        // Свежая база в режиме без входа: пользователей нет, но без этой роли не создать администратора.
+        assert!(t.core.is_open_mode().await?);
+        match t.core.delete_role(&admin(), admin_role, 1).await {
+            Err(CoreError::InUse(message)) => assert_eq!(message, LAST, "{}", t.label),
+            other => panic!("{}: ожидался отказ, получено {other:?}", t.label),
+        }
+        let chiefs = t
+            .core
+            .create_role(
+                &admin(),
+                NewRole {
+                    name: "Начальство".into(),
+                    permissions: PermissionSet::from_codes(["users_manage", "audit_view"]),
+                },
+            )
+            .await?;
+        t.core.delete_role(&admin(), admin_role, 1).await?;
+        match t.core.delete_role(&admin(), chiefs.id, 1).await {
+            Err(CoreError::InUse(message)) => assert_eq!(message, LAST, "{}", t.label),
+            other => panic!("{}: ожидался отказ, получено {other:?}", t.label),
+        }
+        assert!(
+            t.core
+                .list_roles(&admin())
+                .await?
+                .iter()
+                .any(|r| r.permissions.contains(Permission::UsersManage))
+        );
+    }
+    Ok(())
+}

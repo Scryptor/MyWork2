@@ -263,3 +263,28 @@ async fn masters_list_works_in_open_mode() {
         );
     }
 }
+
+#[tokio::test]
+async fn last_users_manage_role_is_not_deleted_over_http() {
+    for t in apis(Listen::Loopback).await {
+        let admin_role = role_id_by_name(&t.core, "Администратор").await;
+        let r = t
+            .send(
+                Method::DELETE,
+                &format!("/api/v1/roles/{admin_role}?version=1"),
+                None,
+                None,
+            )
+            .await;
+        assert_eq!(
+            (r.status, &r.body["code"], &r.body["message"]),
+            (
+                409,
+                &json!("conflict"),
+                &json!("Нельзя удалить последнюю роль с правом «Пользователи и права»")
+            ),
+            "{}",
+            t.label
+        );
+    }
+}

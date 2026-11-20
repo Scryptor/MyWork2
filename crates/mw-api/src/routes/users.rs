@@ -149,7 +149,7 @@ pub(super) async fn update_role(
 }
 
 /// Удаление роли по версии записи (право `users_manage`). Роль, в которой есть пользователи,
-/// не удаляется: 409 с их числом.
+/// не удаляется: 409 с их числом. Последняя роль с правом `users_manage` тоже не удаляется (409).
 #[utoipa::path(
     delete,
     path = "/api/v1/roles/{id}",
@@ -158,7 +158,7 @@ pub(super) async fn update_role(
     params(("id" = i64, Path, description = "Номер роли"), VersionParam),
     responses(
         (status = 204, description = "Роль удалена"),
-        (status = 409, description = "Версия устарела или в роли есть пользователи", body = crate::ErrorBody)
+        (status = 409, description = "Версия устарела, в роли есть пользователи или это последняя роль с правом «Пользователи и права»", body = crate::ErrorBody)
     )
 )]
 pub(super) async fn delete_role(
