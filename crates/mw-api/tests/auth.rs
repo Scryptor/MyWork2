@@ -357,3 +357,52 @@ async fn short_new_password_names_the_request_field() {
         assert_eq!(r.body["fields"][0]["field"], "new_password", "{}", t.label);
     }
 }
+
+#[tokio::test]
+async fn user_without_sign_in_is_refused_like_a_wrong_password_and_counted() {
+    for t in apis(Listen::Network).await {
+        let admin = t.admin_token().await;
+        let role = common::role_id_by_name(&t.core, "Администратор").await;
+        let r = t
+            .send(
+                Method::POST,
+                "/api/v1/users",
+                Some(&admin),
+                Some(json!({
+                    "login": "ivan", "display_name": "Иван", "role_id": role,
+                    "password": TEST_PASSWORD, "can_sign_in": false, "is_master": true
+                })),
+            )
+            .await;
+        assert_eq!(r.status, 201, "{}: {}", t.label, r.body);
+        let wrong = t
+            .send(
+                Method::POST,
+                "/api/v1/auth/login",
+                None,
+                Some(json!({ "login": "admin", "password": "не тот", "device_label": "" })),
+            )
+            .await;
+        let login = json!({ "login": "ivan", "password": TEST_PASSWORD, "device_label": "" });
+        for _ in 0..5 {
+            let r = t
+                .send(
+                    Method::POST,
+                    "/api/v1/auth/login",
+                    None,
+                    Some(login.clone()),
+                )
+                .await;
+            assert_eq!((r.status, &r.body), (401, &wrong.body), "{}", t.label);
+        }
+        let r = t
+            .send(Method::POST, "/api/v1/auth/login", None, Some(login))
+            .await;
+        assert_eq!(
+            (r.status, &r.body["code"]),
+            (429, &json!("too_many_attempts")),
+            "{}",
+            t.label
+        );
+    }
+}

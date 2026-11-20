@@ -17,6 +17,9 @@ pub enum CoreError {
     },
     #[error("некорректные данные: {}", .0.iter().map(|e| format!("{}: {}", e.field, e.code)).collect::<Vec<_>>().join(", "))]
     Validation(Vec<FieldError>),
+    /// Запись используется и поэтому не удаляется; текст — для человека.
+    #[error("{0}")]
+    InUse(String),
     #[error("недостаточно прав: {}", .0.label_ru())]
     Forbidden(Permission),
     #[error("неверный логин или пароль")]

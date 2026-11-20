@@ -26,6 +26,8 @@ pub async fn create_admin(
                 display_name: display_name.to_string(),
                 role_id: role.id,
                 password: password.to_string(),
+                can_sign_in: true,
+                is_master: false,
             },
         )
         .await?)

@@ -83,10 +83,12 @@ impl Core {
         device_label: &str,
     ) -> Result<Session, CoreError> {
         let login = login.trim();
+        // Пользователь без входа отвечает так же, как неизвестный логин: тот же отказ за то же время.
         let found = user::Entity::find()
             .filter(user::Column::LoginKey.eq(normalize_search(login)))
             .one(&self.db)
-            .await?;
+            .await?
+            .filter(|u| u.can_sign_in);
 
         // Схема учётной записи; у неизвестного логина её нет.
         let scheme = found
@@ -134,7 +136,8 @@ impl Core {
     }
 
     /// Создаёт сессию в одной транзакции, заново проверив пользователя: пароль не менялся
-    /// (`u.password_hash` тот же, что проверен) и он всё ещё активен. `None` — проверка не прошла.
+    /// (`u.password_hash` тот же, что проверен), он всё ещё активен и может входить.
+    /// `None` — проверка не прошла.
     /// `upgraded` — новый хэш Argon2 для пользователя со старой схемой.
     pub(crate) async fn commit_login(
         &self,
@@ -156,6 +159,7 @@ impl Core {
                     .filter(user::Column::Id.eq(u.id))
                     .filter(user::Column::PasswordHash.eq(u.password_hash.clone()))
                     .filter(user::Column::Active.eq(true))
+                    .filter(user::Column::CanSignIn.eq(true))
                     .exec(&tx)
                     .await?;
                 res.rows_affected == 1
@@ -163,7 +167,9 @@ impl Core {
             None => user::Entity::find_by_id(u.id)
                 .one(&tx)
                 .await?
-                .is_some_and(|cur| cur.active && cur.password_hash == u.password_hash),
+                .is_some_and(|cur| {
+                    cur.active && cur.can_sign_in && cur.password_hash == u.password_hash
+                }),
         };
         if !still_valid {
             tx.rollback().await?;
@@ -212,7 +218,8 @@ impl Core {
             .filter(user::Column::LoginKey.eq(normalize_search(login)))
             .one(&self.db)
             .await?
-            .map(|u| u.login);
+            .map(|u| u.login)
+            .filter(|l| !l.is_empty());
         let who = stored_login.unwrap_or_else(|| "неизвестный логин".to_owned());
         let tx = self.begin_write().await?;
         let actor = Actor {
@@ -255,7 +262,7 @@ impl Core {
         let u = user::Entity::find_by_id(s.user_id)
             .one(&self.db)
             .await?
-            .filter(|u| u.active)
+            .filter(|u| u.active && u.can_sign_in)
             .ok_or(CoreError::Unauthenticated)?;
         let permissions = match role::Entity::find_by_id(u.role_id).one(&self.db).await? {
             Some(r) => parse_permissions(&r.permissions),
@@ -329,6 +336,8 @@ mod tests {
                 display_name: String::new(),
                 role_id: 1,
                 active: true,
+                can_sign_in: true,
+                is_master: false,
                 created_at: Default::default(),
                 version: 1,
             },

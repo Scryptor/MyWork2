@@ -2,7 +2,7 @@
 
 use axum::extract::State;
 use axum::http::StatusCode;
-use mw_core::{NewRole, NewUser, Role, RolePatch, User, UserPatch};
+use mw_core::{MasterUser, NewRole, NewUser, Role, RolePatch, User, UserPatch};
 
 use crate::auth::CurrentActor;
 use crate::dto::{SetPasswordRequest, VersionParam};
@@ -25,7 +25,8 @@ pub(super) async fn list_users(
     Ok(Json(state.core.list_users(&actor).await?))
 }
 
-/// Новый пользователь (право `users_manage`).
+/// Новый пользователь (право `users_manage`). Со входом (`can_sign_in`) логин и пароль
+/// обязательны; без входа их можно оставить пустыми, тогда нужно имя.
 #[utoipa::path(
     post,
     path = "/api/v1/users",
@@ -46,7 +47,8 @@ pub(super) async fn create_user(
 }
 
 /// Изменение пользователя по версии записи (право `users_manage`). Правка без различий
-/// успешна и версию не проверяет.
+/// успешна и версию не проверяет. Включить вход можно, только если у пользователя будут логин
+/// и пароль (прежние или из этой правки); выключение входа и новый пароль закрывают его сеансы.
 #[utoipa::path(
     patch,
     path = "/api/v1/users/{id}",
@@ -144,4 +146,43 @@ pub(super) async fn update_role(
     Ok(Json(
         state.core.update_role(&actor, id, v.version, patch).await?,
     ))
+}
+
+/// Удаление роли по версии записи (право `users_manage`). Роль, в которой есть пользователи,
+/// не удаляется: 409 с их числом.
+#[utoipa::path(
+    delete,
+    path = "/api/v1/roles/{id}",
+    tag = "Пользователи и роли",
+    security(("bearer" = [])),
+    params(("id" = i64, Path, description = "Номер роли"), VersionParam),
+    responses(
+        (status = 204, description = "Роль удалена"),
+        (status = 409, description = "Версия устарела или в роли есть пользователи", body = crate::ErrorBody)
+    )
+)]
+pub(super) async fn delete_role(
+    State(state): State<AppState>,
+    CurrentActor(actor): CurrentActor,
+    Path(id): Path<i64>,
+    Query(v): Query<VersionParam>,
+) -> Result<StatusCode, ApiError> {
+    state.core.delete_role(&actor, id, v.version).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Мастера для выбора в заказе: пользователи с отметкой «Мастер», активные первыми, затем по
+/// имени. Доступно любому вошедшему (и в режиме без входа), особого права не нужно.
+#[utoipa::path(
+    get,
+    path = "/api/v1/masters",
+    tag = "Пользователи и роли",
+    security(("bearer" = [])),
+    responses((status = 200, description = "Мастера", body = Vec<MasterUser>))
+)]
+pub(super) async fn list_masters(
+    State(state): State<AppState>,
+    CurrentActor(actor): CurrentActor,
+) -> Result<Json<Vec<MasterUser>>, ApiError> {
+    Ok(Json(state.core.list_masters(&actor).await?))
 }

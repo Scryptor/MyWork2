@@ -52,6 +52,8 @@ async fn server_info_tells_whether_login_is_needed() {
                     display_name: String::new(),
                     role_id: role,
                     password: "1234".into(),
+                    can_sign_in: true,
+                    is_master: false,
                 },
             )
             .await

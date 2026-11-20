@@ -6,8 +6,8 @@ use std::fmt::Debug;
 
 use mw_core::{
     AppSettings, AuditEntry, Client, ClientPatch, ClientRef, DictionaryItem, DictionaryMerge,
-    DictionaryRename, IssuedFilter, NewClient, NewOrder, NewRole, NewStatus, NewUser, Order,
-    OrderListItem, OrderPatch, OrderSortField, RewriteResult, Role, RolePatch, ServicePoint,
+    DictionaryRename, IssuedFilter, MasterUser, NewClient, NewOrder, NewRole, NewStatus, NewUser,
+    Order, OrderListItem, OrderPatch, OrderSortField, RewriteResult, Role, RolePatch, ServicePoint,
     ServicePointPatch, SettingsPatch, Status, StatusPatch, User, UserPatch,
 };
 use mw_domain::dictionary::DictionaryKind;
@@ -177,10 +177,12 @@ fn response_types_are_complete_and_hide_secrets() {
         ServicePoint::decl(&c),
         DictionaryItem::decl(&c),
         RewriteResult::decl(&c),
+        MasterUser::decl(&c),
     ] {
         assert!(!decl.contains("?:") && !decl.contains("bigint"), "{decl}");
     }
     assert!(!User::decl(&c).contains("password"));
+    assert!(!MasterUser::decl(&c).contains("login"));
     assert!(Order::decl(&c).contains("estimate_from: Money | null"));
 }
 
@@ -258,7 +260,8 @@ fn request_bodies_require_every_field() {
         "source": "", "blacklisted": false }),
     );
     check_new::<NewUser>(
-        json!({ "login": "a", "display_name": "А", "role_id": 1, "password": "pw12" }),
+        json!({ "login": "a", "display_name": "А", "role_id": 1, "password": "pw12",
+            "can_sign_in": true, "is_master": false }),
     );
     check_new::<NewRole>(json!({ "name": "А", "permissions": ["orders_create"] }));
     check_new::<DictionaryRename>(json!({ "value": "А", "in_orders": true }));

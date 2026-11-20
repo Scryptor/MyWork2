@@ -171,6 +171,8 @@ async fn stale_version_matters_only_when_something_changes() -> Result<(), CoreE
                     display_name: String::new(),
                     role_id: role,
                     password: "1234".into(),
+                    can_sign_in: true,
+                    is_master: false,
                 },
             )
             .await?;
@@ -231,7 +233,7 @@ async fn stale_version_matters_only_when_something_changes() -> Result<(), CoreE
             .create_role(
                 &admin(),
                 NewRole {
-                    name: "Приёмщик".into(),
+                    name: "Продавец".into(),
                     permissions: PermissionSet::from_codes(["orders_create"]),
                 },
             )
@@ -243,7 +245,7 @@ async fn stale_version_matters_only_when_something_changes() -> Result<(), CoreE
                     r.id,
                     7,
                     RolePatch {
-                        name: Some(" Приёмщик".into()),
+                        name: Some(" Продавец".into()),
                         permissions: Some(r.permissions.clone())
                     }
                 )

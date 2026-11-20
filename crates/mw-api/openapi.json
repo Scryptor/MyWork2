@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "MyWork 3 API",
-    "description": "HTTP API учёта сервисного центра MyWork 3.\n\n**Вход.** `POST /api/v1/auth/login` выдаёт токен; дальше он передаётся в заголовке `Authorization: Bearer <токен>`. Если сервер слушает только локальный адрес и в базе нет активных пользователей, вход не нужен (режим без входа): запросы без токена выполняются с полными правами. Узнать это можно по `GET /api/v1/server-info` (`auth_required`).\n\n**Форматы.** Поля JSON — `snake_case`. Деньги — целое число копеек. Даты и время — местное время предприятия без смещения, `YYYY-MM-DDTHH:MM:SS` (в схемах помечены `date-time`, но смещения в них нет).\n\n**Правки.** В теле `PATCH` непереданное поле не меняется; `null` очищает только те поля, которые бывают пустыми; `null` у остальных полей и неизвестные поля — ошибка 400.\n\n**Версия записи.** Изменение заказов, клиентов, пользователей и ролей принимает параметр `version` — версию записи, которую видел клиент; устаревшая даёт 409 с `current_version`.\n\n**Тело запроса.** Каждый изменяющий запрос (POST, PUT, PATCH, DELETE) должен нести `Content-Type: application/json`, даже без тела (выход, выдача, удаление), иначе ответ 415. Исключение — загрузка вложений (`POST /orders/{id}/attachments`, `POST /intake-drafts/{key}/attachments`): тело — байты файла, `Content-Type: application/octet-stream`, не больше 25 МБ.\n\n**Ошибки.** Любая ошибка — JSON `ErrorBody` с полями `code`, `message` (по-русски), `fields`, `current_version`, `permission`, `retry_after_secs`. Коды: `bad_request` (400, 405, 413 — тело больше 1 МиБ (файла — больше 25 МБ), 415), `unauthenticated` и `invalid_credentials` (401), `forbidden` (403), `not_found` (404), `conflict` (409), `validation` (422), `too_many_attempts` (429), `unavailable` (503), `internal` (500).",
+    "description": "HTTP API учёта сервисного центра MyWork 3.\n\n**Вход.** `POST /api/v1/auth/login` выдаёт токен; дальше он передаётся в заголовке `Authorization: Bearer <токен>`. Если сервер слушает только локальный адрес и в базе нет активных пользователей, которые могут входить (`can_sign_in`), вход не нужен (режим без входа): запросы без токена выполняются с полными правами. Узнать это можно по `GET /api/v1/server-info` (`auth_required`).\n\n**Форматы.** Поля JSON — `snake_case`. Деньги — целое число копеек. Даты и время — местное время предприятия без смещения, `YYYY-MM-DDTHH:MM:SS` (в схемах помечены `date-time`, но смещения в них нет).\n\n**Правки.** В теле `PATCH` непереданное поле не меняется; `null` очищает только те поля, которые бывают пустыми; `null` у остальных полей и неизвестные поля — ошибка 400.\n\n**Версия записи.** Изменение заказов, клиентов, пользователей и ролей принимает параметр `version` — версию записи, которую видел клиент; устаревшая даёт 409 с `current_version`. 409 без `current_version` — запись нельзя удалить, пока ею пользуются (например, роль с пользователями); причина — в `message`.\n\n**Тело запроса.** Каждый изменяющий запрос (POST, PUT, PATCH, DELETE) должен нести `Content-Type: application/json`, даже без тела (выход, выдача, удаление), иначе ответ 415. Исключение — загрузка вложений (`POST /orders/{id}/attachments`, `POST /intake-drafts/{key}/attachments`): тело — байты файла, `Content-Type: application/octet-stream`, не больше 25 МБ.\n\n**Ошибки.** Любая ошибка — JSON `ErrorBody` с полями `code`, `message` (по-русски), `fields`, `current_version`, `permission`, `retry_after_secs`. Коды: `bad_request` (400, 405, 413 — тело больше 1 МиБ (файла — больше 25 МБ), 415), `unauthenticated` и `invalid_credentials` (401), `forbidden` (403), `not_found` (404), `conflict` (409), `validation` (422), `too_many_attempts` (429), `unavailable` (503), `internal` (500).",
     "license": {
       "name": "MIT",
       "identifier": "MIT"
@@ -1763,6 +1763,45 @@
         ]
       }
     },
+    "/api/v1/masters": {
+      "get": {
+        "tags": [
+          "Пользователи и роли"
+        ],
+        "summary": "Мастера для выбора в заказе: пользователи с отметкой «Мастер», активные первыми, затем по\nимени. Доступно любому вошедшему (и в режиме без входа), особого права не нужно.",
+        "operationId": "list_masters",
+        "responses": {
+          "200": {
+            "description": "Мастера",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MasterUser"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/openapi.json": {
       "get": {
         "tags": [
@@ -2976,6 +3015,65 @@
       }
     },
     "/api/v1/roles/{id}": {
+      "delete": {
+        "tags": [
+          "Пользователи и роли"
+        ],
+        "summary": "Удаление роли по версии записи (право `users_manage`). Роль, в которой есть пользователи,\nне удаляется: 409 с их числом.",
+        "operationId": "delete_role",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер роли",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "description": "Версия записи, которую правит клиент.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Роль удалена"
+          },
+          "409": {
+            "description": "Версия устарела или в роли есть пользователи",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
       "patch": {
         "tags": [
           "Пользователи и роли"
@@ -3695,7 +3793,7 @@
         "tags": [
           "Пользователи и роли"
         ],
-        "summary": "Новый пользователь (право `users_manage`).",
+        "summary": "Новый пользователь (право `users_manage`). Со входом (`can_sign_in`) логин и пароль\nобязательны; без входа их можно оставить пустыми, тогда нужно имя.",
         "operationId": "create_user",
         "requestBody": {
           "content": {
@@ -3741,7 +3839,7 @@
         "tags": [
           "Пользователи и роли"
         ],
-        "summary": "Изменение пользователя по версии записи (право `users_manage`). Правка без различий\nуспешна и версию не проверяет.",
+        "summary": "Изменение пользователя по версии записи (право `users_manage`). Правка без различий\nуспешна и версию не проверяет. Включить вход можно, только если у пользователя будут логин\nи пароль (прежние или из этой правки); выключение входа и новый пароль закрывают его сеансы.",
         "operationId": "update_user",
         "parameters": [
           {
@@ -5085,6 +5183,30 @@
           }
         }
       },
+      "MasterUser": {
+        "type": "object",
+        "description": "Мастер для выбора в заказе: пользователь с отметкой «Мастер».",
+        "required": [
+          "id",
+          "display_name",
+          "active"
+        ],
+        "properties": {
+          "active": {
+            "type": "boolean",
+            "description": "Учётная запись активна; отключённого мастера не предлагают для новых заказов."
+          },
+          "display_name": {
+            "type": "string",
+            "description": "Имя мастера: отображаемое имя, а если оно пустое — логин."
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Номер пользователя."
+          }
+        }
+      },
       "MergeClients": {
         "type": "object",
         "description": "Объединение клиентов: все источники вливаются в цель.",
@@ -5404,20 +5526,30 @@
           "login",
           "display_name",
           "role_id",
-          "password"
+          "password",
+          "can_sign_in",
+          "is_master"
         ],
         "properties": {
+          "can_sign_in": {
+            "type": "boolean",
+            "description": "Может входить в программу."
+          },
           "display_name": {
             "type": "string",
-            "description": "Отображаемое имя."
+            "description": "Отображаемое имя; обязательно, если логин пуст."
+          },
+          "is_master": {
+            "type": "boolean",
+            "description": "Отметка «Мастер»."
           },
           "login": {
             "type": "string",
-            "description": "Логин."
+            "description": "Логин; обязателен, если пользователь может входить. Без входа — может быть пустым."
           },
           "password": {
             "type": "string",
-            "description": "Пароль."
+            "description": "Пароль; обязателен, если пользователь может входить. Без входа — может быть пустым."
           },
           "role_id": {
             "type": "integer",
@@ -6640,6 +6772,8 @@
           "display_name",
           "role_id",
           "active",
+          "can_sign_in",
+          "is_master",
           "created_at",
           "version"
         ],
@@ -6647,6 +6781,10 @@
           "active": {
             "type": "boolean",
             "description": "Учётная запись активна."
+          },
+          "can_sign_in": {
+            "type": "boolean",
+            "description": "Может входить в программу. Пользователь без входа не входит ни с каким паролем и не\nсчитается ни в режиме без входа, ни в защите от потери доступа администратора."
           },
           "created_at": {
             "type": "string",
@@ -6662,9 +6800,13 @@
             "format": "int64",
             "description": "Номер пользователя."
           },
+          "is_master": {
+            "type": "boolean",
+            "description": "Отметка «Мастер»: пользователя можно выбрать мастером заказа."
+          },
           "login": {
             "type": "string",
-            "description": "Логин."
+            "description": "Логин; пустой, если логина нет (бывает только у пользователя без входа)."
           },
           "role_id": {
             "type": "integer",
@@ -6680,15 +6822,31 @@
       },
       "UserPatch": {
         "type": "object",
-        "description": "Частичное изменение пользователя; отсутствующее поле не меняется.",
+        "description": "Частичное изменение пользователя; отсутствующее поле не меняется; пароль в логи не попадает.",
         "properties": {
           "active": {
             "type": "boolean",
             "description": "Учётная запись активна."
           },
+          "can_sign_in": {
+            "type": "boolean",
+            "description": "Может входить в программу. Включить вход можно, только если у пользователя есть логин и\nпароль — прежние или переданные в этой же правке. Выключение закрывает его сеансы,\nлогин и пароль сохраняются."
+          },
           "display_name": {
             "type": "string",
             "description": "Отображаемое имя."
+          },
+          "is_master": {
+            "type": "boolean",
+            "description": "Отметка «Мастер»."
+          },
+          "login": {
+            "type": "string",
+            "description": "Логин; пустая строка — без логина (только у пользователя без входа)."
+          },
+          "password": {
+            "type": "string",
+            "description": "Новый пароль. Как при сбросе пароля: схема `argon2`, сеансы пользователя закрываются."
           },
           "role_id": {
             "type": "integer",

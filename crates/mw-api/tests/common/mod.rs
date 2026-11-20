@@ -199,6 +199,8 @@ impl TestApi {
                     display_name: login.into(),
                     role_id,
                     password: TEST_PASSWORD.into(),
+                    can_sign_in: true,
+                    is_master: false,
                 },
             )
             .await
@@ -234,6 +236,8 @@ impl TestApi {
                     display_name: login.into(),
                     role_id: role.id,
                     password: TEST_PASSWORD.into(),
+                    can_sign_in: true,
+                    is_master: false,
                 },
             )
             .await

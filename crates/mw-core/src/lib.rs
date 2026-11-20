@@ -27,9 +27,9 @@ pub use actor::Actor;
 pub use attachments::{Attachment, AttachmentFile, AttachmentKind, AttachmentVariant};
 pub use audit::{AuditEntry, AuditFilter};
 pub use auth::{
-    LAST_SEEN_THROTTLE_SECS, MAX_CONCURRENT_PASSWORD_HASHES, MIN_PASSWORD_CHARS, NewRole, NewUser,
-    PasswordScheme, Role, RolePatch, SESSION_IDLE_DAYS, Session, User, UserPatch, hash_password,
-    legacy_sha1_hex, verify_password,
+    LAST_SEEN_THROTTLE_SECS, MAX_CONCURRENT_PASSWORD_HASHES, MIN_PASSWORD_CHARS, MasterUser,
+    NewRole, NewUser, PasswordScheme, Role, RolePatch, SESSION_IDLE_DAYS, Session, User, UserPatch,
+    hash_password, legacy_sha1_hex, verify_password,
 };
 pub use clients::{
     Client, ClientFilter, ClientListItem, ClientPatch, ClientPhone, ClientSort, ClientSortField,

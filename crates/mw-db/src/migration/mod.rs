@@ -10,6 +10,8 @@ mod m20261112_000003_default_warranty_text;
 mod m20261116_000001_order_keys;
 mod m20261117_000001_attachments;
 mod m20261119_000001_dictionary_archive;
+mod m20261120_000001_user_sign_in_and_master;
+mod m20261120_000002_builtin_roles;
 
 pub struct Migrator;
 
@@ -24,6 +26,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20261116_000001_order_keys::Migration),
             Box::new(m20261117_000001_attachments::Migration),
             Box::new(m20261119_000001_dictionary_archive::Migration),
+            Box::new(m20261120_000001_user_sign_in_and_master::Migration),
+            Box::new(m20261120_000002_builtin_roles::Migration),
         ]
     }
 }

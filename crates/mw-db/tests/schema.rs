@@ -89,8 +89,13 @@ async fn migration_creates_schema_and_seed_on_every_backend() {
             "{label}"
         );
         assert_eq!(statuses.len(), 8, "{label}");
-        let roles = role::Entity::find().all(&db).await.unwrap();
-        assert_eq!(roles.len(), 1, "{label}");
+        // Готовые «Мастер» и «Приёмщик» проверяет `users_roles_migration.rs`.
+        let roles = role::Entity::find()
+            .order_by_asc(role::Column::Id)
+            .all(&db)
+            .await
+            .unwrap();
+        assert_eq!(roles.len(), 3, "{label}");
         assert_eq!(roles[0].name, "Администратор");
         let perms: PermissionSet = serde_json::from_str(&roles[0].permissions).unwrap();
         assert_eq!(perms, PermissionSet::all());
@@ -178,10 +183,14 @@ async fn seed_data_equals_current_domain_constants() {
             .collect();
         assert_eq!(got, want, "{label}: статусы");
 
-        let roles = role::Entity::find().all(&db).await.unwrap();
-        assert_eq!(roles.len(), 1, "{label}");
+        let admin = role::Entity::find()
+            .filter(role::Column::Name.eq("Администратор"))
+            .all(&db)
+            .await
+            .unwrap();
+        assert_eq!(admin.len(), 1, "{label}");
         assert_eq!(
-            roles[0].permissions,
+            admin[0].permissions,
             serde_json::to_string(&PermissionSet::all()).unwrap(),
             "{label}: права администратора"
         );

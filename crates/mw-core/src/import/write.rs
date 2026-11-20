@@ -351,6 +351,8 @@ async fn write_access(
             created_at: Set(now),
             updated_at: Set(now),
             version: Set(1),
+            can_sign_in: Set(true),
+            is_master: Set(false),
         }
         .insert(conn)
         .await?;

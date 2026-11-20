@@ -1,8 +1,11 @@
-use mw_db::entity::role;
+use mw_db::entity::{role, user};
 use mw_domain::permission::{Permission, PermissionSet};
 use mw_domain::search::normalize_search;
 use mw_domain::validation::FieldError;
-use sea_orm::{ActiveModelTrait, ConnectionTrait, EntityTrait, NotSet, QueryOrder, Set};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, NotSet, PaginatorTrait,
+    QueryFilter, QueryOrder, Set,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, json};
 
@@ -218,5 +221,57 @@ impl Core {
         .await?;
         tx.commit().await?;
         Ok(model.into())
+    }
+
+    /// Удаляет роль по версии записи. Роль, в которой есть пользователи (любые: отключённые и
+    /// без входа тоже), не удаляется — `InUse` с их числом.
+    pub async fn delete_role(
+        &self,
+        actor: &Actor,
+        id: i64,
+        expected_version: i64,
+    ) -> Result<(), CoreError> {
+        actor.require(Permission::UsersManage)?;
+        let tx = self.begin_write().await?;
+        let current = role::Entity::find_by_id(id)
+            .one(&tx)
+            .await?
+            .ok_or(CoreError::NotFound { entity: ENTITY, id })?;
+        if current.version != expected_version {
+            return Err(CoreError::Conflict {
+                entity: ENTITY,
+                id,
+                current_version: current.version,
+            });
+        }
+        let members = user::Entity::find()
+            .filter(user::Column::RoleId.eq(id))
+            .count(&tx)
+            .await?;
+        if members > 0 {
+            return Err(CoreError::InUse(format!(
+                "В роли есть пользователи: {members}"
+            )));
+        }
+        role::Entity::delete_by_id(id).exec(&tx).await?;
+        write_audit(
+            &tx,
+            self.now(),
+            actor,
+            NewAuditEntry {
+                action: "role.deleted",
+                order_id: None,
+                client_id: None,
+                summary: format!("Удалена роль «{}»", current.name),
+                details: Some(json!({
+                    "id": id,
+                    "name": current.name,
+                    "permissions": parse_permissions(&current.permissions),
+                })),
+            },
+        )
+        .await?;
+        tx.commit().await?;
+        Ok(())
     }
 }

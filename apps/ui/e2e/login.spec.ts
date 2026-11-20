@@ -190,7 +190,14 @@ async function makeSecondUser(playwright: PlaywrightWorkerArgs['playwright'], ad
 		const login = uniq('second');
 		const display = uniq('Второй');
 		const user = await admin.post('/api/v1/users', {
-			data: { login, display_name: display, role_id: id, password: SECOND_PASSWORD }
+			data: {
+				login,
+				display_name: display,
+				role_id: id,
+				password: SECOND_PASSWORD,
+				can_sign_in: true,
+				is_master: false
+			}
 		});
 		expect(user.ok()).toBe(true);
 		return { login, display };

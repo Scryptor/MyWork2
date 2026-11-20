@@ -186,7 +186,7 @@ fn documented_operations_match_the_api_map() {
             }
         }
     }
-    assert_eq!(ops.len(), 71, "{ops:#?}");
+    assert_eq!(ops.len(), 73, "{ops:#?}");
     for expected in [
         "GET /api/v1/server-info",
         "GET /api/v1/openapi.json",
@@ -211,6 +211,8 @@ fn documented_operations_match_the_api_map() {
         "GET /api/v1/orders/values",
         "PUT /api/v1/users/{id}/password",
         "PATCH /api/v1/roles/{id}",
+        "DELETE /api/v1/roles/{id}",
+        "GET /api/v1/masters",
         "GET /api/v1/audit",
         "POST /api/v1/orders/{id}/attachments",
         "GET /api/v1/attachments/{id}/thumb",

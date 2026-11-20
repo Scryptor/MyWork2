@@ -18,6 +18,8 @@ async fn login_sessions_and_legacy_upgrade() {
                     display_name: "Ирина П.".into(),
                     role_id: role,
                     password: "1234".into(),
+                    can_sign_in: true,
+                    is_master: false,
                 },
             )
             .await
@@ -92,6 +94,8 @@ async fn login_sessions_and_legacy_upgrade() {
                     display_name: String::new(),
                     role_id: role,
                     password: "qwerty".into(),
+                    can_sign_in: true,
+                    is_master: false,
                 },
             )
             .await
@@ -101,7 +105,7 @@ async fn login_sessions_and_legacy_upgrade() {
             .create_role(
                 &admin(),
                 NewRole {
-                    name: "Приёмщик".into(),
+                    name: "Продавец".into(),
                     permissions: PermissionSet::from_codes(["orders_create"]),
                 },
             )
@@ -144,6 +148,8 @@ async fn password_change_and_deactivation_revoke_sessions() {
             display_name: String::new(),
             role_id: role,
             password: "1234".into(),
+            can_sign_in: true,
+            is_master: false,
         };
         let a = t
             .core

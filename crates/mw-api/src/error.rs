@@ -218,6 +218,9 @@ impl From<CoreError> for ApiError {
                     .collect();
                 e
             }
+            CoreError::InUse(message) => {
+                Self::new(StatusCode::CONFLICT, ErrorCode::Conflict, message)
+            }
             CoreError::AlreadySetUp => Self::new(
                 StatusCode::CONFLICT,
                 ErrorCode::Conflict,

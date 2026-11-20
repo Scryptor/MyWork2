@@ -49,6 +49,8 @@ async fn users_validation_and_last_admin_guard() -> Result<(), CoreError> {
                     display_name: "Ирина".into(),
                     role_id: admin_role,
                     password: "1234".into(),
+                    can_sign_in: true,
+                    is_master: false,
                 },
             )
             .await?;
@@ -62,6 +64,8 @@ async fn users_validation_and_last_admin_guard() -> Result<(), CoreError> {
                         display_name: String::new(),
                         role_id: admin_role,
                         password: "12".into(),
+                        can_sign_in: true,
+                        is_master: false,
                     },
                 )
                 .await,
@@ -86,7 +90,7 @@ async fn users_validation_and_last_admin_guard() -> Result<(), CoreError> {
             .create_role(
                 &admin(),
                 NewRole {
-                    name: "Приёмщик".into(),
+                    name: "Продавец".into(),
                     permissions: PermissionSet::from_codes(["orders_create"]),
                 },
             )
@@ -128,6 +132,8 @@ async fn users_validation_and_last_admin_guard() -> Result<(), CoreError> {
                     display_name: "Шеф".into(),
                     role_id: admin_role,
                     password: "qwerty".into(),
+                    can_sign_in: true,
+                    is_master: false,
                 },
             )
             .await?;
@@ -175,7 +181,7 @@ async fn first_user_without_users_manage_is_refused_in_open_mode() -> Result<(),
             .create_role(
                 &admin(),
                 NewRole {
-                    name: "Приёмщик".into(),
+                    name: "Продавец".into(),
                     permissions: PermissionSet::from_codes(["orders_create"]),
                 },
             )
@@ -189,6 +195,8 @@ async fn first_user_without_users_manage_is_refused_in_open_mode() -> Result<(),
                         display_name: String::new(),
                         role_id: clerk_role.id,
                         password: "1234".into(),
+                        can_sign_in: true,
+                        is_master: false,
                     },
                 )
                 .await,
@@ -204,6 +212,8 @@ async fn first_user_without_users_manage_is_refused_in_open_mode() -> Result<(),
                     display_name: String::new(),
                     role_id: admin_role,
                     password: "1234".into(),
+                    can_sign_in: true,
+                    is_master: false,
                 },
             )
             .await?;
@@ -216,6 +226,8 @@ async fn first_user_without_users_manage_is_refused_in_open_mode() -> Result<(),
                     display_name: String::new(),
                     role_id: clerk_role.id,
                     password: "1234".into(),
+                    can_sign_in: true,
+                    is_master: false,
                 },
             )
             .await?;
@@ -236,6 +248,8 @@ async fn change_own_password_requires_current_password() -> Result<(), CoreError
                     display_name: String::new(),
                     role_id: role,
                     password: "1234".into(),
+                    can_sign_in: true,
+                    is_master: false,
                 },
             )
             .await?;
@@ -292,7 +306,7 @@ async fn broken_database_without_admin_allows_unrelated_edits() -> Result<(), Co
             .create_role(
                 &admin(),
                 NewRole {
-                    name: "Приёмщик".into(),
+                    name: "Продавец".into(),
                     permissions: PermissionSet::from_codes(["orders_create"]),
                 },
             )
@@ -330,6 +344,8 @@ async fn broken_database_without_admin_allows_unrelated_edits() -> Result<(), Co
                     display_name: String::new(),
                     role_id: clerk,
                     password: "1234".into(),
+                    can_sign_in: true,
+                    is_master: false,
                 },
             )
             .await?;
@@ -345,7 +361,7 @@ async fn enabling_user_without_rights_in_open_mode_is_refused() -> Result<(), Co
             .create_role(
                 &admin(),
                 NewRole {
-                    name: "Приёмщик".into(),
+                    name: "Продавец".into(),
                     permissions: PermissionSet::from_codes(["orders_create"]),
                 },
             )

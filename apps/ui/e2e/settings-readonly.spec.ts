@@ -65,7 +65,14 @@ async function makeClerk(playwright: PlaywrightWorkerArgs['playwright']['request
 		const login = uniq('clerk');
 		await ok<User>(
 			await admin.post('/api/v1/users', {
-				data: { login, display_name: 'Приёмщик', role_id: role.id, password: CLERK_PASSWORD }
+				data: {
+					login,
+					display_name: 'Приёмщик',
+					role_id: role.id,
+					password: CLERK_PASSWORD,
+					can_sign_in: true,
+					is_master: false
+				}
 			})
 		);
 		const brand = uniq('Бренд');
