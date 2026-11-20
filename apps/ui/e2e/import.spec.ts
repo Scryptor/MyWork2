@@ -127,6 +127,9 @@ test('transfer: what was found, the progress, sign-in as a user of MyWork 2, the
 		.first();
 	const number = Number((await first.textContent())!.replace(/\D/g, ''));
 	expect(number).toBeGreaterThan(0);
+	// Dates of the history are not of an order: their entries are under the numbers.
+	const dateEntries = page.getByRole('list', { name: 'Записи: Не разобрана дата' });
+	await expect(dateEntries.getByRole('listitem')).toHaveText([/^Статус · 7/, /^История · 4/]);
 	await first.click();
 	const panel = page.getByRole('dialog', { name: new RegExp(`^№ ${number}(?!\\d)`) });
 	await expect(panel).toBeVisible();

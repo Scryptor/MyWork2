@@ -19,6 +19,7 @@ const group = (over: Partial<ReportGroup>): ReportGroup => ({
 	count: 1,
 	order_ids: [],
 	entries: [],
+	entries_count: 0,
 	...over
 });
 
@@ -136,6 +137,18 @@ describe('entryWhere', () => {
 				message: ''
 			})
 		).toBe('Заказ · Статус');
+	});
+	it('the key of a repeated barcode is the barcode, never a number of an order', () => {
+		const dup = {
+			source: 'Catalog',
+			key: '123456789012',
+			field: 'Barcode',
+			value: 'заказы 3, 7',
+			message: ''
+		};
+		expect(entryWhere(dup, 'barcode_duplicate')).toBe('Заказ · 123456789012 · Штрихкод');
+		// A barcode not in UPC-A or made anew is of one order: its key is that order's number.
+		expect(entryWhere({ ...e, field: 'Barcode' }, 'barcode_invalid')).toBe('Заказ № 5 · Штрихкод');
 	});
 	it('next_number has no «Catalog · Catalog»', () => {
 		expect(

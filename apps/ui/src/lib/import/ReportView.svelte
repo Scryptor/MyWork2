@@ -1,7 +1,7 @@
 <!-- The report of a transfer from MyWork 2 (spec 6.9): tiles of totals; the groups of «Требует внимания»
      (then «Сведения»). Each group has «Что это?» with the text of its code and opens into the numbers of its
-     orders (a number opens the order's panel) or, with no orders, into its entries (the first 200);
-     «Сохранить отчёт» (the full text as a file) and «К заказам». -->
+     orders (a number opens the order's panel) and the entries of its warnings without an order (clients,
+     history, files: the first 200); «Сохранить отчёт» (the full text as a file) and «К заказам». -->
 <script lang="ts">
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import Download from '@lucide/svelte/icons/download';
@@ -115,11 +115,12 @@
 											>{t.showAll(group.order_ids.length)}</Button
 										>
 									{/if}
-								{:else}
+								{/if}
+								{#if group.entries.length > 0}
 									<ul class="entries" aria-label={r.entries(group.title)}>
 										{#each group.entries as entry, i (i)}
 											<li class="entry">
-												<span class="where num">{entryWhere(entry)}</span>
+												<span class="where num">{entryWhere(entry, group.code)}</span>
 												{#if entry.value !== ''}
 													<span class="value"
 														><span class="label">{r.value}:</span> {entry.value}</span
@@ -129,8 +130,8 @@
 											</li>
 										{/each}
 									</ul>
-									{#if group.entries.length < group.count}
-										<p class="cut">{r.cut(group.entries.length, group.count)}</p>
+									{#if group.entries.length < group.entries_count}
+										<p class="cut">{r.cut(group.entries.length, group.entries_count)}</p>
 									{/if}
 								{/if}
 							</div>

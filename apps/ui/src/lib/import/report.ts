@@ -3,6 +3,7 @@
 import type { ImportReportView } from '$api/ImportReportView';
 import type { ReportEntry } from '$api/ReportEntry';
 import type { ReportGroup } from '$api/ReportGroup';
+import type { WarningCode } from '$api/WarningCode';
 import { formatBytes } from '#lib/format/bytes.js';
 import { groupDigits } from '#lib/format/digits.js';
 import { parseLocalDateTime } from '#lib/format/date.js';
@@ -90,8 +91,9 @@ const isNumber = (s: string) => /^\d+$/.test(s);
  * Where an entry comes from, in the words of the program: «Заказ № 5 · Клиент», «Файл · 1/1/a.jpg».
  * The key goes into the name of an order or a client, else after the source; no text is said twice (the key that
  * is the source or the value, the field that is in the key or is the value is left out). Unknown names stay raw.
+ * `code` is the group's: the key of a repeated barcode is the barcode, not a number of an order (as on the server).
  */
-export function entryWhere(e: ReportEntry): string {
+export function entryWhere(e: ReportEntry, code?: WarningCode): string {
 	const rr = ru.importReport;
 	const source = e.source.trim();
 	const key = e.key.trim();
@@ -100,7 +102,7 @@ export function entryWhere(e: ReportEntry): string {
 	const known = Object.hasOwn(rr.sources, source);
 	let head = known ? rr.sources[source] : source;
 	let keyUsed = key === '' || key === source || key === value;
-	if (!keyUsed && isNumber(key) && source === 'Catalog') {
+	if (!keyUsed && isNumber(key) && source === 'Catalog' && code !== 'barcode_duplicate') {
 		head = rr.orderNumber(key);
 		keyUsed = true;
 	} else if (!keyUsed && isNumber(key) && source === 'ClientsMap') {

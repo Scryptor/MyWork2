@@ -1156,9 +1156,9 @@ export const ru = {
 	},
 	importReport: {
 		explain: importExplain,
-		/** The entries of a group that has no orders (a click on its title). */
+		/** The entries of a group's warnings without an order (a click on its title, under the numbers). */
 		entries: (title: string) => `Записи: ${title}`,
-		/** The server gives the first 200 entries of a group; the file of «Сохранить отчёт» has all. */
+		/** The server gives the first 200 entries without an order; the file of «Сохранить отчёт» has all. */
 		cut: (shown: number, total: number) =>
 			`Показаны первые ${shown} из ${total}; полный список — в «Сохранить отчёт»`,
 		value: 'Значение',

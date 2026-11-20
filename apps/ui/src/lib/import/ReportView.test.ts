@@ -25,6 +25,7 @@ const group = (over: Partial<ReportGroup>): ReportGroup => ({
 	count: 1,
 	order_ids: [],
 	entries: [],
+	entries_count: 0,
 	...over
 });
 
@@ -51,7 +52,8 @@ describe('ReportView groups', () => {
 			entries: [
 				entry('5', { field: 'ClientId', value: '77', message: 'Клиента нет в ClientsMap.' }),
 				entry('6')
-			]
+			],
+			entries_count: 250
 		});
 		render(ReportView, { report: view([g]), onorder: vi.fn() });
 		const toggle = screen.getByRole('button', { name: /^Клиент не найден/ });
@@ -70,7 +72,12 @@ describe('ReportView groups', () => {
 	});
 
 	it('a complete list has no «Показаны первые»', async () => {
-		const g = group({ code: 'status_custom', count: 1, entries: [entry('Свой')] });
+		const g = group({
+			code: 'status_custom',
+			count: 1,
+			entries: [entry('Свой')],
+			entries_count: 1
+		});
 		render(ReportView, { report: view([g]), onorder: vi.fn() });
 		await userEvent.click(screen.getByRole('button', { name: /^Не разобрана дата/ }));
 		expect(screen.queryByText(/Показаны первые/)).not.toBeInTheDocument();
@@ -78,12 +85,51 @@ describe('ReportView groups', () => {
 
 	it('a group with orders still opens into numbers, and a number goes to its order', async () => {
 		const onorder = vi.fn();
-		const g = group({ count: 2, order_ids: [4, 9], entries: [entry('4'), entry('9')] });
+		const g = group({ count: 2, order_ids: [4, 9] });
 		render(ReportView, { report: view([g]), onorder });
 		await userEvent.click(screen.getByRole('button', { name: /^Не разобрана дата/ }));
 		await userEvent.click(screen.getByRole('button', { name: '№ 9' }));
 		expect(onorder).toHaveBeenCalledWith(9, [4, 9]);
 		expect(screen.queryByRole('list', { name: /^Записи:/ })).not.toBeInTheDocument();
+	});
+
+	it('a group with orders and warnings without an order shows both; the cut counts the latter', async () => {
+		const g = group({
+			count: 253,
+			order_ids: [3, 5, 9],
+			entries: [
+				entry('c0', { source: 'ClientsMap', field: 'Birthday', value: '31.02.1990' }),
+				entry('h1', { source: 'HistoryBD', value: 'вчера' })
+			],
+			entries_count: 250
+		});
+		render(ReportView, { report: view([g]), onorder: vi.fn() });
+		await userEvent.click(screen.getByRole('button', { name: /^Не разобрана дата/ }));
+		const numbers = screen.getByRole('list', { name: ru.legacy.groupOrders(g.title) });
+		expect(
+			within(numbers)
+				.getAllByRole('button')
+				.map((b) => b.textContent)
+		).toEqual(['№ 3', '№ 5', '№ 9']);
+		const list = screen.getByRole('list', { name: ru.importReport.entries(g.title) });
+		expect(within(list).getAllByRole('listitem')).toHaveLength(2);
+		expect(list).toHaveTextContent('31.02.1990');
+		expect(screen.getByText(ru.importReport.cut(2, 250))).toBeInTheDocument();
+	});
+
+	it('all warnings without an order shown: no cut line, even when the group has more', async () => {
+		const g = group({
+			count: 4,
+			order_ids: [3, 5, 9],
+			entries: [entry('c0', { source: 'ClientsMap' })],
+			entries_count: 1
+		});
+		render(ReportView, { report: view([g]), onorder: vi.fn() });
+		await userEvent.click(screen.getByRole('button', { name: /^Не разобрана дата/ }));
+		expect(
+			screen.getByRole('list', { name: ru.importReport.entries(g.title) })
+		).toBeInTheDocument();
+		expect(screen.queryByText(/Показаны первые/)).not.toBeInTheDocument();
 	});
 
 	it('a group with neither orders nor entries has no arrow', () => {

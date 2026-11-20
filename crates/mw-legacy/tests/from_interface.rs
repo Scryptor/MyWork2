@@ -9,9 +9,9 @@ use common::*;
 use mw_core::{Actor, AttachmentVariant, Core, NewClient};
 use mw_legacy::fixture::FixtureVersion::V32;
 use mw_legacy::{
-    ImportOptions, ImportStage, LegacyError, Severity, StartedFrom, WarningCode, check_folder,
-    finish_interrupted_imports, import_error_message, import_folder, import_item, report_view,
-    write_report_files,
+    ImportOptions, ImportStage, LegacyError, REPORT_GROUP_ENTRIES, Severity, StartedFrom,
+    WarningCode, check_folder, finish_interrupted_imports, import_error_message, import_folder,
+    import_item, report_view, write_report_files,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -181,6 +181,19 @@ async fn stored_report_gives_the_list_item_groups_and_the_command_text() -> Res 
             ("Не разобрана дата", Severity::Warning)
         );
         assert!(!dates.order_ids.is_empty());
+        // Даты истории — не заказы: они в записях группы рядом с номерами.
+        let sources: Vec<&str> = dates.entries.iter().map(|e| e.source.as_str()).collect();
+        assert_eq!(sources, ["StatesMap", "HistoryBD"]);
+        assert_eq!(dates.entries_count, 2);
+        for group in &view.groups {
+            assert!(group.entries_count <= group.count, "{:?}", group.code);
+            assert_eq!(
+                group.entries.len() as u64,
+                group.entries_count.min(REPORT_GROUP_ENTRIES as u64),
+                "{:?}",
+                group.code
+            );
+        }
         // Номера в группах — настоящие заказы этого импорта.
         for group in &view.groups {
             for id in &group.order_ids {

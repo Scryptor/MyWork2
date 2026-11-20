@@ -35,7 +35,8 @@ pub use report::{FileStats, ImportReport, Severity, Warning, WarningCode};
 pub use report_files::{REPORTS_DIR, write_report_files};
 pub use source::SchemaSummary;
 pub use view::{
-    ImportReportView, LegacyImportItem, ReportEntry, ReportGroup, import_item, report_view,
+    ImportReportView, LegacyImportItem, REPORT_GROUP_ENTRIES, ReportEntry, ReportGroup,
+    import_item, report_view,
 };
 
 /// Папка копий перед заменой в папке данных (`<папка данных>/backups`); при замене в ней появляется
