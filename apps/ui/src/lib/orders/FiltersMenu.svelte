@@ -4,7 +4,6 @@
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import ListFilter from '@lucide/svelte/icons/list-filter';
 	import { tick, untrack } from 'svelte';
-	import type { MasterUser } from '$api/MasterUser';
 	import type { OrderValueField } from '$api/OrderValueField';
 	import { listMasters } from '#lib/api/masters.js';
 	import { orderValues } from '#lib/api/orders.js';
@@ -20,6 +19,7 @@
 	import Popover from '#lib/ui/Popover.svelte';
 	import Select from '#lib/ui/Select.svelte';
 	import TextInput from '#lib/ui/TextInput.svelte';
+	import { filterMasterItems, type MasterList } from './masters.js';
 	import type { OrderFilters, Period } from './view.js';
 
 	let {
@@ -127,7 +127,7 @@
 	const brands = suggestions('brand', () => draft.brand);
 
 	// The masters are read when the menu opens: disabled ones stay, an old order may have them.
-	let masters = $state.raw<MasterUser[]>([]);
+	let masters = $state.raw<MasterList>(null);
 	$effect(() => {
 		if (!open) return;
 		let current = true;
@@ -135,8 +135,10 @@
 			(list) => {
 				if (current) masters = list;
 			},
-			// Without them the filter is only «Любой».
-			() => {}
+			// Without them the filter is «Любой» and the chosen master («Мастер № 5»).
+			() => {
+				if (current && masters === null) masters = 'failed';
+			}
 		);
 		return () => {
 			current = false;
@@ -145,10 +147,7 @@
 	/** «Любой», the masters, and the name of an old saved view as one more choice. */
 	const masterOptions = $derived([
 		{ value: ANY_MASTER, label: t.anyMaster },
-		...masters.map((m) => ({
-			value: m.id,
-			label: m.active ? m.display_name : ru.fields.masterDisabled(m.display_name)
-		})),
+		...filterMasterItems(masters, draft.masterId),
 		...(draft.master && draft.masterId === undefined
 			? [{ value: BY_NAME, label: draft.master }]
 			: [])

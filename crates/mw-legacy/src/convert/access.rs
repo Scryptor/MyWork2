@@ -278,28 +278,46 @@ pub(crate) fn convert_access(
     (roles.list, users, rows)
 }
 
-/// Если пользователи есть, а права «Пользователи и права» нет ни у одной их роли, выдаёт её роли первого
-/// пользователя с перенесённым паролем (иначе первого).
+/// Кто сможет войти после переноса — пользователи с перенесённым паролем (если таких нет, программа
+/// остаётся без входа, и считаются все). Если права «Пользователи и права» нет ни у одной их роли,
+/// оно (с просмотром журнала) выдаётся роли первого из них: иначе управлять пользователями смогли бы
+/// только те, кто войти не может, а у программы для компьютера нет `create-admin`.
 fn grant_users_manage(roles: &mut Roles, users: &[ImportedUser], w: &mut Warnings) {
-    let Some(first) = users
-        .iter()
-        .find(|u| !u.legacy_sha1.is_empty())
-        .or_else(|| users.first())
-    else {
+    let with_password: Vec<&ImportedUser> =
+        users.iter().filter(|u| !u.legacy_sha1.is_empty()).collect();
+    let candidates: Vec<&ImportedUser> = if with_password.is_empty() {
+        users.iter().collect()
+    } else {
+        with_password
+    };
+    let Some(first) = candidates.first() else {
         return;
     };
-    let has_manager = users.iter().any(|u| {
+    let manages = |u: &ImportedUser| {
         roles
             .list
             .iter()
             .any(|r| r.name == u.role && r.permissions.contains(Permission::UsersManage))
-    });
-    if has_manager {
+    };
+    if candidates.iter().any(|u| manages(u)) {
         return;
     }
+    // Право было, но только у тех, чей пароль не перенёсся.
+    let only_without_password = users.iter().any(manages);
     if let Some(role) = roles.list.iter_mut().find(|r| r.name == first.role) {
         role.permissions.insert(Permission::UsersManage);
         role.permissions.insert(Permission::AuditView);
+        let why = if only_without_password {
+            format!(
+                "Право «Пользователи и права» было только у пользователей, чей пароль не перенёсся (войти они не смогут, пока им не зададут новый): оно выдано роли «{}» первого пользователя с перенесённым паролем.",
+                role.name
+            )
+        } else {
+            format!(
+                "Ни у одной роли пользователей не было права «Пользователи и права»: оно выдано роли «{}».",
+                role.name
+            )
+        };
         w.push(
             WarningCode::UsersManageGranted,
             "Users",
@@ -307,8 +325,7 @@ fn grant_users_manage(roles: &mut Roles, users: &[ImportedUser], w: &mut Warning
             "",
             "",
             &format!(
-                "Ни у одной роли пользователей не было права «Пользователи и права»: оно выдано роли «{}». Если войти не удаётся, создайте администратора командой mw-server create-admin (если это программа для компьютера — обратитесь к тому, кто её устанавливал).",
-                role.name
+                "{why} Если войти не удаётся, создайте администратора командой mw-server create-admin (если это программа для компьютера — обратитесь к тому, кто её устанавливал)."
             ),
         );
     }
@@ -319,7 +336,7 @@ mod tests {
     use super::*;
     use crate::fixture::FixtureVersion::{V31, V32};
     use crate::report::Warnings;
-    use crate::test_support::{codes, prepared};
+    use crate::test_support::{codes, conversion_of, prepared};
     use mw_core::legacy_sha1_hex;
     use mw_domain::permission::{Permission, PermissionSet};
 
@@ -385,5 +402,43 @@ mod tests {
         assert!(message.contains("mw-server create-admin"), "{message}");
         assert!(message.contains("программ"), "{message}");
         assert!(message.contains("устанавливал"), "{message}");
+    }
+
+    /// Пароль администраторов MyWork 2 не перенёсся, а у других пользователей — перенёсся: войти
+    /// смогут только они, и право «Пользователи и права» получает роль первого из них.
+    #[tokio::test]
+    async fn users_manage_goes_to_someone_who_can_sign_in() {
+        use crate::test_support::conversion_with_sql;
+        let granted = |c: &crate::convert::Conversion| {
+            c.warnings
+                .list()
+                .iter()
+                .filter(|w| w.code.as_str() == "users_manage_granted")
+                .map(|w| (w.key.clone(), w.message.clone()))
+                .collect::<Vec<_>>()
+        };
+        // Ирина — единственная в «Админы» (все права); её пароль не похож на SHA-1. Первый с
+        // перенесённым паролем — «ирина (2)» в «Мастера».
+        let c = conversion_with_sql(V32, &["UPDATE Users SET user_pwd = 'нет' WHERE id = 1"]).await;
+        let role = |name: &str| c.bundle.roles.iter().find(|r| r.name == name).unwrap();
+        let masters = &role("Мастера").permissions;
+        assert!(
+            masters.contains(Permission::UsersManage) && masters.contains(Permission::AuditView),
+            "{masters:?}"
+        );
+        let list = granted(&c);
+        assert_eq!(list.len(), 1, "{list:?}");
+        assert_eq!(list[0].0, "Мастера");
+        let message = &list[0].1;
+        assert!(message.contains("пароль не перенёсся"), "{message}");
+        assert!(message.contains("«Мастера»"), "{message}");
+        assert!(!message.contains("Ни у одной роли"), "{message}");
+        assert!(message.contains("mw-server create-admin"), "{message}");
+
+        // Не перенёсся ни один пароль: программа после переноса — без входа, искать некого.
+        let none = conversion_with_sql(V32, &["UPDATE Users SET user_pwd = ''"]).await;
+        assert!(granted(&none).is_empty());
+        // Пароль администратора перенёсся — ничего не выдаётся.
+        assert!(granted(&conversion_of(V32).await).is_empty());
     }
 }

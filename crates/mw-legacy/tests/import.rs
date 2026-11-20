@@ -184,6 +184,34 @@ async fn legacy_users_log_in_after_import() -> Res {
     Ok(())
 }
 
+/// Пароль единственного администратора MyWork 2 не перенёсся: управлять пользователями после
+/// переноса может тот, кто войти может, — иначе у программы для компьютера выхода нет.
+#[tokio::test]
+async fn someone_who_signs_in_manages_users_when_the_admin_password_is_lost() -> Res {
+    use sqlx::Connection;
+    for t in cores().await {
+        let (src, data) = (fixture_dir(V32).await, tempfile::tempdir()?);
+        let db = src.path().join("baza.sqlite");
+        let mut conn =
+            sqlx::SqliteConnection::connect(&format!("sqlite://{}", db.display())).await?;
+        sqlx::query("UPDATE Users SET user_pwd = 'нет' WHERE id = 1")
+            .execute(&mut conn)
+            .await?;
+        conn.close().await?;
+        let r = import_folder(&t.core, &admin(), &options(src.path(), data.path(), false)).await?;
+        assert_eq!(r.count(WarningCode::UsersManageGranted), 1, "{}", t.label);
+        let session = t.core.login("ирина (2)", "пароль", "x").await?;
+        assert!(
+            session.permissions.contains(Permission::UsersManage),
+            "{}",
+            t.label
+        );
+        let actor = t.core.authenticate(&session.token).await?;
+        assert!(t.core.list_users(&actor).await.is_ok(), "{}", t.label);
+    }
+    Ok(())
+}
+
 #[tokio::test]
 async fn open_mode_kept_when_old_program_had_no_users() -> Res {
     for t in cores().await {
@@ -340,6 +368,45 @@ async fn nothing_is_written_into_the_old_folder() -> Res {
         );
         assert_eq!(hash_tree(src.path()), before);
         assert!(!src.path().join("new").exists());
+    }
+    Ok(())
+}
+
+/// Путь автора: свежая папка (миграции добавили «Мастер» и «Приёмщик»), затем перенос — роли
+/// базы стёрты, но готовые роли остаются рядом с группами MyWork 2, с готовыми правами.
+#[tokio::test]
+async fn builtin_roles_stay_next_to_the_legacy_groups() -> Res {
+    for t in cores().await {
+        let (src, data) = (fixture_dir(V32).await, tempfile::tempdir()?);
+        let r = import_folder(&t.core, &admin(), &options(src.path(), data.path(), false)).await?;
+        let roles = t.core.list_roles(&admin()).await?;
+        let names: Vec<&str> = roles.iter().map(|r| r.name.as_str()).collect();
+        assert_eq!(
+            names,
+            [
+                "Администратор",
+                "Админы",
+                "Мастера",
+                "Администратор (MyWork 2)",
+                "Без прав",
+                "Мастер",
+                "Приёмщик"
+            ],
+            "{}",
+            t.label
+        );
+        assert_eq!(
+            roles[6].permissions,
+            PermissionSet::from_codes([
+                "orders_create",
+                "orders_edit",
+                "clients_view",
+                "clients_create",
+                "clients_edit"
+            ])
+        );
+        assert_eq!(r.summary.roles, 7, "{}", t.label);
+        assert!(r.full_text().contains("  ролей — 7\n"), "{}", t.label);
     }
     Ok(())
 }
@@ -524,7 +591,7 @@ async fn dictionaries_are_written_in_the_order_of_use() -> Res {
         let text = r.full_text();
         assert!(
             text.contains(
-                "| dictionary | Бренды |  | из заказов — 3, из файла — 1, значений из одного заказа — 3 |"
+                "| dictionary | Бренды |  | из заказов — 3, из файла — 1, значений из одного заказа — 2 |"
             ),
             "{text}"
         );

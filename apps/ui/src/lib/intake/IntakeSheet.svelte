@@ -5,7 +5,6 @@
 	import { tick, untrack } from 'svelte';
 	import type { Client } from '$api/Client';
 	import type { DictionaryKind } from '$api/DictionaryKind';
-	import type { MasterUser } from '$api/MasterUser';
 	import type { Order } from '$api/Order';
 	import type { OrderValueField } from '$api/OrderValueField';
 	import { discardDraft } from '#lib/api/attachments.js';
@@ -18,7 +17,7 @@
 	import { readStorage, removeStorage, writeStorage } from '#lib/design/storage.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import { emitOrderChanged } from '#lib/orders/events.js';
-	import { masterItems, masterOf, masterValue, pendingMasterItems } from '#lib/orders/masters.js';
+	import { masterChoices, masterOf, masterValue, type MasterList } from '#lib/orders/masters.js';
 	import { orderPanel } from '#lib/orders/panel.svelte.js';
 	import { createDraftMedia, type Media } from '#lib/orders/photos.svelte.js';
 	import Button from '#lib/ui/Button.svelte';
@@ -122,9 +121,7 @@
 
 	let draft = $state<IntakeDraft>(emptyDraft(app.settings, app.statuses));
 	let dictionaries = $state.raw(noDictionaries());
-	/** `null` until the masters are loaded; `[]` when loading failed (`mastersFailed`). */
-	let masters = $state.raw<MasterUser[] | null>(null);
-	let mastersFailed = $state(false);
+	let masters = $state.raw<MasterList>(null);
 	let attempted = $state(false);
 	let submitError = $state<string | null>(null);
 	/** The draft as it was when `submitError` was shown: any edit since then hides it. */
@@ -284,12 +281,10 @@
 			(list) => {
 				if (mine !== dictionarySeq) return;
 				masters = list;
-				mastersFailed = false;
 			},
 			() => {
 				if (mine !== dictionarySeq) return;
-				masters = [];
-				mastersFailed = true;
+				masters = 'failed';
 			}
 		);
 	}
@@ -423,11 +418,7 @@
 	const brandItems = $derived(items(mergeSuggestions(dictionaries.brand, brands.values)));
 	const modelItems = $derived(items(models.values));
 	const colorItems = $derived(items(dictionaries.color));
-	const masterOptions = $derived(
-		masters === null || mastersFailed
-			? pendingMasterItems(draft.masterId, mastersFailed)
-			: masterItems(masters, draft.masterId)
-	);
+	const masterOptions = $derived(masterChoices(masters, draft.masterId));
 	const warrantyItems = $derived(
 		items(mergeSuggestions(dictionaries.warranty, [app.settings.default_warranty]))
 	);

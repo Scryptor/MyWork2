@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import type { MasterUser } from '$api/MasterUser';
 import {
 	NO_MASTER,
+	filterMasterItems,
+	masterChoices,
 	masterItems,
+	pendingMaster,
 	pendingMasterItems,
 	masterName,
 	masterOf,
@@ -49,6 +52,40 @@ describe('masters of an order', () => {
 			disabled: true
 		});
 		expect(pendingMasterItems(null, false)).toEqual([{ value: NO_MASTER, label: 'Не выбран' }]);
+	});
+
+	it('the order knows the name of its master: shown as it is while the masters load or fail', () => {
+		expect(pendingMasterItems(3, false, 'Антон').at(-1)).toEqual({
+			value: 3,
+			label: 'Антон',
+			disabled: true
+		});
+		expect(pendingMaster(3, true, 'Антон').label).toBe('Антон');
+		expect(pendingMaster(3, true).label).toBe('Мастер № 3');
+	});
+
+	it('before the masters are read nobody is «(отключён)»; after, the list decides', () => {
+		const labels = (items: { label: string }[]) => items.map((i) => i.label);
+		expect(labels(masterChoices(null, 3, 'Антон'))).toEqual(['Не выбран', 'Антон']);
+		expect(labels(masterChoices('failed', 3, 'Антон'))).toEqual(['Не выбран', 'Антон']);
+		expect(labels(masterChoices('failed', 3))).toEqual(['Не выбран', 'Мастер № 3']);
+		expect(labels(masterChoices(null, null))).toEqual(['Не выбран']);
+		expect(masterChoices(masters, 7, 'Уволен')).toEqual(masterItems(masters, 7, 'Уволен'));
+		expect(masterName(null, 3, 'Антон')).toBe('Антон');
+		expect(masterName('failed', 3, '3')).toBe('3');
+	});
+
+	it('«Фильтры»: every master, the disabled marked; before they are read only the chosen one, named', () => {
+		expect(filterMasterItems(masters, undefined).map((i) => i.label)).toEqual([
+			'Антон',
+			'Борис',
+			'Уволен (отключён)'
+		]);
+		expect(filterMasterItems(null, 5)).toEqual([{ value: 5, label: 'Загрузка…', disabled: true }]);
+		expect(filterMasterItems('failed', 5)).toEqual([
+			{ value: 5, label: 'Мастер № 5', disabled: true }
+		]);
+		expect(filterMasterItems(null, undefined)).toEqual([]);
 	});
 
 	it('maps «Не выбран» to null and back', () => {

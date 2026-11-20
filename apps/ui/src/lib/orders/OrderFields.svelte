@@ -7,7 +7,6 @@
 	import { untrack } from 'svelte';
 	import { resolve } from '$app/paths';
 	import type { Client } from '$api/Client';
-	import type { MasterUser } from '$api/MasterUser';
 	import type { Order } from '$api/Order';
 	import { serverClock } from '#lib/api/server-clock.svelte.js';
 	import { app } from '#lib/app/context.svelte.js';
@@ -33,7 +32,7 @@
 	import TextInput from '#lib/ui/TextInput.svelte';
 	import type { Autosave } from './autosave.js';
 	import type { Conflict, OrderField, OrderValues } from './editor.svelte.js';
-	import { masterItems, masterName, masterOf, masterValue } from './masters.js';
+	import { masterChoices, masterName, masterOf, masterValue, type MasterList } from './masters.js';
 	import { estimateText, isNoWarranty, toPay } from './view.js';
 
 	let {
@@ -55,8 +54,8 @@
 		autosave: Autosave<OrderValues>;
 		client: Client | null;
 		dictionaries: {
-			/** The masters: users marked «Мастер». */
-			masters: MasterUser[];
+			/** The masters: users marked «Мастер»; `null` until read, `'failed'` when not read. */
+			masters: MasterList;
 			warranty: string[];
 			device_type?: string[];
 			brand?: string[];
@@ -136,7 +135,7 @@
 		) as Record<DeviceChoice, { value: string }[]>
 	);
 	const masterOptions = $derived(
-		masterItems(dictionaries.masters, order.master_user_id, order.master)
+		masterChoices(dictionaries.masters, order.master_user_id, order.master)
 	);
 	const warrantyItems = $derived(dictionaries.warranty.map((value) => ({ value })));
 

@@ -1,15 +1,18 @@
 <!-- One user: the name is saved as typed (the shared editor, one queue of writes per record, a 409 merged);
      the role, «Мастер», sign-in on and off, disabling and the password are actions at once, each on the
      newest version. A refusal of the server (the last administrator, a taken login) stays at its field and
-     goes to a notice; the control then shows what the server has. -->
+     goes to a notice; the control then shows what the server has. A saved password that cannot be read
+     back is not a failure: a 401 then (the first password ended the program without sign-in, or the own
+     password closed this session) sends to the login page. -->
 <script lang="ts">
 	import { onDestroy } from 'svelte';
 	import type { Role } from '$api/Role';
 	import type { User } from '$api/User';
 	import type { UserPatch } from '$api/UserPatch';
-	import { ApiError } from '#lib/api/client.js';
+	import { ApiError, signInAgain } from '#lib/api/client.js';
 	import { listUsers, setUserPassword, updateUser } from '#lib/api/users.js';
 	import { createEntityEditor } from '#lib/app/entity-editor.svelte.js';
+	import { clearLoginNotices, queueLoginNotice } from '#lib/app/login-notice.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import Button from '#lib/ui/Button.svelte';
 	import Callout from '#lib/ui/Callout.svelte';
@@ -37,11 +40,12 @@
 	// Opened for one user: a dialog shows one record for its whole life.
 	// svelte-ignore state_referenced_locally
 	const initial = user;
-	const load = async () => {
-		const found = (await listUsers()).find((u) => u.id === initial.id);
+	const find = async (opts?: Parameters<typeof listUsers>[0]) => {
+		const found = (await listUsers(opts)).find((u) => u.id === initial.id);
 		if (!found) throw new ApiError(404, 'not_found', t.loadFailed, null);
 		return found;
 	};
+	const load = () => find();
 	const editor = createEntityEditor<User, 'display_name'>({
 		initial,
 		fields: ['display_name'],
@@ -110,15 +114,28 @@
 		errors = {};
 		try {
 			await setUserPassword(rec.id, newPassword);
-			toast.show({ message: t.passwordChanged });
-			newPassword = '';
-			changingPassword = false;
-			const fresh = await load();
-			editor.receive(fresh);
-			onchanged(fresh);
 		} catch (e) {
 			errors = userFieldErrors(e);
 			toast.show({ message: t.failed(userFailure(e)), tone: 'danger' });
+			busy = false;
+			return;
+		}
+		toast.show({ message: t.passwordChanged });
+		newPassword = '';
+		changingPassword = false;
+		try {
+			// Quiet: a 401 here is handled below, the notice goes first.
+			const fresh = await find({ quietUnauthenticated: true });
+			editor.receive(fresh);
+			onchanged(fresh);
+		} catch (e) {
+			if (e instanceof ApiError && e.status === 401) {
+				// The first password ended the program without sign-in, or the own password closed this
+				// session: the password is saved, and the program now asks who is there.
+				clearLoginNotices();
+				queueLoginNotice({ message: t.signInAfterPassword, tone: 'success' });
+				signInAgain();
+			} else toast.show({ message: t.loadFailed });
 		} finally {
 			busy = false;
 		}

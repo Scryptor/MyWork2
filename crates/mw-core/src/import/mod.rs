@@ -211,6 +211,7 @@ pub struct ImportSummary {
     pub statuses: u64,
     pub service_points: u64,
     pub dictionary_items: u64,
+    /// Роли пакета и добавленные готовые («Мастер», «Приёмщик»), которых в пакете не было.
     pub roles: u64,
     pub users: u64,
     pub clients: u64,

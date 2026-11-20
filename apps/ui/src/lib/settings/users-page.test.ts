@@ -1,7 +1,10 @@
 import { render, screen, waitFor, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApiError } from '#lib/api/client.js';
+import { ApiError, setUnauthenticatedHandler } from '#lib/api/client.js';
+import { clearLoginNotices, takeLoginNotices } from '#lib/app/login-notice.js';
+import { ru } from '#lib/i18n/ru.js';
+import { toast } from '#lib/ui/toast/toast.svelte.js';
 
 // «Пользователи» as a page: the list with «без входа» and «без пароля», the disabled in a group of their own,
 // no controls without «users_manage», and the server's lock-out text at the role.
@@ -88,6 +91,56 @@ describe('«Пользователи»', () => {
 		expect(
 			within(dialog).getByRole('button', { name: 'Отключить учётную запись' })
 		).toBeInTheDocument();
+	});
+
+	/** «Сменить пароль» of user 1 with the new password `secret`. */
+	async function changePassword(ui: ReturnType<typeof userEvent.setup>) {
+		render(Page);
+		await ui.click(await screen.findByRole('button', { name: 'Изменить: Имя 1' }));
+		const dialog = await screen.findByRole('dialog', { name: 'Пользователь' });
+		await ui.click(within(dialog).getByRole('button', { name: 'Сменить пароль' }));
+		await ui.type(within(dialog).getByLabelText(/Новый пароль/), 'secret');
+		await ui.click(within(dialog).getByRole('button', { name: 'Сохранить пароль' }));
+	}
+	const failedToasts = () =>
+		toast.items.filter((t) => t.message.startsWith(ru.users.failed(''))).map((t) => t.message);
+
+	it('the first password ends the program without sign-in: it asks to sign in, not «Не сохранено»', async () => {
+		toast.clear();
+		clearLoginNotices();
+		const signIn = vi.fn();
+		setUnauthenticatedHandler(signIn);
+		api.listUsers.mockResolvedValueOnce([user(1, { has_password: false })]);
+		api.setUserPassword.mockResolvedValue(undefined);
+		// Reading the user back: the program now asks who is there.
+		api.listUsers.mockRejectedValue(new ApiError(401, 'unauthenticated', 'Войдите', null));
+		await changePassword(userEvent.setup());
+		await waitFor(() => expect(signIn).toHaveBeenCalledTimes(1));
+		expect(api.setUserPassword).toHaveBeenCalledWith(1, 'secret');
+		// Quiet: the notice for the login page is queued before the program goes there.
+		expect(api.listUsers).toHaveBeenLastCalledWith({ quietUnauthenticated: true });
+		expect(failedToasts()).toEqual([]);
+		expect(takeLoginNotices()).toEqual([
+			{ message: ru.users.signInAfterPassword, tone: 'success' }
+		]);
+		setUnauthenticatedHandler(() => {});
+	});
+
+	it('the password saved but not read back: no «Не сохранено» either', async () => {
+		toast.clear();
+		api.listUsers.mockResolvedValueOnce([user(1)]);
+		api.setUserPassword.mockResolvedValue(undefined);
+		api.listUsers.mockRejectedValue(new ApiError(0, 'network', 'Нет связи', null));
+		await changePassword(userEvent.setup());
+		await waitFor(() => expect(toast.items.map((t) => t.message)).toContain(ru.users.loadFailed));
+		expect(toast.items.map((t) => t.message)).toContain(ru.users.passwordChanged);
+		expect(failedToasts()).toEqual([]);
+	});
+
+	it('«Может входить»: the first user with sign-in and a password turns sign-in on for the program', () => {
+		expect(ru.help.users.canSignIn.join(' ')).toContain(
+			'Первый пользователь, который может входить и у которого есть пароль, включает вход для всей программы'
+		);
 	});
 
 	it('adds a user without sign-in: no login or password is sent', async () => {

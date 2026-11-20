@@ -162,4 +162,20 @@ describe('explanations', () => {
 			for (const p of text) expect(p.trim(), code).not.toBe('');
 		}
 	});
+
+	it('the dictionaries: a final dot joins values only in list fields; counted are the values left out', () => {
+		const text = ru.importReport.explain.dictionary_from_orders.join(' ');
+		expect(text).not.toMatch(/регистром или точкой в конце/);
+		expect(text).toContain('у пунктов полей-списков — ещё и знаком препинания в конце');
+		expect(text).toContain('сколько таких не попало');
+	});
+
+	it('users: the screen of users is there; a lost password of the admins is named', () => {
+		const all = Object.values(ru.importReport.explain).flat().join(' ');
+		expect(all).not.toContain('появится позже');
+		expect(ru.importReport.explain.users_manage_granted.join(' ')).toContain('пароль не перенёсся');
+		expect(ru.importReport.explain.user_password_invalid.join(' ')).toContain(
+			'«Настройки → Пользователи»'
+		);
+	});
 });

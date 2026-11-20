@@ -10,7 +10,6 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import type { Client } from '$api/Client';
-	import type { MasterUser } from '$api/MasterUser';
 	import { listDictionary } from '#lib/api/catalogs.js';
 	import { ApiError, errorMessage } from '#lib/api/client.js';
 	import { getClient } from '#lib/api/clients.js';
@@ -29,6 +28,7 @@
 	import { dispute } from '#lib/orders/dispute.svelte.js';
 	import { onOrderChanged } from '#lib/orders/events.js';
 	import { historyItems, statusTimeline, warrantyCases } from '#lib/orders/history.js';
+	import type { MasterList } from '#lib/orders/masters.js';
 	import OrderDialogs from '#lib/orders/OrderDialogs.svelte';
 	import OrderFields from '#lib/orders/OrderFields.svelte';
 	import OrderFiles from '#lib/orders/OrderFiles.svelte';
@@ -63,12 +63,12 @@
 	let loadError = $state<string | null>(null);
 	let notFound = $state(false);
 	let dictionaries = $state.raw<{
-		masters: MasterUser[];
+		masters: MasterList;
 		warranty: string[];
 		device_type: string[];
 		brand: string[];
 		color: string[];
-	}>({ masters: [], warranty: [], device_type: [], brand: [], color: [] });
+	}>({ masters: null, warranty: [], device_type: [], brand: [], color: [] });
 
 	const orderActions = new OrderActions(() => editor);
 	const order = $derived(editor?.order ?? null);
@@ -81,15 +81,25 @@
 			: (app.points.find((p) => p.id === order.service_point_id)?.name ?? '')
 	);
 
-	// The dictionaries of the fields, once per opening of the card: settings may have changed.
+	// The dictionaries of the fields, once per opening of the card: settings may have changed. The masters
+	// on their own: dictionaries not read leave them, and the other way round.
 	$effect(() => {
 		const kinds = ['warranty', 'device_type', 'brand', 'color'] as const;
 		let current = true;
-		Promise.all([listMasters(), Promise.all(kinds.map((k) => listDictionary(k)))]).then(
-			([masters, lists]) => {
+		listMasters().then(
+			(masters) => {
+				if (current) dictionaries = { ...dictionaries, masters };
+			},
+			() => {
+				// Not read: the chosen master keeps its name.
+				if (current) dictionaries = { ...dictionaries, masters: 'failed' };
+			}
+		);
+		Promise.all(kinds.map((k) => listDictionary(k))).then(
+			(lists) => {
 				if (!current) return;
 				dictionaries = {
-					masters,
+					...dictionaries,
 					...(Object.fromEntries(
 						kinds.map((k, i) => [k, (lists[i] ?? []).map((d) => d.value)])
 					) as Omit<typeof dictionaries, 'masters'>)

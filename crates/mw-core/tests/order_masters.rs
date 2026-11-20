@@ -301,6 +301,35 @@ async fn issue_needs_a_master_user() -> Result<(), CoreError> {
             t.core.issue_order(&admin(), o.id, o.version).await,
             &[("master", "required_for_issue")],
         );
+        // Текст мастера без пользователя (из старой базы: «-», имя без пользователя) — не мастер:
+        // ни «Выдать», ни смена статуса, ни массовая выдача (та же смена статуса) не проходят.
+        for text in ["-", "Петров"] {
+            use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, sea_query::Expr};
+            mw_db::entity::order::Entity::update_many()
+                .col_expr(mw_db::entity::order::Column::Master, Expr::value(text))
+                .filter(mw_db::entity::order::Column::Id.eq(o.id))
+                .exec(t.core.db())
+                .await
+                .unwrap();
+            let shown = t.core.get_order(&admin(), o.id).await?;
+            assert_eq!(
+                (shown.master.as_str(), shown.master_user_id),
+                (text, None),
+                "{}",
+                t.label
+            );
+            assert_validation(
+                t.core.issue_order(&admin(), o.id, o.version).await,
+                &[("master", "required_for_issue")],
+            );
+            let issued = status_id_by_name(&t.core, "Выдан").await;
+            assert_validation(
+                t.core
+                    .change_status_with(&admin(), o.id, o.version, issued, false)
+                    .await,
+                &[("master", "required_for_issue")],
+            );
+        }
         let o = t
             .core
             .update_order(&admin(), o.id, o.version, set_master(Some(anton)))

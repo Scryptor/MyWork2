@@ -86,6 +86,29 @@ describe('«Мастер по умолчанию»', () => {
 	});
 });
 
+describe('«Мастер по умолчанию» before the masters are read', () => {
+	it('while they load the saved master says «Загрузка…», not a blank or «(отключён)»', async () => {
+		masters.listMasters.mockReturnValue(new Promise(() => {}));
+		state.settings = { ...state.settings, default_master_user_id: 3 };
+		render(Page);
+		await waitFor(() => expect(masters.listMasters).toHaveBeenCalled());
+		expect(screen.getByRole('combobox', { name: 'Мастер по умолчанию' })).toHaveTextContent(
+			/^Загрузка…$/
+		);
+	});
+
+	it('when they are not read it says «Мастер № 3»; the warranties still come', async () => {
+		masters.listMasters.mockRejectedValue(new TypeError('Failed to fetch'));
+		state.settings = { ...state.settings, default_master_user_id: 3, default_warranty: '45 суток' };
+		render(Page);
+		const box = screen.getByRole('combobox', { name: 'Мастер по умолчанию' });
+		await waitFor(() => expect(box).toHaveTextContent(/^Мастер № 3$/));
+		expect(screen.getByRole('combobox', { name: 'Гарантия по умолчанию' })).toHaveTextContent(
+			'45 суток (нет в справочнике)'
+		);
+	});
+});
+
 /** The list is opened from the keyboard; jsdom does not place it, so it is found with `hidden`. */
 async function openWarranty() {
 	const box = screen.getByRole('combobox', { name: 'Гарантия по умолчанию' });

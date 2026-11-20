@@ -14,7 +14,6 @@
 
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import type { MasterUser } from '$api/MasterUser';
 	import type { Order } from '$api/Order';
 	import { ApiError, errorMessage } from '#lib/api/client.js';
 	import { app } from '#lib/app/context.svelte.js';
@@ -28,7 +27,7 @@
 	import MoneyInput from '#lib/ui/MoneyInput.svelte';
 	import Select from '#lib/ui/Select.svelte';
 	import Textarea from '#lib/ui/Textarea.svelte';
-	import { masterItems, masterOf, masterValue } from './masters.js';
+	import { masterChoices, masterOf, masterValue, type MasterList } from './masters.js';
 	import { isNoWarranty, issueWarranty, toPay } from './view.js';
 
 	let {
@@ -41,7 +40,8 @@
 		open: boolean;
 		/** The order as the panel shows it, own unsaved values included. */
 		order: Order | null;
-		dictionaries: { masters: MasterUser[]; warranty: string[] };
+		/** `masters` is `null` until read: the chosen master then is not «(отключён)». */
+		dictionaries: { masters: MasterList; warranty: string[] };
 		defaultWarranty: string;
 		/** Saves and issues; throws the server's error, which the dialog shows. */
 		onissue: (values: IssueValues) => Promise<void>;
@@ -66,7 +66,7 @@
 		warranty: 'warranty'
 	};
 	const masterOptions = $derived(
-		order ? masterItems(dictionaries.masters, order.master_user_id, order.master) : []
+		order ? masterChoices(dictionaries.masters, order.master_user_id, order.master) : []
 	);
 	const warrantyItems = $derived(dictionaries.warranty.map((value) => ({ value })));
 

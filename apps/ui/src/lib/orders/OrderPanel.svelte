@@ -11,7 +11,6 @@
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import type { Client } from '$api/Client';
-	import type { MasterUser } from '$api/MasterUser';
 	import { listDictionary } from '#lib/api/catalogs.js';
 	import { errorMessage } from '#lib/api/client.js';
 	import { getClient } from '#lib/api/clients.js';
@@ -34,6 +33,7 @@
 	import { createOrderEditor, type OrderEditor } from './editor.svelte.js';
 	import { onOrderChanged } from './events.js';
 	import { dispute } from './dispute.svelte.js';
+	import type { MasterList } from './masters.js';
 	import OrderDialogs from './OrderDialogs.svelte';
 	import OrderFields from './OrderFields.svelte';
 	import OrderHistory from './OrderHistory.svelte';
@@ -52,8 +52,8 @@
 	let media = $state.raw<OrderMedia | null>(null);
 	let cameraInput = $state<HTMLInputElement | null>(null);
 	let loadError = $state<string | null>(null);
-	let dictionaries = $state.raw<{ masters: MasterUser[]; warranty: string[] }>({
-		masters: [],
+	let dictionaries = $state.raw<{ masters: MasterList; warranty: string[] }>({
+		masters: null,
 		warranty: []
 	});
 	let body = $state<HTMLElement | null>(null);
@@ -82,20 +82,27 @@
 	);
 
 	// The masters and the dictionary «Гарантия», asked again at every opening: settings may have changed.
+	// Each on its own: one not read leaves the other.
 	const isOpen = $derived(orderPanel.id !== null);
 	$effect(() => {
 		if (!isOpen) return;
 		let current = true;
-		Promise.all([listMasters(), listDictionary('warranty')]).then(
-			([masters, warranty]) => {
-				if (!current) return;
-				dictionaries = {
-					masters,
-					warranty: warranty.map((d) => d.value)
-				};
+		listMasters().then(
+			(masters) => {
+				if (current) dictionaries = { ...dictionaries, masters };
 			},
 			() => {
-				// Without them the fields still take any text.
+				// Not read: the chosen master keeps its name (an earlier list stays).
+				if (current && dictionaries.masters === null)
+					dictionaries = { ...dictionaries, masters: 'failed' };
+			}
+		);
+		listDictionary('warranty').then(
+			(warranty) => {
+				if (current) dictionaries = { ...dictionaries, warranty: warranty.map((d) => d.value) };
+			},
+			() => {
+				// Without it the field still takes any text.
 			}
 		);
 		return () => {

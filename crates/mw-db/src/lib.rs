@@ -7,6 +7,7 @@ pub mod entity;
 pub mod ids;
 pub mod masters;
 pub mod migration;
+pub mod roles;
 pub mod testing;
 
 pub use connect::{connect, sqlite_url};

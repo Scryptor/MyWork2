@@ -4,10 +4,14 @@ import type { Role } from '$api/Role';
 import type { RolePatch } from '$api/RolePatch';
 import type { User } from '$api/User';
 import type { UserPatch } from '$api/UserPatch';
-import { request } from './client.js';
+import { request, type RequestOptions } from './client.js';
 
-/** Every user, disabled ones too (the right «Пользователи и права»). */
-export const listUsers = () => request<User[]>('GET', '/users');
+/**
+ * Every user, disabled ones too (the right «Пользователи и права»). `quietUnauthenticated`: the caller
+ * handles a 401 itself.
+ */
+export const listUsers = (opts?: Pick<RequestOptions, 'quietUnauthenticated'>) =>
+	request<User[]>('GET', '/users', opts);
 
 export const createUser = (body: NewUser) => request<User>('POST', '/users', { body });
 

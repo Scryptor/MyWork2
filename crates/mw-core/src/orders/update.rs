@@ -665,9 +665,8 @@ impl Core {
             let required = crate::settings::load(tx).await?.issue_required;
             let empty = |req: IssueRequirement| match req {
                 IssueRequirement::FinalPrice => current.final_price.is_none(),
-                IssueRequirement::Master => {
-                    current.master_user_id.is_none() && current.master.trim().is_empty()
-                }
+                // Мастер — пользователь: текст без него («-» и имена из старой базы) не мастер.
+                IssueRequirement::Master => current.master_user_id.is_none(),
                 IssueRequirement::WorkDone => current.work_done.trim().is_empty(),
                 IssueRequirement::Warranty => current.warranty_text.trim().is_empty(),
             };

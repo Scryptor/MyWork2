@@ -653,6 +653,8 @@ impl Core {
 
         let (status_ids, point_ids) = write_catalogs(tx, b).await?;
         let (role_ids, user_ids) = write_access(self, tx, b).await?;
+        // Стирание убрало и готовые роли: тех, что нет в пакете, добавляем заново.
+        let builtin_roles = mw_db::roles::ensure_builtin_roles(tx).await?.len() as u64;
         let phone_count = write_clients(tx, b).await?;
         let tracking_count = write_orders(tx, b, &status_ids, &point_ids).await?;
 
@@ -754,7 +756,7 @@ impl Core {
         expect_count::<status::Entity>(tx, "статусы", b.statuses.len() as u64).await?;
         expect_count::<service_point::Entity>(tx, "точки", b.service_points.len() as u64).await?;
         expect_count::<dictionary_item::Entity>(tx, "справочники", dictionary_items).await?;
-        let roles = b.roles.len() as u64 + u64::from(masters.role_created);
+        let roles = b.roles.len() as u64 + builtin_roles + u64::from(masters.role_created);
         expect_count::<role::Entity>(tx, "роли", roles).await?;
         let users = (b.users.len() + masters.created.len()) as u64;
         expect_count::<user::Entity>(tx, "пользователи", users).await?;
@@ -771,7 +773,7 @@ impl Core {
             statuses: b.statuses.len() as u64,
             service_points: b.service_points.len() as u64,
             dictionary_items,
-            roles: b.roles.len() as u64,
+            roles,
             users: b.users.len() as u64,
             clients: b.clients.len() as u64,
             client_phones: phone_count,

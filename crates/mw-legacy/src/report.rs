@@ -234,7 +234,7 @@ impl ImportReport {
             ("статусов", m.statuses),
             ("точек обслуживания", m.service_points),
             ("значений справочников", m.dictionary_items),
-            ("групп доступа", m.roles),
+            ("ролей", m.roles),
             ("пользователей", m.users),
             ("мастеров создано", m.masters_created),
             ("пользователей отмечено «Мастер»", m.masters_marked),

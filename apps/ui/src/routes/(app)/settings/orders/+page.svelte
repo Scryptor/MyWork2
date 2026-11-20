@@ -1,7 +1,6 @@
 <!-- «Заказы» (spec 6.8): what a new order starts with and when an order needs attention. -->
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
-	import type { MasterUser } from '$api/MasterUser';
 	import { listDictionary, updateSettings } from '#lib/api/catalogs.js';
 	import { listMasters } from '#lib/api/masters.js';
 	import { app } from '#lib/app/context.svelte.js';
@@ -15,7 +14,7 @@
 	import Select from '#lib/ui/Select.svelte';
 	import Switch from '#lib/ui/Switch.svelte';
 	import TextInput from '#lib/ui/TextInput.svelte';
-	import { masterItems, masterOf, masterValue } from '#lib/orders/masters.js';
+	import { masterChoices, masterOf, masterValue, type MasterList } from '#lib/orders/masters.js';
 
 	const t = ru.settings;
 	const editor = createSettingsEditor({
@@ -42,20 +41,24 @@
 		...app.activePoints.map((p) => ({ value: p.id, label: p.name }))
 	]);
 
-	let masters = $state.raw<MasterUser[]>([]);
+	let masters = $state.raw<MasterList>(null);
 	/** The warranties of the dictionary, not archived; `null` while not read (or not readable). */
 	let warranties = $state<string[] | null>(null);
-	onMount(async () => {
-		try {
-			const [m, w] = await Promise.all([listMasters(), listDictionary('warranty')]);
-			masters = m;
-			warranties = w.filter((i) => !i.archived).map((i) => i.value);
-		} catch {
-			// Without them only «Не выбран» is offered; the warranty list keeps the saved one.
-		}
+	// Each on its own: one not read leaves the other.
+	onMount(() => {
+		listMasters().then(
+			(m) => (masters = m),
+			// Without them only «Не выбран» and the saved one («Мастер № 4») are offered.
+			() => (masters = 'failed')
+		);
+		listDictionary('warranty').then(
+			(w) => (warranties = w.filter((i) => !i.archived).map((i) => i.value)),
+			// The warranty list keeps the saved one.
+			() => {}
+		);
 	});
 	const master = $derived(editor.value('default_master_user_id', s.default_master_user_id) ?? null);
-	const masterOptions = $derived(masterItems(masters, master));
+	const masterOptions = $derived(masterChoices(masters, master));
 
 	const warranty = $derived(editor.value('default_warranty', s.default_warranty) ?? '');
 	/**

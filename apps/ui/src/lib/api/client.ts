@@ -38,6 +38,14 @@ export function setUnauthenticatedHandler(fn: () => void): void {
 	onUnauthenticated = fn;
 }
 
+/**
+ * A 401 of a `quietUnauthenticated` request that its caller has made sense of (a notice for the login page
+ * queued first): the session ends after all, as on any other 401.
+ */
+export function signInAgain(): void {
+	onUnauthenticated();
+}
+
 export function apiUrl(path: string, query?: Query): string {
 	const params = new URLSearchParams();
 	for (const [key, value] of Object.entries(query ?? {})) {

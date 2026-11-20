@@ -461,10 +461,11 @@ async fn import_turns_master_names_into_master_users() {
             .await
             .unwrap();
         // «Петров» (файл мастеров, мастер по умолчанию и «ПЕТРОВ» в заказах) — новый мастер без
-        // входа; «олег» — пользователь MyWork 2 «Олег», он получил отметку и не задвоен.
+        // входа; «олег» — пользователь MyWork 2 «Олег», он получил отметку и не задвоен. Роли — две
+        // из пакета и готовые «Мастер» и «Приёмщик».
         assert_eq!(
             (s.users, s.masters_created, s.masters_marked, s.roles),
-            (2, 1, 1, 2),
+            (2, 1, 1, 4),
             "{}",
             t.label
         );
@@ -530,5 +531,95 @@ async fn masters_in_the_dictionary_of_a_bundle_are_refused() {
             .await
             .unwrap_err();
         assert!(err.to_string().contains("мастера"), "{}: {err}", t.label);
+    }
+}
+
+/// Импорт стирает роли базы, но готовые «Мастер» и «Приёмщик» остаются в программе: их нет в пакете
+/// — добавляются с готовыми правами; группа MyWork 2 с тем же названием (без учёта регистра и «ё»)
+/// не задваивается и сохраняет свои права.
+#[tokio::test]
+async fn import_keeps_the_builtin_roles() {
+    for t in cores().await {
+        // Нет ни одного нового мастера: роль «Мастер» не нужна правилу мастеров, но остаётся.
+        let mut b = sample_bundle();
+        b.masters.clear();
+        b.settings.default_master = None;
+        for o in &mut b.orders {
+            o.master = String::new();
+        }
+        let s = t
+            .core
+            .import_bundle(&admin(), b, ImportMode::IntoEmpty)
+            .await
+            .unwrap();
+        assert_eq!(s.roles, 4, "{}", t.label);
+        let roles = t.core.list_roles(&admin()).await.unwrap();
+        let builtin = |key: &str| {
+            roles
+                .iter()
+                .filter(|r| mw_domain::search::normalize_search(&r.name) == key)
+                .collect::<Vec<_>>()
+        };
+        let clerk = builtin("приемщик");
+        assert_eq!(clerk.len(), 1, "{}", t.label);
+        assert_eq!(
+            (clerk[0].name.as_str(), &clerk[0].permissions),
+            (
+                "Приёмщик",
+                &PermissionSet::from_codes([
+                    "orders_create",
+                    "orders_edit",
+                    "clients_view",
+                    "clients_create",
+                    "clients_edit"
+                ])
+            ),
+            "{}",
+            t.label
+        );
+        let master = builtin("мастер");
+        assert_eq!(master.len(), 1, "{}", t.label);
+        assert_eq!(
+            master[0].permissions,
+            PermissionSet::from_codes(["orders_edit", "clients_view"])
+        );
+        assert_eq!(roles.len(), 4);
+    }
+    for t in cores().await {
+        // Группы MyWork 2 «ПРИЕМЩИК» и «мастер» — те же роли: своих прав не теряют, не задваиваются.
+        let mut b = sample_bundle();
+        b.roles.push(mw_core::NewRole {
+            name: "ПРИЕМЩИК".into(),
+            permissions: PermissionSet::from_codes(["clients_view"]),
+        });
+        b.roles[1].name = "мастер".into();
+        b.users[1].role = "мастер".into();
+        for row in &mut b.legacy_rows {
+            if let Some(mw_core::LegacyTarget::Role(name)) = &mut row.target {
+                *name = "мастер".into();
+            }
+        }
+        let s = t
+            .core
+            .import_bundle(&admin(), b, ImportMode::IntoEmpty)
+            .await
+            .unwrap();
+        assert_eq!(s.roles, 3, "{}", t.label);
+        let roles = t.core.list_roles(&admin()).await.unwrap();
+        let names: Vec<_> = roles.iter().map(|r| r.name.as_str()).collect();
+        assert_eq!(
+            names,
+            ["Администратор", "мастер", "ПРИЕМЩИК"],
+            "{}",
+            t.label
+        );
+        assert_eq!(
+            roles[2].permissions,
+            PermissionSet::from_codes(["clients_view"])
+        );
+        assert_eq!(
+            roles[1].permissions,
+            PermissionSet::from_codes(["orders_edit"])
+        );
     }
 }
