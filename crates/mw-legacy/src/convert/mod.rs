@@ -3,6 +3,7 @@
 pub(crate) mod access;
 pub(crate) mod catalogs;
 pub(crate) mod clients;
+pub(crate) mod dictionaries;
 pub(crate) mod history;
 pub(crate) mod orders;
 pub(crate) mod settings;
@@ -372,6 +373,9 @@ pub(crate) fn convert(db: &LegacyDb, folder: &LegacyFolder, now: NaiveDateTime) 
     let mut stage = clients::convert_clients(db, now, &mut w);
     let converted = orders::convert_orders(db, &catalogs, &stage.order_client, &hints, now, &mut w);
     clients::fill_created_at(&mut stage, &converted);
+    catalogs::warn_junk_masters(&converted, &mut w);
+    let dictionary =
+        dictionaries::build_dictionaries(&catalogs.dictionary, &converted, &stage.clients, &mut w);
     let history = history::convert_history(db, &converted, now, &mut w);
     warn_unknown_columns(db, &mut w);
     warn_text_cells(db, &mut w);
@@ -405,7 +409,7 @@ pub(crate) fn convert(db: &LegacyDb, folder: &LegacyFolder, now: NaiveDateTime) 
         source_path: folder.root.display().to_string(),
         statuses: catalogs.statuses,
         service_points: catalogs.service_points,
-        dictionary: catalogs.dictionary,
+        dictionary,
         masters: catalogs.masters,
         roles,
         users,
@@ -888,6 +892,142 @@ mod tests {
         assert_eq!(
             warned(&c, "client_duplicates", "ClientsMap", "").as_deref(),
             Some("1, 5")
+        );
+    }
+
+    fn dictionary(c: &super::Conversion, kind: mw_domain::dictionary::DictionaryKind) -> Vec<&str> {
+        c.bundle
+            .dictionary
+            .iter()
+            .find(|(k, _)| *k == kind)
+            .map(|(_, values)| values.iter().map(String::as_str).collect())
+            .unwrap()
+    }
+
+    fn standard(kind: mw_domain::dictionary::DictionaryKind) -> Vec<&'static str> {
+        mw_domain::dictionary::DEFAULT_DICTIONARY
+            .iter()
+            .find(|(k, _)| *k == kind)
+            .map(|(_, values)| values.to_vec())
+            .unwrap()
+    }
+
+    /// Справочники — из значений заказов (по числу заказов), затем значения только из файлов.
+    #[tokio::test]
+    async fn dictionaries_come_from_orders_then_from_files() {
+        use mw_domain::dictionary::DictionaryKind::*;
+        let c = conversion_of(V32).await;
+        // «Nokia» только в заказах (nokia, Nokia, Nokia) — одно значение, частое написание, первым;
+        // «SAMSUNG» в заказах — «Samsung» из файла; «Apple» только в файле — в конце; удалённый
+        // заказ №8 не считается.
+        assert_eq!(
+            dictionary(&c, Brand),
+            [
+                "Nokia",
+                "Samsung",
+                "Бренд 6",
+                "Бренд 7",
+                "Бренд 9",
+                "Бренд 10",
+                "Бренд 12",
+                "Apple"
+            ]
+        );
+        // Пункт списка — хотя бы из двух заказов: «Нет изображения» (№1 и №3) — да, «Шумит» (один
+        // заказ) и «Течёт» (дважды в одном заказе) — нет; стандартные значения — в конце.
+        let mut malfunction = vec!["Нет изображения"];
+        malfunction.extend(standard(Malfunction));
+        assert_eq!(dictionary(&c, Malfunction), malfunction);
+        // Гарантия «90» — срок в днях, в справочнике; «0» — нет.
+        assert_eq!(
+            dictionary(&c, Warranty),
+            ["30 дней", "3 мес", "90", "3 месяца", "Без гарантии"]
+        );
+        // «Откуда узнали» — из клиентов: «Интернет»/«интернет» — одно значение со стандартным написанием.
+        let mut sources = vec!["Интернет"];
+        let numbered: Vec<String> = (3..=9).map(|id| format!("Источник {id}")).collect();
+        sources.extend(numbered.iter().map(String::as_str));
+        sources.extend(
+            standard(ClientSource)
+                .into_iter()
+                .filter(|v| *v != "Интернет"),
+        );
+        assert_eq!(dictionary(&c, ClientSource), sources);
+        let devices: Vec<String> = [1, 2, 3, 4, 5, 6, 7, 9, 10, 12]
+            .iter()
+            .map(|id| format!("Устройство {id}"))
+            .collect();
+        let mut device_types: Vec<&str> = devices.iter().map(String::as_str).collect();
+        device_types.extend(standard(DeviceType));
+        assert_eq!(dictionary(&c, DeviceType), device_types);
+        for kind in [Completeness, Condition, WorkDone] {
+            assert_eq!(dictionary(&c, kind), standard(kind), "{kind:?}");
+        }
+        assert!(dictionary(&c, Master).is_empty());
+
+        let info: Vec<(&str, &str)> = c
+            .warnings
+            .list()
+            .iter()
+            .filter(|w| w.code.as_str() == "dictionary_from_orders")
+            .map(|w| (w.key.as_str(), w.value.as_str()))
+            .collect();
+        assert_eq!(
+            info,
+            [
+                ("Типы устройств", "из заказов — 10, стандартных — 8"),
+                ("Бренды", "из заказов — 7, из файла — 1"),
+                ("Цвета", "из заказов — 10, стандартных — 8"),
+                ("Комплектность", "из заказов — 0, стандартных — 7"),
+                ("Состояние", "из заказов — 0, стандартных — 5"),
+                ("Неисправности", "из заказов — 1, стандартных — 7"),
+                ("Выполненные работы", "из заказов — 0, стандартных — 6"),
+                ("Откуда узнали", "из клиентов — 8, стандартных — 4"),
+                ("Гарантия", "из заказов — 3, из файла — 2"),
+            ]
+        );
+    }
+
+    /// Имя мастера без букв — не мастер: в отчёте одной строкой на написание (с числом заказов),
+    /// строка файла мастеров без букв — тоже.
+    #[tokio::test]
+    async fn master_names_without_letters_are_reported_not_listed() {
+        let c = conversion_of(V32).await;
+        assert_eq!(c.bundle.masters, ["ПЕТРОВ", "СИДОРОВ"]);
+        assert_eq!(order(&c.bundle, 9).master, "-");
+        let junk: Vec<(&str, &str, &str, &str, &str)> = c
+            .warnings
+            .list()
+            .iter()
+            .filter(|w| w.code.as_str() == "master_name_junk")
+            .map(|w| {
+                (
+                    w.source.as_str(),
+                    w.key.as_str(),
+                    w.field.as_str(),
+                    w.value.as_str(),
+                    w.message.as_str(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            junk,
+            [
+                (
+                    "file",
+                    "settings/masters.txt",
+                    "",
+                    "--",
+                    "Строка без букв — не мастер."
+                ),
+                (
+                    "Catalog",
+                    "",
+                    "master",
+                    "-",
+                    "Заказов: 2. В имени нет букв: мастер не назначен, текст в заказах остался."
+                ),
+            ]
         );
     }
 }

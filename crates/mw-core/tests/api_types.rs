@@ -183,7 +183,14 @@ fn response_types_are_complete_and_hide_secrets() {
     ] {
         assert!(!decl.contains("?:") && !decl.contains("bigint"), "{decl}");
     }
-    assert!(!User::decl(&c).contains("password"));
+    // Признак «пароль задан» — не секрет; ни хэша, ни схемы пароля в ответе нет.
+    let user = User::decl(&c);
+    assert!(
+        !user
+            .replace("has_password: boolean", "")
+            .contains("password"),
+        "{user}"
+    );
     assert!(!MasterUser::decl(&c).contains("login"));
     assert!(Order::decl(&c).contains("estimate_from: Money | null"));
 }

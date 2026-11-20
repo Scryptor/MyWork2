@@ -1,20 +1,28 @@
 //! Мастера — пользователи: одно правило для миграции данных, импорта MyWork 2 и начальной настройки.
 //!
 //! Имена мастеров — из заказов без мастера-пользователя и переданные списком — сводятся без учёта
-//! регистра (`mw_domain::search::normalize_search`). Для каждого имени пользователь с тем же
+//! регистра (`mw_domain::search::normalize_search`). Имя без единой буквы («-», «--», «?», «0») —
+//! не мастер: такой заказ остаётся без `master_user_id`. Для каждого имени пользователь с тем же
 //! отображаемым именем или логином получает отметку «Мастер», а если такого нет, создаётся
-//! пользователь без входа с отметкой «Мастер» и ролью «Мастер». Заказы получают ссылку
-//! `master_user_id`; текст `master`, версия и время изменения заказа не меняются. Ничего не удаляется;
-//! логины, пароли, роли и вход прежних пользователей не меняются.
+//! пользователь без входа с отметкой «Мастер» и ролью «Мастер». Его имя — первое написание из списка,
+//! иначе самое частое в заказах (при равенстве — не заглавными буквами, затем первое по номеру
+//! заказа; `mw_domain::spelling::Spellings`); края обрезаны, повторные пробелы внутри схлопнуты.
+//! Заказы получают ссылку `master_user_id`; текст `master`, версия и время изменения заказа не
+//! меняются. Ничего не удаляется; логины, пароли, роли и вход прежних пользователей не меняются.
 //!
-//! Вызывается из выпущенной миграции, поэтому не зависит от набора колонок сущностей: читает и
-//! пишет только перечисленные здесь колонки.
+//! Модуль — часть выпущенной миграции `m20261120_000004_masters_to_users`: любая правка должна
+//! оставаться совместимой со схемой базы на шаге этой миграции (читать и писать только колонки,
+//! которые к ней уже есть; сущности не используются), а повторный запуск — ничего не менять. Правила
+//! написания и пропуска имён без букв добавлены после выпуска: они действуют на следующие запуски
+//! (импорт, начальная настройка, база, ещё не обновлённая). Уже перенесённая база не трогается:
+//! миграция на ней больше не выполняется, а при повторном запуске заказы со ссылкой на мастера не
+//! читаются и имена из списка находят прежних пользователей (ключ имени — тот же `normalize_search`).
 
-use std::cmp::Reverse;
 use std::collections::{BTreeMap, HashMap};
 
 use chrono::NaiveDateTime;
 use mw_domain::search::normalize_search;
+use mw_domain::spelling::{Spellings, has_letter, tidy};
 use sea_orm::sea_query::{Alias, Expr, ExprTrait, Query};
 use sea_orm::{ConnectionTrait, DbErr};
 
@@ -59,22 +67,18 @@ impl MasterUsers {
 struct Group {
     /// Первое написание из переданного списка (справочник, файл, настройка).
     listed: Option<String>,
-    /// Написание из заказов → число заказов.
-    spellings: BTreeMap<String, u64>,
+    /// Написания из заказов с числом заказов, в порядке номеров заказов.
+    spellings: Spellings,
 }
 
 impl Group {
-    /// Имя нового пользователя: из списка, иначе самое частое в заказах (при равенстве — первое по
-    /// алфавиту).
+    /// Имя нового пользователя: из списка, иначе самое частое в заказах (при равенстве — не
+    /// заглавными буквами, затем первое по номеру заказа).
     fn name(&self) -> String {
         if let Some(listed) = &self.listed {
             return listed.clone();
         }
-        self.spellings
-            .iter()
-            .max_by_key(|(spelling, count)| (**count, Reverse(*spelling)))
-            .map(|(spelling, _)| spelling.clone())
-            .unwrap_or_default()
+        self.spellings.best().unwrap_or_default().to_owned()
     }
 }
 
@@ -254,37 +258,38 @@ pub async fn masters_to_users(
 ) -> Result<MasterUsers, DbErr> {
     let mut groups: BTreeMap<String, Group> = BTreeMap::new();
     for name in names {
-        let name = name.trim();
-        let key = normalize_search(name);
-        if !key.is_empty() {
-            groups
-                .entry(key)
-                .or_default()
-                .listed
-                .get_or_insert_with(|| name.to_owned());
+        let name = tidy(name);
+        if !has_letter(&name) {
+            continue;
         }
+        groups
+            .entry(normalize_search(&name))
+            .or_default()
+            .listed
+            .get_or_insert(name);
     }
-    // Заказы без мастера-пользователя: номер и имя текстом (все, в том числе удалённые).
+    // Заказы без мастера-пользователя: номер и имя текстом (все, в том числе удалённые), по номерам.
     let mut select = Query::select();
     select
         .columns([a("id"), a("master")])
         .from(a("orders"))
         .and_where(Expr::col(a("master_user_id")).is_null())
-        .and_where(Expr::col(a("master")).ne(""));
+        .and_where(Expr::col(a("master")).ne(""))
+        .order_by(a("id"), sea_orm::sea_query::Order::Asc);
     let mut orders: Vec<(i64, String)> = Vec::new();
     for row in conn.query_all(&select).await? {
         let id: i64 = row.try_get_by_index(0)?;
         let master: String = row.try_get_by_index(1)?;
-        let key = normalize_search(&master);
-        if key.is_empty() {
+        let master = tidy(&master);
+        if !has_letter(&master) {
             continue;
         }
-        *groups
+        let key = normalize_search(&master);
+        groups
             .entry(key.clone())
             .or_default()
             .spellings
-            .entry(master.trim().to_owned())
-            .or_default() += 1;
+            .add(&master, 1);
         orders.push((id, key));
     }
 

@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use mw_db::entity::dictionary_item;
-use mw_domain::dictionary::DictionaryKind;
+use mw_domain::dictionary::{DictionaryKind, list_items};
 use mw_domain::permission::Permission;
 use mw_domain::search::normalize_search;
 use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, Statement};
@@ -111,7 +111,7 @@ impl Core {
         let mut totals: HashMap<i64, u64> = HashMap::new();
         for (text, count) in groups {
             let mut keys: Vec<String> = if target.list {
-                text.split(',').map(normalize_search).collect()
+                list_items(&text).map(normalize_search).collect()
             } else {
                 vec![normalize_search(&text)]
             };

@@ -363,12 +363,14 @@ async fn masters_become_users_and_a_legacy_user_with_the_name_is_marked() -> Res
             "{}",
             t.label
         );
-        // Мастера без пользователя (файл мастеров и заказы) — пользователи без входа.
+        // Мастера без пользователя (файл мастеров и заказы) — пользователи без входа. «МАСТЕР 6»
+        // (№5) и «Мастер 6» (№6) — один мастер не заглавными; «Мастер   12» — «Мастер 12»; «-»
+        // (№9, №10) и «--» из файла — не мастера.
         let masters = t.core.list_masters(&admin()).await?;
         let mut names: Vec<&str> = masters.iter().map(|m| m.display_name.as_str()).collect();
         names.sort_unstable();
         let mut expected = vec!["Олег", "ПЕТРОВ", "СИДОРОВ"];
-        let numbered: Vec<String> = [1, 2, 3, 4, 5, 6, 8, 9, 10, 12]
+        let numbered: Vec<String> = [1, 2, 3, 4, 6, 8, 12]
             .iter()
             .map(|id| format!("Мастер {id}"))
             .collect();
@@ -390,7 +392,7 @@ async fn masters_become_users_and_a_legacy_user_with_the_name_is_marked() -> Res
                 r.summary.masters_created,
                 r.summary.masters_marked
             ),
-            (4, 12, 1),
+            (4, 9, 1),
             "{}",
             t.label
         );
@@ -405,13 +407,89 @@ async fn masters_become_users_and_a_legacy_user_with_the_name_is_marked() -> Res
             .find(|m| m.display_name == "Мастер 1")
             .unwrap();
         assert_eq!(o1.master_user_id, Some(m1.id));
+        let m6 = masters
+            .iter()
+            .find(|m| m.display_name == "Мастер 6")
+            .unwrap();
+        for id in [5, 6] {
+            assert_eq!(
+                t.core.get_order(&admin(), id).await?.master_user_id,
+                Some(m6.id)
+            );
+        }
+        for id in [9, 10] {
+            let o = t.core.get_order(&admin(), id).await?;
+            assert_eq!(
+                (o.master.as_str(), o.master_user_id),
+                ("-", None),
+                "{}",
+                t.label
+            );
+        }
+        assert_eq!(r.count(WarningCode::MasterNameJunk), 2, "{}", t.label);
         // «Мастер по умолчанию» MyWork 2 — тоже мастер-пользователь.
         let petrov = masters.iter().find(|m| m.display_name == "ПЕТРОВ").unwrap();
         assert_eq!(t.core.settings().default_master_user_id, Some(petrov.id));
         let text = r.full_text();
-        assert!(text.contains("  мастеров создано — 12\n"), "{text}");
+        assert!(text.contains("  мастеров создано — 9\n"), "{text}");
         assert!(
             text.contains("  пользователей отмечено «Мастер» — 1\n"),
+            "{text}"
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn dictionaries_are_written_in_the_order_of_use() -> Res {
+    use mw_domain::dictionary::DictionaryKind;
+    for t in cores().await {
+        let (src, data) = (fixture_dir(V32).await, tempfile::tempdir()?);
+        let r = import_folder(&t.core, &admin(), &options(src.path(), data.path(), false)).await?;
+        let brands: Vec<String> = t
+            .core
+            .list_dictionary(DictionaryKind::Brand, false)
+            .await?
+            .into_iter()
+            .map(|i| i.value)
+            .collect();
+        assert_eq!(
+            brands,
+            [
+                "Nokia",
+                "Samsung",
+                "Бренд 6",
+                "Бренд 7",
+                "Бренд 9",
+                "Бренд 10",
+                "Бренд 12",
+                "Apple"
+            ],
+            "{}",
+            t.label
+        );
+        // Счёт использования видит значения из заказов: «Nokia» — в трёх заказах.
+        let usage = t
+            .core
+            .dictionary_usage(&admin(), DictionaryKind::Brand)
+            .await?;
+        let nokia = t
+            .core
+            .list_dictionary(DictionaryKind::Brand, false)
+            .await?
+            .into_iter()
+            .find(|i| i.value == "Nokia")
+            .unwrap();
+        assert_eq!(
+            usage.iter().find(|u| u.id == nokia.id).map(|u| u.count),
+            Some(3),
+            "{}",
+            t.label
+        );
+        assert_eq!(r.count(WarningCode::DictionaryFromOrders), 9, "{}", t.label);
+        let text = r.full_text();
+        assert!(
+            text.contains("| dictionary | Бренды |  | из заказов — 7, из файла — 1 |"),
             "{text}"
         );
     }

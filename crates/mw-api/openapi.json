@@ -6966,6 +6966,8 @@
           "role_renamed",
           "dictionary_placeholder_skipped",
           "dictionary_default_kept",
+          "dictionary_from_orders",
+          "master_name_junk",
           "act_text_default_skipped",
           "text_decoded_utf8",
           "setting_preserved",

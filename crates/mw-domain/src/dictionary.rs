@@ -137,9 +137,28 @@ pub const DEFAULT_DICTIONARY: &[(DictionaryKind, &[&str])] = &[
     ),
 ];
 
+/// Пункты поля-списка заказа (комплектность, состояние, неисправности, выполненные работы): через
+/// запятую, края обрезаны, пустые пропущены. Так делят поле счёт использования справочника и перенос
+/// из MyWork 2.
+pub fn list_items(text: &str) -> impl Iterator<Item = &str> {
+    text.split(',')
+        .map(str::trim)
+        .filter(|item| !item.is_empty())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn list_items_split_by_comma_and_skip_empty() {
+        assert_eq!(
+            list_items(" Чехол,, АКБ ,Зарядка,").collect::<Vec<_>>(),
+            ["Чехол", "АКБ", "Зарядка"]
+        );
+        assert_eq!(list_items(" , ").count(), 0);
+        assert_eq!(list_items("Чехол; АКБ").collect::<Vec<_>>(), ["Чехол; АКБ"]);
+    }
 
     #[test]
     fn dictionary_kind_labels_are_russian() {

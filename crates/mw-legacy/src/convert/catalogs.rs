@@ -1,11 +1,13 @@
-//! Статусы, точки обслуживания и справочники из старой базы и файлов `settings/*.txt`; имена мастеров
-//! из `settings/masters.txt` (мастера — пользователи, не справочник).
+//! Статусы, точки обслуживания и списки справочников из старой базы и файлов `settings/*.txt`; имена
+//! мастеров из `settings/masters.txt` (мастера — пользователи, не справочник). Справочники целиком —
+//! значения заказов и эти списки — собирает `super::dictionaries`.
 
 use std::collections::{BTreeSet, HashMap};
 
-use mw_core::NewStatus;
+use mw_core::{ImportedOrder, NewStatus};
 use mw_domain::dictionary::{DEFAULT_DICTIONARY, DictionaryKind};
 use mw_domain::search::normalize_search;
+use mw_domain::spelling::{has_letter, tidy};
 use mw_domain::status::{DEFAULT_STATUSES, StatusKind};
 
 use crate::folder::LegacyFolder;
@@ -138,13 +140,22 @@ const DICTIONARY_FILES: &[(DictionaryKind, &str)] = &[
 /// Файл имён мастеров.
 const MASTERS_FILE: &str = "masters.txt";
 
+/// Список значений справочника: из файла MyWork 2 или стандартный MyWork 3.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ListedValues {
+    pub values: Vec<String>,
+    /// Стандартные значения MyWork 3: файла нет или он не менялся.
+    pub standard: bool,
+}
+
 /// Каталоги, собранные из старой базы и файлов настроек.
 #[derive(Debug, Clone)]
 pub(crate) struct Catalogs {
     pub statuses: Vec<NewStatus>,
     pub service_points: Vec<String>,
-    /// Справочник «Мастера» в нём пуст: мастера — пользователи (`masters`).
-    pub dictionary: Vec<(DictionaryKind, Vec<String>)>,
+    /// Списки справочников, каждый вид один раз; список «Мастера» пуст: мастера — пользователи
+    /// (`masters`).
+    pub dictionary: Vec<(DictionaryKind, ListedValues)>,
     /// Имена из `masters.txt` (стартовый файл MyWork 2 — пусто).
     pub masters: Vec<String>,
     status_by_key: HashMap<String, String>,
@@ -259,7 +270,11 @@ fn default_values(kind: DictionaryKind) -> Vec<String> {
 fn convert_dictionaries(
     folder: &LegacyFolder,
     w: &mut Warnings,
-) -> Vec<(DictionaryKind, Vec<String>)> {
+) -> Vec<(DictionaryKind, ListedValues)> {
+    let standard = |kind| ListedValues {
+        values: default_values(kind),
+        standard: true,
+    };
     DEFAULT_DICTIONARY
         .iter()
         .map(|(kind, _)| {
@@ -267,8 +282,8 @@ fn convert_dictionaries(
                 .iter()
                 .find(|(k, _)| k == kind)
                 .map(|(_, f)| *f);
-            let values = match file.and_then(|f| read_list(folder, f, w).map(|l| (f, l))) {
-                None => default_values(*kind),
+            let listed = match file.and_then(|f| read_list(folder, f, w).map(|l| (f, l))) {
+                None => standard(*kind),
                 Some((f, list)) if list.untouched => {
                     w.push(
                         WarningCode::DictionaryDefaultKept,
@@ -276,19 +291,22 @@ fn convert_dictionaries(
                         &format!("{SETTINGS_PREFIX}{f}"),
                         "",
                         "",
-                        "Файл не менялся, взяты стандартные значения MyWork 3.",
+                        "Файл не менялся: после значений из заказов идут стандартные значения MyWork 3.",
                     );
-                    default_values(*kind)
+                    standard(*kind)
                 }
-                Some((f, list)) => clean_values(&list.lines, &format!("{SETTINGS_PREFIX}{f}"), w),
+                Some((f, list)) => ListedValues {
+                    values: clean_values(&list.lines, &format!("{SETTINGS_PREFIX}{f}"), w),
+                    standard: false,
+                },
             };
-            (*kind, values)
+            (*kind, listed)
         })
         .collect()
 }
 
 /// Имена мастеров из `masters.txt`: как значения справочника (без подсказок и повторов); файл не
-/// менялся — имён нет.
+/// менялся — имён нет. Строка без букв — не мастер (в отчёт).
 fn convert_masters(folder: &LegacyFolder, w: &mut Warnings) -> Vec<String> {
     let path = format!("{SETTINGS_PREFIX}{MASTERS_FILE}");
     match read_list(folder, MASTERS_FILE, w) {
@@ -304,7 +322,55 @@ fn convert_masters(folder: &LegacyFolder, w: &mut Warnings) -> Vec<String> {
             );
             Vec::new()
         }
-        Some(list) => clean_values(&list.lines, &path, w),
+        Some(list) => {
+            let mut names = clean_values(&list.lines, &path, w);
+            names.retain(|name| {
+                let keep = has_letter(name);
+                if !keep {
+                    w.push(
+                        WarningCode::MasterNameJunk,
+                        "file",
+                        &path,
+                        "",
+                        name,
+                        "Строка без букв — не мастер.",
+                    );
+                }
+                keep
+            });
+            names
+        }
+    }
+}
+
+/// Имена мастеров в заказах без единой буквы («-», «?», «0»): не становятся мастерами
+/// (`mw_db::masters`), заказ остаётся без мастера, текст — в заказе. Одна строка отчёта на
+/// написание (края обрезаны, пробелы схлопнуты) с числом заказов, по первому появлению.
+pub(crate) fn warn_junk_masters(orders: &[ImportedOrder], w: &mut Warnings) {
+    let mut junk: Vec<(String, u64)> = Vec::new();
+    let mut sorted: Vec<&ImportedOrder> = orders.iter().collect();
+    sorted.sort_by_key(|o| o.id);
+    for order in sorted {
+        let name = tidy(&order.master);
+        if name.is_empty() || has_letter(&name) {
+            continue;
+        }
+        match junk.iter_mut().find(|(n, _)| *n == name) {
+            Some((_, count)) => *count += 1,
+            None => junk.push((name, 1)),
+        }
+    }
+    for (name, count) in junk {
+        w.push(
+            WarningCode::MasterNameJunk,
+            "Catalog",
+            "",
+            "master",
+            &name,
+            &format!(
+                "Заказов: {count}. В имени нет букв: мастер не назначен, текст в заказах остался."
+            ),
+        );
     }
 }
 
@@ -475,7 +541,16 @@ mod tests {
                 .find(|(kind, _)| *kind == k)
                 .unwrap()
                 .1
+                .values
                 .clone()
+        };
+        let standard = |k: DictionaryKind| {
+            c.dictionary
+                .iter()
+                .find(|(kind, _)| *kind == k)
+                .unwrap()
+                .1
+                .standard
         };
         let defaults = |k: DictionaryKind| {
             DEFAULT_DICTIONARY
@@ -488,6 +563,8 @@ mod tests {
                 .collect::<Vec<_>>()
         };
         assert_eq!(dict(DictionaryKind::Brand), ["Samsung", "Apple"]);
+        assert!(!standard(DictionaryKind::Brand));
+        assert!(standard(DictionaryKind::DeviceType) && standard(DictionaryKind::ClientSource));
         assert!(dict(DictionaryKind::Master).is_empty());
         assert_eq!(c.masters, ["ПЕТРОВ", "СИДОРОВ"]);
         assert_eq!(

@@ -126,6 +126,11 @@ describe('entryWhere', () => {
 			'Настройки MyWork 2 · [A] b'
 		);
 	});
+	it('a dictionary of the transfer and a master without letters', () => {
+		const dictionary = { source: 'dictionary', key: 'Бренды', field: '', value: 'из заказов — 7' };
+		expect(entryWhere({ ...dictionary, message: '' })).toBe('Справочник · Бренды');
+		expect(entryWhere({ ...e, key: '', field: 'master', value: '-' })).toBe('Заказ · Мастер');
+	});
 	it('the same text is never repeated: status_custom', () => {
 		const text = 'Согласование с клиентом';
 		expect(

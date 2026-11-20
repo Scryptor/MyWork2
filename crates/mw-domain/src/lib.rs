@@ -57,6 +57,7 @@ pub mod money;
 pub mod permission;
 pub mod phone;
 pub mod search;
+pub mod spelling;
 pub mod status;
 pub mod validation;
 pub mod warranty;

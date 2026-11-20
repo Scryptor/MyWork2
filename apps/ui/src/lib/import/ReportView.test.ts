@@ -153,9 +153,9 @@ describe('ReportView groups', () => {
 });
 
 describe('explanations', () => {
-	it('all 42 codes have a text with what was, what the transfer did and what to do', () => {
+	it('all 44 codes have a text with what was, what the transfer did and what to do', () => {
 		const codes = Object.keys(ru.importReport.explain);
-		expect(codes).toHaveLength(42);
+		expect(codes).toHaveLength(44);
 		for (const code of codes) {
 			const text = ru.importReport.explain[code as keyof typeof ru.importReport.explain];
 			expect(text.length, code).toBeGreaterThanOrEqual(3);

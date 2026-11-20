@@ -90,6 +90,8 @@ warning_codes! {
     RoleRenamed => ("role_renamed", Info, "Группа переименована"),
     DictionaryPlaceholderSkipped => ("dictionary_placeholder_skipped", Info, "Пропущены строки-подсказки"),
     DictionaryDefaultKept => ("dictionary_default_kept", Info, "Список не менялся — взят стандартный"),
+    DictionaryFromOrders => ("dictionary_from_orders", Info, "Справочник собран из заказов и файлов"),
+    MasterNameJunk => ("master_name_junk", Info, "Мастер не назначен: в имени нет букв"),
     ActTextDefaultSkipped => ("act_text_default_skipped", Info, "Заготовка текста акта не перенесена"),
     TextDecodedUtf8 => ("text_decoded_utf8", Info, "Файл прочитан как UTF-8"),
     SettingPreserved => ("setting_preserved", Info, "Настройка сохранена до появления в программе"),
@@ -331,7 +333,7 @@ mod tests {
             assert!(seen.insert(code.as_str()), "{}", code.as_str());
             assert!(!code.title_ru().is_empty());
         }
-        assert_eq!(WarningCode::ALL.len(), 42);
+        assert_eq!(WarningCode::ALL.len(), 44);
         assert_eq!(WarningCode::FileUnreadable.severity(), Severity::Warning);
         assert_eq!(WarningCode::StatusRenamed.severity(), Severity::Info);
         assert_eq!(WarningCode::NextNumber.severity(), Severity::Info);

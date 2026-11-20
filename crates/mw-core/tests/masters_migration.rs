@@ -469,3 +469,175 @@ async fn a_base_without_masters_gets_no_entry() {
         assert_eq!(core.settings().default_master_user_id, None);
     }
 }
+
+/// Мастер без входа, как его создаёт миграция; `key` — свой ключ логина.
+async fn insert_master_user(db: &DatabaseConnection, name: &str, key: &str) -> i64 {
+    one_id(
+        db,
+        &format!(
+            "INSERT INTO users (login, login_key, display_name, role_id, password_hash, \
+             password_scheme, active, created_at, updated_at, version, can_sign_in, is_master) \
+             VALUES ('', {}, {}, (SELECT id FROM roles WHERE name = 'Мастер'), '', 'argon2', \
+             TRUE, {AT}, {AT}, 1, FALSE, TRUE) RETURNING id",
+            quote(key),
+            quote(name)
+        ),
+    )
+    .await
+}
+
+#[tokio::test]
+async fn names_without_letters_are_skipped_spaces_collapse_and_ties_avoid_all_caps() {
+    for (label, db) in all_backends_up_to(BEFORE_MASTERS).await {
+        prepare(&db).await;
+        let mut junk = Vec::new();
+        for name in ["-", " -- ", "?", "0", "№ 5"] {
+            junk.push(insert_order(&db, name, false).await);
+        }
+        // Одно имя: лишние пробелы схлопываются; написания по одному заказу — не заглавными.
+        let ivanov = [
+            insert_order(&db, "ИВАНОВ   ИВАН", false).await,
+            insert_order(&db, " Иванов  Иван ", false).await,
+        ];
+        // Оба не заглавными — первое по порядку заказов.
+        let petrov = [
+            insert_order(&db, "петров", false).await,
+            insert_order(&db, "Петров", false).await,
+        ];
+        // Чаще написанное заглавными — всё равно чаще.
+        let sidorov = [
+            insert_order(&db, "СИДОРОВ", false).await,
+            insert_order(&db, "СИДОРОВ", false).await,
+            insert_order(&db, "Сидоров", false).await,
+        ];
+        insert_dictionary(&db, "-", true).await;
+        insert_dictionary(&db, "Кузнецов   К.", false).await;
+        exec(
+            &db,
+            r#"INSERT INTO settings (key, value) VALUES ('default_master', '"?"')"#,
+        )
+        .await;
+        mw_db::migrate(&db).await.unwrap();
+
+        let all = users(&db).await;
+        let mut names: Vec<&str> = all.iter().map(|u| u.2.as_str()).collect();
+        names.sort_unstable();
+        assert_eq!(
+            names,
+            ["Иванов Иван", "Кузнецов К.", "СИДОРОВ", "петров"],
+            "{label}: {all:?}"
+        );
+        let linked: Vec<(i64, String, Option<i64>)> = orders(&db)
+            .await
+            .into_iter()
+            .map(|o| (o.0, o.1, o.2))
+            .collect();
+        for (id, text, user) in &linked {
+            let expected = if junk.contains(id) {
+                None
+            } else if ivanov.contains(id) {
+                Some(user_named(&all, "Иванов Иван").0)
+            } else if petrov.contains(id) {
+                Some(user_named(&all, "петров").0)
+            } else {
+                assert!(sidorov.contains(id));
+                Some(user_named(&all, "СИДОРОВ").0)
+            };
+            assert_eq!(*user, expected, "{label}: заказ {id} «{text}»");
+        }
+        // Тексты заказов не меняются, в том числе без букв.
+        assert_eq!(
+            linked.iter().map(|o| o.1.as_str()).collect::<Vec<_>>(),
+            [
+                "-",
+                " -- ",
+                "?",
+                "0",
+                "№ 5",
+                "ИВАНОВ   ИВАН",
+                " Иванов  Иван ",
+                "петров",
+                "Петров",
+                "СИДОРОВ",
+                "СИДОРОВ",
+                "Сидоров"
+            ],
+            "{label}"
+        );
+        assert!(
+            !settings(&db)
+                .await
+                .iter()
+                .any(|(k, _)| k == "default_master_user_id"),
+            "{label}: мастер по умолчанию без букв — не мастер"
+        );
+
+        // Повторный запуск с новыми правилами ничего не меняет.
+        let snapshot = (
+            users(&db).await,
+            orders(&db).await,
+            dictionary(&db).await,
+            settings(&db).await,
+            summaries(&db).await,
+        );
+        exec(
+            &db,
+            &format!("DELETE FROM seaql_migrations WHERE version = '{MIGRATION}'"),
+        )
+        .await;
+        mw_db::migrate(&db).await.unwrap();
+        let again = (
+            users(&db).await,
+            orders(&db).await,
+            dictionary(&db).await,
+            settings(&db).await,
+            summaries(&db).await,
+        );
+        assert_eq!(again, snapshot, "{label}");
+    }
+}
+
+/// База, перенесённая прежними правилами (мастер «-», имя заглавными): повторный запуск её не
+/// трогает — пользователи и ссылки заказов прежние, записи в журнале нет.
+#[tokio::test]
+async fn a_base_migrated_by_the_old_rules_is_not_touched() {
+    for (label, db) in all_backends_up_to(BEFORE_MASTERS).await {
+        prepare(&db).await;
+        mw_db::migrate(&db).await.unwrap();
+        let dash = insert_master_user(&db, "-", "NO-LOGIN:old-dash").await;
+        let caps = insert_master_user(&db, "ИВАНОВ", "NO-LOGIN:old-caps").await;
+        let a = insert_order(&db, "-", false).await;
+        let b = insert_order(&db, "ИВАНОВ", false).await;
+        let c = insert_order(&db, "Иванов", false).await;
+        for (order, user) in [(a, dash), (b, caps), (c, caps)] {
+            exec(
+                &db,
+                &format!("UPDATE orders SET master_user_id = {user} WHERE id = {order}"),
+            )
+            .await;
+        }
+        insert_dictionary(&db, "-", true).await;
+        insert_dictionary(&db, "Иванов", true).await;
+        let snapshot = (
+            users(&db).await,
+            orders(&db).await,
+            dictionary(&db).await,
+            settings(&db).await,
+            summaries(&db).await,
+        );
+        exec(
+            &db,
+            &format!("DELETE FROM seaql_migrations WHERE version = '{MIGRATION}'"),
+        )
+        .await;
+        mw_db::migrate(&db).await.unwrap();
+        let again = (
+            users(&db).await,
+            orders(&db).await,
+            dictionary(&db).await,
+            settings(&db).await,
+            summaries(&db).await,
+        );
+        assert_eq!(again, snapshot, "{label}");
+    }
+}
