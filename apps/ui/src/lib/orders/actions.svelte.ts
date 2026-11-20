@@ -139,7 +139,9 @@ export class OrderActions {
 		await ed.autosave.flush().catch(() => {});
 		const patch: OrderPatch = {};
 		if (values.work_done !== ed.order.work_done) patch.work_done = values.work_done;
-		if (values.master !== ed.order.master) patch.master = values.master;
+		if (values.master_user_id !== ed.order.master_user_id) {
+			patch.master_user_id = values.master_user_id;
+		}
 		if (values.final_price !== ed.order.final_price) patch.final_price = values.final_price;
 		if (values.discount !== ed.order.discount) patch.discount = values.discount;
 		if (values.warranty !== ed.order.warranty) patch.warranty = values.warranty;

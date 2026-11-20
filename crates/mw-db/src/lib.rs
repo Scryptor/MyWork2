@@ -5,6 +5,7 @@ pub mod backup;
 pub mod connect;
 pub mod entity;
 pub mod ids;
+pub mod masters;
 pub mod migration;
 pub mod testing;
 

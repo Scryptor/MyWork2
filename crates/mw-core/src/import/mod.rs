@@ -85,12 +85,16 @@ mod tests {
     }
 }
 
-/// Настройки из старой программы. `values.timezone` и `values.default_service_point_id` должны быть пусты.
+/// Настройки из старой программы. `values.timezone`, `values.default_service_point_id` и
+/// `values.default_master_user_id` должны быть пусты.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ImportedSettings {
     pub values: SettingsPatch,
     /// Название точки из `ImportBundle::service_points`.
     pub default_service_point: Option<String>,
+    /// Имя мастера по умолчанию: становится пользователем-мастером, как имена из
+    /// `ImportBundle::masters`.
+    pub default_master: Option<String>,
 }
 
 /// Клиент со своим номером.
@@ -180,8 +184,12 @@ pub struct ImportBundle {
     pub statuses: Vec<NewStatus>,
     /// В порядке `sort_order`.
     pub service_points: Vec<String>,
-    /// Каждый вид справочника ровно один раз.
+    /// Каждый вид справочника ровно один раз; мастера — не справочник (их список пуст).
     pub dictionary: Vec<(DictionaryKind, Vec<String>)>,
+    /// Имена мастеров (файл мастеров MyWork 2). Они и имена мастеров из заказов становятся
+    /// пользователями-мастерами: совпавший по имени или логину пользователь получает отметку
+    /// «Мастер», для остальных создаются пользователи без входа (`mw_db::masters`).
+    pub masters: Vec<String>,
     pub roles: Vec<NewRole>,
     pub users: Vec<ImportedUser>,
     pub settings: ImportedSettings,
@@ -215,4 +223,11 @@ pub struct ImportSummary {
     pub legacy_rows: u64,
     pub next_order_id: i64,
     pub next_client_id: i64,
+    /// Создано пользователей-мастеров без входа (в `users` не входят). В отчётах импортов до
+    /// плана 5.8 этих чисел нет — читаются нулём.
+    #[serde(default)]
+    pub masters_created: u64,
+    /// Пользователей MyWork 2, отмеченных «Мастер».
+    #[serde(default)]
+    pub masters_marked: u64,
 }

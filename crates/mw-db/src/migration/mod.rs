@@ -12,6 +12,8 @@ mod m20261117_000001_attachments;
 mod m20261119_000001_dictionary_archive;
 mod m20261120_000001_user_sign_in_and_master;
 mod m20261120_000002_builtin_roles;
+mod m20261120_000003_order_master_user;
+mod m20261120_000004_masters_to_users;
 
 pub struct Migrator;
 
@@ -28,6 +30,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20261119_000001_dictionary_archive::Migration),
             Box::new(m20261120_000001_user_sign_in_and_master::Migration),
             Box::new(m20261120_000002_builtin_roles::Migration),
+            Box::new(m20261120_000003_order_master_user::Migration),
+            Box::new(m20261120_000004_masters_to_users::Migration),
         ]
     }
 }

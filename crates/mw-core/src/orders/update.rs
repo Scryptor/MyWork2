@@ -11,6 +11,7 @@ use sea_orm::{
 };
 use serde_json::{Map, Value, json};
 
+use super::master::{available_master, master_unavailable};
 use super::types::{NewWarrantyCase, OrderPatch, warranty_columns};
 use crate::clients::find_live;
 use crate::search_index::{order_search_text, set_order_keys};
@@ -179,7 +180,35 @@ impl Core {
             "комментарий",
             trimmed(patch.internal_comment)
         );
-        apply!(d, m, master, "мастер", trimmed(patch.master));
+        // Мастер: номер пользователя и его имя (снимок) меняются вместе. Тот же номер — правки нет,
+        // даже если пользователя с тех пор переименовали или отключили. Имя без номера (не
+        // перенесённое старое) снимается и `null`.
+        let mut master_invalid = false;
+        if let Some(new_id) = patch.master_user_id
+            && (new_id != m.master_user_id || (new_id.is_none() && !m.master.is_empty()))
+        {
+            let name = match new_id {
+                Some(id) => match available_master(tx, id).await? {
+                    Some(name) => name,
+                    None => {
+                        master_invalid = true;
+                        String::new()
+                    }
+                },
+                None => String::new(),
+            };
+            d.note("master", "мастер", json!(m.master), json!(name));
+            if new_id != m.master_user_id {
+                d.note(
+                    "master_user_id",
+                    "мастер",
+                    json!(m.master_user_id),
+                    json!(new_id),
+                );
+            }
+            m.master = name;
+            m.master_user_id = new_id;
+        }
         apply!(
             d,
             m,
@@ -244,6 +273,9 @@ impl Core {
         }
 
         let mut errors: Vec<FieldError> = Vec::new();
+        if master_invalid {
+            errors.push(master_unavailable("master_user_id"));
+        }
         if m.client_id != current.client_id && find_live(tx, m.client_id).await?.is_none() {
             errors.push(FieldError::new("client_id", "invalid"));
         }
@@ -331,6 +363,7 @@ impl Core {
                 Expr::value(m.internal_comment.clone()),
             )
             .col_expr(order::Column::Master, Expr::value(m.master.clone()))
+            .col_expr(order::Column::MasterUserId, Expr::value(m.master_user_id))
             .col_expr(order::Column::EstimateFrom, Expr::value(m.estimate_from))
             .col_expr(order::Column::EstimateTo, Expr::value(m.estimate_to))
             .col_expr(order::Column::FinalPrice, Expr::value(m.final_price))
@@ -632,7 +665,9 @@ impl Core {
             let required = crate::settings::load(tx).await?.issue_required;
             let empty = |req: IssueRequirement| match req {
                 IssueRequirement::FinalPrice => current.final_price.is_none(),
-                IssueRequirement::Master => current.master.trim().is_empty(),
+                IssueRequirement::Master => {
+                    current.master_user_id.is_none() && current.master.trim().is_empty()
+                }
                 IssueRequirement::WorkDone => current.work_done.trim().is_empty(),
                 IssueRequirement::Warranty => current.warranty_text.trim().is_empty(),
             };

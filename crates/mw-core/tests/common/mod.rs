@@ -301,7 +301,7 @@ pub async fn seed_orders(t: &TestCore) -> Seed {
         c.id,
         1,
         OrderPatch {
-            master: Some("Мастер".into()),
+            master_user_id: Some(Some(make_master(core, "Мастер").await)),
             work_done: Some("Заменён экран".into()),
             final_price: Some(Some(mw_domain::money::Money::from_kopecks(500_000))),
             ..Default::default()
@@ -513,11 +513,7 @@ pub fn sample_bundle() -> mw_core::ImportBundle {
     let dictionary: Vec<(DictionaryKind, Vec<String>)> = DEFAULT_DICTIONARY
         .iter()
         .map(|(kind, values)| {
-            let values = if *kind == DictionaryKind::Master {
-                vec!["ПЕТРОВ".to_owned()]
-            } else {
-                values.iter().map(|v| (*v).to_owned()).collect()
-            };
+            let values = values.iter().map(|v| (*v).to_owned()).collect();
             (*kind, values)
         })
         .collect();
@@ -581,6 +577,8 @@ pub fn sample_bundle() -> mw_core::ImportBundle {
         statuses,
         service_points: vec!["Мира, 5".into(), "Ленина, 1".into()],
         dictionary,
+        // «Петров» есть в заказах (как «ПЕТРОВ»); «олег» — пользователь MyWork 2 «Олег».
+        masters: vec!["Петров".into(), "олег".into()],
         roles: vec![
             NewRole {
                 name: "Администратор".into(),
@@ -610,6 +608,7 @@ pub fn sample_bundle() -> mw_core::ImportBundle {
                 ..Default::default()
             },
             default_service_point: Some("Ленина, 1".into()),
+            default_master: Some("петров".into()),
         },
         clients: vec![
             client(
@@ -826,6 +825,45 @@ pub async fn insert_dictionary_item_directly(
         value: Set(value.to_owned()),
         sort_order: Set(sort_order),
         archived: Set(false),
+    }
+    .insert(core.db())
+    .await
+    .unwrap()
+    .id
+}
+
+/// Мастер без входа с ролью «Мастер»; его номер.
+pub async fn make_master(core: &Core, name: &str) -> i64 {
+    let role_id = role_id_by_name(core, "Мастер").await;
+    core.create_user(
+        &admin(),
+        mw_core::NewUser {
+            login: String::new(),
+            display_name: name.into(),
+            role_id,
+            password: String::new(),
+            can_sign_in: false,
+            is_master: true,
+        },
+    )
+    .await
+    .unwrap()
+    .id
+}
+
+/// Значение справочника в обход `Core` (как оставшееся от прежних версий); его номер.
+pub async fn insert_dictionary_row(
+    core: &Core,
+    kind: mw_domain::dictionary::DictionaryKind,
+    value: &str,
+    archived: bool,
+) -> i64 {
+    mw_db::entity::dictionary_item::ActiveModel {
+        kind: Set(kind.as_str().to_owned()),
+        value: Set(value.to_owned()),
+        sort_order: Set(0),
+        archived: Set(archived),
+        ..Default::default()
     }
     .insert(core.db())
     .await

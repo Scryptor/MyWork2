@@ -343,3 +343,77 @@ async fn nothing_is_written_into_the_old_folder() -> Res {
     }
     Ok(())
 }
+
+#[tokio::test]
+async fn masters_become_users_and_a_legacy_user_with_the_name_is_marked() -> Res {
+    for t in cores().await {
+        let (src, data) = (fixture_dir(V32).await, tempfile::tempdir()?);
+        let r = import_folder(&t.core, &admin(), &options(src.path(), data.path(), false)).await?;
+        let users = t.core.list_users(&admin()).await?;
+        // «олег» в заказе №7 — пользователь MyWork 2 «Олег»: отмечен «Мастер», не задвоен.
+        let olegs: Vec<_> = users
+            .iter()
+            .filter(|u| u.display_name.to_lowercase() == "олег")
+            .collect();
+        assert_eq!(olegs.len(), 1, "{}: {users:?}", t.label);
+        let oleg = olegs[0];
+        assert_eq!(
+            (oleg.login.as_str(), oleg.is_master, oleg.can_sign_in),
+            ("Олег", true, true),
+            "{}",
+            t.label
+        );
+        // Мастера без пользователя (файл мастеров и заказы) — пользователи без входа.
+        let masters = t.core.list_masters(&admin()).await?;
+        let mut names: Vec<&str> = masters.iter().map(|m| m.display_name.as_str()).collect();
+        names.sort_unstable();
+        let mut expected = vec!["Олег", "ПЕТРОВ", "СИДОРОВ"];
+        let numbered: Vec<String> = [1, 2, 3, 4, 5, 6, 8, 9, 10, 12]
+            .iter()
+            .map(|id| format!("Мастер {id}"))
+            .collect();
+        expected.extend(numbered.iter().map(String::as_str));
+        expected.sort_unstable();
+        assert_eq!(names, expected, "{}", t.label);
+        for m in masters.iter().filter(|m| m.id != oleg.id) {
+            let u = users.iter().find(|u| u.id == m.id).unwrap();
+            assert_eq!(
+                (u.can_sign_in, u.login.as_str()),
+                (false, ""),
+                "{}",
+                t.label
+            );
+        }
+        assert_eq!(
+            (
+                r.summary.users,
+                r.summary.masters_created,
+                r.summary.masters_marked
+            ),
+            (4, 12, 1),
+            "{}",
+            t.label
+        );
+        let o7 = t.core.get_order(&admin(), 7).await?;
+        assert_eq!(
+            (o7.master.as_str(), o7.master_user_id),
+            ("олег", Some(oleg.id))
+        );
+        let o1 = t.core.get_order(&admin(), 1).await?;
+        let m1 = masters
+            .iter()
+            .find(|m| m.display_name == "Мастер 1")
+            .unwrap();
+        assert_eq!(o1.master_user_id, Some(m1.id));
+        // «Мастер по умолчанию» MyWork 2 — тоже мастер-пользователь.
+        let petrov = masters.iter().find(|m| m.display_name == "ПЕТРОВ").unwrap();
+        assert_eq!(t.core.settings().default_master_user_id, Some(petrov.id));
+        let text = r.full_text();
+        assert!(text.contains("  мастеров создано — 12\n"), "{text}");
+        assert!(
+            text.contains("  пользователей отмечено «Мастер» — 1\n"),
+            "{text}"
+        );
+    }
+    Ok(())
+}

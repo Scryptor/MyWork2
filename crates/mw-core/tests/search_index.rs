@@ -95,9 +95,10 @@ async fn manual_reindex_needs_settings_right_and_audits() -> Result<(), CoreErro
 #[tokio::test]
 async fn open_fills_order_sort_keys_of_old_rows() -> Result<(), CoreError> {
     for t in cores().await {
+        let yozhikov = common::make_master(&t.core, "Ёжиков").await;
         let o = common::create_order_with(&t, |n| {
             n.brand = "Samsung".into();
-            n.master = "Ёжиков".into();
+            n.master_user_id = Some(yozhikov);
         })
         .await;
         common::set_order_keys_directly(&t, o.id, None, "").await;

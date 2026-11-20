@@ -454,6 +454,7 @@ export function makeOrders(count: number, seed = 1): OrderListItem[] {
 							SERIAL_CHARS.charAt(int(rng, SERIAL_CHARS.length))
 						).join('');
 
+		const master = kind === 'diagnostics' && rng() < 0.5 ? '' : pick(rng, MASTERS);
 		return {
 			id,
 			received_at: localIso(received),
@@ -476,7 +477,9 @@ export function makeOrders(count: number, seed = 1): OrderListItem[] {
 			model,
 			serial,
 			malfunction: pick(rng, MALFUNCTIONS),
-			master: kind === 'diagnostics' && rng() < 0.5 ? '' : pick(rng, MASTERS),
+			master,
+			// The fictional masters are users 1, 2, 3 in the order of `MASTERS`.
+			master_user_id: master ? MASTERS.indexOf(master) + 1 : null,
 			estimate_from: estimateFrom,
 			estimate_to: estimateTo,
 			prepayment,

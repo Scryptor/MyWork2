@@ -207,6 +207,26 @@ impl TestApi {
             .unwrap()
     }
 
+    /// Мастер без входа с ролью «Мастер»; его номер.
+    pub async fn create_master(&self, name: &str) -> i64 {
+        let role_id = role_id_by_name(&self.core, "Мастер").await;
+        self.core
+            .create_user(
+                &Actor::unrestricted("Тест"),
+                NewUser {
+                    login: String::new(),
+                    display_name: name.into(),
+                    role_id,
+                    password: String::new(),
+                    can_sign_in: false,
+                    is_master: true,
+                },
+            )
+            .await
+            .unwrap()
+            .id
+    }
+
     /// Пользователь с новой ролью «Роль {login}» из заданных прав.
     pub async fn create_user_with(&self, login: &str, permissions: &[Permission]) -> User {
         let system = Actor::unrestricted("Тест");
@@ -331,7 +351,7 @@ pub fn new_order(name: &str, phone: &str, brand: &str, model: &str) -> serde_jso
         "device_type": "Телефон", "brand": brand, "model": model,
         "serial": "", "color": "", "device_password": "", "completeness": "",
         "device_condition": "", "malfunction": "Не включается",
-        "internal_comment": "", "master": "",
+        "internal_comment": "", "master_user_id": null,
         "estimate_from": null, "estimate_to": null, "prepayment": 0,
         "warranty": "30 дней", "need_call": false, "need_parts": false,
         "attachment_draft": null, "request_key": null

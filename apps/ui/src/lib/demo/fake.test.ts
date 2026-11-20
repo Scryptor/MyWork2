@@ -142,6 +142,7 @@ function order(patch: Partial<OrderListItem> = {}): OrderListItem {
 		serial: '356789104512345',
 		malfunction: 'Не включается',
 		master: 'АНТОН',
+		master_user_id: 1,
 		estimate_from: null,
 		estimate_to: null,
 		prepayment: 0,

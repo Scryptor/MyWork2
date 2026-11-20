@@ -1,6 +1,7 @@
 <!-- The dialogs of the order's actions, shared by the panel and the full card: «Выдать», «Вернуть в
      работу», «Принять по гарантии». -->
 <script lang="ts">
+	import type { MasterUser } from '$api/MasterUser';
 	import { app } from '#lib/app/context.svelte.js';
 	import type { OrderActions } from './actions.svelte.js';
 	import IssueDialog from './IssueDialog.svelte';
@@ -12,7 +13,7 @@
 		dictionaries
 	}: {
 		actions: OrderActions;
-		dictionaries: { master: string[]; warranty: string[] };
+		dictionaries: { masters: MasterUser[]; warranty: string[] };
 	} = $props();
 </script>
 

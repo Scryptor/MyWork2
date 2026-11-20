@@ -192,6 +192,7 @@ export function listItemOf(o: Order, c: Client | null): OrderListItem {
 		serial: o.serial,
 		malfunction: o.malfunction,
 		master: o.master,
+		master_user_id: o.master_user_id,
 		estimate_from: o.estimate_from,
 		estimate_to: o.estimate_to,
 		prepayment: o.prepayment,

@@ -34,9 +34,9 @@ intake_required_fields?: boolean,
  */
 default_service_point_id?: number | null, 
 /**
- * Мастер по умолчанию (имя).
+ * Мастер по умолчанию — активный пользователь с отметкой «Мастер»; `null` — сбросить.
  */
-default_master?: string, 
+default_master_user_id?: number | null, 
 /**
  * Название фирмы для печатных форм.
  */

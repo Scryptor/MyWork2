@@ -10,9 +10,11 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import type { Client } from '$api/Client';
+	import type { MasterUser } from '$api/MasterUser';
 	import { listDictionary } from '#lib/api/catalogs.js';
 	import { ApiError, errorMessage } from '#lib/api/client.js';
 	import { getClient } from '#lib/api/clients.js';
+	import { listMasters } from '#lib/api/masters.js';
 	import { getOrder } from '#lib/api/orders.js';
 	import { serverClock } from '#lib/api/server-clock.svelte.js';
 	import { app } from '#lib/app/context.svelte.js';
@@ -61,12 +63,12 @@
 	let loadError = $state<string | null>(null);
 	let notFound = $state(false);
 	let dictionaries = $state.raw<{
-		master: string[];
+		masters: MasterUser[];
 		warranty: string[];
 		device_type: string[];
 		brand: string[];
 		color: string[];
-	}>({ master: [], warranty: [], device_type: [], brand: [], color: [] });
+	}>({ masters: [], warranty: [], device_type: [], brand: [], color: [] });
 
 	const orderActions = new OrderActions(() => editor);
 	const order = $derived(editor?.order ?? null);
@@ -81,14 +83,17 @@
 
 	// The dictionaries of the fields, once per opening of the card: settings may have changed.
 	$effect(() => {
-		const kinds = ['master', 'warranty', 'device_type', 'brand', 'color'] as const;
+		const kinds = ['warranty', 'device_type', 'brand', 'color'] as const;
 		let current = true;
-		Promise.all(kinds.map((k) => listDictionary(k))).then(
-			(lists) => {
+		Promise.all([listMasters(), Promise.all(kinds.map((k) => listDictionary(k)))]).then(
+			([masters, lists]) => {
 				if (!current) return;
-				dictionaries = Object.fromEntries(
-					kinds.map((k, i) => [k, (lists[i] ?? []).map((d) => d.value)])
-				) as typeof dictionaries;
+				dictionaries = {
+					masters,
+					...(Object.fromEntries(
+						kinds.map((k, i) => [k, (lists[i] ?? []).map((d) => d.value)])
+					) as Omit<typeof dictionaries, 'masters'>)
+				};
 			},
 			() => {
 				// Without them the fields still take any text.

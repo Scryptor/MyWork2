@@ -4,7 +4,8 @@
 	/** What the dialog fills in before the order is issued. */
 	export interface IssueValues {
 		work_done: string;
-		master: string;
+		/** The master — a user marked «Мастер»; null — not chosen. */
+		master_user_id: number | null;
 		final_price: number | null;
 		discount: number;
 		warranty: string;
@@ -13,6 +14,7 @@
 
 <script lang="ts">
 	import { untrack } from 'svelte';
+	import type { MasterUser } from '$api/MasterUser';
 	import type { Order } from '$api/Order';
 	import { ApiError, errorMessage } from '#lib/api/client.js';
 	import { app } from '#lib/app/context.svelte.js';
@@ -24,7 +26,9 @@
 	import Combobox from '#lib/ui/Combobox.svelte';
 	import Dialog from '#lib/ui/Dialog.svelte';
 	import MoneyInput from '#lib/ui/MoneyInput.svelte';
+	import Select from '#lib/ui/Select.svelte';
 	import Textarea from '#lib/ui/Textarea.svelte';
+	import { masterItems, masterOf, masterValue } from './masters.js';
 	import { isNoWarranty, issueWarranty, toPay } from './view.js';
 
 	let {
@@ -37,7 +41,7 @@
 		open: boolean;
 		/** The order as the panel shows it, own unsaved values included. */
 		order: Order | null;
-		dictionaries: { master: string[]; warranty: string[] };
+		dictionaries: { masters: MasterUser[]; warranty: string[] };
 		defaultWarranty: string;
 		/** Saves and issues; throws the server's error, which the dialog shows. */
 		onissue: (values: IssueValues) => Promise<void>;
@@ -56,15 +60,18 @@
 	const SERVER_FIELDS: Record<string, Key> = {
 		work_done: 'work',
 		master: 'master',
+		master_user_id: 'master',
 		final_price: 'price',
 		discount: 'discount',
 		warranty: 'warranty'
 	};
-	const masterItems = $derived(dictionaries.master.map((value) => ({ value })));
+	const masterOptions = $derived(
+		order ? masterItems(dictionaries.masters, order.master_user_id, order.master) : []
+	);
 	const warrantyItems = $derived(dictionaries.warranty.map((value) => ({ value })));
 
 	let work = $state('');
-	let master = $state('');
+	let master = $state<number | null>(null);
 	let price = $state<number | null>(null);
 	let discount = $state<number | null>(0);
 	let warranty = $state('');
@@ -86,7 +93,7 @@
 			busy = false;
 			if (!order) return;
 			work = order.work_done;
-			master = order.master;
+			master = order.master_user_id;
 			price = order.final_price;
 			discount = order.discount;
 			warranty = issueWarranty(order, defaultWarranty);
@@ -102,7 +109,7 @@
 	});
 	const missing = $derived({
 		work: needs.work && work.trim() === '',
-		master: needs.master && master.trim() === '',
+		master: needs.master && master === null,
 		price: needs.price && price === null,
 		warranty: needs.warranty && warranty.trim() === ''
 	});
@@ -144,7 +151,7 @@
 		try {
 			await onissue({
 				work_done: work.trim(),
-				master: master.trim(),
+				master_user_id: master,
 				final_price: price,
 				discount: discount ?? 0,
 				warranty: warranty.trim()
@@ -187,15 +194,15 @@
 				}
 				error={missing.work ? t.required : serverErrors.work}
 			/>
-			<Combobox
+			<Select
 				id={IDS.master}
 				label={t.master}
 				required={needs.master}
-				items={masterItems}
+				items={masterOptions}
 				bind:value={
-					() => master,
+					() => masterValue(master),
 					(v) => {
-						master = v;
+						master = masterOf(v);
 						drop('master');
 					}
 				}

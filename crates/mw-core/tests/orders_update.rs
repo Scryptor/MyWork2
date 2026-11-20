@@ -104,7 +104,7 @@ async fn issue_requires_the_default_set_and_keeps_first_issue_date() -> Result<(
                 o.id,
                 1,
                 OrderPatch {
-                    master: Some("Антон".into()),
+                    master_user_id: Some(Some(make_master(&t.core, "Антон").await)),
                     work_done: Some("Замена дисплея".into()),
                     final_price: Some(Some(mw_domain::money::Money::from_kopecks(100_000))),
                     ..Default::default()
@@ -374,7 +374,7 @@ async fn status_change_can_skip_the_issue_date() -> Result<(), CoreError> {
                 o.id,
                 1,
                 OrderPatch {
-                    master: Some("Антон".into()),
+                    master_user_id: Some(Some(make_master(&t.core, "Антон").await)),
                     work_done: Some("Замена дисплея".into()),
                     final_price: Some(Some(mw_domain::money::Money::from_kopecks(100_000))),
                     ..Default::default()
@@ -408,6 +408,11 @@ async fn order_with(
     warranty: bool,
 ) -> Result<mw_core::Order, CoreError> {
     use mw_domain::money::Money;
+    let anton = if master {
+        Some(make_master(&t.core, "Антон").await)
+    } else {
+        None
+    };
     let o = t.core.create_order(&admin(), sample_new_order()).await?;
     t.core
         .update_order(
@@ -416,7 +421,7 @@ async fn order_with(
             o.version,
             OrderPatch {
                 final_price: price.then(|| Some(Money::from_kopecks(50_000))),
-                master: master.then(|| "Антон".to_owned()),
+                master_user_id: anton.map(Some),
                 work_done: work.then(|| "Работа".to_owned()),
                 warranty: Some(if warranty { "30 дней" } else { " " }.to_owned()),
                 ..Default::default()
@@ -469,7 +474,7 @@ async fn default_set_blocks_missing_price_master_and_work() -> Result<(), CoreEr
                 .await
                 .is_ok()
         );
-        // Пустое после trim — тоже пусто.
+        // Пустое после trim — тоже пусто; мастер снят — тоже.
         let ws = t.core.create_order(&admin(), sample_new_order()).await?;
         let ws = t
             .core
@@ -478,7 +483,7 @@ async fn default_set_blocks_missing_price_master_and_work() -> Result<(), CoreEr
                 ws.id,
                 ws.version,
                 OrderPatch {
-                    master: Some("  ".into()),
+                    master_user_id: Some(None),
                     work_done: Some("Работа".into()),
                     final_price: Some(Some(mw_domain::money::Money::from_kopecks(1))),
                     ..Default::default()

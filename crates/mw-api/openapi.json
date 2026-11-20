@@ -1945,9 +1945,19 @@
             }
           },
           {
+            "name": "master_user_id",
+            "in": "query",
+            "description": "Только этот мастер — пользователь.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
             "name": "master",
             "in": "query",
-            "description": "Только этот мастер (без учёта регистра).",
+            "description": "Только мастер с этим именем в заказе (без учёта регистра); для старых сохранённых видов\nсписка — новый выбор идёт по `master_user_id`.",
             "required": false,
             "schema": {
               "type": "string"
@@ -4007,7 +4017,7 @@
           "default_warranty",
           "intake_required_fields",
           "default_service_point_id",
-          "default_master",
+          "default_master_user_id",
           "firm_name",
           "firm_phone",
           "firm_details",
@@ -4022,9 +4032,13 @@
             "type": "string",
             "description": "Знак валюты."
           },
-          "default_master": {
-            "type": "string",
-            "description": "Мастер по умолчанию (имя)."
+          "default_master_user_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Мастер по умолчанию — активный пользователь с отметкой «Мастер»; пусто — не выбран\n(отключённый или без отметки считается не выбранным)."
           },
           "default_service_point_id": {
             "type": [
@@ -5332,7 +5346,7 @@
           "device_condition",
           "malfunction",
           "internal_comment",
-          "master",
+          "master_user_id",
           "estimate_from",
           "estimate_to",
           "prepayment",
@@ -5408,9 +5422,13 @@
             "type": "string",
             "description": "Неисправность со слов клиента."
           },
-          "master": {
-            "type": "string",
-            "description": "Мастер."
+          "master_user_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Мастер — активный пользователь с отметкой «Мастер»; пусто — не выбран. Имя мастера\nзаписывается в заказ сервером."
           },
           "model": {
             "type": "string",
@@ -5619,6 +5637,7 @@
           "work_done",
           "internal_comment",
           "master",
+          "master_user_id",
           "barcode",
           "estimate_from",
           "estimate_to",
@@ -5746,7 +5765,15 @@
           },
           "master": {
             "type": "string",
-            "description": "Мастер."
+            "description": "Имя мастера: каким оно было при выборе (у заказов, перенесённых из MyWork 2, — как было\nзаписано); переименование пользователя его не меняет."
+          },
+          "master_user_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Мастер — пользователь с отметкой «Мастер»; пусто — не выбран."
           },
           "model": {
             "type": "string",
@@ -5844,6 +5871,7 @@
           "serial",
           "malfunction",
           "master",
+          "master_user_id",
           "estimate_from",
           "estimate_to",
           "prepayment",
@@ -5944,7 +5972,15 @@
           },
           "master": {
             "type": "string",
-            "description": "Мастер."
+            "description": "Имя мастера, каким оно записано в заказе."
+          },
+          "master_user_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Мастер — пользователь; пусто — не выбран."
           },
           "model": {
             "type": "string",
@@ -6104,9 +6140,13 @@
             "type": "string",
             "description": "Неисправность со слов клиента."
           },
-          "master": {
-            "type": "string",
-            "description": "Мастер."
+          "master_user_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Мастер — активный пользователь с отметкой «Мастер»; `null` — снять. Имя мастера сервер\nзаписывает в заказ сам; прежний мастер, которого отключили, остаётся, пока его не сменят."
           },
           "model": {
             "type": "string",
@@ -6539,9 +6579,13 @@
             "type": "string",
             "description": "Знак валюты."
           },
-          "default_master": {
-            "type": "string",
-            "description": "Мастер по умолчанию (имя)."
+          "default_master_user_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Мастер по умолчанию — активный пользователь с отметкой «Мастер»; `null` — сбросить."
           },
           "default_service_point_id": {
             "type": [
@@ -6633,7 +6677,7 @@
             "items": {
               "type": "string"
             },
-            "description": "Мастера для справочника; повторы (без учёта регистра) и пустые строки отбрасываются."
+            "description": "Мастера: каждое имя — пользователь без входа с отметкой «Мастер» и ролью «Мастер» (есть\nпользователь с таким именем или логином — он получает отметку). Повторы (без учёта регистра)\nи пустые строки отбрасываются."
           },
           "point_name": {
             "type": "string",

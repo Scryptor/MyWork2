@@ -45,7 +45,9 @@ fn ts_field_type(decl: &str, field: &str) -> String {
 
 const NULLABLE: &[(&str, &str)] = &[
     ("SettingsPatch", "default_service_point_id"),
+    ("SettingsPatch", "default_master_user_id"),
     ("OrderPatch", "service_point_id"),
+    ("OrderPatch", "master_user_id"),
     ("OrderPatch", "issued_at"),
     ("OrderPatch", "estimate_from"),
     ("OrderPatch", "estimate_to"),
@@ -270,7 +272,7 @@ fn request_bodies_require_every_field() {
         "client": { "existing": 1 }, "service_point_id": null, "status_id": null,
         "device_type": "", "brand": "", "model": "", "serial": "", "color": "",
         "device_password": "", "completeness": "", "device_condition": "", "malfunction": "",
-        "internal_comment": "", "master": "", "estimate_from": null, "estimate_to": null,
+        "internal_comment": "", "master_user_id": null, "estimate_from": null, "estimate_to": null,
         "prepayment": 0, "warranty": "30 дней", "need_call": false, "need_parts": false,
         "attachment_draft": null, "request_key": null
     }));

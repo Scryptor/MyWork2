@@ -1,7 +1,9 @@
 <!-- «Заказы» (spec 6.8): what a new order starts with and when an order needs attention. -->
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
+	import type { MasterUser } from '$api/MasterUser';
 	import { listDictionary, updateSettings } from '#lib/api/catalogs.js';
+	import { listMasters } from '#lib/api/masters.js';
 	import { app } from '#lib/app/context.svelte.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import SaveNote from '#lib/settings/SaveNote.svelte';
@@ -9,11 +11,11 @@
 	import Callout from '#lib/ui/Callout.svelte';
 	import Card from '#lib/ui/Card.svelte';
 	import Checkbox from '#lib/ui/Checkbox.svelte';
-	import Combobox from '#lib/ui/Combobox.svelte';
 	import HelpHint from '#lib/ui/HelpHint.svelte';
 	import Select from '#lib/ui/Select.svelte';
 	import Switch from '#lib/ui/Switch.svelte';
 	import TextInput from '#lib/ui/TextInput.svelte';
+	import { masterItems, masterOf, masterValue } from '#lib/orders/masters.js';
 
 	const t = ru.settings;
 	const editor = createSettingsEditor({
@@ -40,18 +42,20 @@
 		...app.activePoints.map((p) => ({ value: p.id, label: p.name }))
 	]);
 
-	let masters = $state<{ value: string }[]>([]);
+	let masters = $state.raw<MasterUser[]>([]);
 	/** The warranties of the dictionary, not archived; `null` while not read (or not readable). */
 	let warranties = $state<string[] | null>(null);
 	onMount(async () => {
 		try {
-			const [m, w] = await Promise.all([listDictionary('master'), listDictionary('warranty')]);
-			masters = m.filter((i) => !i.archived).map((i) => ({ value: i.value }));
+			const [m, w] = await Promise.all([listMasters(), listDictionary('warranty')]);
+			masters = m;
 			warranties = w.filter((i) => !i.archived).map((i) => i.value);
 		} catch {
-			// Without suggestions the master is still free text; the warranty list keeps the saved one.
+			// Without them only «Не выбран» is offered; the warranty list keeps the saved one.
 		}
 	});
+	const master = $derived(editor.value('default_master_user_id', s.default_master_user_id) ?? null);
+	const masterOptions = $derived(masterItems(masters, master));
 
 	const warranty = $derived(editor.value('default_warranty', s.default_warranty) ?? '');
 	/**
@@ -93,17 +97,16 @@
 				(v) => editor.commit('default_service_point_id', v === null || v === NONE ? null : v)
 			}
 		/>
-		<Combobox
+		<Select
 			label={t.defaultMaster}
 			help={ru.help.orders.defaultMaster}
-			items={masters}
+			items={masterOptions}
 			disabled={locked}
-			error={editor.fieldError('default_master')}
+			error={editor.fieldError('default_master_user_id')}
 			bind:value={
-				() => editor.value('default_master', s.default_master) ?? '',
-				(v) => editor.edit('default_master', v)
+				() => masterValue(master),
+				(v) => masterOf(v) !== master && editor.commit('default_master_user_id', masterOf(v))
 			}
-			onselect={(v) => editor.commit('default_master', v)}
 		/>
 		<Select
 			label={t.defaultWarranty}

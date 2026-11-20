@@ -102,7 +102,8 @@ export function failureText(
 /** What the selection bar changes. */
 export type BulkChange =
 	| { kind: 'status'; statusId: number; stamp?: boolean }
-	| { kind: 'master'; master: string }
+	/** `masterId` null — «Снять мастера»; `name` — for the toast. */
+	| { kind: 'master'; masterId: number | null; name: string }
 	| { kind: 'flag'; flag: 'need_call' | 'need_parts'; value: boolean };
 
 export interface BulkApi {
@@ -134,9 +135,9 @@ function doneText(change: BulkChange, n: number, ctx: BulkContext): string {
 		case 'status':
 			return ru.bulk.statusDone(ctx.statusName(change.statusId), orders);
 		case 'master':
-			return change.master === ''
+			return change.masterId === null
 				? ru.bulk.masterCleared(orders)
-				: ru.bulk.masterDone(change.master, orders);
+				: ru.bulk.masterDone(change.name, orders);
 		case 'flag':
 			return change.value
 				? ru.bulk.markOnDone(FLAG_LABELS[change.flag], orders)
@@ -152,7 +153,7 @@ function send(change: BulkChange, row: BulkRow, api: BulkApi): Promise<Order> {
 			return api.changeStatus(row.id, row.version, c);
 		}
 		case 'master':
-			return api.updateOrder(row.id, row.version, { master: change.master });
+			return api.updateOrder(row.id, row.version, { master_user_id: change.masterId });
 		case 'flag':
 			return api.updateOrder(row.id, row.version, { [change.flag]: change.value });
 	}
@@ -179,7 +180,7 @@ async function putBack(
 			return o;
 		}
 		case 'master':
-			return api.updateOrder(row.id, row.version, { master: before.master });
+			return api.updateOrder(row.id, row.version, { master_user_id: before.master_user_id });
 		case 'flag':
 			return api.updateOrder(row.id, row.version, { [change.flag]: before[change.flag] });
 	}

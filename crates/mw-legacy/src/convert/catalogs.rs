@@ -1,4 +1,5 @@
-//! Статусы, точки обслуживания и справочники из старой базы и файлов `settings/*.txt`.
+//! Статусы, точки обслуживания и справочники из старой базы и файлов `settings/*.txt`; имена мастеров
+//! из `settings/masters.txt` (мастера — пользователи, не справочник).
 
 use std::collections::{BTreeSet, HashMap};
 
@@ -130,17 +131,22 @@ const DICTIONARY_FILES: &[(DictionaryKind, &str)] = &[
     (DictionaryKind::Condition, "sostoyaniePriema.txt"),
     (DictionaryKind::Malfunction, "neispravnost.txt"),
     (DictionaryKind::WorkDone, "vipolnRaboti.txt"),
-    (DictionaryKind::Master, "masters.txt"),
     (DictionaryKind::ClientSource, "aboutUs.txt"),
     (DictionaryKind::Warranty, "Garanty.txt"),
 ];
+
+/// Файл имён мастеров.
+const MASTERS_FILE: &str = "masters.txt";
 
 /// Каталоги, собранные из старой базы и файлов настроек.
 #[derive(Debug, Clone)]
 pub(crate) struct Catalogs {
     pub statuses: Vec<NewStatus>,
     pub service_points: Vec<String>,
+    /// Справочник «Мастера» в нём пуст: мастера — пользователи (`masters`).
     pub dictionary: Vec<(DictionaryKind, Vec<String>)>,
+    /// Имена из `masters.txt` (стартовый файл MyWork 2 — пусто).
+    pub masters: Vec<String>,
     status_by_key: HashMap<String, String>,
     point_by_key: HashMap<String, String>,
 }
@@ -281,6 +287,27 @@ fn convert_dictionaries(
         .collect()
 }
 
+/// Имена мастеров из `masters.txt`: как значения справочника (без подсказок и повторов); файл не
+/// менялся — имён нет.
+fn convert_masters(folder: &LegacyFolder, w: &mut Warnings) -> Vec<String> {
+    let path = format!("{SETTINGS_PREFIX}{MASTERS_FILE}");
+    match read_list(folder, MASTERS_FILE, w) {
+        None => Vec::new(),
+        Some(list) if list.untouched => {
+            w.push(
+                WarningCode::DictionaryDefaultKept,
+                "file",
+                &path,
+                "",
+                "",
+                "Файл не менялся: мастера — только из заказов.",
+            );
+            Vec::new()
+        }
+        Some(list) => clean_values(&list.lines, &path, w),
+    }
+}
+
 fn convert_points(db: &LegacyDb, folder: &LegacyFolder, w: &mut Warnings) -> Vec<String> {
     let mut points: Vec<String> = Vec::new();
     let mut seen = BTreeSet::new();
@@ -393,6 +420,7 @@ pub(crate) fn convert_catalogs(
     let statuses = convert_statuses(db, issued, w);
     let service_points = convert_points(db, folder, w);
     let dictionary = convert_dictionaries(folder, w);
+    let masters = convert_masters(folder, w);
     let mut status_by_key: HashMap<String, String> = statuses
         .iter()
         .map(|s| (normalize_search(&s.name), s.name.clone()))
@@ -406,6 +434,7 @@ pub(crate) fn convert_catalogs(
         statuses,
         service_points,
         dictionary,
+        masters,
         status_by_key,
         point_by_key,
     }
@@ -459,7 +488,8 @@ mod tests {
                 .collect::<Vec<_>>()
         };
         assert_eq!(dict(DictionaryKind::Brand), ["Samsung", "Apple"]);
-        assert_eq!(dict(DictionaryKind::Master), ["ПЕТРОВ", "СИДОРОВ"]);
+        assert!(dict(DictionaryKind::Master).is_empty());
+        assert_eq!(c.masters, ["ПЕТРОВ", "СИДОРОВ"]);
         assert_eq!(
             dict(DictionaryKind::DeviceType),
             defaults(DictionaryKind::DeviceType)

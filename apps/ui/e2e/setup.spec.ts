@@ -1,6 +1,6 @@
 import { expect, test as base } from '@playwright/test';
 import type { AppSettings } from '$api/AppSettings';
-import type { DictionaryItem } from '$api/DictionaryItem';
+import type { MasterUser } from '$api/MasterUser';
 import type { ServerInfo } from '$api/ServerInfo';
 import type { ServicePoint } from '$api/ServicePoint';
 import { uniq } from './support/api';
@@ -61,10 +61,9 @@ test('a new base opens the first run; «Начать с пустой базы» 
 	const created = points.find((p) => p.name === pointName);
 	expect(created).toBeDefined();
 	expect(settings.default_service_point_id).toBe(created!.id);
-	const dictionary = (await (
-		await request.get('/api/v1/dictionaries/master')
-	).json()) as DictionaryItem[];
-	const values = dictionary.map((d) => d.value);
+	// Masters are users marked «Мастер» (without sign-in).
+	const users = (await (await request.get('/api/v1/masters')).json()) as MasterUser[];
+	const values = users.map((m) => m.display_name);
 	expect(values).toEqual(expect.arrayContaining(['Петров', 'Иванов']));
 	expect(values).not.toContain('Сидоров');
 });

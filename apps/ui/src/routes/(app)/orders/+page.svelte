@@ -10,10 +10,11 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
+	import type { MasterUser } from '$api/MasterUser';
 	import type { OrderListItem } from '$api/OrderListItem';
 	import type { Status } from '$api/Status';
-	import { listDictionary } from '#lib/api/catalogs.js';
 	import { getClient } from '#lib/api/clients.js';
+	import { listMasters } from '#lib/api/masters.js';
 	import { serverClock } from '#lib/api/server-clock.svelte.js';
 	import { app } from '#lib/app/context.svelte.js';
 	import { summary } from '#lib/app/summary.svelte.js';
@@ -200,14 +201,14 @@
 	const canEdit = $derived(app.can('orders_edit'));
 	const anySelected = $derived(selected.size > 0);
 	let bulkBusy = $state(false);
-	let masters = $state.raw<string[]>([]);
-	// The masters' dictionary, asked when a selection starts: settings may have changed.
+	let masters = $state.raw<MasterUser[]>([]);
+	// The active masters, asked when a selection starts: they may have changed.
 	$effect(() => {
 		if (!anySelected || !canEdit) return;
 		let current = true;
-		listDictionary('master').then(
+		listMasters().then(
 			(items) => {
-				if (current) masters = items.map((d) => d.value);
+				if (current) masters = items.filter((m) => m.active);
 			},
 			() => {
 				// Without it «Снять мастера» stays.
@@ -246,9 +247,15 @@
 			.map((s) => ({ label: s.name, onselect: () => bulkStatus(s) }))
 	);
 	const masterItems = $derived<MenuItem[]>([
-		...masters.map((m) => ({ label: m, onselect: () => void bulk({ kind: 'master', master: m }) })),
+		...masters.map((m) => ({
+			label: m.display_name,
+			onselect: () => void bulk({ kind: 'master', masterId: m.id, name: m.display_name })
+		})),
 		...(masters.length > 0 ? [{ separator: true as const }] : []),
-		{ label: ru.bulk.clearMaster, onselect: () => void bulk({ kind: 'master', master: '' }) }
+		{
+			label: ru.bulk.clearMaster,
+			onselect: () => void bulk({ kind: 'master', masterId: null, name: '' })
+		}
 	]);
 	const FLAGS = [
 		{ flag: 'need_call', label: ru.flags.needCall },

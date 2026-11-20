@@ -446,35 +446,35 @@ async fn merge_client_sources_edits_clients() -> Result<(), CoreError> {
 }
 
 #[tokio::test]
-async fn rename_recomputes_master_key_and_keeps_warranty_term() -> Result<(), CoreError> {
+async fn rename_recomputes_brand_key_and_keeps_warranty_term() -> Result<(), CoreError> {
     for t in cores().await {
-        let ivanov = t
+        let zte = t
             .core
-            .add_dictionary_item(&admin(), DictionaryKind::Master, "Иванов")
+            .add_dictionary_item(&admin(), DictionaryKind::Brand, "Zte")
             .await?
             .id;
         let o = order_with(&t, |o| {
-            o.master = "иванов".into();
+            o.brand = "zte".into();
             o.warranty = "14 дней".into();
         })
         .await;
         let other = order_with(&t, |o| o.warranty = "30 дней".into()).await;
         let r = t
             .core
-            .rename_dictionary_item_everywhere(&admin(), ivanov, rename("Петров", true))
+            .rename_dictionary_item_everywhere(&admin(), zte, rename("Nubia", true))
             .await?;
         assert_eq!(r.records_changed, 1, "{}", t.label);
-        let master = |name: &str| OrderFilter {
-            master: Some(name.into()),
+        let brand = |name: &str| OrderFilter {
+            brand: Some(name.into()),
             ..Default::default()
         };
         assert_eq!(
-            list_ids(&t, master("ПЕТРОВ")).await,
+            list_ids(&t, brand("NUBIA")).await,
             vec![o.id],
             "{}",
             t.label
         );
-        assert!(list_ids(&t, master("иванов")).await.is_empty());
+        assert!(list_ids(&t, brand("zte")).await.is_empty());
 
         // Тот же срок другими словами: текст в заказах меняется, срок — нет.
         let w = item_id(&t.core, DictionaryKind::Warranty, "14 дней").await;
@@ -515,13 +515,13 @@ fn order_field(o: &Order, kind: DictionaryKind) -> &str {
         DictionaryKind::Condition => &o.device_condition,
         DictionaryKind::Malfunction => &o.malfunction,
         DictionaryKind::WorkDone => &o.work_done,
-        DictionaryKind::Master => &o.master,
         DictionaryKind::Warranty => &o.warranty,
-        DictionaryKind::ClientSource => unreachable!(),
+        DictionaryKind::Master | DictionaryKind::ClientSource => unreachable!(),
     }
 }
 
-const ORDER_KINDS: [DictionaryKind; 9] = [
+/// Справочник «Мастера» заказы не меняет: мастер заказа — пользователь.
+const ORDER_KINDS: [DictionaryKind; 8] = [
     DictionaryKind::DeviceType,
     DictionaryKind::Brand,
     DictionaryKind::Color,
@@ -529,7 +529,6 @@ const ORDER_KINDS: [DictionaryKind; 9] = [
     DictionaryKind::Condition,
     DictionaryKind::Malfunction,
     DictionaryKind::WorkDone,
-    DictionaryKind::Master,
     DictionaryKind::Warranty,
 ];
 
@@ -553,7 +552,6 @@ async fn every_order_kind_rewrites_its_own_field() -> Result<(), CoreError> {
                     device_condition: Some(old(DictionaryKind::Condition)),
                     malfunction: Some(old(DictionaryKind::Malfunction)),
                     work_done: Some(old(DictionaryKind::WorkDone)),
-                    master: Some(old(DictionaryKind::Master)),
                     warranty: Some(old(DictionaryKind::Warranty)),
                     ..Default::default()
                 },
@@ -753,76 +751,12 @@ async fn warranty_in_orders_keeps_the_term_or_is_refused() -> Result<(), CoreErr
     Ok(())
 }
 
-/// Мастер и гарантия по умолчанию следуют за значением справочника — при переименовании (в т. ч.
-/// простом) и объединении, с заменой в заказах или без неё; кэш `Core` обновляется сразу.
+/// Гарантия по умолчанию следует за значением справочника — при переименовании (в т. ч. простом) и
+/// объединении, с заменой в заказах или без неё; кэш `Core` обновляется сразу. Мастер по умолчанию
+/// — пользователь: за справочником он не следует.
 #[tokio::test]
 async fn defaults_follow_rename_and_merge() -> Result<(), CoreError> {
     for t in cores().await {
-        let ivanov = t
-            .core
-            .add_dictionary_item(&admin(), DictionaryKind::Master, "Иванов")
-            .await?
-            .id;
-        let other = t
-            .core
-            .add_dictionary_item(&admin(), DictionaryKind::Master, "Смирнов")
-            .await?
-            .id;
-        t.core
-            .update_settings(
-                &admin(),
-                SettingsPatch {
-                    default_master: Some("иванов".into()),
-                    ..Default::default()
-                },
-            )
-            .await?;
-        let before = count_audit(&t.core, "settings.updated").await;
-
-        // Другое значение — настройка не трогается.
-        t.core
-            .rename_dictionary_item_everywhere(&admin(), other, rename("Смирнова", false))
-            .await?;
-        assert_eq!(t.core.settings().default_master, "иванов", "{}", t.label);
-        assert_eq!(count_audit(&t.core, "settings.updated").await, before);
-
-        t.core
-            .rename_dictionary_item_everywhere(&admin(), ivanov, rename("Петров", false))
-            .await?;
-        assert_eq!(t.core.settings().default_master, "Петров", "{}", t.label);
-        assert_eq!(
-            setting_value(&t.core, "default_master").await,
-            json!("Петров")
-        );
-        assert_eq!(count_audit(&t.core, "settings.updated").await, before + 1);
-        let d = audit_details(&t.core, "settings.updated").await;
-        assert_eq!(d.last().unwrap(), &json!({ "default_master": "Петров" }));
-
-        // Простое переименование (PATCH) — тоже.
-        t.core
-            .update_dictionary_item(&admin(), ivanov, common::vpatch("Сидоров"))
-            .await?;
-        assert_eq!(t.core.settings().default_master, "Сидоров");
-
-        // Объединение без замены в заказах: настройка получает значение цели.
-        let kuznetsov = t
-            .core
-            .add_dictionary_item(&admin(), DictionaryKind::Master, "Кузнецов")
-            .await?
-            .id;
-        t.core
-            .merge_dictionary_items(
-                &admin(),
-                DictionaryKind::Master,
-                DictionaryMerge {
-                    target_id: kuznetsov,
-                    source_ids: vec![ivanov],
-                    in_orders: false,
-                },
-            )
-            .await?;
-        assert_eq!(t.core.settings().default_master, "Кузнецов", "{}", t.label);
-
         // Гарантия по умолчанию («30 дней» из умолчаний).
         let thirty = item_id(&t.core, DictionaryKind::Warranty, "30 дней").await;
         t.core
@@ -847,6 +781,62 @@ async fn defaults_follow_rename_and_merge() -> Result<(), CoreError> {
             setting_value(&t.core, "default_warranty").await,
             json!("30 дн.")
         );
+
+        let half = t
+            .core
+            .add_dictionary_item(&admin(), DictionaryKind::Warranty, "Полгода")
+            .await?
+            .id;
+        let other = t
+            .core
+            .add_dictionary_item(&admin(), DictionaryKind::Warranty, "Квартал")
+            .await?
+            .id;
+        t.core
+            .update_settings(
+                &admin(),
+                SettingsPatch {
+                    default_warranty: Some("полгода".into()),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        let before = count_audit(&t.core, "settings.updated").await;
+        // Другое значение — настройка не трогается.
+        t.core
+            .rename_dictionary_item_everywhere(&admin(), other, rename("Три месяца", false))
+            .await?;
+        assert_eq!(t.core.settings().default_warranty, "полгода", "{}", t.label);
+        assert_eq!(count_audit(&t.core, "settings.updated").await, before);
+        t.core
+            .rename_dictionary_item_everywhere(&admin(), half, rename("6 мес.", false))
+            .await?;
+        assert_eq!(t.core.settings().default_warranty, "6 мес.", "{}", t.label);
+        let d = audit_details(&t.core, "settings.updated").await;
+        assert_eq!(d.last().unwrap(), &json!({ "default_warranty": "6 мес." }));
+        // Простое переименование (PATCH) — тоже.
+        t.core
+            .update_dictionary_item(&admin(), half, common::vpatch("Шесть месяцев"))
+            .await?;
+        assert_eq!(t.core.settings().default_warranty, "Шесть месяцев");
+        // Объединение без замены в заказах: настройка получает значение цели.
+        let year = t
+            .core
+            .add_dictionary_item(&admin(), DictionaryKind::Warranty, "Год")
+            .await?
+            .id;
+        t.core
+            .merge_dictionary_items(
+                &admin(),
+                DictionaryKind::Warranty,
+                DictionaryMerge {
+                    target_id: year,
+                    source_ids: vec![half],
+                    in_orders: false,
+                },
+            )
+            .await?;
+        assert_eq!(t.core.settings().default_warranty, "Год", "{}", t.label);
     }
     Ok(())
 }

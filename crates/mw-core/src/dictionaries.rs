@@ -151,6 +151,29 @@ fn sorted_items(rows: Vec<dictionary_item::Model>) -> Result<Vec<DictionaryItem>
     Ok(items)
 }
 
+/// Справочник «Мастера» закрыт: мастера — пользователи с отметкой «Мастер».
+const CLOSED_MASTERS: &str =
+    "Мастера теперь — пользователи с отметкой «Мастер»: добавьте мастера в «Пользователи»";
+
+/// Отказ: справочник закрыт для новых и изменённых значений.
+pub(crate) fn closed_error() -> CoreError {
+    CoreError::Validation(vec![FieldError::with_message(
+        "kind",
+        "closed",
+        CLOSED_MASTERS,
+    )])
+}
+
+/// Справочник «Мастера» не принимает новых значений, переименований, возврата из архива и
+/// объединений: прежние значения хранятся в архиве, их можно только удалить или переставить.
+pub(crate) fn refuse_closed(kind: DictionaryKind) -> Result<(), CoreError> {
+    if kind == DictionaryKind::Master {
+        Err(closed_error())
+    } else {
+        Ok(())
+    }
+}
+
 /// Новое значение: не пустое, без дубля в справочнике; в справочнике-списке — без запятой (она
 /// разделяет элементы списка в заказе).
 fn check_value(
@@ -203,6 +226,7 @@ impl Core {
         value: &str,
     ) -> Result<DictionaryItem, CoreError> {
         actor.require_any(&[Permission::SettingsManage, Permission::OrdersCreate])?;
+        refuse_closed(kind)?;
         let tx = self.begin_write().await?;
         let rows = kind_rows(&tx, kind).await?;
         let value = check_value(kind, value, &rows, None)?;
@@ -243,6 +267,13 @@ impl Core {
         actor.require(Permission::SettingsManage)?;
         let tx = self.begin_write().await?;
         let (current, kind) = load_item(&tx, id).await?;
+        let renames = patch
+            .value
+            .as_deref()
+            .is_some_and(|v| v.trim() != current.value);
+        if renames || (patch.archived == Some(false) && current.archived) {
+            refuse_closed(kind)?;
+        }
         let renamed = match patch.value.as_deref() {
             Some(v) if v.trim() != current.value => {
                 let rows = kind_rows(&tx, kind).await?;
@@ -341,6 +372,7 @@ impl Core {
         actor.require(Permission::SettingsManage)?;
         let tx = self.begin_write().await?;
         let (current, kind) = load_item(&tx, id).await?;
+        refuse_closed(kind)?;
         let rows = kind_rows(&tx, kind).await?;
         let value = check_value(kind, &req.value, &rows, Some(id))?;
         let old = current.value.clone();
@@ -417,6 +449,7 @@ impl Core {
         req: DictionaryMerge,
     ) -> Result<RewriteResult, CoreError> {
         actor.require(Permission::SettingsManage)?;
+        refuse_closed(kind)?;
         let tx = self.begin_write().await?;
         let rows = kind_rows(&tx, kind).await?;
         let mut source_ids = req.source_ids.clone();

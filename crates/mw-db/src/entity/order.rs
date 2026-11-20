@@ -46,6 +46,9 @@ pub struct Model {
     pub model_key: String,
     pub master_key: String,
     pub request_key: Option<String>,
+    /// Мастер заказа — пользователь с отметкой «Мастер»; имя текстом — в `master` (снимок на
+    /// момент выбора, у старых заказов — как было записано).
+    pub master_user_id: Option<i64>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

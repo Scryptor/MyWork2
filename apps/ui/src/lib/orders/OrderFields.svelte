@@ -7,6 +7,7 @@
 	import { untrack } from 'svelte';
 	import { resolve } from '$app/paths';
 	import type { Client } from '$api/Client';
+	import type { MasterUser } from '$api/MasterUser';
 	import type { Order } from '$api/Order';
 	import { serverClock } from '#lib/api/server-clock.svelte.js';
 	import { app } from '#lib/app/context.svelte.js';
@@ -26,11 +27,13 @@
 	import Combobox from '#lib/ui/Combobox.svelte';
 	import MoneyInput from '#lib/ui/MoneyInput.svelte';
 	import Section from '#lib/ui/Section.svelte';
+	import Select from '#lib/ui/Select.svelte';
 	import Switch from '#lib/ui/Switch.svelte';
 	import Textarea from '#lib/ui/Textarea.svelte';
 	import TextInput from '#lib/ui/TextInput.svelte';
 	import type { Autosave } from './autosave.js';
 	import type { Conflict, OrderField, OrderValues } from './editor.svelte.js';
+	import { masterItems, masterName, masterOf, masterValue } from './masters.js';
 	import { estimateText, isNoWarranty, toPay } from './view.js';
 
 	let {
@@ -52,7 +55,8 @@
 		autosave: Autosave<OrderValues>;
 		client: Client | null;
 		dictionaries: {
-			master: string[];
+			/** The masters: users marked «Мастер». */
+			masters: MasterUser[];
 			warranty: string[];
 			device_type?: string[];
 			brand?: string[];
@@ -88,7 +92,7 @@
 		device_condition: t.condition,
 		malfunction: t.malfunction,
 		work_done: t.workDone,
-		master: t.master,
+		master_user_id: t.master,
 		final_price: t.finalPrice,
 		discount: t.discount,
 		extra_costs: t.extraCosts,
@@ -131,7 +135,9 @@
 			DEVICE_CHOICES.map((f) => [f, (dictionaries[f] ?? []).map((value) => ({ value }))])
 		) as Record<DeviceChoice, { value: string }[]>
 	);
-	const masterItems = $derived(dictionaries.master.map((value) => ({ value })));
+	const masterOptions = $derived(
+		masterItems(dictionaries.masters, order.master_user_id, order.master)
+	);
 	const warrantyItems = $derived(dictionaries.warranty.map((value) => ({ value })));
 
 	/** What the field shows: own unsaved value, or the order's. */
@@ -197,6 +203,9 @@
 	function asText(f: OrderField, v: unknown): string {
 		if (typeof v === 'boolean') return v ? t.yes : t.no;
 		if (v === null || v === '') return t.empty;
+		if (f === 'master_user_id' && typeof v === 'number') {
+			return masterName(dictionaries.masters, v, String(v));
+		}
 		if (MONEY.includes(f as MoneyField) && typeof v === 'number') return formatMoney(v);
 		return String(v);
 	}
@@ -371,18 +380,20 @@
 			</div>
 			<div
 				class="flashable"
-				class:flash={flash(['master'])}
-				onanimationend={() => endFlash(['master'])}
+				class:flash={flash(['master_user_id'])}
+				onanimationend={() => endFlash(['master_user_id'])}
 			>
-				<Combobox
-					id={idOf('master')}
+				<Select
+					id={idOf('master_user_id')}
 					label={t.master}
-					items={masterItems}
+					items={masterOptions}
 					disabled={readonly}
-					bind:value={() => shown('master'), (v) => autosave.edit('master', v)}
-					onselect={(v) => autosave.commit('master', v)}
+					bind:value={
+						() => masterValue(shown('master_user_id')),
+						(v) => autosave.commit('master_user_id', masterOf(v))
+					}
 				/>
-				{@render dispute('master')}
+				{@render dispute('master_user_id')}
 			</div>
 		</div>
 	</Section>

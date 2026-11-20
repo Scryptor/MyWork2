@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Page, type Route } from '@playwright/test';
 import type { Order } from '$api/Order';
-import { createOrder, deleteOrder, patchOrder, statusId, uniq } from './support/api';
+import { createOrder, deleteOrder, masterId, patchOrder, statusId, uniq } from './support/api';
 
 // The order panel on the server of 4173 (open mode: every permission). Each test makes its own orders
 // with a unique model and opens them from the list narrowed to that model.
@@ -426,6 +426,7 @@ test('issue fills required fields in the dialog, issues and undo brings it back'
 	const ready = await statusId(request, 'Готов');
 	const issued = await statusId(request, 'Выдан');
 	const o = await createOrder(request, { model: m, status_id: ready, prepayment: 50000 });
+	await masterId(request, 'Тестов');
 	await openPanel(page, m, o.id);
 	const panel = panelOf(page, o.id);
 	await panel.getByRole('button', { name: /^Выдать/ }).click();
@@ -440,7 +441,9 @@ test('issue fills required fields in the dialog, issues and undo brings it back'
 	await expect(dialog).toBeVisible();
 
 	await work.fill('Замена аккумулятора');
-	await dialog.getByRole('combobox', { name: /^Мастер/ }).fill('Тестов');
+	// The master is a user marked «Мастер»: chosen from the list.
+	await dialog.getByRole('combobox', { name: /^Мастер/ }).click();
+	await page.getByRole('option', { name: 'Тестов', exact: true }).click();
 	const price = dialog.getByRole('textbox', { name: /^Итоговая цена/ });
 	await price.click();
 	await price.fill('3500');

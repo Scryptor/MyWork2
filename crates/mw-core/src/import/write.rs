@@ -7,7 +7,7 @@ use mw_db::entity::{
     order_tracking, role, service_point, session, setting, status, user,
 };
 use mw_db::ids::{IdTable, set_next_id};
-use mw_domain::dictionary::DEFAULT_DICTIONARY;
+use mw_domain::dictionary::{DEFAULT_DICTIONARY, DictionaryKind};
 use mw_domain::permission::Permission;
 use mw_domain::phone::{normalize_phone, phone_key};
 use mw_domain::search::normalize_search;
@@ -98,6 +98,12 @@ fn validate_bundle(b: &ImportBundle) -> Result<(), CoreError> {
     if DEFAULT_DICTIONARY.iter().any(|(k, _)| !kinds.contains(k)) {
         return Err(bad("в пакете не все справочники"));
     }
+    if b.dictionary
+        .iter()
+        .any(|(k, values)| *k == DictionaryKind::Master && !values.is_empty())
+    {
+        return Err(bad("мастера в пакете — списком мастеров, не справочником"));
+    }
 
     let role_names: HashSet<&str> = b.roles.iter().map(|r| r.name.as_str()).collect();
     let mut logins = HashSet::new();
@@ -175,9 +181,12 @@ fn validate_bundle(b: &ImportBundle) -> Result<(), CoreError> {
     }
 
     let values = &b.settings.values;
-    if values.timezone.is_some() || values.default_service_point_id.is_some() {
+    if values.timezone.is_some()
+        || values.default_service_point_id.is_some()
+        || values.default_master_user_id.is_some()
+    {
         return Err(bad(
-            "часовой пояс и точка по умолчанию в пакете не задаются",
+            "часовой пояс, точка и мастер по умолчанию в пакете не задаются номером",
         ));
     }
     if b.settings
@@ -187,7 +196,7 @@ fn validate_bundle(b: &ImportBundle) -> Result<(), CoreError> {
     {
         return Err(bad("точки по умолчанию нет среди точек"));
     }
-    settings::validate(values, true).map_err(|e| bad(format!("настройки: {e}")))?;
+    settings::validate(values, true, true).map_err(|e| bad(format!("настройки: {e}")))?;
 
     if b.next_order_id <= order_ids.iter().copied().max().unwrap_or(0) {
         return Err(bad("следующий номер заказа не больше наибольшего"));
@@ -456,6 +465,7 @@ async fn write_orders(
             model_key: String::new(),
             master_key: String::new(),
             request_key: None,
+            master_user_id: None,
         };
         m.search_text = order_search_text(&m);
         set_order_keys(&mut m);
@@ -481,6 +491,7 @@ async fn write_settings(
     conn: &impl ConnectionTrait,
     b: &ImportBundle,
     point_ids: &HashMap<String, i64>,
+    default_master_user_id: Option<i64>,
     timezone: String,
 ) -> Result<(), CoreError> {
     let mut s = AppSettings {
@@ -490,6 +501,7 @@ async fn write_settings(
             .default_service_point
             .as_ref()
             .map(|p| point_ids[p]),
+        default_master_user_id,
         ..AppSettings::default()
     };
     let p = &b.settings.values;
@@ -507,9 +519,6 @@ async fn write_settings(
     }
     if let Some(v) = p.intake_required_fields {
         s.intake_required_fields = v;
-    }
-    if let Some(v) = &p.default_master {
-        s.default_master = v.clone();
     }
     if let Some(v) = &p.firm_name {
         s.firm_name = v.clone();
@@ -648,6 +657,11 @@ impl Core {
         let tracking_count = write_orders(tx, b, &status_ids, &point_ids).await?;
 
         let now = self.now();
+        // Мастера — пользователи: имена из файла мастеров, мастер по умолчанию и имена из заказов.
+        let default_master = b.settings.default_master.clone().unwrap_or_default();
+        let mut master_names = b.masters.clone();
+        master_names.push(default_master.clone());
+        let masters = mw_db::masters::masters_to_users(tx, &master_names, now).await?;
         let mode_code = match mode {
             ImportMode::IntoEmpty => "into_empty",
             ImportMode::Replace { .. } => "replace",
@@ -727,14 +741,23 @@ impl Core {
         insert_chunked::<legacy_row::Entity>(tx, rows).await?;
         mw_db::backfill::legacy_client_files(tx).await?;
 
-        write_settings(tx, b, &point_ids, timezone).await?;
+        write_settings(
+            tx,
+            b,
+            &point_ids,
+            masters.user_for(&default_master),
+            timezone,
+        )
+        .await?;
 
         let dictionary_items: u64 = b.dictionary.iter().map(|(_, v)| v.len() as u64).sum();
         expect_count::<status::Entity>(tx, "статусы", b.statuses.len() as u64).await?;
         expect_count::<service_point::Entity>(tx, "точки", b.service_points.len() as u64).await?;
         expect_count::<dictionary_item::Entity>(tx, "справочники", dictionary_items).await?;
-        expect_count::<role::Entity>(tx, "роли", b.roles.len() as u64).await?;
-        expect_count::<user::Entity>(tx, "пользователи", b.users.len() as u64).await?;
+        let roles = b.roles.len() as u64 + u64::from(masters.role_created);
+        expect_count::<role::Entity>(tx, "роли", roles).await?;
+        let users = (b.users.len() + masters.created.len()) as u64;
+        expect_count::<user::Entity>(tx, "пользователи", users).await?;
         expect_count::<client::Entity>(tx, "клиенты", b.clients.len() as u64).await?;
         expect_count::<client_phone::Entity>(tx, "телефоны", phone_count).await?;
         expect_count::<order::Entity>(tx, "заказы", b.orders.len() as u64).await?;
@@ -759,6 +782,8 @@ impl Core {
             legacy_rows: b.legacy_rows.len() as u64,
             next_order_id: b.next_order_id,
             next_client_id: b.next_client_id,
+            masters_created: masters.created.len() as u64,
+            masters_marked: masters.marked.len() as u64,
         };
         // Сводка записанного — в отчёт импорта: по ней строится список прошлых импортов.
         let mut report = b.report.clone();

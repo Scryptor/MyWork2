@@ -36,7 +36,7 @@ async fn concurrent_orders_on_file_sqlite_do_not_fail() {
                 order.id,
                 1,
                 OrderPatch {
-                    master: Some(format!("мастер {i}")),
+                    model: Some(format!("модель {i}")),
                     ..Default::default()
                 },
             )

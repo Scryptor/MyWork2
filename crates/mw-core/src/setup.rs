@@ -1,9 +1,6 @@
 //! Первый запуск: признак «ещё не настроено» и мастер начальной настройки.
 
-use std::collections::HashSet;
-
-use mw_db::entity::{client, dictionary_item, legacy_import, order, service_point, setting};
-use mw_domain::dictionary::DictionaryKind;
+use mw_db::entity::{client, legacy_import, order, service_point, setting};
 use mw_domain::permission::Permission;
 use mw_domain::search::normalize_search;
 use mw_domain::validation::FieldError;
@@ -25,7 +22,9 @@ pub struct SetupRequest {
     pub firm_name: String,
     /// Первая точка обслуживания; она же точка по умолчанию.
     pub point_name: String,
-    /// Мастера для справочника; повторы (без учёта регистра) и пустые строки отбрасываются.
+    /// Мастера: каждое имя — пользователь без входа с отметкой «Мастер» и ролью «Мастер» (есть
+    /// пользователь с таким именем или логином — он получает отметку). Повторы (без учёта регистра)
+    /// и пустые строки отбрасываются.
     pub masters: Vec<String>,
 }
 
@@ -122,38 +121,13 @@ impl Core {
             }
         };
 
-        let kind = DictionaryKind::Master;
-        let existing = dictionary_item::Entity::find().all(&tx).await?;
-        let mut seen: HashSet<String> = existing
+        let masters = mw_db::masters::masters_to_users(&tx, &request.masters, self.now()).await?;
+        let added: Vec<&str> = masters
+            .created
             .iter()
-            .filter(|i| i.kind == kind.as_str())
-            .map(|i| normalize_search(&i.value))
+            .chain(&masters.marked)
+            .map(|(_, name)| name.as_str())
             .collect();
-        let mut next_order = existing
-            .iter()
-            .filter(|i| i.kind == kind.as_str())
-            .map(|i| i.sort_order)
-            .max()
-            .map_or(0, |m| m + 1);
-        let mut added = Vec::new();
-        for name in &request.masters {
-            let name = name.trim();
-            let key = normalize_search(name);
-            if key.is_empty() || !seen.insert(key) {
-                continue;
-            }
-            dictionary_item::ActiveModel {
-                id: NotSet,
-                kind: Set(kind.as_str().to_owned()),
-                value: Set(name.to_owned()),
-                sort_order: Set(next_order),
-                archived: Set(false),
-            }
-            .insert(&tx)
-            .await?;
-            next_order += 1;
-            added.push(name.to_owned());
-        }
 
         put(&tx, "firm_name", &json!(firm_name)).await?;
         put(&tx, "default_service_point_id", &json!(point.id)).await?;

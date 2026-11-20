@@ -65,14 +65,32 @@ async fn setup_writes_everything_and_skips_duplicate_masters() -> Result<(), Cor
         assert_eq!(s.firm_name, "Сервис «Север»", "{}", t.label);
         let point_id = service_point_id_by_name(&t.core, "Центральная").await;
         assert_eq!(s.default_service_point_id, Some(point_id), "{}", t.label);
+        // Мастера — пользователи без входа; справочник «Мастера» пуст, режим без входа остаётся.
         let masters: Vec<String> = t
             .core
-            .list_dictionary(DictionaryKind::Master, false)
+            .list_masters(&admin())
             .await?
             .into_iter()
-            .map(|i| i.value)
+            .map(|m| m.display_name)
             .collect();
         assert_eq!(masters, ["Иван", "Пётр"], "{}", t.label);
+        let master_role = role_id_by_name(&t.core, "Мастер").await;
+        assert!(
+            t.core
+                .list_users(&admin())
+                .await?
+                .iter()
+                .all(|u| !u.can_sign_in && u.is_master && u.role_id == master_role),
+            "{}",
+            t.label
+        );
+        assert!(t.core.is_open_mode().await?, "{}", t.label);
+        assert!(
+            t.core
+                .list_dictionary(DictionaryKind::Master, true)
+                .await?
+                .is_empty()
+        );
         assert_eq!(
             count_audit(&t.core, "setup.completed").await,
             1,

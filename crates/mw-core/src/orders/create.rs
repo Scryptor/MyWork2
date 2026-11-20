@@ -11,6 +11,7 @@ use sea_orm::{
 };
 use serde_json::json;
 
+use super::master::{available_master, master_unavailable};
 use super::types::warranty_columns;
 use crate::attachments::valid_key;
 use crate::clients::{find_live, insert_client};
@@ -156,6 +157,13 @@ impl Core {
                 errors.push(FieldError::new("service_point_id", "invalid"));
             }
         }
+        let master = match new.master_user_id {
+            Some(id) => available_master(&tx, id).await?.unwrap_or_else(|| {
+                errors.push(master_unavailable("master_user_id"));
+                String::new()
+            }),
+            None => String::new(),
+        };
         let status_id = match new.status_id {
             Some(id) => {
                 let ok = status::Entity::find_by_id(id)
@@ -205,7 +213,7 @@ impl Core {
             malfunction: Set(malfunction),
             work_done: Set(String::new()),
             internal_comment: Set(trimmed(&new.internal_comment)),
-            master: Set(trimmed(&new.master)),
+            master: Set(master),
             barcode: Set(String::new()),
             estimate_from: Set(new.estimate_from.map(Money::kopecks)),
             estimate_to: Set(new.estimate_to.map(Money::kopecks)),
@@ -229,6 +237,7 @@ impl Core {
             model_key: Set(String::new()),
             master_key: Set(String::new()),
             request_key: Set(new.request_key.clone()),
+            master_user_id: Set(new.master_user_id),
         }
         .insert(&tx)
         .await?;

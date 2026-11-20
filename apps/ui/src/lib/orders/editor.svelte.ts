@@ -28,7 +28,7 @@ export const ORDER_FIELDS = [
 	'device_condition',
 	'malfunction',
 	'work_done',
-	'master',
+	'master_user_id',
 	'final_price',
 	'discount',
 	'extra_costs',

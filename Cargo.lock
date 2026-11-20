@@ -1898,6 +1898,7 @@ name = "mw-db"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "chrono-tz",
  "getrandom 0.4.3",
  "hex",
  "mime_guess",

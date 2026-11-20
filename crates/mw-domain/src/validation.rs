@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 /// Ошибка валидации поля: имя поля и машинный код (`required`, `invalid`, `too_short`,
 /// `duplicate`, `out_of_range`, `estimate_range`, `deleted`, `last_admin`, `last_issued_status`,
-/// `comma`, `changes_term`, `stale`).
+/// `comma`, `changes_term`, `stale`, `closed`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
 pub struct FieldError {
     /// Имя поля запроса.

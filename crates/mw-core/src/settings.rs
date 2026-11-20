@@ -34,8 +34,10 @@ pub struct AppSettings {
     /// Точка по умолчанию (неархивная); пусто — не выбрана.
     #[schema(required = true)]
     pub default_service_point_id: Option<i64>,
-    /// Мастер по умолчанию (имя).
-    pub default_master: String,
+    /// Мастер по умолчанию — активный пользователь с отметкой «Мастер»; пусто — не выбран
+    /// (отключённый или без отметки считается не выбранным).
+    #[schema(required = true)]
+    pub default_master_user_id: Option<i64>,
     /// Название фирмы для печатных форм.
     pub firm_name: String,
     /// Телефон фирмы.
@@ -65,7 +67,7 @@ impl Default for AppSettings {
             default_warranty: "30 дней".to_owned(),
             intake_required_fields: true,
             default_service_point_id: None,
-            default_master: String::new(),
+            default_master_user_id: None,
             firm_name: String::new(),
             firm_phone: String::new(),
             firm_details: String::new(),
@@ -114,10 +116,9 @@ pub struct SettingsPatch {
     /// Точка по умолчанию; `null` — сбросить.
     #[serde(default, deserialize_with = "crate::patch::nullable")]
     pub default_service_point_id: Option<Option<i64>>,
-    /// Мастер по умолчанию (имя).
-    #[serde(default, deserialize_with = "crate::patch::present")]
-    #[schema(nullable = false)]
-    pub default_master: Option<String>,
+    /// Мастер по умолчанию — активный пользователь с отметкой «Мастер»; `null` — сбросить.
+    #[serde(default, deserialize_with = "crate::patch::nullable")]
+    pub default_master_user_id: Option<Option<i64>>,
     /// Название фирмы для печатных форм.
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
@@ -166,7 +167,7 @@ fn keep_differences(p: &mut SettingsPatch, c: &AppSettings) {
     keep(&mut p.default_warranty, &c.default_warranty);
     keep(&mut p.intake_required_fields, &c.intake_required_fields);
     keep(&mut p.default_service_point_id, &c.default_service_point_id);
-    keep(&mut p.default_master, &c.default_master);
+    keep(&mut p.default_master_user_id, &c.default_master_user_id);
     keep(&mut p.firm_name, &c.firm_name);
     keep(&mut p.firm_phone, &c.firm_phone);
     keep(&mut p.firm_details, &c.firm_details);
@@ -208,7 +209,8 @@ pub(crate) async fn load(conn: &impl ConnectionTrait) -> Result<AppSettings, Cor
             .unwrap_or(d.intake_required_fields),
         default_service_point_id: get(&rows, "default_service_point_id")
             .unwrap_or(d.default_service_point_id),
-        default_master: get(&rows, "default_master").unwrap_or(d.default_master),
+        default_master_user_id: get(&rows, "default_master_user_id")
+            .unwrap_or(d.default_master_user_id),
         firm_name: get(&rows, "firm_name").unwrap_or(d.firm_name),
         firm_phone: get(&rows, "firm_phone").unwrap_or(d.firm_phone),
         firm_details: get(&rows, "firm_details").unwrap_or(d.firm_details),
@@ -236,6 +238,13 @@ pub(crate) async fn load(conn: &impl ConnectionTrait) -> Result<AppSettings, Cor
             loaded.default_service_point_id = None;
         }
     }
+    // Мастер по умолчанию, которого отключили, сняли отметку «Мастер» или которого нет, считается
+    // не выбранным.
+    if let Some(id) = loaded.default_master_user_id
+        && crate::orders::available_master(conn, id).await?.is_none()
+    {
+        loaded.default_master_user_id = None;
+    }
     Ok(loaded)
 }
 
@@ -259,10 +268,11 @@ pub(crate) async fn put(
     Ok(())
 }
 
-/// Мастер и гарантия по умолчанию следуют за значением справочника: при переименовании или
-/// объединении настройка, совпадающая (по `normalize_search`) с одним из прежних значений `from`,
-/// получает значение `to` — в той же транзакции, с записью журнала. Возвращает новые настройки для
-/// кэша `Core` (его обновляют после фиксации) или `None`, если ничего не изменилось.
+/// Гарантия по умолчанию следует за значением справочника: при переименовании или объединении
+/// настройка, совпадающая (по `normalize_search`) с одним из прежних значений `from`, получает
+/// значение `to` — в той же транзакции, с записью журнала. Возвращает новые настройки для кэша
+/// `Core` (его обновляют после фиксации) или `None`, если ничего не изменилось. Мастер по умолчанию
+/// — пользователь, за справочником он не следует.
 pub(crate) async fn follow_dictionary_value(
     tx: &DatabaseTransaction,
     core: &Core,
@@ -272,15 +282,11 @@ pub(crate) async fn follow_dictionary_value(
     to: &str,
 ) -> Result<Option<AppSettings>, CoreError> {
     let (key, label) = match kind {
-        DictionaryKind::Master => ("default_master", "мастер по умолчанию"),
         DictionaryKind::Warranty => ("default_warranty", "гарантия по умолчанию"),
         _ => return Ok(None),
     };
     let current = load(tx).await?;
-    let value = match kind {
-        DictionaryKind::Master => &current.default_master,
-        _ => &current.default_warranty,
-    };
+    let value = &current.default_warranty;
     let key_of = normalize_search(value);
     if value == to || key_of.is_empty() || !from.contains(&key_of) {
         return Ok(None);
@@ -350,8 +356,13 @@ pub(crate) async fn ensure_timezone(
     Ok(loaded)
 }
 
-/// `point_exists` — найдена ли неархивная точка, на которую указывает патч (если указывает).
-pub(crate) fn validate(p: &SettingsPatch, point_exists: bool) -> Result<(), CoreError> {
+/// `point_exists` — найдена ли неархивная точка, на которую указывает патч (если указывает);
+/// `master_exists` — так же для мастера по умолчанию (активный пользователь с отметкой «Мастер»).
+pub(crate) fn validate(
+    p: &SettingsPatch,
+    point_exists: bool,
+    master_exists: bool,
+) -> Result<(), CoreError> {
     let mut errors = Vec::new();
     if let Some(c) = &p.currency_symbol {
         let n = c.chars().count();
@@ -374,6 +385,9 @@ pub(crate) fn validate(p: &SettingsPatch, point_exists: bool) -> Result<(), Core
     }
     if matches!(p.default_service_point_id, Some(Some(_))) && !point_exists {
         errors.push(FieldError::new("default_service_point_id", "invalid"));
+    }
+    if matches!(p.default_master_user_id, Some(Some(_))) && !master_exists {
+        errors.push(crate::orders::master_unavailable("default_master_user_id"));
     }
     if p.timezone
         .as_deref()
@@ -404,7 +418,6 @@ impl Core {
         let mut patch = patch;
         for text in [
             &mut patch.default_warranty,
-            &mut patch.default_master,
             &mut patch.firm_name,
             &mut patch.firm_phone,
             &mut patch.firm_details,
@@ -432,7 +445,11 @@ impl Core {
                 .is_some(),
             _ => true,
         };
-        validate(&patch, point_exists)?;
+        let master_exists = match patch.default_master_user_id {
+            Some(Some(id)) => crate::orders::available_master(&tx, id).await?.is_some(),
+            _ => true,
+        };
+        validate(&patch, point_exists, master_exists)?;
         let mut changes = serde_json::Map::new();
         let mut names = Vec::new();
         let mut apply = |key: &'static str, label: &'static str, differs: bool, value: Value| {
@@ -497,11 +514,11 @@ impl Core {
                 json!(v),
             );
         }
-        if let Some(v) = &patch.default_master {
+        if let Some(v) = patch.default_master_user_id {
             apply(
-                "default_master",
+                "default_master_user_id",
                 "мастер по умолчанию",
-                *v != current.default_master,
+                v != current.default_master_user_id,
                 json!(v),
             );
         }

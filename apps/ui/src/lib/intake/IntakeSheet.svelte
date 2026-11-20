@@ -5,17 +5,20 @@
 	import { tick, untrack } from 'svelte';
 	import type { Client } from '$api/Client';
 	import type { DictionaryKind } from '$api/DictionaryKind';
+	import type { MasterUser } from '$api/MasterUser';
 	import type { Order } from '$api/Order';
 	import type { OrderValueField } from '$api/OrderValueField';
 	import { discardDraft } from '#lib/api/attachments.js';
 	import { addDictionaryItem, listDictionary } from '#lib/api/catalogs.js';
 	import { ApiError, errorMessage } from '#lib/api/client.js';
+	import { listMasters } from '#lib/api/masters.js';
 	import { createOrder, orderValues } from '#lib/api/orders.js';
 	import { app } from '#lib/app/context.svelte.js';
 	import { submitShortcut } from '#lib/design/hotkeys.svelte.js';
 	import { readStorage, removeStorage, writeStorage } from '#lib/design/storage.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import { emitOrderChanged } from '#lib/orders/events.js';
+	import { masterItems, masterOf, masterValue } from '#lib/orders/masters.js';
 	import { orderPanel } from '#lib/orders/panel.svelte.js';
 	import { createDraftMedia, type Media } from '#lib/orders/photos.svelte.js';
 	import Button from '#lib/ui/Button.svelte';
@@ -110,7 +113,6 @@
 		'completeness',
 		'condition',
 		'malfunction',
-		'master',
 		'client_source',
 		'warranty'
 	] as const satisfies readonly DictionaryKind[];
@@ -120,6 +122,7 @@
 
 	let draft = $state<IntakeDraft>(emptyDraft(app.settings, app.statuses));
 	let dictionaries = $state.raw(noDictionaries());
+	let masters = $state.raw<MasterUser[]>([]);
 	let attempted = $state(false);
 	let submitError = $state<string | null>(null);
 	/** The draft as it was when `submitError` was shown: any edit since then hides it. */
@@ -274,6 +277,12 @@
 				KINDS.map((k, i) => [k, (lists[i] ?? []).map((d) => d.value)])
 			) as Record<Kind, string[]>;
 		});
+		// Without them only «Не выбран» is offered.
+		void listMasters()
+			.catch(() => [])
+			.then((list) => {
+				if (mine === dictionarySeq) masters = list;
+			});
 	}
 
 	$effect(() => {
@@ -405,7 +414,7 @@
 	const brandItems = $derived(items(mergeSuggestions(dictionaries.brand, brands.values)));
 	const modelItems = $derived(items(models.values));
 	const colorItems = $derived(items(dictionaries.color));
-	const masterItems = $derived(items(dictionaries.master));
+	const masterOptions = $derived(masterItems(masters, draft.masterId));
 	const warrantyItems = $derived(
 		items(mergeSuggestions(dictionaries.warranty, [app.settings.default_warranty]))
 	);
@@ -679,7 +688,11 @@
 
 			<Section title={t.work}>
 				<div class="grid three">
-					<Combobox label={t.master} items={masterItems} bind:value={draft.master} />
+					<Select
+						label={t.master}
+						items={masterOptions}
+						bind:value={() => masterValue(draft.masterId), (v) => (draft.masterId = masterOf(v))}
+					/>
 					<Select
 						id={FIELDS.status}
 						label={t.status}

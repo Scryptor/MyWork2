@@ -115,10 +115,10 @@ async fn new_settings_have_defaults_and_validate_service_point() -> Result<(), C
             (
                 s.default_warranty.as_str(),
                 s.default_service_point_id,
-                s.default_master.as_str(),
+                s.default_master_user_id,
                 s.firm_name.as_str()
             ),
-            ("30 дней", None, "", ""),
+            ("30 дней", None, None, ""),
             "{}",
             t.label
         );

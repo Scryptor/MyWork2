@@ -1,12 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import {
-	addDictionaryItem,
-	createOrder,
-	fetchOrder,
-	patchOrder,
-	statusId,
-	uniq
-} from './support/api';
+import { createOrder, fetchOrder, masterId, patchOrder, statusId, uniq } from './support/api';
 
 // Bulk actions of the selection bar on the server of 4173 (open mode: every permission). Each test
 // makes its own orders with a unique model and selects them in the list narrowed to that model.
@@ -103,7 +96,7 @@ test('bulk issue now stamps the date and reports an order it could not issue', a
 test('bulk master change and undo', async ({ page, request }) => {
 	const m = uniq('M');
 	const master = uniq('Мастер');
-	await addDictionaryItem(request, 'master', master);
+	await masterId(request, master);
 	const a = await createOrder(request, { model: m, master: 'Антон' });
 	const b = await createOrder(request, { model: m });
 	await selectAll(page, m, [a.id, b.id]);
@@ -162,7 +155,7 @@ test('bulk marks are set and cleared', async ({ page, request }) => {
 test('the bulk menus are unavailable while a batch is running', async ({ page, request }) => {
 	const m = uniq('M');
 	const master = uniq('Мастер');
-	await addDictionaryItem(request, 'master', master);
+	await masterId(request, master);
 	const a = await createOrder(request, { model: m });
 	const b = await createOrder(request, { model: m });
 	await selectAll(page, m, [a.id, b.id]);
@@ -216,11 +209,11 @@ test('bulk undo puts back the value of the moment of the action, not of the list
 }) => {
 	const m = uniq('M');
 	const master = uniq('Мастер');
-	await addDictionaryItem(request, 'master', master);
+	await masterId(request, master);
 	const a = await createOrder(request, { model: m, master: 'Антон' });
 	await selectAll(page, m, [a.id]);
 	// Someone else changes the master after the list was loaded.
-	await patchOrder(request, a.id, { master: 'Виктор' });
+	await patchOrder(request, a.id, { master_user_id: await masterId(request, 'Виктор') });
 
 	await barOf(page).getByRole('button', { name: 'Мастер' }).click();
 	await page.getByRole('menuitem', { name: master }).click();

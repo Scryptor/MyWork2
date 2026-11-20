@@ -406,6 +406,7 @@ pub(crate) fn convert(db: &LegacyDb, folder: &LegacyFolder, now: NaiveDateTime) 
         statuses: catalogs.statuses,
         service_points: catalogs.service_points,
         dictionary: catalogs.dictionary,
+        masters: catalogs.masters,
         roles,
         users,
         settings,

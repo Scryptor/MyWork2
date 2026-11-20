@@ -451,3 +451,84 @@ async fn import_fills_status_changed_at_from_the_last_legacy_status() {
         assert_eq!(changed(10).await, None, "{}", t.label);
     }
 }
+
+#[tokio::test]
+async fn import_turns_master_names_into_master_users() {
+    for t in cores().await {
+        let s = t
+            .core
+            .import_bundle(&admin(), sample_bundle(), ImportMode::IntoEmpty)
+            .await
+            .unwrap();
+        // «Петров» (файл мастеров, мастер по умолчанию и «ПЕТРОВ» в заказах) — новый мастер без
+        // входа; «олег» — пользователь MyWork 2 «Олег», он получил отметку и не задвоен.
+        assert_eq!(
+            (s.users, s.masters_created, s.masters_marked, s.roles),
+            (2, 1, 1, 2),
+            "{}",
+            t.label
+        );
+        let users = t.core.list_users(&admin()).await.unwrap();
+        assert_eq!(users.len(), 3, "{}", t.label);
+        let by_name = |name: &str| users.iter().find(|u| u.display_name == name).unwrap();
+        let (irina, oleg, petrov) = (by_name("Ирина"), by_name("Олег"), by_name("Петров"));
+        assert_eq!(
+            (irina.is_master, irina.can_sign_in),
+            (false, true),
+            "{}",
+            t.label
+        );
+        assert_eq!(
+            (oleg.is_master, oleg.can_sign_in, oleg.login.as_str()),
+            (true, true, "Олег")
+        );
+        assert_eq!(
+            (petrov.is_master, petrov.can_sign_in, petrov.login.as_str()),
+            (true, false, "")
+        );
+        assert_eq!(petrov.role_id, role_id_by_name(&t.core, "Мастер").await);
+        let roles = t.core.list_roles(&admin()).await.unwrap();
+        let master_role = roles.iter().find(|r| r.name == "Мастер").unwrap();
+        assert_eq!(
+            master_role.permissions,
+            PermissionSet::from_codes(["orders_edit", "clients_view"])
+        );
+        for id in [5, 6, 10] {
+            let o = t.core.get_order(&admin(), id).await.unwrap();
+            assert_eq!(
+                (o.master.as_str(), o.master_user_id),
+                ("ПЕТРОВ", Some(petrov.id)),
+                "{}: заказ {id}",
+                t.label
+            );
+        }
+        assert_eq!(t.core.settings().default_master_user_id, Some(petrov.id));
+        assert!(
+            t.core
+                .list_dictionary(mw_domain::dictionary::DictionaryKind::Master, true)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        // Вход MyWork 2 у отмеченного пользователя прежний.
+        assert!(t.core.login("Олег", "qwerty", "test").await.is_ok());
+    }
+}
+
+#[tokio::test]
+async fn masters_in_the_dictionary_of_a_bundle_are_refused() {
+    for t in cores().await {
+        let mut b = sample_bundle();
+        for (kind, values) in &mut b.dictionary {
+            if *kind == mw_domain::dictionary::DictionaryKind::Master {
+                values.push("ПЕТРОВ".into());
+            }
+        }
+        let err = t
+            .core
+            .import_bundle(&admin(), b, ImportMode::IntoEmpty)
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("мастера"), "{}: {err}", t.label);
+    }
+}

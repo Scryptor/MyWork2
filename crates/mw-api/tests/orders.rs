@@ -198,7 +198,8 @@ async fn edits_status_issue_delete_with_versions() {
         assert_eq!(
             patch(
                 3,
-                json!({ "master": "Антон", "work_done": "Замена дисплея", "final_price": 100000 })
+                json!({ "master_user_id": t.create_master("Антон").await,
+                    "work_done": "Замена дисплея", "final_price": 100000 })
             )
             .await
             .body["version"],
@@ -358,9 +359,8 @@ async fn order_ready_to_issue(t: &common::TestApi, token: &str) -> (i64, i64) {
             Method::PATCH,
             &format!("/api/v1/orders/{id}?version=1"),
             Some(token),
-            Some(
-                json!({ "master": "Антон", "work_done": "Замена дисплея", "final_price": 100000 }),
-            ),
+            Some(json!({ "master_user_id": t.create_master("Антон").await,
+                "work_done": "Замена дисплея", "final_price": 100000 })),
         )
         .await;
     assert_eq!(r.status, 200, "{}: {}", t.label, r.body);
@@ -536,5 +536,89 @@ async fn history_cursor_gives_only_older_entries_and_needs_both_fields() {
                 .await;
             assert_eq!(r.status, 422, "{}: {}", t.label, r.body);
         }
+    }
+}
+
+#[tokio::test]
+async fn the_master_is_chosen_by_user_and_the_masters_dictionary_is_closed() {
+    for t in apis(Listen::Network).await {
+        let token = t.admin_token().await;
+        let anton = t.create_master("Антон").await;
+        let mut body = new_order("Анна", "", "Samsung", "A52");
+        body["master_user_id"] = json!(anton);
+        let o = create_order(&t, &token, body).await;
+        assert_eq!(
+            (&o["master_user_id"], &o["master"]),
+            (&json!(anton), &json!("Антон")),
+            "{}",
+            t.label
+        );
+        let id = o["id"].as_i64().unwrap();
+        let list = t
+            .get(
+                &format!("/api/v1/orders?master_user_id={anton}"),
+                Some(&token),
+            )
+            .await;
+        assert_eq!(ids(&list.body), [id], "{}", t.label);
+        assert_eq!(list.body["items"][0]["master_user_id"], json!(anton));
+
+        // Имя мастера текстом больше не задаётся; чужой номер — понятный отказ.
+        let r = t
+            .send(
+                Method::PATCH,
+                &format!("/api/v1/orders/{id}?version=1"),
+                Some(&token),
+                Some(json!({ "master": "Борис" })),
+            )
+            .await;
+        assert_eq!(r.status, 400, "{}: {}", t.label, r.body);
+        let r = t
+            .send(
+                Method::PATCH,
+                &format!("/api/v1/orders/{id}?version=1"),
+                Some(&token),
+                Some(json!({ "master_user_id": 999_999 })),
+            )
+            .await;
+        assert_eq!(
+            (r.status, &r.body["fields"]),
+            (
+                422,
+                &json!([{ "field": "master_user_id", "code": "invalid",
+                    "message": "Мастер не найден или отключён" }])
+            ),
+            "{}",
+            t.label
+        );
+        let r = t
+            .send(
+                Method::POST,
+                "/api/v1/dictionaries/master",
+                Some(&token),
+                Some(json!({ "value": "Борис" })),
+            )
+            .await;
+        assert_eq!(
+            (r.status, &r.body["fields"][0]["code"]),
+            (422, &json!("closed")),
+            "{}: {}",
+            t.label,
+            r.body
+        );
+        let r = t
+            .send(
+                Method::PATCH,
+                "/api/v1/settings",
+                Some(&token),
+                Some(json!({ "default_master_user_id": anton })),
+            )
+            .await;
+        assert_eq!(
+            (r.status, &r.body["default_master_user_id"]),
+            (200, &json!(anton)),
+            "{}",
+            t.label
+        );
     }
 }

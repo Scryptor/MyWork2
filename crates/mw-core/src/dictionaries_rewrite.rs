@@ -57,11 +57,12 @@ enum FieldPatch {
     Client(ClientPatch),
 }
 
-/// То же поле, что читает `usage_target(kind)`.
-fn field_patch(kind: DictionaryKind, value: String) -> FieldPatch {
+/// То же поле, что читает `usage_target(kind)`. Мастер заказа — пользователь: справочник «Мастера»
+/// заказы не меняет (`None`).
+fn field_patch(kind: DictionaryKind, value: String) -> Option<FieldPatch> {
     let v = Some(value);
     let order = |p: OrderPatch| FieldPatch::Order(Box::new(p));
-    match kind {
+    Some(match kind {
         DictionaryKind::DeviceType => order(OrderPatch {
             device_type: v,
             ..Default::default()
@@ -90,10 +91,7 @@ fn field_patch(kind: DictionaryKind, value: String) -> FieldPatch {
             work_done: v,
             ..Default::default()
         }),
-        DictionaryKind::Master => order(OrderPatch {
-            master: v,
-            ..Default::default()
-        }),
+        DictionaryKind::Master => return None,
         DictionaryKind::Warranty => order(OrderPatch {
             warranty: v,
             ..Default::default()
@@ -102,7 +100,7 @@ fn field_patch(kind: DictionaryKind, value: String) -> FieldPatch {
             source: v,
             ..Default::default()
         }),
-    }
+    })
 }
 
 /// «заказов» или «клиентов» — что меняет справочник этого вида.
@@ -127,6 +125,7 @@ impl Core {
         to: &str,
         term_field: &'static str,
     ) -> Result<u64, CoreError> {
+        crate::dictionaries::refuse_closed(kind)?;
         let target = usage_target(kind);
         // Имена берутся только из статической таблицы `usage_target`.
         let sql = format!(
@@ -158,7 +157,10 @@ impl Core {
                 )]));
             }
             let via = Some(EditVia::Dictionary);
-            let edited = match field_patch(kind, value) {
+            let Some(patch) = field_patch(kind, value) else {
+                return Err(crate::dictionaries::closed_error());
+            };
+            let edited = match patch {
                 FieldPatch::Order(patch) => {
                     self.update_order_in(tx, actor, id, version, *patch, via)
                         .await?

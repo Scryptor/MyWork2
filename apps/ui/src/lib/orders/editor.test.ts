@@ -104,13 +104,17 @@ describe('createOrderEditor', () => {
 	});
 
 	it('a conflict takes what others changed and asks about the fields both changed', async () => {
-		const server = fakeServer(order(7, { malfunction: 'Не включается', master: '' }));
+		const server = fakeServer(order(7, { malfunction: 'Не включается', master_user_id: null }));
 		const emit = vi.fn();
 		const ed = createOrderEditor(server.current, { api: server.api, emit });
-		server.elsewhere({ malfunction: 'Не включается после воды', model: 'Другая', master: 'Антон' });
+		server.elsewhere({
+			malfunction: 'Не включается после воды',
+			model: 'Другая',
+			master_user_id: 3
+		});
 		ed.autosave.edit('malfunction', 'Не включается, разбит экран');
 		ed.autosave.edit('work_done', 'Диагностика');
-		ed.autosave.edit('master', 'Антон');
+		ed.autosave.edit('master_user_id', 3);
 		await expect(ed.autosave.flush()).rejects.toMatchObject({ code: 'conflict' });
 		await settle();
 

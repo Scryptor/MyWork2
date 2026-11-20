@@ -58,7 +58,8 @@ export interface IntakeDraft {
 	condition: string[];
 	malfunctionChips: string[];
 	malfunction: string;
-	master: string;
+	/** The master — a user marked «Мастер»; null — not chosen. */
+	masterId: number | null;
 	statusId: number | null;
 	estimateFrom: number | null;
 	estimateTo: number | null;
@@ -133,7 +134,7 @@ export function emptyDraft(settings: AppSettings, statuses: readonly Status[]): 
 		condition: [],
 		malfunctionChips: [],
 		malfunction: '',
-		master: settings.default_master,
+		masterId: settings.default_master_user_id,
 		statusId: intakeStatuses(statuses).find((s) => s.kind === 'diagnostics')?.id ?? null,
 		estimateFrom: null,
 		estimateTo: null,
@@ -255,7 +256,8 @@ export function parseDraft(
 		condition: readChips(o, 'condition'),
 		malfunctionChips: readChips(o, 'malfunctionChips'),
 		malfunction: readText(o, 'malfunction'),
-		master: readText(o, 'master', base.master),
+		// A draft of an older version kept the master as text: it gets the default master.
+		masterId: 'masterId' in o ? positiveId(o.masterId) : base.masterId,
 		statusId: intakeStatuses(statuses).some((s) => s.id === statusId) ? statusId : base.statusId,
 		estimateFrom: readMoney(o, 'estimateFrom'),
 		estimateTo: readMoney(o, 'estimateTo'),
@@ -430,7 +432,7 @@ export function toNewOrder(d: IntakeDraft, pointId: number | null, photos = fals
 		device_condition: joinChips(d.condition),
 		malfunction: joinChips([...d.malfunctionChips, d.malfunction]),
 		internal_comment: d.comment.trim(),
-		master: d.master.trim(),
+		master_user_id: d.masterId,
 		estimate_from: d.estimateFrom,
 		estimate_to: d.estimateTo,
 		prepayment: d.prepayment ?? 0,

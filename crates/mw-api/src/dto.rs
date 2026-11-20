@@ -291,7 +291,10 @@ pub struct OrderListQuery {
     pub device_type: Option<String>,
     /// Только этот бренд (без учёта регистра).
     pub brand: Option<String>,
-    /// Только этот мастер (без учёта регистра).
+    /// Только этот мастер — пользователь.
+    pub master_user_id: Option<i64>,
+    /// Только мастер с этим именем в заказе (без учёта регистра); для старых сохранённых видов
+    /// списка — новый выбор идёт по `master_user_id`.
     pub master: Option<String>,
     /// Принят не раньше (включительно), местное время без смещения.
     pub received_from: Option<NaiveDateTime>,
@@ -336,6 +339,7 @@ impl OrderListQuery {
             device_type: self.device_type,
             brand: self.brand,
             master: self.master,
+            master_user_id: self.master_user_id,
             received_from: self.received_from,
             received_to: self.received_to,
             issued_from: self.issued_from,

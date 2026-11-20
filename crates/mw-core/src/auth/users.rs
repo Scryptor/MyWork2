@@ -157,7 +157,7 @@ pub struct MasterUser {
 }
 
 /// Имя для людей: отображаемое имя, а если оно пустое — логин.
-fn shown_name(u: &user::Model) -> &str {
+pub(crate) fn shown_name(u: &user::Model) -> &str {
     if u.display_name.is_empty() {
         &u.login
     } else {
@@ -629,7 +629,13 @@ impl Core {
             },
         )
         .await?;
-        tx.commit().await?;
+        // Кэш настроек следит за тем, можно ли ещё выбрать мастера по умолчанию.
+        let reloaded = if changed.contains_key("active") || changed.contains_key("is_master") {
+            Some(crate::settings::load(&tx).await?)
+        } else {
+            None
+        };
+        self.commit_with_settings(tx, reloaded).await?;
         Ok(model.into())
     }
 

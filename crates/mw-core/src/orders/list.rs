@@ -56,8 +56,11 @@ pub struct OrderFilter {
     pub device_type: Option<String>,
     /// Бренд; сравнение по ключу.
     pub brand: Option<String>,
-    /// Мастер; сравнение по ключу.
+    /// Имя мастера в заказе; сравнение по ключу (без учёта регистра). Для старых сохранённых видов
+    /// списка: новый выбор — по `master_user_id`.
     pub master: Option<String>,
+    /// Мастер — пользователь.
+    pub master_user_id: Option<i64>,
     /// Принят не раньше (включительно).
     pub received_from: Option<NaiveDateTime>,
     /// Принят не позже (включительно).
@@ -152,8 +155,11 @@ pub struct OrderListItem {
     pub serial: String,
     /// Неисправность со слов клиента.
     pub malfunction: String,
-    /// Мастер.
+    /// Имя мастера, каким оно записано в заказе.
     pub master: String,
+    /// Мастер — пользователь; пусто — не выбран.
+    #[schema(required = true)]
+    pub master_user_id: Option<i64>,
     /// Оценка стоимости: нижняя граница, в копейках.
     #[schema(required = true)]
     pub estimate_from: Option<Money>,
@@ -195,6 +201,7 @@ struct Row {
     serial: String,
     malfunction: String,
     master: String,
+    master_user_id: Option<i64>,
     estimate_from: Option<i64>,
     estimate_to: Option<i64>,
     prepayment: i64,
@@ -224,6 +231,7 @@ impl From<Row> for OrderListItem {
             serial: r.serial,
             malfunction: r.malfunction,
             master: r.master,
+            master_user_id: r.master_user_id,
             estimate_from: r.estimate_from.map(Money::from_kopecks),
             estimate_to: r.estimate_to.map(Money::from_kopecks),
             prepayment: Money::from_kopecks(r.prepayment),
@@ -329,6 +337,7 @@ impl Core {
             .expr_as(o(order::Column::Serial), "serial")
             .expr_as(o(order::Column::Malfunction), "malfunction")
             .expr_as(o(order::Column::Master), "master")
+            .expr_as(o(order::Column::MasterUserId), "master_user_id")
             .expr_as(o(order::Column::EstimateFrom), "estimate_from")
             .expr_as(o(order::Column::EstimateTo), "estimate_to")
             .expr_as(o(order::Column::Prepayment), "prepayment")
@@ -382,6 +391,9 @@ impl Core {
         }
         if let Some(id) = filter.client_id {
             cond = cond.add(o(order::Column::ClientId).eq(id));
+        }
+        if let Some(id) = filter.master_user_id {
+            cond = cond.add(o(order::Column::MasterUserId).eq(id));
         }
         if let Some(v) = filter.need_call {
             cond = cond.add(o(order::Column::NeedCall).eq(v));

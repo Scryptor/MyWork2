@@ -4,11 +4,14 @@ import type { Attachment } from '$api/Attachment';
 import type { Client } from '$api/Client';
 import type { ClientPatch } from '$api/ClientPatch';
 import type { DictionaryKind } from '$api/DictionaryKind';
+import type { MasterUser } from '$api/MasterUser';
 import type { NewClient } from '$api/NewClient';
 import type { NewOrder } from '$api/NewOrder';
 import type { Order } from '$api/Order';
 import type { OrderPatch } from '$api/OrderPatch';
+import type { Role } from '$api/Role';
 import type { Status } from '$api/Status';
+import type { User } from '$api/User';
 
 /** Test password of the administrator created by `server.mjs --admin` (fictional). */
 export const E2E_ADMIN_PASSWORD = 'e2e-test-password';
@@ -52,12 +55,41 @@ async function json<T>(response: Awaited<ReturnType<APIRequestContext['get']>>):
 	return (await response.json()) as T;
 }
 
-/** Creates an order through the API; a new client with a unique name and phone unless given. */
+/**
+ * The active master named `name` (a user marked «Мастер»); made without sign-in, in the role «Мастер»,
+ * when there is none.
+ */
+export async function masterId(request: APIRequestContext, name: string): Promise<number> {
+	const masters = await json<MasterUser[]>(await request.get('/api/v1/masters'));
+	const found = masters.find((m) => m.active && m.display_name === name);
+	if (found) return found.id;
+	const roles = await json<Role[]>(await request.get('/api/v1/roles'));
+	const role = roles.find((r) => r.name === 'Мастер');
+	if (!role) throw new Error('no role «Мастер»');
+	const user = await json<User>(
+		await request.post('/api/v1/users', {
+			data: {
+				login: '',
+				display_name: name,
+				role_id: role.id,
+				password: '',
+				can_sign_in: false,
+				is_master: true
+			}
+		})
+	);
+	return user.id;
+}
+
+/**
+ * Creates an order through the API; a new client with a unique name and phone unless given. `master` —
+ * the name of a master user (made when there is none).
+ */
 export async function createOrder(
 	request: APIRequestContext,
-	over: Partial<NewOrder> & { clientName?: string; phone?: string } = {}
+	over: Partial<NewOrder> & { clientName?: string; phone?: string; master?: string } = {}
 ): Promise<Order> {
-	const { clientName, phone, ...rest } = over;
+	const { clientName, phone, master, ...rest } = over;
 	const digits = String(Date.now() + ++counter).slice(-7);
 	const body: NewOrder = {
 		client: {
@@ -82,7 +114,7 @@ export async function createOrder(
 		device_condition: '',
 		malfunction: 'Не включается',
 		internal_comment: '',
-		master: '',
+		master_user_id: master === undefined ? null : await masterId(request, master),
 		estimate_from: null,
 		estimate_to: null,
 		prepayment: 0,
@@ -149,7 +181,7 @@ export async function patchOrder(
 	);
 }
 
-/** Adds a value to a dictionary (`master`, `warranty`, …) through the API. */
+/** Adds a value to a dictionary (`warranty`, `brand`, …) through the API. */
 export async function addDictionaryItem(
 	request: APIRequestContext,
 	kind: DictionaryKind,

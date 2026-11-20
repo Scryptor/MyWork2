@@ -9,6 +9,7 @@ pub(crate) use password::HashGate;
 pub use password::{PasswordScheme, hash_password, legacy_sha1_hex, verify_password};
 pub use roles::{NewRole, Role, RolePatch};
 pub use sessions::{LAST_SEEN_THROTTLE_SECS, SESSION_IDLE_DAYS, Session};
+pub(crate) use users::shown_name;
 pub use users::{MasterUser, NewUser, User, UserPatch};
 
 /// Минимальная длина пароля в символах (не в байтах).

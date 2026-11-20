@@ -38,7 +38,7 @@ const SETTINGS: AppSettings = {
 	intake_required_fields: false,
 	issue_required: [],
 	default_service_point_id: null,
-	default_master: 'ТЕСТОВ',
+	default_master_user_id: 7,
 	firm_name: '',
 	firm_phone: '',
 	firm_details: '',
@@ -85,7 +85,7 @@ afterEach(() => vi.unstubAllGlobals());
 describe('emptyDraft', () => {
 	it('empty draft takes master, warranty and the first diagnostics status', () => {
 		const d = empty();
-		expect(d.master).toBe('ТЕСТОВ');
+		expect(d.masterId).toBe(7);
 		expect(d.warranty).toBe('30 дней');
 		// «Диагностика» (2) comes before «Ещё диагностика» (6); the archived one (5) is skipped.
 		expect(d.statusId).toBe(2);
@@ -169,7 +169,7 @@ describe('toNewOrder', () => {
 			condition: ['Царапины'],
 			malfunctionChips: ['Не включается', 'Залит'],
 			malfunction: ' после падения ',
-			master: ' АНТОН ',
+			masterId: 3,
 			statusId: 6,
 			estimateFrom: 500_000,
 			estimateTo: 700_000,
@@ -205,7 +205,7 @@ describe('toNewOrder', () => {
 			device_condition: 'Царапины',
 			malfunction: 'Не включается, Залит, после падения',
 			internal_comment: 'позвонить вечером',
-			master: 'АНТОН',
+			master_user_id: 3,
 			estimate_from: 500_000,
 			estimate_to: 700_000,
 			prepayment: 0,
@@ -301,7 +301,7 @@ describe('parseDraft', () => {
 			completeness: ['Чехол'],
 			condition: ['Царапины'],
 			malfunctionChips: ['Залит'],
-			master: '',
+			masterId: null,
 			statusId: 1,
 			estimateFrom: 1,
 			estimateTo: 2,
@@ -382,6 +382,13 @@ describe('parseDraft', () => {
 		});
 		// «Выдан» (4) cannot start an order: the default status instead.
 		expect(d.statusId).toBe(2);
+	});
+
+	it('the master is a user: a draft of an older version (master as text) gets the default one', () => {
+		const parse = (o: object) => parseDraft(JSON.stringify(o), SETTINGS, STATUS_LIST).masterId;
+		expect(parse({ master: 'АНТОН' })).toBe(7);
+		expect(parse({ masterId: 3 })).toBe(3);
+		expect(parse({ masterId: null })).toBeNull();
 	});
 
 	it('a draft without phones still has the phone field', () => {

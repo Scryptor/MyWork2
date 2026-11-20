@@ -222,7 +222,7 @@ impl ImportReport {
         let mut out = String::from("Импорт из MyWork 2 завершён.\n");
         out.push_str(&format!("Версия базы: {}", self.schema.version_text()));
         out.push_str("\n\nПеренесено:\n");
-        let lines: [(&str, u64); 11] = [
+        let lines: [(&str, u64); 13] = [
             ("заказов", m.orders),
             ("из них удалённых", m.deleted_orders),
             ("клиентов", m.clients),
@@ -234,6 +234,8 @@ impl ImportReport {
             ("значений справочников", m.dictionary_items),
             ("групп доступа", m.roles),
             ("пользователей", m.users),
+            ("мастеров создано", m.masters_created),
+            ("пользователей отмечено «Мастер»", m.masters_marked),
         ];
         for (title, n) in lines {
             out.push_str(&format!("  {title} — {n}\n"));

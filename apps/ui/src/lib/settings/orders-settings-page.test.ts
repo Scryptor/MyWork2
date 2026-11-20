@@ -7,10 +7,12 @@ import { ru } from '#lib/i18n/ru.js';
 // a saved value that the dictionary does not have stays shown and chosen.
 const api = vi.hoisted(() => ({ listDictionary: vi.fn(), updateSettings: vi.fn() }));
 vi.mock('#lib/api/catalogs.js', () => api);
+const masters = vi.hoisted(() => ({ listMasters: vi.fn() }));
+vi.mock('#lib/api/masters.js', () => masters);
 const state = vi.hoisted(() => ({
 	settings: {
 		default_service_point_id: null,
-		default_master: '',
+		default_master_user_id: null,
 		default_warranty: '30 дней',
 		diagnostics_overdue_days: 4,
 		ready_stale_days: 7,
@@ -57,7 +59,31 @@ beforeEach(() => {
 		...state.settings,
 		...patch
 	}));
-	state.settings = { ...state.settings, default_warranty: '30 дней' };
+	masters.listMasters.mockReset();
+	masters.listMasters.mockResolvedValue([
+		{ id: 3, display_name: 'Антон', active: true },
+		{ id: 7, display_name: 'Уволен', active: false }
+	]);
+	state.settings = { ...state.settings, default_warranty: '30 дней', default_master_user_id: null };
+});
+
+describe('«Мастер по умолчанию»', () => {
+	it('offers «Не выбран» and the active masters; the choice saves the user', async () => {
+		render(Page);
+		await waitFor(() => expect(masters.listMasters).toHaveBeenCalled());
+		const box = screen.getByRole('combobox', { name: 'Мастер по умолчанию' });
+		expect(box).toHaveTextContent('Не выбран');
+		await waitFor(async () => {
+			box.focus();
+			await userEvent.keyboard('{Enter}');
+			await screen.findAllByRole('option', { hidden: true });
+			expect(optionTexts()).toEqual(['Не выбран', 'Антон']);
+		});
+		await userEvent.click(option('Антон'));
+		await waitFor(() =>
+			expect(api.updateSettings).toHaveBeenCalledWith({ default_master_user_id: 3 })
+		);
+	});
 });
 
 /** The list is opened from the keyboard; jsdom does not place it, so it is found with `hidden`. */

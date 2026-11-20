@@ -189,7 +189,7 @@ fn apply_computer_settings(
     if let Some(v) = ini.get(section, "MasterDefault")
         && !v.is_empty()
     {
-        settings.values.default_master = Some(v.to_owned());
+        settings.default_master = Some(v.to_owned());
     }
     let Some(v) = ini
         .get(section, "AdressSCDefault")
@@ -389,7 +389,7 @@ mod tests {
             (
                 v.default_warranty.as_deref(),
                 s.default_service_point.as_deref(),
-                v.default_master.as_deref()
+                s.default_master.as_deref()
             ),
             (Some("Без гарантии"), Some("Ленина, 1"), Some("ПЕТРОВ"))
         );

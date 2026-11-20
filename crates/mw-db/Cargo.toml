@@ -13,6 +13,7 @@ mw-domain = { path = "../mw-domain" }
 sea-orm = { workspace = true }
 sea-orm-migration = { workspace = true }
 chrono = { workspace = true }
+chrono-tz = { workspace = true }
 serde_json = { workspace = true }
 getrandom = { workspace = true }
 hex = { workspace = true }

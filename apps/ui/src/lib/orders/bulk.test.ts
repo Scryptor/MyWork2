@@ -279,28 +279,31 @@ describe('performBulk', () => {
 	});
 
 	it('master and its undo, each order back to its own master', async () => {
-		const { api, db } = fakeServer([order(1, { master: 'Антон' }), order(2, { master: '' })]);
+		const { api, db } = fakeServer([
+			order(1, { master_user_id: 3 }),
+			order(2, { master_user_id: null })
+		]);
 		const h = harness();
 		await performBulk(
-			[item(1, { master: 'Антон' }), item(2, { master: '' })],
-			{ kind: 'master', master: 'Борис' },
+			[item(1, { master_user_id: 3 }), item(2, { master_user_id: null })],
+			{ kind: 'master', masterId: 5, name: 'Борис' },
 			{ statusName, canClearIssuedAt: true },
 			{ api, ...h.deps }
 		);
-		expect(db.get(1)?.master).toBe('Борис');
-		expect(db.get(2)?.master).toBe('Борис');
+		expect(db.get(1)?.master_user_id).toBe(5);
+		expect(db.get(2)?.master_user_id).toBe(5);
 		expect(h.undo.map((u) => u.label)).toEqual(['Мастер «Борис» у 2 заказов']);
 		await h.undo[0]!.run();
-		expect(db.get(1)?.master).toBe('Антон');
-		expect(db.get(2)?.master).toBe('');
+		expect(db.get(1)?.master_user_id).toBe(3);
+		expect(db.get(2)?.master_user_id).toBe(null);
 	});
 
 	it('labels of removing the master and of the marks', async () => {
-		const { api } = fakeServer([order(1, { master: 'Антон' })]);
+		const { api } = fakeServer([order(1, { master_user_id: 3 })]);
 		const h = harness();
 		const ctx = { statusName, canClearIssuedAt: true };
 		const deps = { api, ...h.deps };
-		await performBulk([item(1)], { kind: 'master', master: '' }, ctx, deps);
+		await performBulk([item(1)], { kind: 'master', masterId: null, name: '' }, ctx, deps);
 		await performBulk([item(1)], { kind: 'flag', flag: 'need_call', value: true }, ctx, deps);
 		await performBulk([item(1)], { kind: 'flag', flag: 'need_parts', value: false }, ctx, deps);
 		expect(h.undo.map((u) => u.label)).toEqual([
@@ -330,7 +333,7 @@ describe('performBulk', () => {
 		const h = harness();
 		const r = await performBulk(
 			[item(1), item(10481)],
-			{ kind: 'master', master: 'Борис' },
+			{ kind: 'master', masterId: 5, name: 'Борис' },
 			{ statusName, canClearIssuedAt: true },
 			{ api, ...h.deps }
 		);
@@ -346,7 +349,7 @@ describe('performBulk', () => {
 		const h = harness();
 		await performBulk(
 			[item(7)],
-			{ kind: 'master', master: 'Борис' },
+			{ kind: 'master', masterId: 5, name: 'Борис' },
 			{ statusName, canClearIssuedAt: true },
 			{ api, ...h.deps }
 		);
@@ -355,11 +358,11 @@ describe('performBulk', () => {
 	});
 
 	it('undo that fails for an order says so', async () => {
-		const { api, db } = fakeServer([order(1, { master: 'Антон' })]);
+		const { api, db } = fakeServer([order(1, { master_user_id: 3 })]);
 		const h = harness();
 		await performBulk(
-			[item(1, { master: 'Антон' })],
-			{ kind: 'master', master: 'Борис' },
+			[item(1, { master_user_id: 3 })],
+			{ kind: 'master', masterId: 5, name: 'Борис' },
 			{ statusName, canClearIssuedAt: true },
 			{ api, ...h.deps }
 		);
@@ -373,20 +376,20 @@ describe('performBulk', () => {
 	it('undo puts back what the orders had before the batch, not what the list showed', async () => {
 		// The list was loaded when the master was «Антон»; meanwhile someone else made it «Виктор».
 		const { api, db } = fakeServer([
-			order(1, { master: 'Виктор', version: 4 }),
-			order(2, { master: '', need_call: true, version: 2 })
+			order(1, { master_user_id: 9, version: 4 }),
+			order(2, { master_user_id: null, need_call: true, version: 2 })
 		]);
 		const h = harness();
 		await performBulk(
-			[item(1, { master: 'Антон', version: 1 }), item(2, { need_call: false, version: 1 })],
-			{ kind: 'master', master: 'Борис' },
+			[item(1, { master_user_id: 3, version: 1 }), item(2, { need_call: false, version: 1 })],
+			{ kind: 'master', masterId: 5, name: 'Борис' },
 			{ statusName, canClearIssuedAt: true },
 			{ api, ...h.deps }
 		);
-		expect(db.get(1)?.master).toBe('Борис');
+		expect(db.get(1)?.master_user_id).toBe(5);
 		await h.undo[0]!.run();
-		expect(db.get(1)?.master).toBe('Виктор');
-		expect(db.get(2)?.master).toBe('');
+		expect(db.get(1)?.master_user_id).toBe(9);
+		expect(db.get(2)?.master_user_id).toBe(null);
 
 		const flags = fakeServer([order(3, { need_call: true })]);
 		const g = harness();
@@ -419,7 +422,7 @@ describe('performBulk', () => {
 		const h = harness();
 		await performBulk(
 			[item(7), item(8)],
-			{ kind: 'master', master: 'Борис' },
+			{ kind: 'master', masterId: 5, name: 'Борис' },
 			{ statusName, canClearIssuedAt: true },
 			{ api, ...h.deps }
 		);
@@ -433,7 +436,7 @@ describe('performBulk', () => {
 		const h = harness();
 		await performBulk(
 			[item(1), item(9)],
-			{ kind: 'master', master: 'Борис' },
+			{ kind: 'master', masterId: 5, name: 'Борис' },
 			{ statusName, canClearIssuedAt: true },
 			{ api, ...h.deps }
 		);

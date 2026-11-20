@@ -34,7 +34,7 @@ async fn summary_counts_statuses_and_attention_in_service_only() -> Result<(), C
                 i,
                 1,
                 OrderPatch {
-                    master: Some("Мастер".into()),
+                    master_user_id: Some(Some(make_master(&t.core, "Мастер").await)),
                     work_done: Some("Работа".into()),
                     final_price: Some(Some(mw_domain::money::Money::from_kopecks(1_000))),
                     ..Default::default()

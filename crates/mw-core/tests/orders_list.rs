@@ -255,21 +255,27 @@ async fn huge_offset_is_validation_error_not_panic() {
 #[tokio::test]
 async fn filters_and_sorting_ignore_case() -> Result<(), CoreError> {
     for t in cores().await {
+        // Два пользователя с одним именем в разном регистре и третий.
+        let (anton_lower, anton, yozhikov) = (
+            make_master(&t.core, "антон").await,
+            make_master(&t.core, "Антон").await,
+            make_master(&t.core, "Ёжиков").await,
+        );
         let a = create_order_with(&t, |n| {
             n.brand = "samsung".into();
-            n.master = "антон".into();
+            n.master_user_id = Some(anton_lower);
         })
         .await
         .id;
         let b = create_order_with(&t, |n| {
             n.brand = "Samsung".into();
-            n.master = "Антон".into();
+            n.master_user_id = Some(anton);
         })
         .await
         .id;
         let c = create_order_with(&t, |n| {
             n.brand = "Apple".into();
-            n.master = "Ёжиков".into();
+            n.master_user_id = Some(yozhikov);
             n.device_type = "ТЕЛЕФОН".into();
         })
         .await

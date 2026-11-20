@@ -29,10 +29,8 @@ async fn setup_flow() {
         let settings = t.get("/api/v1/settings", Some(&admin)).await.body;
         assert_eq!(settings["firm_name"], json!("Сервис"), "{}", t.label);
         assert!(settings["default_service_point_id"].is_i64(), "{}", t.label);
-        let masters = t
-            .get("/api/v1/dictionaries/master", Some(&admin))
-            .await
-            .body;
+        // Мастера — пользователи без входа с отметкой «Мастер».
+        let masters = t.get("/api/v1/masters", Some(&admin)).await.body;
         assert_eq!(
             masters.as_array().unwrap().len(),
             2,

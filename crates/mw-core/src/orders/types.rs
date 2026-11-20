@@ -67,8 +67,11 @@ pub struct NewOrder {
     pub malfunction: String,
     /// Внутренний комментарий.
     pub internal_comment: String,
-    /// Мастер.
-    pub master: String,
+    /// Мастер — активный пользователь с отметкой «Мастер»; пусто — не выбран. Имя мастера
+    /// записывается в заказ сервером.
+    #[serde(deserialize_with = "crate::patch::required_nullable")]
+    #[schema(required = true)]
+    pub master_user_id: Option<i64>,
     /// Оценка стоимости: нижняя граница, в копейках.
     #[serde(deserialize_with = "crate::patch::required_nullable")]
     #[schema(required = true)]
@@ -158,10 +161,10 @@ pub struct OrderPatch {
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub internal_comment: Option<String>,
-    /// Мастер.
-    #[serde(default, deserialize_with = "crate::patch::present")]
-    #[schema(nullable = false)]
-    pub master: Option<String>,
+    /// Мастер — активный пользователь с отметкой «Мастер»; `null` — снять. Имя мастера сервер
+    /// записывает в заказ сам; прежний мастер, которого отключили, остаётся, пока его не сменят.
+    #[serde(default, deserialize_with = "crate::patch::nullable")]
+    pub master_user_id: Option<Option<i64>>,
     /// Оценка стоимости: нижняя граница, в копейках.
     #[serde(default, deserialize_with = "crate::patch::nullable")]
     pub estimate_from: Option<Option<Money>>,
@@ -239,8 +242,12 @@ pub struct Order {
     pub work_done: String,
     /// Внутренний комментарий.
     pub internal_comment: String,
-    /// Мастер.
+    /// Имя мастера: каким оно было при выборе (у заказов, перенесённых из MyWork 2, — как было
+    /// записано); переименование пользователя его не меняет.
     pub master: String,
+    /// Мастер — пользователь с отметкой «Мастер»; пусто — не выбран.
+    #[schema(required = true)]
+    pub master_user_id: Option<i64>,
     /// Штрихкод заказа.
     pub barcode: String,
     /// Оценка стоимости: нижняя граница, в копейках.
@@ -302,6 +309,7 @@ impl From<order::Model> for Order {
             work_done: m.work_done,
             internal_comment: m.internal_comment,
             master: m.master,
+            master_user_id: m.master_user_id,
             barcode: m.barcode,
             estimate_from: m.estimate_from.map(money),
             estimate_to: m.estimate_to.map(money),
@@ -338,7 +346,7 @@ impl std::fmt::Debug for NewOrder {
             .field("device_condition", &self.device_condition)
             .field("malfunction", &self.malfunction)
             .field("internal_comment", &self.internal_comment)
-            .field("master", &self.master)
+            .field("master_user_id", &self.master_user_id)
             .field("estimate_from", &self.estimate_from)
             .field("estimate_to", &self.estimate_to)
             .field("prepayment", &self.prepayment)
@@ -371,7 +379,7 @@ impl std::fmt::Debug for OrderPatch {
             .field("malfunction", &self.malfunction)
             .field("work_done", &self.work_done)
             .field("internal_comment", &self.internal_comment)
-            .field("master", &self.master)
+            .field("master_user_id", &self.master_user_id)
             .field("estimate_from", &self.estimate_from)
             .field("estimate_to", &self.estimate_to)
             .field("final_price", &self.final_price)
@@ -408,6 +416,7 @@ impl std::fmt::Debug for Order {
             .field("work_done", &self.work_done)
             .field("internal_comment", &self.internal_comment)
             .field("master", &self.master)
+            .field("master_user_id", &self.master_user_id)
             .field("barcode", &self.barcode)
             .field("estimate_from", &self.estimate_from)
             .field("estimate_to", &self.estimate_to)
@@ -514,6 +523,7 @@ mod tests {
             model_key: String::new(),
             master_key: String::new(),
             request_key: None,
+            master_user_id: None,
         });
         for (text, brand) in [
             (format!("{new:?}"), "Samsung"),

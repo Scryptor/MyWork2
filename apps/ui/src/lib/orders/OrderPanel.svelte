@@ -11,9 +11,11 @@
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import type { Client } from '$api/Client';
+	import type { MasterUser } from '$api/MasterUser';
 	import { listDictionary } from '#lib/api/catalogs.js';
 	import { errorMessage } from '#lib/api/client.js';
 	import { getClient } from '#lib/api/clients.js';
+	import { listMasters } from '#lib/api/masters.js';
 	import { getOrder } from '#lib/api/orders.js';
 	import { serverClock } from '#lib/api/server-clock.svelte.js';
 	import { app } from '#lib/app/context.svelte.js';
@@ -50,8 +52,8 @@
 	let media = $state.raw<OrderMedia | null>(null);
 	let cameraInput = $state<HTMLInputElement | null>(null);
 	let loadError = $state<string | null>(null);
-	let dictionaries = $state.raw<{ master: string[]; warranty: string[] }>({
-		master: [],
+	let dictionaries = $state.raw<{ masters: MasterUser[]; warranty: string[] }>({
+		masters: [],
 		warranty: []
 	});
 	let body = $state<HTMLElement | null>(null);
@@ -79,16 +81,16 @@
 				: `${t.title(order.id)} · ${deviceOf(order)}`
 	);
 
-	// Dictionaries of «Мастер» and «Гарантия», asked again at every opening: settings may have changed.
+	// The masters and the dictionary «Гарантия», asked again at every opening: settings may have changed.
 	const isOpen = $derived(orderPanel.id !== null);
 	$effect(() => {
 		if (!isOpen) return;
 		let current = true;
-		Promise.all([listDictionary('master'), listDictionary('warranty')]).then(
-			([master, warranty]) => {
+		Promise.all([listMasters(), listDictionary('warranty')]).then(
+			([masters, warranty]) => {
 				if (!current) return;
 				dictionaries = {
-					master: master.map((d) => d.value),
+					masters,
 					warranty: warranty.map((d) => d.value)
 				};
 			},
