@@ -446,20 +446,24 @@ async fn dictionaries_are_written_in_the_order_of_use() -> Res {
     for t in cores().await {
         let (src, data) = (fixture_dir(V32).await, tempfile::tempdir()?);
         let r = import_folder(&t.core, &admin(), &options(src.path(), data.path(), false)).await?;
-        let brands: Vec<String> = t
-            .core
-            .list_dictionary(DictionaryKind::Brand, false)
-            .await?
-            .into_iter()
-            .map(|i| i.value)
-            .collect();
+        let values = |kind| {
+            let core = &t.core;
+            async move {
+                core.list_dictionary(kind, false)
+                    .await
+                    .unwrap()
+                    .into_iter()
+                    .map(|i| (i.id, i.value))
+                    .collect::<Vec<_>>()
+            }
+        };
+        let brands = values(DictionaryKind::Brand).await;
         assert_eq!(
-            brands,
+            brands.iter().map(|(_, v)| v.as_str()).collect::<Vec<_>>(),
             [
                 "Nokia",
                 "Samsung",
-                "Бренд 6",
-                "Бренд 7",
+                "LG",
                 "Бренд 9",
                 "Бренд 10",
                 "Бренд 12",
@@ -468,28 +472,58 @@ async fn dictionaries_are_written_in_the_order_of_use() -> Res {
             "{}",
             t.label
         );
-        // Счёт использования видит значения из заказов: «Nokia» — в трёх заказах.
-        let usage = t
-            .core
-            .dictionary_usage(&admin(), DictionaryKind::Brand)
-            .await?;
-        let nokia = t
-            .core
-            .list_dictionary(DictionaryKind::Brand, false)
-            .await?
-            .into_iter()
-            .find(|i| i.value == "Nokia")
-            .unwrap();
+        // Счёт использования видит значения из заказов: «Nokia» — в трёх заказах; пункт «Нет
+        // изображения» (в MyWork 2 — «Нет изображения/ Шумит/ » и «нет изображения.») — в двух.
+        let count = |kind, id| {
+            let core = &t.core;
+            async move {
+                core.dictionary_usage(&admin(), kind)
+                    .await
+                    .unwrap()
+                    .iter()
+                    .find(|u| u.id == id)
+                    .map(|u| u.count)
+            }
+        };
         assert_eq!(
-            usage.iter().find(|u| u.id == nokia.id).map(|u| u.count),
+            count(DictionaryKind::Brand, brands[0].0).await,
             Some(3),
+            "{}",
+            t.label
+        );
+        let malfunctions = values(DictionaryKind::Malfunction).await;
+        assert_eq!(
+            malfunctions
+                .iter()
+                .map(|(_, v)| v.as_str())
+                .collect::<Vec<_>>(),
+            ["Нет изображения", "Не включается"],
+            "{}",
+            t.label
+        );
+        assert_eq!(
+            count(DictionaryKind::Malfunction, malfunctions[0].0).await,
+            Some(2),
+            "{}",
+            t.label
+        );
+        assert_eq!(
+            count(DictionaryKind::Malfunction, malfunctions[1].0).await,
+            Some(1),
+            "{}",
+            t.label
+        );
+        let o1 = t.core.get_order(&admin(), 1).await?;
+        assert_eq!(
+            (o1.malfunction.as_str(), o1.work_done.as_str()),
+            ("Нет изображения, Шумит", "Замена дисплея, Чистка"),
             "{}",
             t.label
         );
         assert_eq!(r.count(WarningCode::DictionaryFromOrders), 9, "{}", t.label);
         let text = r.full_text();
         assert!(
-            text.contains("| dictionary | Бренды |  | из заказов — 7, из файла — 1 |"),
+            text.contains("| dictionary | Бренды |  | из заказов — 6, из файла — 1 |"),
             "{text}"
         );
     }

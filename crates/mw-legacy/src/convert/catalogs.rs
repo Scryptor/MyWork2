@@ -146,6 +146,9 @@ pub(crate) struct ListedValues {
     pub values: Vec<String>,
     /// Стандартные значения MyWork 3: файла нет или он не менялся.
     pub standard: bool,
+    /// Строки, которые предлагал выпадающий список MyWork 2: файл без подсказок, а если его нет или
+    /// он не менялся — стартовое содержимое (MyWork 2 создавала его при запуске).
+    pub offered: Vec<String>,
 }
 
 /// Каталоги, собранные из старой базы и файлов настроек.
@@ -175,6 +178,14 @@ impl Catalogs {
             .get(&normalize_search(wanted))
             .cloned()
             .unwrap_or_else(|| wanted.to_owned())
+    }
+
+    /// Строки выпадающего списка MyWork 2 для вида справочника.
+    pub(crate) fn offered(&self, kind: DictionaryKind) -> &[String] {
+        self.dictionary
+            .iter()
+            .find(|(k, _)| *k == kind)
+            .map_or(&[], |(_, listed)| listed.offered.as_slice())
     }
 
     /// Название точки MyWork 3 для исходного текста; пусто или неизвестная точка — `None`.
@@ -259,6 +270,21 @@ fn clean_values(lines: &[String], path: &str, w: &mut Warnings) -> Vec<String> {
     values
 }
 
+/// Стартовые строки файла MyWork 2 без подсказок; у файла без стартового содержимого — пусто.
+pub(crate) fn legacy_default_lines(file: &str) -> Vec<String> {
+    LEGACY_DEFAULT_FILES
+        .iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case(file))
+        .map(|(_, lines)| {
+            lines
+                .iter()
+                .filter(|l| !is_placeholder(l))
+                .map(|l| (*l).to_owned())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 fn default_values(kind: DictionaryKind) -> Vec<String> {
     DEFAULT_DICTIONARY
         .iter()
@@ -271,9 +297,10 @@ fn convert_dictionaries(
     folder: &LegacyFolder,
     w: &mut Warnings,
 ) -> Vec<(DictionaryKind, ListedValues)> {
-    let standard = |kind| ListedValues {
+    let standard = |kind, file: Option<&str>| ListedValues {
         values: default_values(kind),
         standard: true,
+        offered: file.map(legacy_default_lines).unwrap_or_default(),
     };
     DEFAULT_DICTIONARY
         .iter()
@@ -283,7 +310,7 @@ fn convert_dictionaries(
                 .find(|(k, _)| k == kind)
                 .map(|(_, f)| *f);
             let listed = match file.and_then(|f| read_list(folder, f, w).map(|l| (f, l))) {
-                None => standard(*kind),
+                None => standard(*kind, file),
                 Some((f, list)) if list.untouched => {
                     w.push(
                         WarningCode::DictionaryDefaultKept,
@@ -293,12 +320,16 @@ fn convert_dictionaries(
                         "",
                         "Файл не менялся: после значений из заказов идут стандартные значения MyWork 3.",
                     );
-                    standard(*kind)
+                    standard(*kind, file)
                 }
-                Some((f, list)) => ListedValues {
-                    values: clean_values(&list.lines, &format!("{SETTINGS_PREFIX}{f}"), w),
-                    standard: false,
-                },
+                Some((f, list)) => {
+                    let values = clean_values(&list.lines, &format!("{SETTINGS_PREFIX}{f}"), w);
+                    ListedValues {
+                        offered: values.clone(),
+                        values,
+                        standard: false,
+                    }
+                }
             };
             (*kind, listed)
         })

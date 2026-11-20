@@ -6,7 +6,7 @@
 //! Исходная база открывается только на чтение; на PostgreSQL своя схема удаляется в конце.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::print_stdout)]
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
@@ -31,7 +31,17 @@ struct Expected {
     next_order_id: i64,
     /// `estimate_from`, `prepayment`, `final_price`, `extra_costs`, `discount`.
     money: [i64; 5],
+    /// Поля-списки: (колонка `orders`, номер заказа → текст ячейки без краёв).
+    lists: Vec<(&'static str, HashMap<i64, String>)>,
 }
+
+/// Поля-списки: колонка `Catalog` → колонка `orders`.
+const LIST_COLUMNS: [(&str, &str); 4] = [
+    ("komplektonst", "completeness"),
+    ("sostoyanie", "device_condition"),
+    ("polomka", "malfunction"),
+    ("vipolnenie_raboti", "work_done"),
+];
 
 fn find_db(dir: &Path) -> PathBuf {
     std::fs::read_dir(dir)
@@ -142,6 +152,26 @@ async fn expected(db_file: &Path) -> Expected {
             .sum();
     }
 
+    let mut lists = Vec::new();
+    for (legacy, column) in LIST_COLUMNS {
+        let rows: Vec<(Option<String>, Option<String>)> = sqlx::query_as(sqlx::AssertSqlSafe(
+            format!("SELECT CAST(id AS TEXT), CAST(\"{legacy}\" AS TEXT) FROM Catalog"),
+        ))
+        .fetch_all(&mut *c)
+        .await
+        .unwrap();
+        let cells = rows
+            .into_iter()
+            .filter_map(|(id, text)| {
+                Some((
+                    id?.trim().parse().ok()?,
+                    text.unwrap_or_default().trim().to_owned(),
+                ))
+            })
+            .collect();
+        lists.push((column, cells));
+    }
+
     let result = Expected {
         orders: count_rows(c, "Catalog").await,
         deleted: count_text(&deleted, TRUE_VALUES),
@@ -152,6 +182,7 @@ async fn expected(db_file: &Path) -> Expected {
         history: count_rows(c, "StatesMap").await + count_rows(c, "HistoryBD").await,
         next_order_id: sequence.max(ids.iter().copied().max().unwrap_or(0)) + 1,
         money,
+        lists,
     };
     conn.close().await.unwrap();
     result
@@ -245,6 +276,36 @@ async fn check_backend(
         if n > 0 {
             println!("[{label}] предупреждение {} — {n}", code.as_str());
         }
+    }
+    // Справочники из заказов: название справочника и числа — подписи программы, не значения базы.
+    for w in report
+        .warnings
+        .iter()
+        .filter(|w| w.code == WarningCode::DictionaryFromOrders)
+    {
+        println!("[{label}] справочник «{}» — {}", w.key, w.value);
+    }
+    // Поля-списки, приведённые к виду «пункт, пункт»: сколько заказов изменили текст.
+    for (column, cells) in &want.lists {
+        let db = core.db();
+        let rows = db
+            .query_all_raw(Statement::from_string(
+                db.get_database_backend(),
+                format!("SELECT id, \"{column}\" FROM orders"),
+            ))
+            .await
+            .unwrap();
+        let (mut filled, mut changed) = (0, 0);
+        for row in rows {
+            let id: i64 = row.try_get_by_index(0).unwrap();
+            let text: String = row.try_get_by_index(1).unwrap();
+            let source = cells.get(&id).map(String::as_str).unwrap_or_default();
+            filled += u64::from(!source.is_empty());
+            changed += u64::from(text != source);
+        }
+        println!(
+            "[{label}] поле-список {column}: непустых {filled}, приведено к «пункт, пункт» {changed}"
+        );
     }
 
     let mut bad = Vec::new();

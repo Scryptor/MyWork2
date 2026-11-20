@@ -1,6 +1,7 @@
 //! Настройки из `Config.ini` и текстов актов, а также сохранение файлов в `legacy_rows`.
 
 use mw_core::{ImportedLegacyRow, ImportedSettings, SettingsPatch};
+use mw_domain::spelling::has_letter;
 use serde_json::json;
 
 use crate::convert::catalogs::Catalogs;
@@ -189,7 +190,19 @@ fn apply_computer_settings(
     if let Some(v) = ini.get(section, "MasterDefault")
         && !v.is_empty()
     {
-        settings.default_master = Some(v.to_owned());
+        if has_letter(v) {
+            settings.default_master = Some(v.to_owned());
+        } else {
+            // Как имя мастера в заказе без букв: не мастер (`mw_db::masters`).
+            bad.w.push(
+                WarningCode::MasterNameJunk,
+                "Config.ini",
+                &format!("[{section}] MasterDefault"),
+                "MasterDefault",
+                v,
+                "Мастер по умолчанию без букв — не мастер: мастер по умолчанию не задан.",
+            );
+        }
     }
     let Some(v) = ini
         .get(section, "AdressSCDefault")
@@ -410,7 +423,7 @@ mod tests {
             (None, None)
         );
         assert_eq!(rows.iter().filter(|r| r.source == "Config.ini").count(), 16);
-        assert_eq!(rows.iter().filter(|r| r.source == "file").count(), 13);
+        assert_eq!(rows.iter().filter(|r| r.source == "file").count(), 14);
         assert!(!format!("{rows:?}").contains(FIXTURE_SMS_TOKEN));
         assert!(!format!("{:?}", w.list()).contains(FIXTURE_SMS_TOKEN));
         assert_eq!(

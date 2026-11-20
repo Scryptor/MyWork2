@@ -1,15 +1,19 @@
-//! `Catalog` → заказы.
+//! `Catalog` → заказы. Поля-списки (комплектность, состояние, неисправности, выполненные работы)
+//! приводятся к виду MyWork 3 «пункт, пункт» (`parse::lists`); исходный текст — в исходной строке
+//! заказа (`legacy_rows`).
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use chrono::NaiveDateTime;
 use mw_core::ImportedOrder;
 use mw_domain::barcode::{is_valid_upc_a, order_barcode};
+use mw_domain::dictionary::DictionaryKind;
 use mw_domain::money::Money;
 use mw_domain::status::StatusKind;
 
 use crate::convert::catalogs::Catalogs;
 use crate::convert::history::HistoryHints;
+use crate::parse::lists::{ListField, list_text};
 use crate::parse::{
     DateValue, MoneyValue, SUSPICIOUS_RUBLES, extract_tracking, parse_date, parse_flag, parse_money,
 };
@@ -320,10 +324,14 @@ fn build_order(
         model: t("model"),
         serial: t("SerialNumber"),
         color: t("DeviceColour"),
-        completeness: t("komplektonst"),
-        device_condition: t("sostoyanie"),
-        malfunction: t("polomka"),
-        work_done: t("vipolnenie_raboti"),
+        completeness: list_text(
+            ListField::Completeness,
+            &t("komplektonst"),
+            inp.catalogs.offered(DictionaryKind::Completeness),
+        ),
+        device_condition: list_text(ListField::Condition, &t("sostoyanie"), &[]),
+        malfunction: list_text(ListField::Malfunction, &t("polomka"), &[]),
+        work_done: list_text(ListField::WorkDone, &t("vipolnenie_raboti"), &[]),
         internal_comment: comment,
         master: t("master"),
         barcode: barcode.value.clone(),

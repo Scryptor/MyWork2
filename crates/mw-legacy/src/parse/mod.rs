@@ -3,6 +3,7 @@
 
 pub(crate) mod dates;
 pub(crate) mod flags;
+pub(crate) mod lists;
 pub(crate) mod money;
 pub(crate) mod phones;
 pub(crate) mod states;

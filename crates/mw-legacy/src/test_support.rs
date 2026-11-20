@@ -115,3 +115,20 @@ pub(crate) async fn conversion_with_sql(
     let db = read_database(&folder.db_file).await.unwrap();
     crate::convert::convert(&db, &folder, dt("2026-11-12 10:00:00"))
 }
+
+/// Как `conversion_of`, но перед чтением правит текстовый файл фикстуры (Windows-1251) функцией `edit`.
+pub(crate) async fn conversion_with_text(
+    version: FixtureVersion,
+    relative: &str,
+    edit: &dyn Fn(&str) -> String,
+) -> crate::convert::Conversion {
+    let dir = fixture(version).await;
+    let path = dir.path().join(relative);
+    let (text, _) = crate::text::decode_text(&std::fs::read(&path).unwrap());
+    let edited = edit(&text);
+    assert_ne!(edited, text, "правка не изменила {relative}");
+    std::fs::write(&path, encoding_rs::WINDOWS_1251.encode(&edited).0).unwrap();
+    let folder = scan_folder(dir.path()).unwrap();
+    let db = read_database(&folder.db_file).await.unwrap();
+    crate::convert::convert(&db, &folder, dt("2026-11-12 10:00:00"))
+}

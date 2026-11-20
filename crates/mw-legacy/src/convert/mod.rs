@@ -627,10 +627,14 @@ mod tests {
         assert!(found.contains(&("Users", "1", "user_pwd", "")));
     }
 
-    /// Спецификация §6: у каждой строки старой базы все текстовые поля совпадают с ячейкой после обрезки пробелов.
+    /// Спецификация §6: у каждой строки старой базы все текстовые поля совпадают с ячейкой после
+    /// обрезки пробелов; поля-списки — пункты ячейки в виде MyWork 3 «пункт, пункт».
     #[tokio::test]
     async fn every_text_field_matches_its_source_cell_for_every_version() {
         use crate::fixture::FixtureVersion;
+        use crate::parse::lists::{ListField, list_text};
+        // В фикстуре нет `komplektonst.txt`: выпадающий список MyWork 2 — стартовые строки.
+        let offered = super::catalogs::legacy_default_lines("komplektonst.txt");
         for version in FixtureVersion::ALL {
             let (db, _folder) = crate::test_support::prepared(version).await;
             let c = conversion_of(version).await;
@@ -646,16 +650,23 @@ mod tests {
                     ("model", &o.model),
                     ("SerialNumber", &o.serial),
                     ("DeviceColour", &o.color),
-                    ("komplektonst", &o.completeness),
-                    ("sostoyanie", &o.device_condition),
-                    ("polomka", &o.malfunction),
-                    ("vipolnenie_raboti", &o.work_done),
                     ("kommentarij", &o.internal_comment),
                     ("master", &o.master),
                     ("Garanty", &o.warranty),
                 ];
                 for (column, value) in got {
                     assert_eq!(*value, cell(column), "{version:?} order {id} {column}");
+                }
+                // Поля-списки — в виде MyWork 3 «пункт, пункт».
+                let lists = [
+                    ("komplektonst", ListField::Completeness, &o.completeness),
+                    ("sostoyanie", ListField::Condition, &o.device_condition),
+                    ("polomka", ListField::Malfunction, &o.malfunction),
+                    ("vipolnenie_raboti", ListField::WorkDone, &o.work_done),
+                ];
+                for (column, field, value) in lists {
+                    let expected = list_text(field, &cell(column), &offered);
+                    assert_eq!(*value, expected, "{version:?} order {id} {column}");
                 }
                 checked += 1;
             }
@@ -918,30 +929,44 @@ mod tests {
         use mw_domain::dictionary::DictionaryKind::*;
         let c = conversion_of(V32).await;
         // «Nokia» только в заказах (nokia, Nokia, Nokia) — одно значение, частое написание, первым;
-        // «SAMSUNG» в заказах — «Samsung» из файла; «Apple» только в файле — в конце; удалённый
-        // заказ №8 не считается.
+        // «SAMSUNG» в заказах — «Samsung» из файла; «LG»/«Lg» поровну — первое, заглавные не
+        // мешают; «Apple» только в файле — в конце; удалённый заказ №8 не считается.
         assert_eq!(
             dictionary(&c, Brand),
             [
                 "Nokia",
                 "Samsung",
-                "Бренд 6",
-                "Бренд 7",
+                "LG",
                 "Бренд 9",
                 "Бренд 10",
                 "Бренд 12",
                 "Apple"
             ]
         );
-        // Пункт списка — хотя бы из двух заказов: «Нет изображения» (№1 и №3) — да, «Шумит» (один
-        // заказ) и «Течёт» (дважды в одном заказе) — нет; стандартные значения — в конце.
-        let mut malfunction = vec!["Нет изображения"];
-        malfunction.extend(standard(Malfunction));
-        assert_eq!(dictionary(&c, Malfunction), malfunction);
-        // Гарантия «90» — срок в днях, в справочнике; «0» — нет.
+        // Пункт списка — хотя бы из двух заказов: «Нет изображения/ » (№1) и «нет изображения.»
+        // (№3) — одно значение с написанием `neispravnost.txt`; «Шумит» (один заказ) и «Течёт»
+        // (дважды в одном заказе) — нет; «Не включается/ » (№5) — то же значение, что в файле, без
+        // повтора.
+        assert_eq!(
+            dictionary(&c, Malfunction),
+            ["Нет изображения", "Не включается"]
+        );
+        // Выполненные работы — по строкам; состояние — через запятую.
+        let mut work = vec!["Чистка"];
+        work.extend(standard(WorkDone).into_iter().filter(|v| *v != "Чистка"));
+        assert_eq!(dictionary(&c, WorkDone), work);
+        let mut condition = vec!["Царапины"];
+        condition.extend(standard(Condition).into_iter().filter(|v| *v != "Царапины"));
+        assert_eq!(dictionary(&c, Condition), condition);
+        // Комплектность, склеенная из строк списка MyWork 2: «Аппарат» — в трёх заказах.
+        let mut completeness = vec!["Аппарат"];
+        completeness.extend(standard(Completeness));
+        assert_eq!(dictionary(&c, Completeness), completeness);
+        // Гарантия: «90» и «90 дней» — один срок, написание с единицей, два заказа — первым;
+        // «3 мес» — «3 месяца» из файла; «0» — не значение.
         assert_eq!(
             dictionary(&c, Warranty),
-            ["30 дней", "3 мес", "90", "3 месяца", "Без гарантии"]
+            ["90 дней", "30 дней", "3 месяца", "Без гарантии"]
         );
         // «Откуда узнали» — из клиентов: «Интернет»/«интернет» — одно значение со стандартным написанием.
         let mut sources = vec!["Интернет"];
@@ -960,9 +985,6 @@ mod tests {
         let mut device_types: Vec<&str> = devices.iter().map(String::as_str).collect();
         device_types.extend(standard(DeviceType));
         assert_eq!(dictionary(&c, DeviceType), device_types);
-        for kind in [Completeness, Condition, WorkDone] {
-            assert_eq!(dictionary(&c, kind), standard(kind), "{kind:?}");
-        }
         assert!(dictionary(&c, Master).is_empty());
 
         let info: Vec<(&str, &str)> = c
@@ -976,15 +998,108 @@ mod tests {
             info,
             [
                 ("Типы устройств", "из заказов — 10, стандартных — 8"),
-                ("Бренды", "из заказов — 7, из файла — 1"),
+                ("Бренды", "из заказов — 6, из файла — 1"),
                 ("Цвета", "из заказов — 10, стандартных — 8"),
-                ("Комплектность", "из заказов — 0, стандартных — 7"),
-                ("Состояние", "из заказов — 0, стандартных — 5"),
-                ("Неисправности", "из заказов — 1, стандартных — 7"),
-                ("Выполненные работы", "из заказов — 0, стандартных — 6"),
+                (
+                    "Комплектность",
+                    "из заказов — 1, стандартных — 7, пунктов из одного заказа — 9"
+                ),
+                (
+                    "Состояние",
+                    "из заказов — 1, стандартных — 4, пунктов из одного заказа — 9"
+                ),
+                (
+                    "Неисправности",
+                    "из заказов — 1, из файла — 1, пунктов из одного заказа — 9"
+                ),
+                (
+                    "Выполненные работы",
+                    "из заказов — 1, стандартных — 5, пунктов из одного заказа — 9"
+                ),
                 ("Откуда узнали", "из клиентов — 8, стандартных — 4"),
-                ("Гарантия", "из заказов — 3, из файла — 2"),
+                ("Гарантия", "из заказов — 3, из файла — 1"),
             ]
+        );
+    }
+
+    /// Поля-списки MyWork 2 («пункт/ », строки, «пункт, », пункты подряд) — в виде MyWork 3
+    /// «пункт, пункт»; исходный текст — в исходной строке заказа.
+    #[tokio::test]
+    async fn list_fields_take_the_form_of_mywork3() {
+        let c = conversion_of(V32).await;
+        let b = &c.bundle;
+        let lists = |id| {
+            let o = order(b, id);
+            (
+                o.malfunction.as_str(),
+                o.work_done.as_str(),
+                o.device_condition.as_str(),
+                o.completeness.as_str(),
+            )
+        };
+        assert_eq!(
+            lists(1),
+            (
+                "Нет изображения, Шумит",
+                "Замена дисплея, Чистка",
+                "Состояние 1",
+                "Аппарат, АКБ"
+            )
+        );
+        assert_eq!(
+            lists(2),
+            ("Поломка 2", "Чистка", "Царапины, Потёртости", "Аппарат")
+        );
+        assert_eq!(
+            lists(3),
+            (
+                "нет изображения",
+                "Работа 3",
+                "царапины",
+                "Аппарат, Зарядное устройство"
+            )
+        );
+        assert_eq!(order(b, 4).malfunction, "Течёт, течёт");
+        let raw = b
+            .legacy_rows
+            .iter()
+            .find(|r| r.source == "Catalog" && r.source_key == "1")
+            .unwrap();
+        assert_eq!(raw.raw["polomka"], "Нет изображения/ Шумит/ ");
+        assert_eq!(raw.raw["vipolnenie_raboti"], "Замена дисплея\r\nЧистка\r\n");
+        assert_eq!(raw.raw["komplektonst"], "АппаратАКБ");
+    }
+
+    /// Мастер по умолчанию без букв (`MasterDefault=?`) — не мастер, строка в отчёте.
+    #[tokio::test]
+    async fn a_default_master_without_letters_is_reported() {
+        let c = crate::test_support::conversion_with_text(V32, "Config.ini", &|text| {
+            text.replace("MasterDefault=ПЕТРОВ", "MasterDefault=?")
+        })
+        .await;
+        assert_eq!(c.bundle.settings.default_master, None);
+        let junk: Vec<_> = c
+            .warnings
+            .list()
+            .iter()
+            .filter(|w| w.code.as_str() == "master_name_junk")
+            .map(|w| {
+                (
+                    w.source.as_str(),
+                    w.key.as_str(),
+                    w.field.as_str(),
+                    w.value.as_str(),
+                )
+            })
+            .collect();
+        assert!(
+            junk.contains(&(
+                "Config.ini",
+                "[WD-WCC123] MasterDefault",
+                "MasterDefault",
+                "?"
+            )),
+            "{junk:?}"
         );
     }
 
