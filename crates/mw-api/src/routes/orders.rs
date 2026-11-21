@@ -3,14 +3,15 @@
 use axum::extract::State;
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use mw_core::{
-    NewOrder, NewWarrantyCase, Order, OrderListItem, OrderPatch, OrderSummary, PageRequest,
+    NewOrder, NewOrderComment, NewWarrantyCase, Order, OrderComment, OrderListItem, OrderPatch,
+    OrderSummary, PageRequest,
 };
 
 use crate::DEFAULT_PAGE_LIMIT;
 use crate::auth::CurrentActor;
 use crate::dto::{
-    AuditPage, BarcodeQuery, HistoryQuery, NextOrderNumber, OrderListQuery, OrderPage,
-    OrderSummaryQuery, OrderValuesQuery, StatusChange, VersionParam,
+    AuditPage, BarcodeQuery, HistoryQuery, NextOrderNumber, OrderCommentPage, OrderCommentQuery,
+    OrderListQuery, OrderPage, OrderSummaryQuery, OrderValuesQuery, StatusChange, VersionParam,
 };
 use crate::error::ApiError;
 use crate::extract::{Json, Path, Query};
@@ -339,4 +340,48 @@ pub(super) async fn delete_order(
 ) -> Result<StatusCode, ApiError> {
     state.core.delete_order(&actor, id, v.version).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Лента комментариев заказа, новые сверху.
+#[utoipa::path(get, path = "/api/v1/orders/{id}/comments", tag = "Заказы", security(("bearer" = [])),
+    params(("id" = i64, Path, description = "Номер заказа"), OrderCommentQuery),
+    responses((status = 200, description = "Страница комментариев", body = OrderCommentPage)))]
+pub(super) async fn order_comments(
+    State(state): State<AppState>,
+    CurrentActor(actor): CurrentActor,
+    Path(id): Path<i64>,
+    Query(q): Query<OrderCommentQuery>,
+) -> Result<Json<OrderCommentPage>, ApiError> {
+    let page = state
+        .core
+        .order_comments(
+            &actor,
+            id,
+            PageRequest {
+                limit: q.limit.unwrap_or(DEFAULT_PAGE_LIMIT),
+                offset: q.offset.unwrap_or(0),
+            },
+            q.before_id,
+        )
+        .await?;
+    Ok(Json(OrderCommentPage {
+        items: page.items,
+        total: page.total,
+    }))
+}
+
+/// Добавление комментария (право `orders_edit`). Повтор с тем же ключом возвращает прежнюю запись.
+#[utoipa::path(post, path = "/api/v1/orders/{id}/comments", tag = "Заказы", security(("bearer" = [])),
+    params(("id" = i64, Path, description = "Номер заказа")), request_body = NewOrderComment,
+    responses((status = 201, description = "Комментарий заказа", body = OrderComment)))]
+pub(super) async fn add_order_comment(
+    State(state): State<AppState>,
+    CurrentActor(actor): CurrentActor,
+    Path(id): Path<i64>,
+    Json(new): Json<NewOrderComment>,
+) -> Result<(StatusCode, Json<OrderComment>), ApiError> {
+    Ok((
+        StatusCode::CREATED,
+        Json(state.core.add_order_comment(&actor, id, new).await?),
+    ))
 }

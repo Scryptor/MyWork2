@@ -266,6 +266,86 @@
 		{/if}
 	</Section>
 
+	<Section title={t.work}>
+		<div
+			class="flashable"
+			class:flash={flash(['malfunction'])}
+			onanimationend={() => endFlash(['malfunction'])}
+		>
+			<Textarea
+				id={idOf('malfunction')}
+				label={t.malfunction}
+				disabled={readonly}
+				bind:value={() => shown('malfunction'), (v) => autosave.edit('malfunction', v)}
+			/>
+			{@render dispute('malfunction')}
+		</div>
+		<div class="pair">
+			<div
+				class="flashable"
+				class:flash={flash(['work_done'])}
+				onanimationend={() => endFlash(['work_done'])}
+			>
+				<Textarea
+					id={idOf('work_done')}
+					label={t.workDone}
+					disabled={readonly}
+					bind:value={() => shown('work_done'), (v) => autosave.edit('work_done', v)}
+				/>
+				{@render dispute('work_done')}
+			</div>
+			<div
+				class="flashable"
+				class:flash={flash(['master_user_id'])}
+				onanimationend={() => endFlash(['master_user_id'])}
+			>
+				<Select
+					id={idOf('master_user_id')}
+					label={t.master}
+					items={masterOptions}
+					disabled={readonly}
+					bind:value={
+						() => masterValue(shown('master_user_id')),
+						(v) => autosave.commit('master_user_id', masterOf(v))
+					}
+				/>
+				{@render dispute('master_user_id')}
+			</div>
+		</div>
+	</Section>
+
+	<Section title={t.money}>
+		<p class="line muted num">
+			{estimate ? `${t.estimate} ${estimate}` : t.noEstimate}
+			{#if order.prepayment > 0}
+				· {t.prepayment}
+				{formatMoney(order.prepayment)}{order.prepaid_at
+					? ` (${formatRelative(order.prepaid_at, serverClock.now())})`
+					: ''}
+			{/if}
+		</p>
+		<div class="money">
+			{#each MONEY as f (f)}
+				<div class="flashable" class:flash={flash([f])} onanimationend={() => endFlash([f])}>
+					<MoneyInput
+						id={idOf(f)}
+						label={LABELS[f]}
+						help={HELP[f]}
+						nullable={f === 'final_price'}
+						disabled={readonly}
+						bind:invalid={invalid[f]}
+						bind:value={() => money(f), (v) => setMoney(f, v)}
+					/>
+					{@render dispute(f)}
+				</div>
+			{/each}
+		</div>
+		<p class="to-pay num" class:negative={pay !== null && pay < 0}>
+			{t.toPay} <strong>{pay === null ? '—' : formatMoney(pay)}</strong>
+		</p>
+		{#if pay !== null && pay < 0}<p class="error">{t.toPayNegative}</p>{/if}
+	</Section>
+
 	{#if editDevice}
 		<Section title={t.device}>
 			<div class="device">
@@ -348,86 +428,6 @@
 			</Section>
 		</div>
 	{/if}
-
-	<Section title={t.work}>
-		<div
-			class="flashable"
-			class:flash={flash(['malfunction'])}
-			onanimationend={() => endFlash(['malfunction'])}
-		>
-			<Textarea
-				id={idOf('malfunction')}
-				label={t.malfunction}
-				disabled={readonly}
-				bind:value={() => shown('malfunction'), (v) => autosave.edit('malfunction', v)}
-			/>
-			{@render dispute('malfunction')}
-		</div>
-		<div class="pair">
-			<div
-				class="flashable"
-				class:flash={flash(['work_done'])}
-				onanimationend={() => endFlash(['work_done'])}
-			>
-				<Textarea
-					id={idOf('work_done')}
-					label={t.workDone}
-					disabled={readonly}
-					bind:value={() => shown('work_done'), (v) => autosave.edit('work_done', v)}
-				/>
-				{@render dispute('work_done')}
-			</div>
-			<div
-				class="flashable"
-				class:flash={flash(['master_user_id'])}
-				onanimationend={() => endFlash(['master_user_id'])}
-			>
-				<Select
-					id={idOf('master_user_id')}
-					label={t.master}
-					items={masterOptions}
-					disabled={readonly}
-					bind:value={
-						() => masterValue(shown('master_user_id')),
-						(v) => autosave.commit('master_user_id', masterOf(v))
-					}
-				/>
-				{@render dispute('master_user_id')}
-			</div>
-		</div>
-	</Section>
-
-	<Section title={t.money}>
-		<p class="line muted num">
-			{estimate ? `${t.estimate} ${estimate}` : t.noEstimate}
-			{#if order.prepayment > 0}
-				· {t.prepayment}
-				{formatMoney(order.prepayment)}{order.prepaid_at
-					? ` (${formatRelative(order.prepaid_at, serverClock.now())})`
-					: ''}
-			{/if}
-		</p>
-		<div class="money">
-			{#each MONEY as f (f)}
-				<div class="flashable" class:flash={flash([f])} onanimationend={() => endFlash([f])}>
-					<MoneyInput
-						id={idOf(f)}
-						label={LABELS[f]}
-						help={HELP[f]}
-						nullable={f === 'final_price'}
-						disabled={readonly}
-						bind:invalid={invalid[f]}
-						bind:value={() => money(f), (v) => setMoney(f, v)}
-					/>
-					{@render dispute(f)}
-				</div>
-			{/each}
-		</div>
-		<p class="to-pay num" class:negative={pay !== null && pay < 0}>
-			{t.toPay} <strong>{pay === null ? '—' : formatMoney(pay)}</strong>
-		</p>
-		{#if pay !== null && pay < 0}<p class="error">{t.toPayNegative}</p>{/if}
-	</Section>
 
 	<Section title={t.warranty}>
 		<div

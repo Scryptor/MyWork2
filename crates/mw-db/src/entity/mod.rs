@@ -8,6 +8,7 @@ pub mod dictionary_item;
 pub mod legacy_import;
 pub mod legacy_row;
 pub mod order;
+pub mod order_comment;
 pub mod order_tracking;
 pub mod role;
 pub mod service_point;

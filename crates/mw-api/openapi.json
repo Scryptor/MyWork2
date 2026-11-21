@@ -2657,6 +2657,142 @@
         ]
       }
     },
+    "/api/v1/orders/{id}/comments": {
+      "get": {
+        "tags": [
+          "Заказы"
+        ],
+        "summary": "Лента комментариев заказа, новые сверху.",
+        "operationId": "order_comments",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер заказа",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Размер страницы, 1..=500; по умолчанию 50.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Сколько записей пропустить; по умолчанию 0.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "before_id",
+            "in": "query",
+            "description": "Только записи старше последней показанной. Общее число включает весь заказ.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Страница комментариев",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderCommentPage"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Заказы"
+        ],
+        "summary": "Добавление комментария (право `orders_edit`). Повтор с тем же ключом возвращает прежнюю запись.",
+        "operationId": "add_order_comment",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер заказа",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewOrderComment"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Комментарий заказа",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderComment"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/orders/{id}/history": {
       "get": {
         "tags": [
@@ -5480,6 +5616,24 @@
         },
         "additionalProperties": false
       },
+      "NewOrderComment": {
+        "type": "object",
+        "description": "Текст комментария и ключ повтора одной отправки.",
+        "required": [
+          "body",
+          "request_key"
+        ],
+        "properties": {
+          "body": {
+            "type": "string"
+          },
+          "request_key": {
+            "type": "string",
+            "description": "От 1 до 64 латинских букв, цифр и дефисов."
+          }
+        },
+        "additionalProperties": false
+      },
       "NewRole": {
         "type": "object",
         "description": "Данные новой роли.",
@@ -5849,6 +6003,53 @@
           "work_done": {
             "type": "string",
             "description": "Выполненные работы."
+          }
+        }
+      },
+      "OrderComment": {
+        "type": "object",
+        "description": "Запись ленты с именем автора на момент добавления и местным временем предприятия.",
+        "required": [
+          "id",
+          "body",
+          "author_name",
+          "created_at"
+        ],
+        "properties": {
+          "author_name": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "OrderCommentPage": {
+        "type": "object",
+        "description": "Страница комментариев заказа, новые сверху.",
+        "required": [
+          "items",
+          "total"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderComment"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
           }
         }
       },

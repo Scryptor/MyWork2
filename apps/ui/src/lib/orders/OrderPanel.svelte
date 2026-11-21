@@ -2,6 +2,7 @@
      by themselves; moving to another order or closing waits until they are saved. On a phone it fills the
      screen, the status is a button and the bottom bar calls the client. -->
 <script lang="ts">
+	import { hasCommentDrafts } from './comment-drafts.svelte.js';
 	import { display } from '#lib/design/prefs.svelte.js';
 	import Camera from '@lucide/svelte/icons/camera';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
@@ -34,6 +35,7 @@
 	import { onOrderChanged } from './events.js';
 	import { dispute } from './dispute.svelte.js';
 	import type { MasterList } from './masters.js';
+	import OrderComments from './OrderComments.svelte';
 	import OrderDialogs from './OrderDialogs.svelte';
 	import OrderFields from './OrderFields.svelte';
 	import OrderHistory from './OrderHistory.svelte';
@@ -188,7 +190,7 @@
 
 	// Closing or reloading the tab while edits wait or failed gets the browser's own question.
 	beforeNavigate((nav) => {
-		if (nav.willUnload && editor?.unsaved) nav.cancel();
+		if (nav.willUnload && (editor?.unsaved || hasCommentDrafts())) nav.cancel();
 	});
 
 	// Changes made elsewhere in the program (an undo, the list) reach the open order.
@@ -313,6 +315,10 @@
 					ontake={(f) => ed.take(f)}
 					onflashend={(f) => ed.endFlash(f)}
 					onopenclient={openClient}
+				/>
+				<OrderComments
+					orderId={ed.order.id}
+					canPost={canEdit && !ed.order.deleted_at && orderPanel.id === ed.order.id}
 				/>
 				{#if media}<OrderPhotos {media} readonly={!canEdit} />{/if}
 				<OrderHistory orderId={ed.order.id} version={ed.order.version} onall={openCard} />

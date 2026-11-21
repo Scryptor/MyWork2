@@ -1,4 +1,7 @@
 import type { AuditPage } from '$api/AuditPage';
+import type { NewOrderComment } from '$api/NewOrderComment';
+import type { OrderComment } from '$api/OrderComment';
+import type { OrderCommentPage } from '$api/OrderCommentPage';
 import type { NewOrder } from '$api/NewOrder';
 import type { NewWarrantyCase } from '$api/NewWarrantyCase';
 import type { Order } from '$api/Order';
@@ -54,3 +57,12 @@ export const orderHistory = (id: number, page?: HistoryQuery) =>
 
 export const acceptWarrantyCase = (id: number, version: number, c: NewWarrantyCase) =>
 	request<Order>('POST', `/orders/${id}/warranty-case`, { query: { version }, body: c });
+
+export const orderComments = (id: number, limit: number, beforeId?: number, signal?: AbortSignal) =>
+	request<OrderCommentPage>('GET', `/orders/${id}/comments`, {
+		query: { limit, before_id: beforeId },
+		signal
+	});
+
+export const addOrderComment = (id: number, body: NewOrderComment) =>
+	request<OrderComment>('POST', `/orders/${id}/comments`, { body });

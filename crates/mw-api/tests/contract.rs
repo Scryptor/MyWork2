@@ -174,7 +174,7 @@ fn parameters_match_their_paths() {
     }
 }
 
-/// Каждая строка «Карты API» (70, включая `openapi.json`) описана в документе OpenAPI.
+/// Каждая строка «Карты API» (75, включая `openapi.json`) описана в документе OpenAPI.
 #[test]
 fn documented_operations_match_the_api_map() {
     let api = serde_json::to_value(mw_api::openapi()).unwrap();
@@ -186,7 +186,7 @@ fn documented_operations_match_the_api_map() {
             }
         }
     }
-    assert_eq!(ops.len(), 73, "{ops:#?}");
+    assert_eq!(ops.len(), 75, "{ops:#?}");
     for expected in [
         "GET /api/v1/server-info",
         "GET /api/v1/openapi.json",
@@ -198,6 +198,8 @@ fn documented_operations_match_the_api_map() {
         "GET /api/v1/clients/{id}/similar",
         "POST /api/v1/orders/{id}/issue",
         "GET /api/v1/orders/{id}/history",
+        "GET /api/v1/orders/{id}/comments",
+        "POST /api/v1/orders/{id}/comments",
         "POST /api/v1/orders/{id}/warranty-case",
         "PUT /api/v1/orders/next-number",
         "GET /api/v1/orders/next-number",

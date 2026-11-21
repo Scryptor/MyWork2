@@ -1,5 +1,6 @@
 <!-- «История» of the panel: the three newest entries of the order's journal, «все» leads to the card. -->
 <script lang="ts">
+	import { latestCommentId } from './comment-drafts.svelte.js';
 	import { resolve } from '$app/paths';
 	import type { AuditEntry } from '$api/AuditEntry';
 	import { orderHistory } from '#lib/api/orders.js';
@@ -29,6 +30,7 @@
 	$effect(() => {
 		const id = orderId;
 		void version;
+		latestCommentId(id);
 		let current = true;
 		orderHistory(id, { limit: LIMIT }).then(
 			(page) => {

@@ -412,6 +412,20 @@ pub struct PageQuery {
     pub offset: Option<u64>,
 }
 
+/// Страница комментариев заказа, новые сверху.
+#[derive(Debug, Clone, Default, Deserialize, TS, IntoParams)]
+#[serde(deny_unknown_fields)]
+#[ts(optional_fields)]
+#[into_params(parameter_in = Query)]
+pub struct OrderCommentQuery {
+    /// Размер страницы, 1..=500; по умолчанию 50.
+    pub limit: Option<u64>,
+    /// Сколько записей пропустить; по умолчанию 0.
+    pub offset: Option<u64>,
+    /// Только записи старше последней показанной. Общее число включает весь заказ.
+    pub before_id: Option<i64>,
+}
+
 /// Страница истории заказа: размер, смещение или курсор.
 #[derive(Debug, Clone, Default, Deserialize, TS, IntoParams)]
 #[serde(deny_unknown_fields)]
@@ -506,6 +520,13 @@ impl From<AuditListQuery> for mw_core::AuditFilter {
             to: q.to,
         }
     }
+}
+
+/// Страница комментариев заказа, новые сверху.
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
+pub struct OrderCommentPage {
+    pub items: Vec<mw_core::OrderComment>,
+    pub total: u64,
 }
 
 /// Страница журнала.

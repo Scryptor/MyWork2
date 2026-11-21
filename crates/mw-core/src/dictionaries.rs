@@ -12,10 +12,10 @@ use sea_orm::{
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::dictionaries_rewrite::records_word;
+use crate::dictionaries_rewrite::{records_word, replacement};
 use crate::settings::follow_dictionary_value;
 use crate::statuses::{check_permutation, check_seen_order};
-use crate::usage::usage_target;
+use crate::usage::{multiline, usage_target};
 use crate::{Actor, Core, CoreError, NewAuditEntry, write_audit};
 
 /// Значение справочника.
@@ -174,8 +174,7 @@ pub(crate) fn refuse_closed(kind: DictionaryKind) -> Result<(), CoreError> {
     }
 }
 
-/// Новое значение: не пустое, без дубля в справочнике; в справочнике-списке — без запятой (она
-/// разделяет элементы списка в заказе).
+/// Значение должно быть заполнено, уникально и не содержать разделителей пунктов своего поля.
 fn check_value(
     kind: DictionaryKind,
     value: &str,
@@ -189,6 +188,12 @@ fn check_value(
     if usage_target(kind).list && value.contains(',') {
         return Err(CoreError::Validation(vec![FieldError::new(
             "value", "comma",
+        )]));
+    }
+    if multiline(kind) && value.contains(['\r', '\n']) {
+        return Err(CoreError::Validation(vec![FieldError::new(
+            "value",
+            "line_break",
         )]));
     }
     let key = normalize_search(value);
@@ -378,7 +383,8 @@ impl Core {
         let old = current.value.clone();
         let from = value_keys([old.as_str()]);
         let records_changed = if req.in_orders {
-            self.rewrite_dictionary_values(&tx, actor, kind, &from, &value, "value")
+            let replace = replacement(kind, &rows, &from, &value);
+            self.rewrite_dictionary_values(&tx, actor, kind, replace, "value")
                 .await?
         } else {
             0
@@ -475,7 +481,8 @@ impl Core {
         let to = target.value.trim().to_owned();
         let from = value_keys(sources.iter().map(|s| s.value.as_str()));
         let records_changed = if req.in_orders {
-            self.rewrite_dictionary_values(&tx, actor, kind, &from, &to, "target_id")
+            let replace = replacement(kind, &rows, &from, &to);
+            self.rewrite_dictionary_values(&tx, actor, kind, replace, "target_id")
                 .await?
         } else {
             0

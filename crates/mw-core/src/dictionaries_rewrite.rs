@@ -7,13 +7,16 @@
 
 use std::collections::HashSet;
 
+use mw_db::entity::dictionary_item;
 use mw_domain::dictionary::DictionaryKind;
 use mw_domain::search::normalize_search;
 use mw_domain::validation::FieldError;
 use mw_domain::warranty::parse_warranty_term;
 use sea_orm::{ConnectionTrait, DatabaseTransaction, Statement};
 
-use crate::usage::usage_target;
+use crate::usage::{
+    legacy_multiline_keys, multiline, multiline_key, multiline_lines, usage_target,
+};
 use crate::{Actor, ClientPatch, Core, CoreError, EditVia, OrderPatch};
 
 /// Новый текст поля, если в нём есть значение с ключом из `from`; иначе `None`.
@@ -49,6 +52,83 @@ pub(crate) fn replace_value(
         out.push(if replaced { to } else { part });
     }
     matched.then(|| out.join(", "))
+}
+
+fn replace_multiline(
+    text: &str,
+    from: &HashSet<String>,
+    to: &str,
+    known: &HashSet<String>,
+    legacy: &HashSet<String>,
+) -> Option<String> {
+    let to_key = normalize_search(to);
+    let keep_period = !to.ends_with('.') && !known.contains(&format!("{to_key}."));
+    let mut matched = false;
+    let mut seen_to = false;
+    let mut out = String::with_capacity(text.len());
+    for (line, ending) in multiline_lines(text, legacy) {
+        let mut kept = 0;
+        for (index, raw) in line.split(',').enumerate() {
+            let (key, period) = multiline_key(raw, |key| known.contains(key));
+            let replace = from.contains(&key);
+            matched |= replace;
+            // Нового названия с точкой до переименования ещё нет в справочнике.
+            let target =
+                key == to_key || (period && to_key.strip_suffix('.') == Some(key.as_str()));
+            if replace || target {
+                if seen_to {
+                    continue;
+                }
+                seen_to = true;
+            }
+            // Если первый пункт строки исчез, пробел после его запятой тоже уходит.
+            let raw = if kept == 0 && index > 0 {
+                raw.trim_start()
+            } else {
+                raw
+            };
+            if kept > 0 {
+                out.push(',');
+            }
+            if replace {
+                out.push_str(&raw[..raw.len() - raw.trim_start().len()]);
+                out.push_str(to);
+                if period && keep_period {
+                    out.push('.');
+                }
+                out.push_str(&raw[raw.trim_end().len()..]);
+            } else {
+                out.push_str(raw);
+            }
+            kept += 1;
+        }
+        if kept > 0 {
+            out.push_str(ending);
+        }
+    }
+    matched.then_some(out)
+}
+
+/// Названия в справочнике до правки позволяют отличить точку в названии от пунктуации заказа.
+pub(crate) fn replacement<'a>(
+    kind: DictionaryKind,
+    rows: &[dictionary_item::Model],
+    from: &'a HashSet<String>,
+    to: &'a str,
+) -> impl Fn(&str) -> Option<String> + 'a {
+    let known = multiline(kind).then(|| {
+        (
+            rows.iter()
+                .map(|row| normalize_search(&row.value))
+                .collect(),
+            legacy_multiline_keys(rows),
+        )
+    });
+    let list = usage_target(kind).list;
+    move |text| match &known {
+        Some((keys, legacy)) => replace_multiline(text, from, to, keys, legacy),
+        None => replace_value(text, list, from, to),
+    }
 }
 
 /// Правка одной записи: поле, в котором хранится значение справочника этого вида.
@@ -112,8 +192,7 @@ pub(crate) fn records_word(kind: DictionaryKind) -> &'static str {
 }
 
 impl Core {
-    /// Во всех неудалённых записях вида `kind` значения (элементы списка) с ключом из `from`
-    /// заменяет на `to`; возвращает число изменённых записей. Неизменившиеся записи не трогает.
+    /// Применяет замену к полю каждой неудалённой записи и возвращает число изменённых записей.
     /// Гарантия: если у какого-нибудь заказа срок, выведенный из нового текста, отличается от
     /// нынешнего, — ошибка `changes_term` у поля `term_field` (транзакцию откатывает вызывающий).
     pub(crate) async fn rewrite_dictionary_values(
@@ -121,8 +200,7 @@ impl Core {
         tx: &DatabaseTransaction,
         actor: &Actor,
         kind: DictionaryKind,
-        from: &HashSet<String>,
-        to: &str,
+        replace: impl Fn(&str) -> Option<String>,
         term_field: &'static str,
     ) -> Result<u64, CoreError> {
         crate::dictionaries::refuse_closed(kind)?;
@@ -142,7 +220,7 @@ impl Core {
             let text = row
                 .try_get_by_index::<Option<String>>(2)?
                 .unwrap_or_default();
-            let Some(value) = replace_value(&text, target.list, from, to) else {
+            let Some(value) = replace(&text) else {
                 continue;
             };
             if value == text {

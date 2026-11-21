@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 
 use mw_db::entity::{
     attachment, audit_log, client, client_phone, dictionary_item, legacy_import, legacy_row, order,
-    order_tracking, role, service_point, session, setting, status, user,
+    order_comment, order_tracking, role, service_point, session, setting, status, user,
 };
 use mw_db::ids::{IdTable, set_next_id};
 use mw_domain::dictionary::{DEFAULT_DICTIONARY, DictionaryKind};
@@ -246,6 +246,7 @@ async fn wipe(conn: &impl ConnectionTrait) -> Result<(), CoreError> {
     legacy_import::Entity::delete_many().exec(conn).await?;
     order_tracking::Entity::delete_many().exec(conn).await?;
     audit_log::Entity::delete_many().exec(conn).await?;
+    order_comment::Entity::delete_many().exec(conn).await?;
     order::Entity::delete_many().exec(conn).await?;
     client_phone::Entity::delete_many().exec(conn).await?;
     client::Entity::delete_many().exec(conn).await?;

@@ -21,7 +21,7 @@ use mw_domain::search::normalize_search;
 const ENTITY: &str = "заказ";
 const MASK: &str = "***";
 
-fn deleted_error() -> CoreError {
+pub(super) fn deleted_error() -> CoreError {
     CoreError::Validation(vec![FieldError::new("id", "deleted")])
 }
 
@@ -33,7 +33,7 @@ fn require_dates_permission(actor: &Actor, patch: &OrderPatch) -> Result<(), Cor
     Ok(())
 }
 
-async fn load(conn: &impl ConnectionTrait, id: i64) -> Result<order::Model, CoreError> {
+pub(super) async fn load(conn: &impl ConnectionTrait, id: i64) -> Result<order::Model, CoreError> {
     order::Entity::find_by_id(id)
         .one(conn)
         .await?

@@ -1,6 +1,6 @@
 //! Сколько записей используют значение справочника, статус или точку обслуживания.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use mw_db::entity::dictionary_item;
 use mw_domain::dictionary::{DictionaryKind, list_items};
@@ -25,8 +25,63 @@ pub struct CatalogUsage {
 pub(crate) struct UsageTarget {
     pub(crate) table: &'static str,
     pub(crate) column: &'static str,
-    /// Поле хранит список через запятую.
+    /// Поле хранит список значений. У неисправностей и работ также допустимы переводы строки.
     pub(crate) list: bool,
+}
+
+pub(crate) fn multiline(kind: DictionaryKind) -> bool {
+    matches!(kind, DictionaryKind::Malfunction | DictionaryKind::WorkDone)
+}
+
+/// У отдельного названия с точкой приоритет над точкой в конце предложения.
+pub(crate) fn multiline_key(text: &str, known: impl Fn(&str) -> bool) -> (String, bool) {
+    let mut key = normalize_search(text);
+    if let Some(bare) = key.strip_suffix('.')
+        && !bare.ends_with('.')
+        && !known(&key)
+    {
+        key.pop();
+        return (key, true);
+    }
+    (key, false)
+}
+
+/// До 5.9 название справочника могло занимать несколько строк. Совпадение целого пункта
+/// между запятыми сохраняет его внутренние переводы строк.
+pub(crate) fn multiline_lines<'a>(
+    text: &'a str,
+    legacy: &HashSet<String>,
+) -> Vec<(&'a str, &'a str)> {
+    let mut lines = Vec::new();
+    let mut line_start = 0;
+    let mut chunk_start = 0;
+    for chunk in text.split(',') {
+        if legacy.is_empty()
+            || !chunk.trim().contains(['\r', '\n'])
+            || !legacy.contains(&normalize_search(chunk))
+        {
+            let mut pos = chunk_start;
+            let end = chunk_start + chunk.len();
+            while let Some(at) = text[pos..end].find(['\r', '\n']) {
+                let at = pos + at;
+                pos = at + if text[at..].starts_with("\r\n") { 2 } else { 1 };
+                lines.push((&text[line_start..at], &text[at..pos]));
+                line_start = pos;
+            }
+        }
+        chunk_start += chunk.len() + 1;
+    }
+    if line_start < text.len() {
+        lines.push((&text[line_start..], ""));
+    }
+    lines
+}
+
+pub(crate) fn legacy_multiline_keys(rows: &[dictionary_item::Model]) -> HashSet<String> {
+    rows.iter()
+        .filter(|row| row.value.trim().contains(['\r', '\n']))
+        .map(|row| normalize_search(&row.value))
+        .collect()
 }
 
 pub(crate) fn usage_target(kind: DictionaryKind) -> UsageTarget {
@@ -94,11 +149,12 @@ impl Core {
         let target = usage_target(kind);
         // Повторы с разным регистром (из MyWork 2) — один ключ на несколько значений: счёт у каждого.
         let mut ids_by_key: HashMap<String, Vec<i64>> = HashMap::new();
-        for m in dictionary_item::Entity::find()
+        let rows = dictionary_item::Entity::find()
             .filter(dictionary_item::Column::Kind.eq(kind.as_str()))
             .all(&self.db)
-            .await?
-        {
+            .await?;
+        let legacy = legacy_multiline_keys(&rows);
+        for m in rows {
             ids_by_key
                 .entry(normalize_search(&m.value))
                 .or_default()
@@ -110,7 +166,13 @@ impl Core {
         .await?;
         let mut totals: HashMap<i64, u64> = HashMap::new();
         for (text, count) in groups {
-            let mut keys: Vec<String> = if target.list {
+            let mut keys: Vec<String> = if multiline(kind) {
+                multiline_lines(&text, &legacy)
+                    .into_iter()
+                    .flat_map(|(line, _)| line.split(','))
+                    .map(|item| multiline_key(item, |key| ids_by_key.contains_key(key)).0)
+                    .collect()
+            } else if target.list {
                 list_items(&text).map(normalize_search).collect()
             } else {
                 vec![normalize_search(&text)]

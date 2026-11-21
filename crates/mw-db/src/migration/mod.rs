@@ -15,6 +15,8 @@ mod m20261120_000002_builtin_roles;
 mod m20261120_000003_order_master_user;
 mod m20261120_000004_masters_to_users;
 
+mod m20261121_000001_order_comments;
+
 pub struct Migrator;
 
 #[async_trait::async_trait]
@@ -32,6 +34,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261120_000002_builtin_roles::Migration),
             Box::new(m20261120_000003_order_master_user::Migration),
             Box::new(m20261120_000004_masters_to_users::Migration),
+            Box::new(m20261121_000001_order_comments::Migration),
         ]
     }
 }

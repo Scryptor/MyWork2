@@ -48,8 +48,9 @@ pub use import::{
     LegacyImportMode, LegacyImportRecord, LegacyTarget,
 };
 pub use orders::{
-    ClientRef, IssuedFilter, NewOrder, NewWarrantyCase, Order, OrderFilter, OrderListItem,
-    OrderPatch, OrderSort, OrderSortField, OrderSummary, OrderValueField, StatusCount,
+    ClientRef, IssuedFilter, NewOrder, NewOrderComment, NewWarrantyCase, Order, OrderComment,
+    OrderFilter, OrderListItem, OrderPatch, OrderSort, OrderSortField, OrderSummary,
+    OrderValueField, StatusCount,
 };
 pub use page::{Page, PageRequest};
 pub use search_index::{ReindexStats, SEARCH_INDEX_VERSION};

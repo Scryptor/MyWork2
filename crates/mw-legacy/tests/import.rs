@@ -233,9 +233,27 @@ async fn second_import_needs_replace_and_replace_keeps_a_backup() -> Res {
         Err(LegacyError::TargetNotEmpty(_))
     ));
     core.create_order(&admin(), sample_new_order()).await?;
+    core.add_order_comment(
+        &admin(),
+        1,
+        mw_core::NewOrderComment {
+            body: "Запись до замены".into(),
+            request_key: "before-import".into(),
+        },
+    )
+    .await?;
     let r2 = import_folder(&core, &admin(), &options(src.path(), data.path(), true)).await?;
     let backup = r2.backup.clone().unwrap();
-    assert_eq!(order_count_in_file(&backup.join("mywork.db")).await, 12);
+    assert_eq!(
+        order_and_comment_counts_in_file(&backup.join("mywork.db")).await,
+        (12, 1)
+    );
+    assert_eq!(
+        core.order_comments(&admin(), 1, mw_core::PageRequest::default(), None)
+            .await?
+            .total,
+        0
+    );
     assert!(backup.join("attachments/orders/1/photo.jpg").exists());
     assert!(data.path().join("attachments/orders/1/photo.jpg").exists());
     assert_eq!(
@@ -566,11 +584,11 @@ async fn dictionaries_are_written_in_the_order_of_use() -> Res {
             "{}",
             t.label
         );
-        // «Шумит.» (№2) сохранил точку: счёт использования сравнивает пункты по тексту и видит только
-        // «Шумит» из №1, справочник при переносе считал оба.
+        // В №2 сохранена точка в конце предложения. Без отдельного названия «Шумит.»
+        // оба заказа используют один и тот же пункт «Шумит».
         assert_eq!(
             count(DictionaryKind::Malfunction, malfunctions[1].0).await,
-            Some(1),
+            Some(2),
             "{}",
             t.label
         );

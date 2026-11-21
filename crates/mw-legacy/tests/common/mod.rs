@@ -256,14 +256,16 @@ pub async fn file_sqlite_core(path: &Path) -> Core {
     Core::open(db, clock, "UTC").await.unwrap()
 }
 
-pub async fn order_count_in_file(path: &Path) -> u64 {
+pub async fn order_and_comment_counts_in_file(path: &Path) -> (i64, i64) {
     let mut conn = SqliteConnection::connect(&format!("sqlite://{}?mode=ro", path.display()))
         .await
         .unwrap();
-    let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM orders")
-        .fetch_one(&mut conn)
-        .await
-        .unwrap();
+    let counts = sqlx::query_as(
+        "SELECT (SELECT COUNT(*) FROM orders), (SELECT COUNT(*) FROM order_comments)",
+    )
+    .fetch_one(&mut conn)
+    .await
+    .unwrap();
     conn.close().await.unwrap();
-    n as u64
+    counts
 }

@@ -745,6 +745,13 @@ export const ru = {
 		failed: (message: string) =>
 			`Заказ не принят: ${message}. Введённое сохранено — нажмите «Принять» ещё раз`
 	},
+	orderComments: {
+		title: 'Комментарии мастеров',
+		draft: 'Новая запись',
+		add: 'Добавить запись',
+		empty: 'Записей пока нет',
+		older: 'Показать более ранние записи'
+	},
 	card: {
 		order: 'Заказ',
 		history: 'История',
@@ -1583,6 +1590,8 @@ export const ru = {
 		deleteFile: 'Удалить файл',
 		noFiles: 'Файлов нет',
 		photoSection: 'Фото',
+		allPhotos: (count: number) => `Показать все фото (${count})`,
+		foldPhotos: 'Свернуть фото',
 		photoZone: 'Область для фото',
 		uploading: 'Загружаю…',
 		takeWithCamera: 'Снять камерой',

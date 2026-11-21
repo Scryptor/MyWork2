@@ -27,6 +27,9 @@
 		if (cameraOpen) untrack(() => (shots = 0));
 	});
 
+	const previewCount = 4;
+	let expandedMedia = $state.raw<OrderMedia | null>(null);
+	const expanded = $derived(expandedMedia === media);
 	const strip = $derived(
 		media.photos.map((a) => ({ id: String(a.id), src: '', alt: a.caption || a.name }))
 	);
@@ -49,7 +52,7 @@
 
 {#snippet strips()}
 	<PhotoStrip
-		photos={strip}
+		photos={expanded ? strip : strip.slice(0, previewCount)}
 		max={null}
 		label={ru.media.photoSection}
 		pending={media.pending.filter((p) => p.photo)}
@@ -86,6 +89,17 @@
 			void media.add([file]);
 		}}
 	/>
+{/if}
+{#if strip.length > previewCount}
+	<div>
+		<Button
+			size="sm"
+			aria-expanded={expanded}
+			onclick={() => (expandedMedia = expanded ? null : media)}
+		>
+			{expanded ? ru.media.foldPhotos : ru.media.allPhotos(strip.length)}
+		</Button>
+	</div>
 {/if}
 {#if media.error}
 	<p class="error" role="alert">

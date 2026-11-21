@@ -91,6 +91,7 @@ pub(crate) fn api_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(orders::change_order_status))
         .routes(routes!(orders::issue_order))
         .routes(routes!(orders::order_history))
+        .routes(routes!(orders::order_comments, orders::add_order_comment))
         .routes(routes!(orders::accept_warranty_case))
         .routes(routes!(users::list_users, users::create_user))
         .routes(routes!(users::update_user))

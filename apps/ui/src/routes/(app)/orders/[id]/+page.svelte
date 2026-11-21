@@ -2,6 +2,7 @@
      history on the right; narrower than 1024px the two are tabs. Edits save by themselves as in the
      panel; the status, «Выдать» and ⋯ are the panel's too. -->
 <script lang="ts">
+	import { latestCommentId } from '#lib/orders/comment-drafts.svelte.js';
 	import { display } from '#lib/design/prefs.svelte.js';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
@@ -29,6 +30,7 @@
 	import { onOrderChanged } from '#lib/orders/events.js';
 	import { historyItems, statusTimeline, warrantyCases } from '#lib/orders/history.js';
 	import type { MasterList } from '#lib/orders/masters.js';
+	import OrderComments from '#lib/orders/OrderComments.svelte';
 	import OrderDialogs from '#lib/orders/OrderDialogs.svelte';
 	import OrderFields from '#lib/orders/OrderFields.svelte';
 	import OrderFiles from '#lib/orders/OrderFiles.svelte';
@@ -183,7 +185,10 @@
 	$effect(() => {
 		const n = order?.id;
 		void version;
-		if (n !== undefined) untrack(() => void journal.refresh(n));
+		if (n !== undefined) {
+			latestCommentId(n);
+			untrack(() => void journal.refresh(n));
+		}
 	});
 	/** «Повторить» of the timeline: the history of the order shown; none while there is no order. */
 	function retryTimeline() {
@@ -279,6 +284,10 @@
 			onkeep={(f) => ed.keep(f)}
 			ontake={(f) => ed.take(f)}
 			onflashend={(f) => ed.endFlash(f)}
+		/>
+		<OrderComments
+			orderId={ed.order.id}
+			canPost={canEdit && !ed.order.deleted_at && id === ed.order.id}
 		/>
 	{/key}
 {/snippet}
@@ -503,6 +512,7 @@
 		align-items: start;
 		gap: var(--space-8);
 	}
+	.fields,
 	.side,
 	.group {
 		display: flex;

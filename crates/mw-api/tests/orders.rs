@@ -622,3 +622,111 @@ async fn the_master_is_chosen_by_user_and_the_masters_dictionary_is_closed() {
         );
     }
 }
+
+#[tokio::test]
+async fn order_comments_are_attributed_paged_and_retry_safe() {
+    for t in apis(Listen::Network).await {
+        let admin = t.admin_token().await;
+        let editor = t.token_with("master", &[Permission::OrdersEdit]).await;
+        let reader = t.token_with("reader", &[]).await;
+        let order = create_order(&t, &admin, new_order("Анна", "", "Samsung", "A52")).await;
+        let id = order["id"].as_i64().unwrap();
+        let url = format!("/api/v1/orders/{id}/comments");
+        let post = async |token: &str, body: Value| {
+            t.send(Method::POST, &url, Some(token), Some(body)).await
+        };
+        let body = json!({"body":"  Проверил питание  ", "request_key":"first"});
+        let (first, retry) = tokio::join!(post(&editor, body.clone()), post(&editor, body.clone()));
+        assert_eq!((first.status, retry.status), (201, 201), "{}", t.label);
+        assert_eq!(first.body, retry.body);
+        assert_eq!(first.body["author_name"], "master");
+        assert_eq!(first.body["body"], "Проверил питание");
+        assert_eq!(first.body["created_at"], order["received_at"]);
+        assert_eq!(
+            post(
+                &editor,
+                json!({"body":"Другая запись","request_key":"first"})
+            )
+            .await
+            .status,
+            422
+        );
+        assert_eq!(post(&reader, body.clone()).await.status, 403);
+        assert_eq!(
+            post(&editor, json!({"body":" ","request_key":"empty"}))
+                .await
+                .status,
+            422
+        );
+        assert_eq!(
+            post(
+                &editor,
+                json!({"body":"Запись","request_key":"second","author_name":"Другой"})
+            )
+            .await
+            .status,
+            400
+        );
+        let second = post(&editor, json!({"body":"Готово","request_key":"second"})).await;
+        assert_eq!(second.status, 201);
+        let history = t
+            .get(&format!("/api/v1/orders/{id}/history"), Some(&reader))
+            .await
+            .body;
+        assert_eq!(
+            history["items"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|entry| entry["action"] == "order.comment")
+                .count(),
+            2
+        );
+        assert_eq!(t.get(&url, None).await.status, 401);
+        assert_eq!(
+            t.get(&format!("{url}?limit=1"), Some(&reader)).await.body,
+            json!({"total":2,"items":[second.body]})
+        );
+        assert_eq!(
+            t.get(&format!("{url}?limit=1&offset=1"), Some(&reader))
+                .await
+                .body,
+            json!({"total":2,"items":[first.body]})
+        );
+        let third = post(
+            &editor,
+            json!({"body":"После первой страницы","request_key":"third"}),
+        )
+        .await;
+        assert_eq!(third.status, 201);
+        let cursor = second.body["id"].as_i64().unwrap();
+        let older = t
+            .get(&format!("{url}?limit=1&before_id={cursor}"), Some(&reader))
+            .await;
+        assert_eq!(older.status, 200, "{}", t.label);
+        assert_eq!(older.body, json!({"total":3,"items":[first.body]}));
+        assert_eq!(
+            t.get(&format!("{url}?limit=0"), Some(&reader)).await.status,
+            422
+        );
+        assert_eq!(
+            t.get("/api/v1/orders/99999/comments", Some(&reader))
+                .await
+                .status,
+            404
+        );
+        assert_eq!(
+            t.send(
+                Method::DELETE,
+                &format!("/api/v1/orders/{id}?version=1"),
+                Some(&admin),
+                None
+            )
+            .await
+            .status,
+            204
+        );
+        assert_eq!(post(&editor, body).await.status, 422);
+        assert_eq!(t.get(&url, Some(&reader)).await.body["total"], 3);
+    }
+}

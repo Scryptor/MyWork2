@@ -68,6 +68,9 @@ pub fn export_typescript(dir: &Path) -> Result<(), ts_rs::ExportError> {
     SetPasswordRequest::export_all(&cfg)?;
     AuditListQuery::export_all(&cfg)?;
     AuditPage::export_all(&cfg)?;
+    crate::OrderCommentPage::export_all(&cfg)?;
+    crate::OrderCommentQuery::export_all(&cfg)?;
+    mw_core::NewOrderComment::export_all(&cfg)?;
     mw_core::NewUser::export_all(&cfg)?;
     mw_core::UserPatch::export_all(&cfg)?;
     mw_core::User::export_all(&cfg)?;

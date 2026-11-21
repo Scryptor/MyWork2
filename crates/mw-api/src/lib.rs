@@ -30,9 +30,9 @@ pub use dto::{
     AboutInfo, AttachmentNameQuery, AuditListQuery, AuditPage, BarcodeQuery, CaptionPatch,
     ChangePasswordRequest, ClientListQuery, ClientPage, CurrentUser, DictionaryListQuery,
     DictionaryValue, HistoryQuery, IncludeArchived, LegacyImportCheck, LegacyImportStart,
-    LoginRequest, LoginResponse, NewServicePoint, NextOrderNumber, OrderListQuery, OrderPage,
-    OrderSummaryQuery, OrderValuesQuery, PageQuery, PhoneQuery, ReorderRequest, ServerInfo,
-    SetPasswordRequest, StatusChange, VersionParam,
+    LoginRequest, LoginResponse, NewServicePoint, NextOrderNumber, OrderCommentPage,
+    OrderCommentQuery, OrderListQuery, OrderPage, OrderSummaryQuery, OrderValuesQuery, PageQuery,
+    PhoneQuery, ReorderRequest, ServerInfo, SetPasswordRequest, StatusChange, VersionParam,
 };
 pub use error::{ErrorBody, ErrorCode, ErrorField};
 pub use state::ApiConfig;

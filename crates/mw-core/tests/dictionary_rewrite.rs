@@ -1016,3 +1016,155 @@ async fn same_value_rename_aligns_spelling_in_lists_and_in_clients() -> Result<(
     }
     Ok(())
 }
+
+#[tokio::test]
+async fn multiline_usage_and_rewrite_respect_punctuation_and_layout() -> Result<(), CoreError> {
+    for t in cores().await {
+        let kind = DictionaryKind::Malfunction;
+        let noise = t
+            .core
+            .add_dictionary_item(&admin(), kind, "Шумит")
+            .await?
+            .id;
+        let order = order_with(&t, |o| {
+            o.malfunction = "ШУМИТ.\r\n\r\nСкрипит,  Нет звука\nГудит., Цена 100 руб.".into();
+        })
+        .await;
+        let usage = t.core.dictionary_usage(&admin(), kind).await?;
+        assert!(
+            usage.iter().any(|u| u.id == noise && u.count == 1),
+            "{usage:?}"
+        );
+        let r = t
+            .core
+            .rename_dictionary_item_everywhere(&admin(), noise, rename("Гудит", true))
+            .await?;
+        assert_eq!(r.records_changed, 1);
+        assert_eq!(
+            reload(&t, &order).await.malfunction,
+            "Гудит.\r\n\r\nСкрипит,  Нет звука\nЦена 100 руб."
+        );
+
+        let dotted = t
+            .core
+            .add_dictionary_item(&admin(), kind, "Гудит.")
+            .await?
+            .id;
+        let usage = t.core.dictionary_usage(&admin(), kind).await?;
+        assert!(usage.iter().any(|u| u.id == dotted && u.count == 1));
+        assert!(!usage.iter().any(|u| u.id == noise));
+        let r = t
+            .core
+            .rename_dictionary_item_everywhere(&admin(), noise, rename("Свистит", true))
+            .await?;
+        assert_eq!(r.records_changed, 0);
+
+        let kind = DictionaryKind::WorkDone;
+        let target = item_id(&t.core, kind, "Чистка").await;
+        let source = item_id(&t.core, kind, "Диагностика").await;
+        let order = reload(&t, &order).await;
+        t.core
+            .update_order(
+                &admin(),
+                order.id,
+                order.version,
+                OrderPatch {
+                    work_done: Some("Диагностика.\nЧистка, Прошивка\r\nОстальное...".into()),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        let usage = t.core.dictionary_usage(&admin(), kind).await?;
+        for id in [target, source] {
+            assert!(usage.iter().any(|u| u.id == id && u.count == 1));
+        }
+        let r = t
+            .core
+            .merge_dictionary_items(&admin(), kind, merge(target, &[source]))
+            .await?;
+        assert_eq!(r.records_changed, 1);
+        assert_eq!(
+            reload(&t, &order).await.work_done,
+            "Чистка.\nПрошивка\r\nОстальное..."
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn multiline_labels_refuse_embedded_line_breaks() -> Result<(), CoreError> {
+    for t in cores().await {
+        for kind in [DictionaryKind::Malfunction, DictionaryKind::WorkDone] {
+            assert_validation(
+                t.core
+                    .add_dictionary_item(&admin(), kind, "Шумит\nСвистит")
+                    .await,
+                &[("value", "line_break")],
+            );
+        }
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn multiline_rename_to_new_dotted_label_collapses_both_orders() -> Result<(), CoreError> {
+    for t in cores().await {
+        let source = t
+            .core
+            .add_dictionary_item(&admin(), DictionaryKind::Malfunction, "Шумит")
+            .await?;
+        let first = order_with(&t, |o| o.malfunction = "гудит.\nШумит".into()).await;
+        let last = order_with(&t, |o| o.malfunction = "Шумит\nгудит.".into()).await;
+        let r = t
+            .core
+            .rename_dictionary_item_everywhere(&admin(), source.id, rename("Гудит.", true))
+            .await?;
+        assert_eq!(r.records_changed, 2);
+        assert_eq!(reload(&t, &first).await.malfunction, "гудит.");
+        assert_eq!(reload(&t, &last).await.malfunction, "Гудит.");
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn multiline_legacy_label_remains_a_single_comma_delimited_item() -> Result<(), CoreError> {
+    for t in cores().await {
+        let kind = DictionaryKind::WorkDone;
+        let legacy = insert_item_directly(&t, kind, "Чистка\nПрошивка").await;
+        let clean = item_id(&t.core, kind, "Чистка").await;
+        let flash = item_id(&t.core, kind, "Прошивка").await;
+        let order = order_with(&t, |_| {}).await;
+        t.core
+            .update_order(
+                &admin(),
+                order.id,
+                order.version,
+                OrderPatch {
+                    work_done: Some(
+                        "Другое, чистка\r\nпрошивка, Диагностика\nЗамена дисплея".into(),
+                    ),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        let usage = t.core.dictionary_usage(&admin(), kind).await?;
+        assert!(
+            usage.iter().any(|u| u.id == legacy && u.count == 1),
+            "{usage:?}"
+        );
+        assert!(
+            !usage.iter().any(|u| [clean, flash].contains(&u.id)),
+            "{usage:?}"
+        );
+        let renamed = t
+            .core
+            .rename_dictionary_item_everywhere(&admin(), legacy, rename("Обслуживание", true))
+            .await?;
+        assert_eq!(renamed.records_changed, 1);
+        assert_eq!(
+            reload(&t, &order).await.work_done,
+            "Другое, Обслуживание, Диагностика\nЗамена дисплея"
+        );
+    }
+    Ok(())
+}

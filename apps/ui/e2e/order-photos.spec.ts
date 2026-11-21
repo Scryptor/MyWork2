@@ -250,3 +250,23 @@ test('leaving the page sends the waiting deletion at once (keepalive)', async ({
 	await page.goto('/orders');
 	await expect.poll(() => onServer(request, o.id)).toBe(1);
 });
+
+test('repair fields precede device details and a large album can be folded', async ({
+	page,
+	request
+}) => {
+	const o = await createOrder(request, { model: uniq('Альбом') });
+	for (let i = 0; i < 6; i++) await uploadPhoto(request, o.id, tinyPng(i + 1), `f${i}.png`);
+	await openCard(page, o.id);
+	const card = cardOf(page);
+	const work = card.getByRole('heading', { name: 'Неисправность и работа' });
+	const device = card.getByRole('heading', { name: 'Устройство', exact: true });
+	const workBox = await work.boundingBox();
+	const deviceBox = await device.boundingBox();
+	expect(workBox!.y).toBeLessThan(deviceBox!.y);
+	await expect(tilesOf(card)).toHaveCount(4);
+	await card.getByRole('button', { name: 'Показать все фото (6)' }).click();
+	await expect(tilesOf(card)).toHaveCount(6);
+	await card.getByRole('button', { name: 'Свернуть фото' }).click();
+	await expect(tilesOf(card)).toHaveCount(4);
+});
