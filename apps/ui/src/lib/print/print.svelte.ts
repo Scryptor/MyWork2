@@ -17,6 +17,7 @@ import {
 import { onSessionReset } from '#lib/app/session-reset.js';
 import { registerHotkey } from '#lib/design/hotkeys.svelte.js';
 import { layers } from '#lib/design/layers.svelte.js';
+import { normalizeSearch } from '#lib/format/search.js';
 import { ru } from '#lib/i18n/ru.js';
 import { downloadBlob } from '#lib/platform/download.js';
 import { toast } from '#lib/ui/toast/toast.svelte.js';
@@ -83,13 +84,26 @@ export function documentOptions(kind: DocumentKind): PdfOptions {
 }
 
 /**
- * The act printed after «Выдать»: the issue act the first time; the issue act after warranty once the order
- * had an issue date before this issue (spec 6.4) — the warranty intake and the re-issue keep that date.
+ * The status «Принять по гарантии» sets, found by its name as `Core::accept_warranty_case` finds it
+ * (`crates/mw-core/src/orders/update.rs`: `normalize_search` of the name, mirrored by `normalizeSearch`).
  */
-export const issueKind = (wasIssued: boolean): DocumentKind =>
-	wasIssued ? 'warranty_issue_act' : 'issue_act';
+const WARRANTY_STATUS = normalizeSearch('Принят по гарантии');
 
-/** Ctrl/⌘P: an order not issued yet prints its intake act, an issued one its issue act. */
+/**
+ * The act printed after «Выдать» (spec 6.4): the issue act after warranty when the order is issued from
+ * «Принят по гарантии», the ordinary one from any other status — after «Вернуть в работу» too, though the
+ * order keeps its first issue date then. `statusBefore`: the name of the status before this issue.
+ */
+export const issueKind = (statusBefore: string | undefined): DocumentKind =>
+	statusBefore !== undefined && normalizeSearch(statusBefore) === WARRANTY_STATUS
+		? 'warranty_issue_act'
+		: 'issue_act';
+
+/**
+ * Ctrl/⌘P: an order not issued yet prints its intake act, an issued one its issue act. An order issued
+ * again after a warranty case gets the ordinary one too: the order itself does not record a past warranty
+ * case (only its history does), so the act after warranty is in «Печать ▾».
+ */
 export const shortcutKind = (issued: boolean): DocumentKind =>
 	issued ? 'issue_act' : 'intake_act';
 

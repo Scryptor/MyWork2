@@ -466,8 +466,20 @@ describe('Ctrl/⌘P', () => {
 });
 
 describe('the act of an issue', () => {
-	it('is the issue act the first time, the one after warranty once the order had an issue date', () => {
-		expect(issueKind(false)).toBe('issue_act');
-		expect(issueKind(true)).toBe('warranty_issue_act');
+	it('is the one after warranty when the order is issued from «Принят по гарантии»', () => {
+		expect(issueKind('Принят по гарантии')).toBe('warranty_issue_act');
+	});
+
+	it('finds that status as the server does: case and spaces do not matter (normalize_search)', () => {
+		for (const name of ['ПРИНЯТ ПО ГАРАНТИИ', 'принят по Гарантии', '  Принят  по\tгарантии ']) {
+			expect(issueKind(name), name).toBe('warranty_issue_act');
+		}
+	});
+
+	it('is the ordinary issue act from any other status, or an unknown one', () => {
+		for (const name of ['Готов', 'Принят', 'В работе', 'Принят по гарантии (старый)', '']) {
+			expect(issueKind(name), name).toBe('issue_act');
+		}
+		expect(issueKind(undefined)).toBe('issue_act');
 	});
 });

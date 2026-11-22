@@ -200,23 +200,53 @@ describe('printing an order', () => {
 		expect(print.printDocument).not.toHaveBeenCalled();
 	});
 
-	it('a re-issue after a warranty case prints the issue act after warranty: the order had an issue date', async () => {
-		// The warranty intake keeps the first issue date, and the re-issue keeps it too.
-		const o = order(8, { status_id: 3, issued_at: '2026-11-01T10:00:00' });
-		const reissued = { ...o, status_id: ISSUED, version: 2 };
-		const on = shown(o, reissued);
-		on.actions.issueOpen = true;
-		await on.actions.issue({
-			work_done: '',
-			master_user_id: null,
-			final_price: null,
-			discount: 0,
-			warranty: ''
+	const issueValues = {
+		work_done: '',
+		master_user_id: null,
+		final_price: null,
+		discount: 0,
+		warranty: ''
+	};
+	/** The statuses of the program with «Принят по гарантии» (id 6), written as `name`. */
+	const withWarranty = (name: string) =>
+		app.set({
+			server: {} as ServerInfo,
+			me: user({ permissions: ['orders_edit'] }),
+			statuses: [
+				...STATUSES,
+				{ id: 6, name, kind: 'open', color: 'teal', sort_order: 6, archived: false }
+			],
+			points: POINTS,
+			settings: { issue_required: [], default_warranty: '' } as unknown as AppSettings
 		});
+
+	it('issued from «Принят по гарантии»: the issue act after warranty', async () => {
+		withWarranty('Принят по гарантии');
+		// The warranty intake kept the first issue date.
+		const o = order(8, { status_id: 6, issued_at: '2026-11-01T10:00:00' });
+		await shown(o, { ...o, status_id: ISSUED, version: 2 }).actions.issue(issueValues);
 		await settle();
 		expect(print.printDocument).toHaveBeenCalledExactlyOnceWith('warranty_issue_act', {
 			orderId: 8
 		});
+	});
+
+	it('the warranty status written in another case is found as the server finds it', async () => {
+		withWarranty('ПРИНЯТ  по гарантии');
+		const o = order(8, { status_id: 6, issued_at: '2026-11-01T10:00:00' });
+		await shown(o, { ...o, status_id: ISSUED, version: 2 }).actions.issue(issueValues);
+		await settle();
+		expect(print.printDocument).toHaveBeenCalledExactlyOnceWith('warranty_issue_act', {
+			orderId: 8
+		});
+	});
+
+	it('issued again after «Вернуть в работу»: the ordinary issue act, though it has an issue date', async () => {
+		withWarranty('Принят по гарантии');
+		const o = order(8, { status_id: 3, issued_at: '2026-11-01T10:00:00' });
+		await shown(o, { ...o, status_id: ISSUED, version: 2 }).actions.issue(issueValues);
+		await settle();
+		expect(print.printDocument).toHaveBeenCalledExactlyOnceWith('issue_act', { orderId: 8 });
 	});
 
 	it('the warranty case prints its intake act when «Печатать акт приёма по гарантии» is on', async () => {

@@ -169,10 +169,10 @@ export class OrderActions {
 		undo.push(t.statusChanged(id, app.statusById(o.status_id)?.name ?? ''), () =>
 			this.#undoIssue(id, before.status, clearIssuedAt)
 		);
-		// «Печатать акт выдачи»: the order is issued already, a failure to print is only told. Issued before
-		// (a re-issue after a warranty case): the act after warranty.
+		// «Печатать акт выдачи»: the order is issued already, a failure to print is only told. Issued from
+		// «Принят по гарантии»: the act after warranty.
 		if (printSettings.onIssue.act)
-			void printDocument(issueKind(before.issuedAt !== null), { orderId: id });
+			void printDocument(issueKind(app.statusById(before.status)?.name), { orderId: id });
 	}
 
 	async #undoIssue(id: number, statusId: number, clearIssuedAt: boolean): Promise<void> {
