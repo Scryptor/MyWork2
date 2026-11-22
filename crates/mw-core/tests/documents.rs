@@ -529,3 +529,104 @@ async fn export_document_fails_as_render_document_does() {
         );
     }
 }
+
+/// Границы размера наклейки, смещения и разрешения проверяет ядро: ни один вызывающий не заставит
+/// его строить огромный растр.
+#[tokio::test]
+async fn export_document_checks_label_offset_and_dpi_bounds() {
+    let with = |options: RenderOptions| DocumentRequest {
+        sample: true,
+        options,
+        ..request(DocumentKind::Sticker, None)
+    };
+    let label = |w, h| RenderOptions {
+        label_mm: Some((w, h)),
+        ..RenderOptions::default()
+    };
+    let offset = |x, y| RenderOptions {
+        offset_mm: (x, y),
+        ..RenderOptions::default()
+    };
+    let printer = |dpi| RenderOptions {
+        dpi: Some(dpi),
+        ..RenderOptions::default()
+    };
+    type Case = (
+        DocumentRequest,
+        DocumentOutput,
+        Vec<(&'static str, &'static str)>,
+    );
+    let cases: Vec<Case> = vec![
+        (
+            with(label(14.9, 40.0)),
+            DocumentOutput::Pdf,
+            vec![("label_w_mm", "out_of_range")],
+        ),
+        (
+            with(label(58.0, 200.1)),
+            DocumentOutput::Pdf,
+            vec![("label_h_mm", "out_of_range")],
+        ),
+        (
+            with(label(500.0, 1.0)),
+            DocumentOutput::Pdf,
+            vec![
+                ("label_w_mm", "out_of_range"),
+                ("label_h_mm", "out_of_range"),
+            ],
+        ),
+        (
+            with(label(f32::NAN, 40.0)),
+            DocumentOutput::Pdf,
+            vec![("label_w_mm", "out_of_range")],
+        ),
+        (
+            with(offset(10.1, 0.0)),
+            DocumentOutput::Pdf,
+            vec![("offset_x_mm", "out_of_range")],
+        ),
+        (
+            with(offset(0.0, -10.1)),
+            DocumentOutput::Pdf,
+            vec![("offset_y_mm", "out_of_range")],
+        ),
+        (
+            with(printer(71)),
+            DocumentOutput::Pdf,
+            vec![("printer_dpi", "out_of_range")],
+        ),
+        (
+            with(printer(601)),
+            DocumentOutput::Pdf,
+            vec![("printer_dpi", "out_of_range")],
+        ),
+        (
+            with(RenderOptions::default()),
+            DocumentOutput::Png { dpi: 601 },
+            vec![("dpi", "out_of_range")],
+        ),
+        (
+            with(RenderOptions::default()),
+            DocumentOutput::Png { dpi: 71 },
+            vec![("dpi", "out_of_range")],
+        ),
+    ];
+    for t in cores().await {
+        for (req, output, expected) in &cases {
+            assert_validation(
+                t.core.export_document(&admin(), *req, *output).await,
+                expected,
+            );
+        }
+        // Границы включены.
+        let edge = with(RenderOptions {
+            label_mm: Some((15.0, 200.0)),
+            offset_mm: (-10.0, 10.0),
+            dpi: Some(600),
+        });
+        t.core
+            .export_document(&admin(), edge, DocumentOutput::Png { dpi: 72 })
+            .await
+            .unwrap_or_else(|e| panic!("{}: {e}", t.label));
+    }
+}

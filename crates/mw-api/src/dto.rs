@@ -569,3 +569,50 @@ pub struct LegacyImportStart {
     /// Заменить данные непустой базы (только SQLite; перед этим снимается копия).
     pub replace: bool,
 }
+
+/// Формат выгрузки документа.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, TS, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DocumentFormat {
+    /// Файл PDF (по умолчанию).
+    #[default]
+    Pdf,
+    /// Страницы PNG в `DocumentPages`.
+    Png,
+}
+
+/// Параметры выгрузки документа: формат, разрешение, размер наклейки и смещение.
+#[derive(Debug, Clone, Default, Deserialize, TS, IntoParams)]
+#[serde(deny_unknown_fields)]
+#[ts(optional_fields)]
+#[into_params(parameter_in = Query)]
+pub struct DocumentQuery {
+    /// `pdf` или `png`; по умолчанию `pdf`.
+    pub format: Option<DocumentFormat>,
+    /// Разрешение растра PNG, точек на дюйм (72–600); по умолчанию 110. Только для `png`.
+    pub dpi: Option<u32>,
+    /// Разрешение принтера, точек на дюйм (72–600): ширина штрихкода подгоняется под целое число
+    /// точек принтера, без него модуль штрихкода 0,33 мм. Годится с обоими форматами.
+    pub printer_dpi: Option<u32>,
+    /// Ширина наклейки, мм (15–200); только вместе с `label_h_mm`.
+    pub label_w_mm: Option<f32>,
+    /// Высота наклейки, мм (15–200); только вместе с `label_w_mm`.
+    pub label_h_mm: Option<f32>,
+    /// Сдвиг содержимого вправо, мм (от −10 до 10); по умолчанию 0.
+    pub offset_x_mm: Option<f32>,
+    /// Сдвиг содержимого вниз, мм (от −10 до 10); по умолчанию 0.
+    pub offset_y_mm: Option<f32>,
+}
+
+/// Документ как страницы PNG.
+#[derive(Debug, Clone, PartialEq, Serialize, TS, ToSchema)]
+pub struct DocumentPages {
+    /// Разрешение растра, точек на дюйм.
+    pub dpi: u32,
+    /// Ширина первой страницы, мм.
+    pub width_mm: f32,
+    /// Высота первой страницы, мм.
+    pub height_mm: f32,
+    /// Страницы: PNG в base64.
+    pub pages: Vec<String>,
+}

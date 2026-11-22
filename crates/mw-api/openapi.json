@@ -1382,6 +1382,134 @@
         ]
       }
     },
+    "/api/v1/documents/{kind}": {
+      "get": {
+        "tags": [
+          "Документы"
+        ],
+        "summary": "Документ без заказа: пустой акт приёма и калибровочная этикетка как есть, остальные виды —\nобразец на примерных данных и своих реквизитах (достаточно войти).",
+        "operationId": "sample_document",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "description": "Вид документа",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/DocumentKind"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "description": "`pdf` или `png`; по умолчанию `pdf`.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/DocumentFormat"
+            }
+          },
+          {
+            "name": "dpi",
+            "in": "query",
+            "description": "Разрешение растра PNG, точек на дюйм (72–600); по умолчанию 110. Только для `png`.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "printer_dpi",
+            "in": "query",
+            "description": "Разрешение принтера, точек на дюйм (72–600): ширина штрихкода подгоняется под целое число\nточек принтера, без него модуль штрихкода 0,33 мм. Годится с обоими форматами.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "label_w_mm",
+            "in": "query",
+            "description": "Ширина наклейки, мм (15–200); только вместе с `label_h_mm`.",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          {
+            "name": "label_h_mm",
+            "in": "query",
+            "description": "Высота наклейки, мм (15–200); только вместе с `label_w_mm`.",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          {
+            "name": "offset_x_mm",
+            "in": "query",
+            "description": "Сдвиг содержимого вправо, мм (от −10 до 10); по умолчанию 0.",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          {
+            "name": "offset_y_mm",
+            "in": "query",
+            "description": "Сдвиг содержимого вниз, мм (от −10 до 10); по умолчанию 0.",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "format": "float"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "PDF или, для `format=png`, страницы PNG",
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentPages"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/intake-drafts/{key}": {
       "delete": {
         "tags": [
@@ -2771,6 +2899,144 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/OrderComment"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/orders/{id}/documents/{kind}": {
+      "get": {
+        "tags": [
+          "Документы"
+        ],
+        "summary": "Документ заказа: акт приёма или выдачи, гарантийный акт, наклейка (достаточно войти; права те же,\nчто у просмотра заказа). Пустой акт приёма и калибровка заказа не используют.",
+        "operationId": "order_document",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер заказа",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "path",
+            "description": "Вид документа",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/DocumentKind"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "description": "`pdf` или `png`; по умолчанию `pdf`.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/DocumentFormat"
+            }
+          },
+          {
+            "name": "dpi",
+            "in": "query",
+            "description": "Разрешение растра PNG, точек на дюйм (72–600); по умолчанию 110. Только для `png`.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "printer_dpi",
+            "in": "query",
+            "description": "Разрешение принтера, точек на дюйм (72–600): ширина штрихкода подгоняется под целое число\nточек принтера, без него модуль штрихкода 0,33 мм. Годится с обоими форматами.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "label_w_mm",
+            "in": "query",
+            "description": "Ширина наклейки, мм (15–200); только вместе с `label_h_mm`.",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          {
+            "name": "label_h_mm",
+            "in": "query",
+            "description": "Высота наклейки, мм (15–200); только вместе с `label_w_mm`.",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          {
+            "name": "offset_x_mm",
+            "in": "query",
+            "description": "Сдвиг содержимого вправо, мм (от −10 до 10); по умолчанию 0.",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          {
+            "name": "offset_y_mm",
+            "in": "query",
+            "description": "Сдвиг содержимого вниз, мм (от −10 до 10); по умолчанию 0.",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "format": "float"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "PDF или, для `format=png`, страницы PNG",
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentPages"
                 }
               }
             }
@@ -4869,6 +5135,61 @@
           }
         },
         "additionalProperties": false
+      },
+      "DocumentFormat": {
+        "type": "string",
+        "description": "Формат выгрузки документа.",
+        "enum": [
+          "pdf",
+          "png"
+        ]
+      },
+      "DocumentKind": {
+        "type": "string",
+        "enum": [
+          "intake_act",
+          "issue_act",
+          "warranty_intake_act",
+          "warranty_issue_act",
+          "blank_intake_act",
+          "sticker",
+          "calibration"
+        ]
+      },
+      "DocumentPages": {
+        "type": "object",
+        "description": "Документ как страницы PNG.",
+        "required": [
+          "dpi",
+          "width_mm",
+          "height_mm",
+          "pages"
+        ],
+        "properties": {
+          "dpi": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Разрешение растра, точек на дюйм.",
+            "minimum": 0
+          },
+          "height_mm": {
+            "type": "number",
+            "format": "float",
+            "description": "Высота первой страницы, мм."
+          },
+          "pages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Страницы: PNG в base64."
+          },
+          "width_mm": {
+            "type": "number",
+            "format": "float",
+            "description": "Ширина первой страницы, мм."
+          }
+        }
       },
       "ErrorBody": {
         "type": "object",

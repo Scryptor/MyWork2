@@ -29,10 +29,11 @@ pub use contract::export_typescript;
 pub use dto::{
     AboutInfo, AttachmentNameQuery, AuditListQuery, AuditPage, BarcodeQuery, CaptionPatch,
     ChangePasswordRequest, ClientListQuery, ClientPage, CurrentUser, DictionaryListQuery,
-    DictionaryValue, HistoryQuery, IncludeArchived, LegacyImportCheck, LegacyImportStart,
-    LoginRequest, LoginResponse, NewServicePoint, NextOrderNumber, OrderCommentPage,
-    OrderCommentQuery, OrderListQuery, OrderPage, OrderSummaryQuery, OrderValuesQuery, PageQuery,
-    PhoneQuery, ReorderRequest, ServerInfo, SetPasswordRequest, StatusChange, VersionParam,
+    DictionaryValue, DocumentFormat, DocumentPages, DocumentQuery, HistoryQuery, IncludeArchived,
+    LegacyImportCheck, LegacyImportStart, LoginRequest, LoginResponse, NewServicePoint,
+    NextOrderNumber, OrderCommentPage, OrderCommentQuery, OrderListQuery, OrderPage,
+    OrderSummaryQuery, OrderValuesQuery, PageQuery, PhoneQuery, ReorderRequest, ServerInfo,
+    SetPasswordRequest, StatusChange, VersionParam,
 };
 pub use error::{ErrorBody, ErrorCode, ErrorField};
 pub use state::ApiConfig;
@@ -151,7 +152,9 @@ impl Modify for CommonDoc {
     mw_core::IssuedFilter,
     mw_core::OrderSortField,
     mw_core::ClientSortField,
-    mw_core::OrderValueField
+    mw_core::OrderValueField,
+    mw_domain::documents::DocumentKind,
+    dto::DocumentFormat
 )))]
 struct ApiDoc;
 

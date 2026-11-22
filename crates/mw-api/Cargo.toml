@@ -11,6 +11,7 @@ workspace = true
 [dependencies]
 mw-core = { path = "../mw-core" }
 mw-domain = { path = "../mw-domain" }
+mw-docs = { path = "../mw-docs" }
 mw-legacy = { path = "../mw-legacy" }
 axum = { workspace = true }
 axum-extra = { workspace = true }
@@ -19,6 +20,7 @@ utoipa-axum = { workspace = true }
 ts-rs = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+base64 = "0.22"
 chrono = { workspace = true }
 tracing = { workspace = true }
 tokio = { workspace = true, features = ["time", "fs"] }

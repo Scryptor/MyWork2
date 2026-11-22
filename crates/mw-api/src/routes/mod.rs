@@ -11,6 +11,7 @@ mod audit;
 mod auth;
 mod catalogs;
 mod clients;
+mod documents;
 mod legacy_import;
 mod meta;
 mod orders;
@@ -93,6 +94,8 @@ pub(crate) fn api_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(orders::order_history))
         .routes(routes!(orders::order_comments, orders::add_order_comment))
         .routes(routes!(orders::accept_warranty_case))
+        .routes(routes!(documents::order_document))
+        .routes(routes!(documents::sample_document))
         .routes(routes!(users::list_users, users::create_user))
         .routes(routes!(users::update_user))
         .routes(routes!(users::set_user_password))

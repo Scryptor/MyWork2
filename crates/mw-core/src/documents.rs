@@ -19,6 +19,38 @@ use crate::{Actor, AppSettings, Client, Core, CoreError, Order};
 /// Сколько документов строится одновременно; остальные ждут своей очереди.
 pub(crate) const MAX_CONCURRENT_RENDERS: usize = 2;
 
+/// Допустимые размер наклейки (мм по стороне), смещение (мм по оси) и разрешение (точек на дюйм)
+/// принтера и растра. Границы проверяет ядро, чтобы никакой вызывающий не заставил его строить
+/// огромную страницу или растр.
+const LABEL_MM: std::ops::RangeInclusive<f32> = 15.0..=200.0;
+const OFFSET_MM: std::ops::RangeInclusive<f32> = -10.0..=10.0;
+const RASTER_DPI: std::ops::RangeInclusive<u32> = 72..=600;
+const PRINTER_DPI: std::ops::RangeInclusive<u32> = 72..=600;
+
+/// Размер наклейки, смещение и DPI принтера в границах; поля названы как параметры запроса API.
+fn check_options(options: &RenderOptions) -> Result<(), CoreError> {
+    let mut errors = Vec::new();
+    let mut check = |field: &str, ok: bool| {
+        if !ok {
+            errors.push(FieldError::new(field, "out_of_range"));
+        }
+    };
+    if let Some((w, h)) = options.label_mm {
+        check("label_w_mm", LABEL_MM.contains(&w));
+        check("label_h_mm", LABEL_MM.contains(&h));
+    }
+    check("offset_x_mm", OFFSET_MM.contains(&options.offset_mm.0));
+    check("offset_y_mm", OFFSET_MM.contains(&options.offset_mm.1));
+    if let Some(dpi) = options.dpi {
+        check("printer_dpi", PRINTER_DPI.contains(&dpi));
+    }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(CoreError::Validation(errors))
+    }
+}
+
 /// Что напечатать.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct DocumentRequest {
@@ -83,6 +115,14 @@ impl Core {
         req: DocumentRequest,
         output: DocumentOutput,
     ) -> Result<DocumentFile, CoreError> {
+        if let DocumentOutput::Png { dpi } = output
+            && !RASTER_DPI.contains(&dpi)
+        {
+            return Err(CoreError::Validation(vec![FieldError::new(
+                "dpi",
+                "out_of_range",
+            )]));
+        }
         self.rendered(actor, req, move |doc| {
             let bytes = match output {
                 DocumentOutput::Pdf => DocumentBytes::Pdf(doc.pdf()?),
@@ -117,6 +157,7 @@ impl Core {
         req: DocumentRequest,
         finish: impl FnOnce(Rendered) -> Result<R, DocsError> + Send + 'static,
     ) -> Result<R, CoreError> {
+        check_options(&req.options)?;
         let data = self.document_data(actor, &req).await?;
         let template = standard_template(req.kind);
         let options = req.options;

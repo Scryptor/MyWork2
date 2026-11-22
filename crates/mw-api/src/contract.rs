@@ -7,10 +7,10 @@ use ts_rs::TS;
 use crate::{
     AboutInfo, AttachmentNameQuery, AuditListQuery, AuditPage, BarcodeQuery, CaptionPatch,
     ChangePasswordRequest, ClientListQuery, ClientPage, CurrentUser, DictionaryListQuery,
-    DictionaryValue, ErrorBody, HistoryQuery, IncludeArchived, LegacyImportCheck,
-    LegacyImportStart, LoginRequest, LoginResponse, NewServicePoint, NextOrderNumber,
-    OrderListQuery, OrderPage, OrderSummaryQuery, OrderValuesQuery, PageQuery, PhoneQuery,
-    ReorderRequest, ServerInfo, SetPasswordRequest, StatusChange, VersionParam,
+    DictionaryValue, DocumentPages, DocumentQuery, ErrorBody, HistoryQuery, IncludeArchived,
+    LegacyImportCheck, LegacyImportStart, LoginRequest, LoginResponse, NewServicePoint,
+    NextOrderNumber, OrderListQuery, OrderPage, OrderSummaryQuery, OrderValuesQuery, PageQuery,
+    PhoneQuery, ReorderRequest, ServerInfo, SetPasswordRequest, StatusChange, VersionParam,
 };
 
 /// Выгружает в `dir` TS-типы всех корневых типов API вместе с зависимостями
@@ -94,5 +94,8 @@ pub fn export_typescript(dir: &Path) -> Result<(), ts_rs::ExportError> {
     mw_legacy::ImportJob::export_all(&cfg)?;
     mw_legacy::LegacyImportItem::export_all(&cfg)?;
     mw_legacy::ImportReportView::export_all(&cfg)?;
+    DocumentQuery::export_all(&cfg)?;
+    DocumentPages::export_all(&cfg)?;
+    mw_domain::documents::DocumentKind::export_all(&cfg)?;
     Ok(())
 }
