@@ -17,6 +17,8 @@ pub enum DocsError {
     Pdf(Vec<String>),
     #[error("cannot produce PNG: {0}")]
     Png(String),
+    #[error("invalid virtual file name: {0}")]
+    BadFileName(String),
     #[error("invalid resolution: {0} dpi")]
     Dpi(u32),
 }
@@ -24,6 +26,11 @@ pub enum DocsError {
 /// A compiled document.
 pub struct Rendered {
     doc: PagedDocument,
+}
+
+/// Typst memoizes layout results globally; without eviction a long-running server grows without bound.
+pub(crate) fn evict_cache() {
+    comemo::evict(30);
 }
 
 fn messages(errors: impl IntoIterator<Item = SourceDiagnostic>) -> Vec<String> {
@@ -45,10 +52,9 @@ pub(crate) fn compile(
     source: String,
     files: Vec<(String, Vec<u8>)>,
 ) -> Result<Rendered, DocsError> {
-    let world = DocsWorld::new(source, files);
+    let world = DocsWorld::new(source, files)?;
     let output = typst::compile::<PagedDocument>(&world).output;
-    // Typst memoizes layout results globally; without eviction a long-running server grows without bound.
-    comemo::evict(30);
+    evict_cache();
     match output {
         Ok(doc) => Ok(Rendered { doc }),
         Err(errors) => Err(DocsError::Compile(messages(errors))),
@@ -75,7 +81,7 @@ impl Rendered {
     pub fn pdf(&self) -> Result<Vec<u8>, DocsError> {
         let bytes = typst_pdf::pdf(&self.doc, &PdfOptions::default())
             .map_err(|e| DocsError::Pdf(messages(e)));
-        comemo::evict(30);
+        evict_cache();
         bytes
     }
 
@@ -98,7 +104,7 @@ impl Rendered {
                     .map_err(|e| DocsError::Png(e.to_string()))
             })
             .collect();
-        comemo::evict(30);
+        evict_cache();
         pages
     }
 
@@ -113,6 +119,7 @@ impl Rendered {
     }
 }
 
+/// Appends the text of a frame; group offsets are ignored (good enough for tests and checks).
 fn collect_text(frame: &typst::layout::Frame, out: &mut String) {
     use typst::layout::FrameItem;
     let mut last_y = None;

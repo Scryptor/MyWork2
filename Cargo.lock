@@ -2688,6 +2688,7 @@ name = "mw-docs"
 version = "0.1.0"
 dependencies = [
  "comemo",
+ "mw-docs",
  "thiserror",
  "typst",
  "typst-layout",

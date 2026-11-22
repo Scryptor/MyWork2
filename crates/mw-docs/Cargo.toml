@@ -8,6 +8,9 @@ rust-version.workspace = true
 [lints]
 workspace = true
 
+[features]
+testing = []
+
 [dependencies]
 thiserror = { workspace = true }
 typst = { workspace = true }
@@ -15,3 +18,6 @@ typst-pdf = { workspace = true }
 typst-render = { workspace = true }
 typst-layout = { workspace = true }
 comemo = { workspace = true }
+
+[dev-dependencies]
+mw-docs = { path = ".", features = ["testing"] }

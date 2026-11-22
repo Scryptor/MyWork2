@@ -12,6 +12,7 @@ use typst::utils::LazyHash;
 use typst::{Library, LibraryExt, World};
 
 use crate::fonts::fonts;
+use crate::render::DocsError;
 
 fn library() -> &'static LazyHash<Library> {
     static LIBRARY: OnceLock<LazyHash<Library>> = OnceLock::new();
@@ -29,17 +30,18 @@ pub(crate) struct DocsWorld {
 }
 
 impl DocsWorld {
-    pub(crate) fn new(source: String, files: Vec<(String, Vec<u8>)>) -> Self {
+    pub(crate) fn new(source: String, files: Vec<(String, Vec<u8>)>) -> Result<Self, DocsError> {
         let main_id =
             file_id("/main.typ").unwrap_or_else(|| unreachable!("constant path is valid"));
-        let files = files
-            .into_iter()
-            .filter_map(|(name, bytes)| Some((file_id(&name)?, Bytes::new(bytes))))
-            .collect();
-        Self {
-            main: Source::new(main_id, source),
-            files,
+        let mut map = HashMap::new();
+        for (name, bytes) in files {
+            let id = file_id(&name).ok_or_else(|| DocsError::BadFileName(name.clone()))?;
+            map.insert(id, Bytes::new(bytes));
         }
+        Ok(Self {
+            main: Source::new(main_id, source),
+            files: map,
+        })
     }
 }
 

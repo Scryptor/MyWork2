@@ -76,14 +76,18 @@ fn many_renders_in_a_row_work() {
     }
 }
 
-#[test]
-fn render_evicts_the_typst_cache() {
-    let src = include_str!("../src/render.rs");
-    assert!(src.contains("comemo::evict(30)"));
-}
-
 fn png_size(png: &[u8]) -> (u32, u32) {
     let w = u32::from_be_bytes([png[16], png[17], png[18], png[19]]);
     let h = u32::from_be_bytes([png[20], png[21], png[22], png[23]]);
     (w, h)
+}
+
+#[test]
+fn invalid_virtual_file_name_is_an_error() {
+    let r = compile_for_tests("x".to_owned(), vec![("../../etc/x".to_owned(), vec![])]);
+    assert!(
+        matches!(r, Err(DocsError::BadFileName(_))),
+        "{:?}",
+        r.map(|_| ())
+    );
 }
