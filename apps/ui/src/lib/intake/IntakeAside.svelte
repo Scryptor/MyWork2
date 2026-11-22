@@ -1,6 +1,5 @@
-<!-- The right column of the intake (spec 6.5): what is left to fill, what is printed once the order is
-     accepted (kept on this computer), the client's past orders and the orders with the same IMEI, with the
-     warranty check. -->
+<!-- The right column of the intake (spec 6.5): what is left to fill, the client's past orders and the
+     orders with the same IMEI, with the warranty check. -->
 <script lang="ts">
 	import type { OrderListItem } from '$api/OrderListItem';
 	import type { OrderPage } from '$api/OrderPage';
@@ -11,12 +10,10 @@
 	import { countLabel } from '#lib/format/plural.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import { deviceOf } from '#lib/orders/view.js';
-	import { printSettings } from '#lib/print/settings.svelte.js';
 	import Callout from '#lib/ui/Callout.svelte';
 	import Card from '#lib/ui/Card.svelte';
 	import Section from '#lib/ui/Section.svelte';
 	import StatusBadge from '#lib/ui/StatusBadge.svelte';
-	import Switch from '#lib/ui/Switch.svelte';
 	import {
 		REQUIRED_LABELS,
 		serialHits,
@@ -123,26 +120,6 @@
 		</Section>
 	</Card>
 
-	<Card padding="sm">
-		<Section title={ru.print.afterIntake} help={ru.help.intake.print}>
-			<div class="switches" role="group" aria-label={ru.print.afterIntake}>
-				<Switch
-					label={ru.print.documents.intake_act}
-					bind:checked={
-						() => printSettings.onIntake.act, (v) => printSettings.set({ onIntake: { act: v } })
-					}
-				/>
-				<Switch
-					label={ru.print.documents.sticker}
-					bind:checked={
-						() => printSettings.onIntake.sticker,
-						(v) => printSettings.set({ onIntake: { sticker: v } })
-					}
-				/>
-			</div>
-		</Section>
-	</Card>
-
 	{#if seenHits.length > 0}
 		<Callout tone="warning" title={t.seenSerial}>
 			<ul class="orders" aria-label={t.seenSerial}>
@@ -234,11 +211,6 @@
 	}
 	.mark.warranty {
 		font-weight: 600;
-	}
-	.switches {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-2);
 	}
 	:global(:is([data-width='xs'], [data-width='sm'])) .aside {
 		position: static;

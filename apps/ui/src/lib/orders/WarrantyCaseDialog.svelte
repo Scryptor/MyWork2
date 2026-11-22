@@ -110,7 +110,7 @@
 	});
 </script>
 
-<Dialog bind:open title={t.warrantyTitle(order?.id ?? 0)}>
+<Dialog bind:open title={t.warrantyTitle(order?.id ?? 0)} size="lg">
 	<div class="body">
 		{#if failure}<Callout tone="danger">{failure}</Callout>{/if}
 		<Textarea
@@ -142,22 +142,37 @@
 			bind:invalid={dateInvalid}
 			error={errors.at}
 		/>
-		<Switch
-			label={ru.print.onWarranty}
-			bind:checked={
-				() => printSettings.onIntake.act, (v) => printSettings.set({ onIntake: { act: v } })
-			}
-		/>
 	</div>
 	{#snippet footer()}
-		<Button onclick={() => (open = false)}>{ru.common.cancel}</Button>
-		<Button variant="primary" shortcut="Mod+Enter" {busy} onclick={() => void accept()}
-			>{t.warrantyAccept}</Button
-		>
+		<!-- At the bottom, left of the buttons (spec 6.5); Ctrl/⌘+Enter on it still submits. -->
+		<div class="print">
+			<Switch
+				label={ru.print.onWarranty}
+				bind:checked={
+					() => printSettings.onIntake.act, (v) => printSettings.set({ onIntake: { act: v } })
+				}
+			/>
+		</div>
+		<div class="buttons">
+			<Button onclick={() => (open = false)}>{ru.common.cancel}</Button>
+			<Button variant="primary" shortcut="Mod+Enter" {busy} onclick={() => void accept()}
+				>{t.warrantyAccept}</Button
+			>
+		</div>
 	{/snippet}
 </Dialog>
 
 <style>
+	/* The switch on the left, the buttons on the right; a narrow footer puts the buttons, together, on a
+	   line of their own. */
+	.print {
+		margin-inline-end: auto;
+	}
+	.buttons {
+		display: flex;
+		gap: var(--space-2);
+		margin-inline-start: auto;
+	}
 	.body {
 		display: flex;
 		flex-direction: column;

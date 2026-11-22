@@ -1,5 +1,5 @@
 import fs from 'node:fs/promises';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import {
 	createOrder,
 	fetchOrder,
@@ -37,6 +37,18 @@ async function openPanel(page: Page, marker: string, id: number) {
 	await rowOf(page, id).getByRole('gridcell').nth(3).click();
 	await expect(panelOf(page, id).getByRole('textbox', { name: 'Неисправность' })).toBeVisible();
 	return panelOf(page, id);
+}
+
+/**
+ * The switches of printing are at the bottom of the form, on the line of its buttons (spec 6.5; a window of
+ * 1280 × 720): the middle of `control` is within the height of `button`.
+ */
+async function expectBeside(control: Locator, button: Locator) {
+	const [c, b] = await Promise.all([control.boundingBox(), button.boundingBox()]);
+	expect(c).not.toBeNull();
+	expect(b).not.toBeNull();
+	expect(Math.abs(c!.y + c!.height / 2 - (b!.y + b!.height / 2))).toBeLessThan(b!.height / 2);
+	expect(c!.x).toBeLessThan(b!.x);
 }
 
 /** A page of the document has come and is drawn (not a broken picture). */
@@ -167,7 +179,7 @@ test('Ctrl/⌘P on the card of an issued order opens its issue act', async ({ pa
 test.describe('intake', () => {
 	const sheetOf = (page: Page) => page.getByRole('dialog', { name: 'Новый заказ' });
 
-	async function accept(page: Page, act: boolean) {
+	async function accept(page: Page, act: boolean, browserName: string) {
 		await page.goto('/orders');
 		await expect(page.getByRole('heading', { name: 'Заказы', level: 1 })).toBeVisible();
 		await page.keyboard.press('n');
@@ -181,9 +193,21 @@ test.describe('intake', () => {
 		await sheet.getByRole('textbox', { name: /^Неисправность/ }).fill('Не заряжается');
 		const switches = sheet.getByRole('group', { name: 'Печать после приёма' });
 		const actSwitch = switches.getByRole('switch', { name: 'Акт приёма' });
+		const sticker = switches.getByRole('switch', { name: 'Наклейка' });
 		await expect(actSwitch).toBeChecked();
-		await expect(switches.getByRole('switch', { name: 'Наклейка' })).not.toBeChecked();
-		if (!act) await actSwitch.uncheck();
+		await expect(sticker).not.toBeChecked();
+		// At the bottom, before «Отмена» and «Принять», in the order of Tab.
+		await expectBeside(switches, sheet.getByRole('button', { name: /^Принять/ }));
+		// WebKit on a Mac, as Safari, goes over switches and buttons with ⌥Tab; plain Tab — fields only.
+		const tab = browserName === 'webkit' && process.platform === 'darwin' ? 'Alt+Tab' : 'Tab';
+		await actSwitch.focus();
+		await page.keyboard.press(tab);
+		await expect(sticker).toBeFocused();
+		await page.keyboard.press(`Shift+${tab}`);
+		await expect(actSwitch).toBeFocused();
+		if (!act) await page.keyboard.press('Space');
+		await expect(actSwitch).toBeChecked({ checked: act });
+		// Ctrl/⌘+Enter on a switch accepts the order, the switch stays as it is.
 		await page.keyboard.press(`${await mod(page)}+Enter`);
 		await expect(sheet).toBeHidden();
 		const accepted = page.getByRole('status', { name: 'Уведомления' }).getByText(/^Принят № \d+$/);
@@ -193,17 +217,19 @@ test.describe('intake', () => {
 
 	test('with «Акт приёма» on, the act opens in the preview after the order is saved', async ({
 		page,
-		request
+		request,
+		browserName
 	}) => {
-		const id = await accept(page, true);
+		const id = await accept(page, true, browserName);
 		await expectPage(previewOf(page, `Акт приёма · № ${id}`));
 		expect((await fetchOrder(request, id)).malfunction).toBe('Не заряжается');
 	});
 
 	test('with it off nothing opens, and the switch is remembered on this computer', async ({
-		page
+		page,
+		browserName
 	}) => {
-		await accept(page, false);
+		await accept(page, false, browserName);
 		await expect(page.getByRole('dialog', { name: /^Акт приёма/ })).toHaveCount(0);
 		const stored = await page.evaluate(() => localStorage.getItem('mw.print'));
 		expect(JSON.parse(stored!)).toMatchObject({ onIntake: { act: false, sticker: false } });
@@ -228,11 +254,34 @@ test('«Выдать» with «Печатать акт выдачи» opens the i
 	const panel = await openPanel(page, m, o.id);
 	await panel.getByRole('button', { name: /^Выдать/ }).click();
 	const dialog = page.getByRole('dialog', { name: `Выдача заказа № ${o.id}` });
-	await expect(dialog.getByRole('switch', { name: 'Печатать акт выдачи' })).toBeChecked();
+	const printAct = dialog.getByRole('switch', { name: 'Печатать акт выдачи' });
+	await expect(printAct).toBeChecked();
+	await expectBeside(printAct, dialog.getByRole('button', { name: /^Выдать/ }));
 	await dialog.getByRole('button', { name: /^Выдать/ }).click();
 	await expect(dialog).toBeHidden();
 	await expectPage(previewOf(page, `Акт выдачи · № ${o.id}`));
 	expect((await fetchOrder(request, o.id)).issued_at).not.toBeNull();
+});
+
+test('«Принять по гарантии» with its switch opens the warranty intake act', async ({
+	page,
+	request
+}) => {
+	const o = await createOrder(request, { model: uniq('M'), master: 'Тестов' });
+	await patchOrder(request, o.id, { work_done: 'Замена разъёма', final_price: 150000 });
+	await setStatus(request, o.id, await statusId(request, 'Выдан'));
+	await page.goto(`/orders/${o.id}`);
+	await expect(page.getByRole('textbox', { name: 'Неисправность' })).toBeVisible();
+	await page.getByRole('button', { name: 'Ещё действия' }).click();
+	await page.getByRole('menuitem', { name: 'Принять по гарантии…' }).click();
+	const dialog = page.getByRole('dialog', { name: `Приём заказа № ${o.id} по гарантии` });
+	const printAct = dialog.getByRole('switch', { name: 'Печатать акт приёма по гарантии' });
+	await expect(printAct).toBeChecked();
+	await expectBeside(printAct, dialog.getByRole('button', { name: /^Принять/ }));
+	await dialog.getByRole('textbox', { name: /^Жалоба/ }).fill('Снова не заряжается');
+	await page.keyboard.press(`${await mod(page)}+Enter`);
+	await expect(dialog).toBeHidden();
+	await expectPage(previewOf(page, `Акт приёма по гарантии · № ${o.id}`));
 });
 
 test('Ctrl K «Пустой акт приёма» opens the blank act', async ({ page }) => {

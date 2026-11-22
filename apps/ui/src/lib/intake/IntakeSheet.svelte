@@ -1,6 +1,7 @@
-<!-- The intake (spec 6.5): a wide sheet with the form and a summary on the right. What is typed waits on
-     this device, and the photos on the server under the key of the draft, until the order is accepted or
-     the intake is cancelled. -->
+<!-- The intake (spec 6.5): a wide sheet with the form and a summary on the right; at the bottom what is
+     printed once the order is accepted (kept on this computer), «Отмена» and «Принять». What is typed
+     waits on this device, and the photos on the server under the key of the draft, until the order is
+     accepted or the intake is cancelled. -->
 <script lang="ts">
 	import { tick, untrack } from 'svelte';
 	import type { Client } from '$api/Client';
@@ -25,10 +26,12 @@
 	import Button from '#lib/ui/Button.svelte';
 	import ChipGroup from '#lib/ui/ChipGroup.svelte';
 	import Combobox from '#lib/ui/Combobox.svelte';
+	import HelpHint from '#lib/ui/HelpHint.svelte';
 	import MoneyInput from '#lib/ui/MoneyInput.svelte';
 	import Section from '#lib/ui/Section.svelte';
 	import Select from '#lib/ui/Select.svelte';
 	import Sheet from '#lib/ui/Sheet.svelte';
+	import Switch from '#lib/ui/Switch.svelte';
 	import Textarea from '#lib/ui/Textarea.svelte';
 	import TextInput from '#lib/ui/TextInput.svelte';
 	import { toast } from '#lib/ui/toast/toast.svelte.js';
@@ -748,7 +751,26 @@
 				<Button size="sm" variant="ghost" onclick={() => openOrder(id)}>{t.open}</Button>
 			</p>
 		{/if}
-		{#if !app.me.open_mode}<span class="receiver">{t.receiver(app.me.name)}</span>{/if}
+		<div class="start">
+			<!-- Before the buttons, so Tab comes to them first; Ctrl/⌘+Enter on a switch still accepts. -->
+			<div class="print" role="group" aria-label={ru.print.afterIntake}>
+				<Switch
+					label={ru.print.documents.intake_act}
+					bind:checked={
+						() => printSettings.onIntake.act, (v) => printSettings.set({ onIntake: { act: v } })
+					}
+				/>
+				<Switch
+					label={ru.print.documents.sticker}
+					bind:checked={
+						() => printSettings.onIntake.sticker,
+						(v) => printSettings.set({ onIntake: { sticker: v } })
+					}
+				/>
+				<HelpHint title={ru.print.afterIntake} text={ru.help.intake.print} />
+			</div>
+			{#if !app.me.open_mode}<span class="receiver">{t.receiver(app.me.name)}</span>{/if}
+		</div>
 		{#if intake.uploading}
 			<span class="sending" role="status">{t.uploadingPhotos}</span>
 		{:else if intake.submitting}
@@ -798,8 +820,22 @@
 	.sending {
 		color: var(--text-3);
 	}
+	/* The switches and the receiver on the left, the buttons on the right; a narrow footer puts the buttons
+	   on a line of their own. */
+	.start {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--space-2) var(--space-4);
+		margin-inline-end: auto;
+	}
+	.print {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--space-2) var(--space-4);
+	}
 	.receiver {
-		margin-right: auto;
 		color: var(--text-3);
 	}
 	:global(:is([data-width='xs'], [data-width='sm'])) .layout {

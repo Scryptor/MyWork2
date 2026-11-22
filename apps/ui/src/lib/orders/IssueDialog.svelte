@@ -269,6 +269,11 @@
 				}
 				error={missing.warranty ? t.required : serverErrors.warranty}
 			/>
+		</div>
+	{/if}
+	{#snippet footer()}
+		<!-- At the bottom, left of the buttons (spec 6.5); Ctrl/⌘+Enter on it still submits. -->
+		<div class="print">
 			<Switch
 				label={ru.print.onIssue}
 				bind:checked={
@@ -276,16 +281,26 @@
 				}
 			/>
 		</div>
-	{/if}
-	{#snippet footer()}
-		<Button onclick={() => (open = false)}>{ru.common.cancel}</Button>
-		<Button variant="primary" shortcut="Mod+Enter" {busy} onclick={() => void issue()}
-			>{t.issue}</Button
-		>
+		<div class="buttons">
+			<Button onclick={() => (open = false)}>{ru.common.cancel}</Button>
+			<Button variant="primary" shortcut="Mod+Enter" {busy} onclick={() => void issue()}
+				>{t.issue}</Button
+			>
+		</div>
 	{/snippet}
 </Dialog>
 
 <style>
+	/* The switch on the left, the buttons on the right; a narrow footer puts the buttons, together, on a
+	   line of their own. */
+	.print {
+		margin-inline-end: auto;
+	}
+	.buttons {
+		display: flex;
+		gap: var(--space-2);
+		margin-inline-start: auto;
+	}
 	.issue {
 		display: flex;
 		flex-direction: column;
