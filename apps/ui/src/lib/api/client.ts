@@ -178,21 +178,31 @@ export async function upload<T>(path: string, body: Blob, query?: Query): Promis
 }
 
 /**
+ * Only the name of a file, never a path: what follows the last `/` or `\`. Nothing, `.` or `..` is no
+ * name. A download named «../../x.pdf» stays in the folder it is saved to.
+ */
+function baseName(name: string): string | null {
+	const base = name.split(/[/\\]/).pop()?.trim() ?? '';
+	return base === '' || base === '.' || base === '..' ? null : base;
+}
+
+/**
  * The name of a file in `Content-Disposition`: `filename*=UTF-8''…` (RFC 5987, an attachment's own name)
- * first, then `filename="…"` or `filename=…`; null when there is none, or it does not decode.
+ * first, then `filename="…"` or `filename=…`; only its last part (`baseName`). Null when there is none,
+ * it does not decode, or it is only a path.
  */
 export function fileNameOf(header: string | null): string | null {
 	if (header === null) return null;
 	const encoded = /filename\*\s*=\s*UTF-8''([^;]+)/i.exec(header)?.[1];
 	if (encoded !== undefined) {
 		try {
-			return decodeURIComponent(encoded.trim()) || null;
+			return baseName(decodeURIComponent(encoded.trim()));
 		} catch {
 			return null;
 		}
 	}
 	const plain = /filename\s*=\s*(?:"([^"]*)"|([^;]+))/i.exec(header);
-	return (plain?.[1] ?? plain?.[2]?.trim()) || null;
+	return baseName(plain?.[1] ?? plain?.[2] ?? '');
 }
 
 /** A binary response with the name the server gave it (`Content-Disposition`), fetched with the token. */

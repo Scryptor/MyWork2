@@ -92,6 +92,25 @@ describe('documentPdf', () => {
 		expect((await documentPdf('intake_act', { orderId: 42 })).filename).toBe('document.pdf');
 	});
 
+	it('a name that would climb out of Downloads is cut to the file, a bare «..» is the plain name', async () => {
+		stubFetch(
+			() =>
+				new Response('%PDF', {
+					status: 200,
+					headers: { 'Content-Disposition': 'attachment; filename="../../x.pdf"' }
+				})
+		);
+		expect((await documentPdf('intake_act', { orderId: 42 })).filename).toBe('x.pdf');
+		stubFetch(
+			() =>
+				new Response('%PDF', {
+					status: 200,
+					headers: { 'Content-Disposition': "attachment; filename*=UTF-8''%2E%2E" }
+				})
+		);
+		expect((await documentPdf('intake_act', { orderId: 42 })).filename).toBe('document.pdf');
+	});
+
 	it('without an order: the document itself (blank act) or the sample', async () => {
 		const fn = stubFetch(() => new Response('%PDF', { status: 200 }));
 		await documentPdf('blank_intake_act', {});

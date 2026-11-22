@@ -226,6 +226,49 @@ describe('a failure', () => {
 	});
 });
 
+describe('one job at a time', () => {
+	/** `printPdf` that answers every job sent to it when told to. */
+	function slowPrinter() {
+		const answers: (() => void)[] = [];
+		platform.printPdf.mockImplementation(() => new Promise<void>((r) => answers.push(r)));
+		return () => answers.forEach((answer) => answer());
+	}
+
+	it('a second press while the document is on its way to the printer sends nothing more', async () => {
+		const done = slowPrinter();
+		const first = printDocument('intake_act', { orderId: 42 });
+		await vi.waitFor(() => expect(platform.printPdf).toHaveBeenCalledOnce());
+		const second = printDocument('intake_act', { orderId: 42 });
+		await settle();
+		done();
+		await Promise.all([first, second]);
+		expect(platform.printPdf).toHaveBeenCalledOnce();
+		expect(documents.documentPdf).toHaveBeenCalledOnce();
+		expect(toasts()).toEqual([['Отправлено на Акты HP', 'success', undefined]]);
+	});
+
+	it('once it has gone the next press prints again; another document prints meanwhile', async () => {
+		const done = slowPrinter();
+		const act = printDocument('intake_act', { orderId: 42 });
+		await vi.waitFor(() => expect(platform.printPdf).toHaveBeenCalledOnce());
+		const sticker = printDocument('sticker', { orderId: 42 });
+		const otherOrder = printDocument('intake_act', { orderId: 43 });
+		await vi.waitFor(() => expect(platform.printPdf).toHaveBeenCalledTimes(3));
+		done();
+		await Promise.all([act, sticker, otherOrder]);
+		platform.printPdf.mockResolvedValue(undefined);
+		await printDocument('intake_act', { orderId: 42 });
+		expect(platform.printPdf).toHaveBeenCalledTimes(4);
+	});
+
+	it('a failed job does not hold the document back', async () => {
+		platform.printPdf.mockRejectedValueOnce(new Error('Принтер «Акты HP» не найден'));
+		await printDocument('intake_act', { orderId: 42 });
+		await printDocument('intake_act', { orderId: 42 });
+		expect(platform.printPdf).toHaveBeenCalledTimes(2);
+	});
+});
+
 describe('several documents', () => {
 	it('print one after another; in a browser their previews follow one another', async () => {
 		platform.canPrintDirectly.mockReturnValue(false);
@@ -281,11 +324,12 @@ describe('the menu «Печать»', () => {
 });
 
 describe('Ctrl/⌘P', () => {
-	const press = () => {
+	const press = (repeat = false) => {
 		const e = new KeyboardEvent('keydown', {
 			key: 'p',
 			code: 'KeyP',
 			ctrlKey: true,
+			repeat,
 			bubbles: true,
 			cancelable: true
 		});
@@ -326,6 +370,15 @@ describe('Ctrl/⌘P', () => {
 		close();
 		press();
 		expect(run).toHaveBeenCalledOnce();
+	});
+
+	it('a held key prints once: its repeats are taken, nothing more is printed', () => {
+		const run = vi.fn();
+		printShortcut(run);
+		press();
+		const repeats = [press(true), press(true), press(true)];
+		expect(run).toHaveBeenCalledOnce();
+		expect(repeats.map((e) => e.defaultPrevented)).toEqual([true, true, true]);
 	});
 
 	it('while `when` says no, the key goes to an older registration (the card under the panel)', async () => {

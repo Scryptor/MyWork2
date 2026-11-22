@@ -255,6 +255,23 @@ describe('the name of a file the server sends', () => {
 		expect(fileNameOf("attachment; filename*=UTF-8''%E0%A4%A")).toBeNull();
 	});
 
+	it('keeps only the name: a path in it, plain or percent-encoded, does not reach the download', () => {
+		expect(fileNameOf('attachment; filename="../../x.pdf"')).toBe('x.pdf');
+		expect(fileNameOf('attachment; filename="..\\..\\x.pdf"')).toBe('x.pdf');
+		expect(fileNameOf("attachment; filename*=UTF-8''..%2F..%2Fx.pdf")).toBe('x.pdf');
+		expect(fileNameOf("attachment; filename*=UTF-8''..%5C..%5Cx.pdf")).toBe('x.pdf');
+		expect(fileNameOf("attachment; filename*=UTF-8''%2Fetc%2Fpasswd")).toBe('passwd');
+	});
+
+	it('a name that is only a path is no name', () => {
+		expect(fileNameOf('attachment; filename=".."')).toBeNull();
+		expect(fileNameOf('attachment; filename="."')).toBeNull();
+		expect(fileNameOf('attachment; filename="docs/.."')).toBeNull();
+		expect(fileNameOf('attachment; filename="docs/"')).toBeNull();
+		expect(fileNameOf("attachment; filename*=UTF-8''%2E%2E")).toBeNull();
+		expect(fileNameOf("attachment; filename*=UTF-8''a%2F%2E%2E")).toBeNull();
+	});
+
 	it('comes with the file: the body as a blob and the name of its header', async () => {
 		vi.stubGlobal(
 			'fetch',

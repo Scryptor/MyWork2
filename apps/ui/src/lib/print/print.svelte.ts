@@ -197,14 +197,25 @@ function failureText(e: unknown): string {
 }
 
 /**
+ * The documents on their way to a printer (`kind:orderId`). Each press of Ctrl/⌘P or of the menu is a job,
+ * and nothing shows until the printer has it: a second press then is dropped, not a second sheet.
+ */
+// eslint-disable-next-line svelte/prefer-svelte-reactivity -- bookkeeping, nothing renders it
+const sending = new Set<string>();
+
+/**
  * Prints a document on this computer and says where it went. In a browser, or without a printer, the
- * preview opens instead; a failure is a notice with its text and «Предпросмотр». Never throws.
+ * preview opens instead; a failure is a notice with its text and «Предпросмотр». The same document of the
+ * same order asked again while it is being sent is dropped. Never throws.
  */
 export async function printDocument(kind: DocumentKind, target: DocumentTarget): Promise<void> {
 	if (!canPrintDirectly()) {
 		openPreview(kind, target);
 		return;
 	}
+	const job = `${kind}:${target.orderId ?? ''}`;
+	if (sending.has(job)) return;
+	sending.add(job);
 	try {
 		const printer = await printerName(printTarget(kind).printer);
 		await send(kind, target, printer);
@@ -219,6 +230,8 @@ export async function printDocument(kind: DocumentKind, target: DocumentTarget):
 			tone: 'danger',
 			action: { label: ru.print.preview, run: () => openPreview(kind, target) }
 		});
+	} finally {
+		sending.delete(job);
 	}
 }
 
@@ -232,14 +245,15 @@ export async function printDocuments(
 
 /**
  * Ctrl/⌘P of an open order (the panel, the full card): `run` prints its act. Works in fields; over a
- * dialog or a menu the key does nothing. Either way it is taken: the browser's printing of the page never
- * opens there. While `when` says false the key goes to an older registration (the card under the panel).
+ * dialog or a menu the key does nothing, nor do the repeats of a held key. Either way it is taken: the
+ * browser's printing of the page never opens there. While `when` says false the key goes to an older
+ * registration (the card under the panel).
  */
 export function printShortcut(run: () => void, when: () => boolean = () => true): () => void {
 	return registerHotkey(
 		'Mod+P',
-		() => {
-			if (!layers.blocking) run();
+		(e) => {
+			if (!e.repeat && !layers.blocking) run();
 		},
 		{ allowInFields: true, allowWithOverlay: true, when }
 	);
