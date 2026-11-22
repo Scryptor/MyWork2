@@ -16,6 +16,10 @@ const BAR_MODULES: usize = 95;
 const GUARD_EXTENSION_MODULES: usize = 5;
 /// Default module width without printer DPI, mm.
 const DEFAULT_MODULE_MM: f64 = 0.33;
+/// The narrowest module a code shrinks to when it does not fit: without DPI in mm, with DPI in
+/// dots.
+const MIN_MODULE_MM: f64 = 0.25;
+const MIN_MODULE_DOTS: f64 = 2.0;
 
 /// Module width in mm. Without DPI it is 0.33 mm; with DPI it is a whole number of printer dots,
 /// `ceil(0.33 mm * dpi / 25.4)`, converted back to mm (203 dpi: 3 dots = 0.3754 mm).
@@ -26,6 +30,26 @@ pub fn module_mm(dpi: Option<u32>) -> f64 {
             dots * 25.4 / f64::from(dpi)
         }
         _ => DEFAULT_MODULE_MM,
+    }
+}
+
+/// The module for a code that has `available_mm` of width: [`module_mm`] when the whole symbol,
+/// quiet zones included, fits; otherwise the widest that fits. With DPI it stays a whole number of
+/// dots, never fewer than 2 (or than [`module_mm`] itself, when that is 1 dot); without DPI it is
+/// never narrower than 0.25 mm. A code that does not fit even then is printed at that minimum.
+pub(crate) fn fit_module_mm(available_mm: f64, dpi: Option<u32>) -> f64 {
+    let widest = available_mm / (BAR_MODULES + 2 * QUIET_ZONE_MODULES) as f64;
+    match dpi {
+        Some(dpi) if dpi > 0 => {
+            let dot = 25.4 / f64::from(dpi);
+            let snapped = (module_mm(Some(dpi)) / dot).round();
+            // A hair of tolerance: 2 dots must fit exactly 2 dots' worth of width.
+            let fitting = (widest / dot + 1e-9).floor();
+            fitting.min(snapped).max(MIN_MODULE_DOTS.min(snapped)) * dot
+        }
+        // A broken template (a non-finite page) gets the usual module.
+        _ if widest.is_nan() => DEFAULT_MODULE_MM,
+        _ => widest.clamp(MIN_MODULE_MM, DEFAULT_MODULE_MM),
     }
 }
 
@@ -155,6 +179,31 @@ mod tests {
         assert!((heights[3] - 15.0).abs() < 1e-3);
         // Adjacent modules are merged: far fewer rects than set modules.
         assert!(rects(&svg).len() < EXPECTED.matches('1').count());
+    }
+
+    #[test]
+    fn module_shrinks_to_the_available_width() {
+        let dot_203 = 25.4 / 203.0;
+        // A 40×30 sticker with 1.5 mm margins: 3 dots (42.4 mm) do not fit 37 mm, 2 dots do.
+        assert!((fit_module_mm(37.0, Some(203)) - 2.0 * dot_203).abs() < 1e-9);
+        assert!((fit_module_mm(37.0, Some(203)) - 0.2502).abs() < 1e-4);
+        // 58×40: 55 mm is enough for the usual 3 dots, and wider never makes the module wider.
+        assert!((fit_module_mm(55.0, Some(203)) - 3.0 * dot_203).abs() < 1e-9);
+        assert_eq!(fit_module_mm(500.0, Some(203)), module_mm(Some(203)));
+        // Never fewer than 2 dots, however narrow.
+        assert!((fit_module_mm(10.0, Some(203)) - 2.0 * dot_203).abs() < 1e-9);
+        assert!((fit_module_mm(10.0, Some(600)) - 2.0 * 25.4 / 600.0).abs() < 1e-9);
+        // 72 dpi: one dot is already more than 0.33 mm, so it stays one dot.
+        assert_eq!(fit_module_mm(10.0, Some(72)), module_mm(Some(72)));
+        // Without DPI: continuous, 0.33 mm at most, 0.25 mm at least.
+        assert_eq!(fit_module_mm(55.0, None), 0.33);
+        assert!((fit_module_mm(33.9, None) - 0.3).abs() < 1e-9);
+        assert_eq!(fit_module_mm(10.0, None), 0.25);
+        assert_eq!(fit_module_mm(f64::NAN, None), 0.33);
+        // The symbol with its quiet zones fits whenever it can.
+        for (width, dpi) in [(37.0, Some(203)), (40.0, Some(300)), (37.0, None)] {
+            assert!(upc_a_size_mm(fit_module_mm(width, dpi), 10.0).0 <= width);
+        }
     }
 
     #[test]

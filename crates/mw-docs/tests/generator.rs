@@ -34,6 +34,7 @@ fn text(text: &str) -> Block {
             size_pt: None,
             bold: false,
             align: Align::Left,
+            one_line: false,
         },
     )
 }
@@ -182,7 +183,12 @@ fn act_with_copies() -> Template {
     template(
         Layout::TwoPerA4,
         vec![
-            block(CopyFilter::Both, BlockBody::CopyLabel),
+            block(
+                CopyFilter::Both,
+                BlockBody::CopyLabel {
+                    align: Align::Right,
+                },
+            ),
             text("Акт приёма № {заказ.номер}"),
             block(
                 CopyFilter::Service,
@@ -191,6 +197,7 @@ fn act_with_copies() -> Template {
                     size_pt: None,
                     bold: true,
                     align: Align::Right,
+                    one_line: false,
                 },
             ),
             block(
@@ -200,6 +207,7 @@ fn act_with_copies() -> Template {
                     size_pt: Some(7.5),
                     bold: false,
                     align: Align::Center,
+                    one_line: false,
                 },
             ),
             fields(vec![row("Неисправность", "{заказ.неисправность}", false)]),
@@ -396,6 +404,7 @@ fn barcode_is_printed_only_for_a_valid_code() {
                                 height_mm: 12.0,
                                 digits: true,
                                 align: Align::Right,
+                                fill: false,
                             },
                         )],
                     ],
@@ -433,4 +442,182 @@ fn template_survives_a_json_round_trip() {
     assert_eq!(back, t);
     assert!(json.contains(r#""layout":"two_per_a4""#), "{json}");
     assert!(json.contains(r#""type":"copy_label""#), "{json}");
+}
+
+fn one_line(text: &str) -> Block {
+    block(
+        CopyFilter::Both,
+        BlockBody::Text {
+            text: text.to_owned(),
+            size_pt: None,
+            bold: true,
+            align: Align::Left,
+            one_line: true,
+        },
+    )
+}
+
+fn on_label(t: &Template, d: &DocumentData, width: f32, height: f32) -> Rendered {
+    render(
+        t,
+        d,
+        &RenderOptions {
+            label_mm: Some((width, height)),
+            offset_mm: (0.0, 0.0),
+            dpi: Some(203),
+        },
+    )
+    .unwrap_or_else(|e| panic!("renders: {e}"))
+}
+
+#[test]
+fn one_line_text_never_wraps() {
+    let long = "Очень длинная строка ".repeat(10);
+    let long = long.trim_end();
+    let mut t = template(
+        Layout::OnePerPage,
+        vec![
+            one_line("{заказ.неисправность}"),
+            one_line("Адрес: {клиент.адрес}"),
+            one_line(long),
+            one_line(long),
+            one_line(long),
+        ],
+    );
+    t.page.margins_mm = Margins {
+        top: 1.5,
+        right: 1.5,
+        bottom: 1.5,
+        left: 1.5,
+    };
+    let d = data(&[("order.malfunction", &format!("{long}\nВторая строка"))]);
+    let doc = on_label(&t, &d, 40.0, 30.0);
+    // Wrapped, five such texts would not fit a 40×30 label.
+    assert_eq!(doc.page_count(), 1, "{:?}", doc.text());
+    let out = doc.text();
+    assert!(out.contains(&format!("{long} Вторая строка")), "{out:?}");
+    assert!(out.contains("Адрес: Не указан"), "{out:?}");
+    assert_eq!(out.matches(long).count(), 4, "{out:?}");
+    assert!(!out.contains("строка\nОчень"), "{out:?}");
+}
+
+#[test]
+fn copy_label_follows_its_alignment() {
+    let label = |align| {
+        template(
+            Layout::TwoPerA4,
+            vec![block(CopyFilter::Both, BlockBody::CopyLabel { align })],
+        )
+    };
+    let left = rendered(&label(Align::Left), &data(&[]));
+    let right = rendered(&label(Align::Right), &data(&[]));
+    assert!(left.text().contains("Экземпляр сервиса"));
+    assert_ne!(
+        left.png_pages(72).expect("png"),
+        right.png_pages(72).expect("png")
+    );
+}
+
+#[test]
+fn blank_form_draws_lines_only_for_order_and_client_fields() {
+    let form = |text_of: &str| {
+        let t = template(Layout::OnePerPage, vec![text(text_of)]);
+        let mut blank = data(&[]);
+        blank.blank = true;
+        (
+            rendered(&t, &data(&[])).png_pages(72).expect("png"),
+            rendered(&t, &blank).png_pages(72).expect("png"),
+        )
+    };
+    // The firm's own empty details are not a field to fill in.
+    for firm in [
+        "{фирма.реквизиты}",
+        "{фирма.телефон}",
+        "{точка.название}",
+        "{документ.дата}",
+    ] {
+        let (document, blank) = form(firm);
+        assert_eq!(document, blank, "{firm}");
+    }
+    for field in ["{клиент.фио}", "{заказ.мастер}"] {
+        let (document, blank) = form(field);
+        assert_ne!(document, blank, "{field}");
+    }
+}
+
+#[test]
+fn model_additions_have_defaults() {
+    let bodies: Vec<BlockBody> = serde_json::from_str(
+        r#"[
+            {"type": "copy_label"},
+            {"type": "text", "text": "x", "size_pt": null, "bold": false, "align": "left"},
+            {"type": "barcode", "height_mm": 10.0, "digits": true, "align": "center"},
+            {"type": "calibration_marks"}
+        ]"#,
+    )
+    .expect("deserializes");
+    assert_eq!(
+        bodies,
+        [
+            BlockBody::CopyLabel {
+                align: Align::Right
+            },
+            BlockBody::Text {
+                text: "x".to_owned(),
+                size_pt: None,
+                bold: false,
+                align: Align::Left,
+                one_line: false,
+            },
+            BlockBody::Barcode {
+                height_mm: 10.0,
+                digits: true,
+                align: Align::Center,
+                fill: false,
+            },
+            BlockBody::CalibrationMarks,
+        ]
+    );
+}
+
+#[test]
+fn barcode_fills_the_free_height_only_in_a_single_copy() {
+    let with = |layout, fill| {
+        template(
+            layout,
+            vec![
+                block(
+                    CopyFilter::Both,
+                    BlockBody::Barcode {
+                        height_mm: 5.0,
+                        digits: true,
+                        align: Align::Center,
+                        fill,
+                    },
+                ),
+                text("{заказ.номер}"),
+            ],
+        )
+    };
+    let mut d = data(&[("order.number", "1234")]);
+    d.barcode = Some("200000012342".to_owned());
+    let png = |t: &Template| on_label(t, &d, 58.0, 40.0).png_pages(72).expect("png");
+    assert_ne!(
+        png(&with(Layout::OnePerPage, true)),
+        png(&with(Layout::OnePerPage, false))
+    );
+    let filled = on_label(&with(Layout::OnePerPage, true), &d, 58.0, 40.0);
+    assert_eq!(filled.page_count(), 1);
+    assert!(
+        filled.text().contains("200000012342"),
+        "{:?}",
+        filled.text()
+    );
+    // Two copies are measured to fit their halves: there the barcode keeps its height.
+    let two = |fill| {
+        rendered(&with(Layout::TwoPerA4, fill), &d)
+            .png_pages(72)
+            .expect("png")
+    };
+    assert_eq!(two(true), two(false));
 }

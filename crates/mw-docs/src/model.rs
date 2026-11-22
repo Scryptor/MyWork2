@@ -87,6 +87,10 @@ pub enum Align {
     Right,
 }
 
+fn align_right() -> Align {
+    Align::Right
+}
+
 /// Text in `Text`, `FieldRow::value` and `Signatures` may contain substitutions such as `{заказ.номер}`
 /// (see [`crate::fields`]); an unknown one is printed as written.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -98,16 +102,27 @@ pub enum BlockBody {
         size_pt: Option<f32>,
         bold: bool,
         align: Align,
+        /// One line that never wraps: line breaks become spaces and what does not fit is cut off at the
+        /// right edge (stickers).
+        #[serde(default)]
+        one_line: bool,
     },
     /// A table «label — value».
     Fields { rows: Vec<FieldRow> },
-    /// The order's UPC-A barcode; nothing when the document has no valid code.
+    /// The order's UPC-A barcode; nothing when the document has no valid code. The module is 0.33 mm
+    /// (with printer DPI, a whole number of dots) and shrinks when the code does not fit the width of
+    /// the column: down to 2 dots, without DPI down to 0.25 mm.
     Barcode {
         /// Height of the regular bars; the guard bars are 5 modules longer.
         height_mm: f32,
         /// Print the digits under the bars.
         digits: bool,
         align: Align,
+        /// In a single-copy document the bars grow to the height the other blocks leave free on the
+        /// page, never lower than `height_mm` (one sticker for any label size). Ignored in
+        /// [`Layout::TwoPerA4`], where each copy is measured to fit its half.
+        #[serde(default)]
+        fill: bool,
     },
     /// Two signature lines side by side, each after its caption.
     Signatures { left: String, right: String },
@@ -121,7 +136,14 @@ pub enum BlockBody {
         gap_mm: f32,
     },
     /// «Экземпляр сервиса» or «Экземпляр клиента», by the copy.
-    CopyLabel,
+    CopyLabel {
+        #[serde(default = "align_right")]
+        align: Align,
+    },
+    /// A test label for setting up a printer, as tall as the page area: a frame 0.3 mm inside its
+    /// edges, a crosshair in the centre and a caption «W × H мм · N dpi · смещение X/Y» from the
+    /// render options (page size, printer DPI when given, offset).
+    CalibrationMarks,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

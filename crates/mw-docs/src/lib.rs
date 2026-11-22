@@ -9,12 +9,14 @@ pub mod fields;
 mod fonts;
 pub mod model;
 mod render;
+mod standard;
 mod typst_gen;
 mod world;
 
 pub use barcode::{module_mm, upc_a_svg};
 pub use fonts::font_covers;
 pub use render::{DocsError, Rendered};
+pub use standard::{sample_data, standard_template};
 pub use typst_gen::{DocumentData, RenderOptions, render, to_typst};
 
 /// Test hook: compiles Typst `source` with virtual `files` (name, bytes). Only with the `testing` feature.

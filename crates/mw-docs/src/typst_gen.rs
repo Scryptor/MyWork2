@@ -9,15 +9,19 @@ use std::fmt::Write;
 use mw_domain::barcode::is_valid_upc_a;
 use serde_json::{Map, Value};
 
-use crate::barcode::{module_mm, upc_a_size_mm, upc_a_svg};
+use crate::barcode::{fit_module_mm, upc_a_size_mm, upc_a_svg};
 use crate::fields::{FieldDef, field_by_placeholder, fields};
 use crate::model::{Align, Block, BlockBody, CopyFilter, FieldRow, Layout, Template};
 use crate::render::{DocsError, Rendered, compile};
 
 /// Space between the two copies of [`Layout::TwoPerA4`]; the cut line runs in its middle.
 const CUT_GAP_MM: f64 = 8.0;
-/// Size of the barcode digits per millimetre of module width (0.33 mm → 7.9 pt).
+/// Size of the barcode digits per millimetre of module width (0.33 mm → 7.9 pt), never below
+/// [`DIGITS_MIN_PT`].
 const DIGITS_PT_PER_MODULE_MM: f64 = 24.0;
+const DIGITS_MIN_PT: f64 = 7.0;
+/// Space between the bars and the digits under them.
+const DIGITS_GAP_MM: f64 = 0.5;
 const SERVICE_COPY: &str = "Экземпляр сервиса";
 const CLIENT_COPY: &str = "Экземпляр клиента";
 
@@ -48,16 +52,13 @@ pub fn render(
     data: &DocumentData,
     opts: &RenderOptions,
 ) -> Result<Rendered, DocsError> {
-    // `barcode` in `data.json` is set exactly when `barcode.svg` exists. One SVG serves every Barcode
-    // block: each block stretches it to its own height, the module width stays.
+    // `barcode` in `data.json` is set exactly when `barcode.svg` exists.
     let barcode = data
         .barcode
         .as_deref()
         .filter(|code| is_valid_upc_a(code))
-        .zip(first_barcode_height(&template.blocks))
-        .and_then(|(code, height)| {
-            upc_a_svg(code, module_mm(opts.dpi), f64::from(height)).map(|svg| (code, svg))
-        });
+        .zip(Generator::new(template, opts).svg)
+        .and_then(|(code, (module, bars))| upc_a_svg(code, module, bars).map(|svg| (code, svg)));
     let mut files = vec![(
         "data.json".to_owned(),
         data_json(data, barcode.as_ref().map(|(code, _)| *code)),
@@ -66,14 +67,6 @@ pub fn render(
         files.push(("barcode.svg".to_owned(), svg.into_bytes()));
     }
     compile(to_typst(template, opts), files)
-}
-
-fn first_barcode_height(blocks: &[Block]) -> Option<f32> {
-    blocks.iter().find_map(|block| match &block.body {
-        BlockBody::Barcode { height_mm, .. } => Some(*height_mm),
-        BlockBody::Columns { columns, .. } => columns.iter().find_map(|c| first_barcode_height(c)),
-        _ => None,
-    })
 }
 
 fn data_json(data: &DocumentData, barcode: Option<&str>) -> Vec<u8> {
@@ -96,27 +89,40 @@ fn data_json(data: &DocumentData, barcode: Option<&str>) -> Vec<u8> {
 }
 
 /// Helpers every document starts with (after `empties`, which `v` captures).
-/// `v(key)`: a non-empty value with its line breaks; empty — a line in a blank form, otherwise the
-/// field's empty text.
+/// `v(key)`: a non-empty value with its line breaks; empty — in a blank form a line to write on for
+/// the order and the client fields (the firm's own fields stay empty), otherwise the field's empty
+/// text. The line runs to the end of the text line; `line: short-line` — a short one, for centred
+/// text. `v1(key)`: the same in one line, with a short line. `one-line(where, body)`: `body` without
+/// wrapping, cut off at the right edge when too long (the outset keeps accents and descenders inside
+/// the clip).
 const PRELUDE: &str = r#"#set par(leading: 0.5em, spacing: 0.8em)
 #set block(spacing: 0.8em)
 #let vspace = v
 #let data = json("data.json")
 #let fill-line = box(width: 1fr, height: 0.7em, stroke: (bottom: 0.5pt))
+#let short-line = box(width: 3.5cm, height: 0.7em, stroke: (bottom: 0.5pt))
 #let raw-value(key) = data.values.at(key, default: "")
 #let filled(key) = raw-value(key).trim() != ""
-#let v(key) = {
+#let write-in(key) = data.blank and (key.starts-with("order.") or key.starts-with("client."))
+#let v(key, line: fill-line) = {
   let s = raw-value(key)
-  if s.trim() != "" { s.split("\n").join(linebreak()) } else if data.blank { fill-line } else { empties.at(key, default: "") }
+  if s.trim() != "" { s.split("\n").join(linebreak()) } else if write-in(key) { line } else if not data.blank { empties.at(key, default: "") }
 }
+#let v1(key) = {
+  let s = raw-value(key)
+  if s.trim() != "" { s.split("\n").join(" ") } else if write-in(key) { short-line } else if not data.blank { empties.at(key, default: "") }
+}
+#let one-line(where, body) = layout(size => {
+  let width = measure(body).width
+  block(width: 100%, clip: true, outset: (top: 0.3em, bottom: 0.3em), if width <= size.width { align(where, body) } else { box(width: width + 1pt, body) })
+})
 "#;
 
 /// Typst source of `template`. It never contains document data, so it is the same for every order.
 pub fn to_typst(template: &Template, opts: &RenderOptions) -> String {
-    let page = Page::new(template, opts);
-    let generator = Generator {
-        module_mm: module_mm(opts.dpi),
-    };
+    let generator = Generator::new(template, opts);
+    let page = &generator.page;
+    let width = generator.area_mm.0;
     let mut out = String::new();
     let _ = writeln!(
         out,
@@ -147,21 +153,20 @@ pub fn to_typst(template: &Template, opts: &RenderOptions) -> String {
     match template.layout {
         Layout::OnePerPage => {
             out.push('#');
-            out.push_str(&generator.flow(&template.blocks, CopyRole::Single));
+            out.push_str(&generator.flow(&template.blocks, CopyRole::Single, width));
             out.push('\n');
         }
         Layout::TwoPerA4 => {
-            let half = (page.height - page.top - page.bottom - CUT_GAP_MM) / 2.0;
-            let width = page.width - page.left - page.right;
+            let half = (generator.area_mm.1 - CUT_GAP_MM) / 2.0;
             let _ = writeln!(
                 out,
                 "#let copy-service = {}",
-                generator.flow(&template.blocks, CopyRole::Service)
+                generator.flow(&template.blocks, CopyRole::Service, width)
             );
             let _ = writeln!(
                 out,
                 "#let copy-client = {}",
-                generator.flow(&template.blocks, CopyRole::Client)
+                generator.flow(&template.blocks, CopyRole::Client, width)
             );
             let _ = writeln!(
                 out,
@@ -190,6 +195,7 @@ pub fn to_typst(template: &Template, opts: &RenderOptions) -> String {
 }
 
 /// Page size and margins in mm, the content offset already applied to the margins.
+#[derive(Clone, Copy)]
 struct Page {
     width: f64,
     height: f64,
@@ -235,12 +241,64 @@ enum CopyRole {
 }
 
 struct Generator {
-    module_mm: f64,
+    page: Page,
+    /// Width and height of the page area inside the margins.
+    area_mm: (f64, f64),
+    opts: RenderOptions,
+    /// Module and bar height of `barcode.svg` (see [`Self::barcode_svg`]).
+    svg: Option<(f64, f64)>,
 }
 
 impl Generator {
-    /// A full-width block with `blocks` one under another: one Typst code expression.
-    fn flow(&self, blocks: &[Block], copy: CopyRole) -> String {
+    fn new(template: &Template, opts: &RenderOptions) -> Self {
+        let page = Page::new(template, opts);
+        let mut generator = Self {
+            page,
+            area_mm: (
+                page.width - page.left - page.right,
+                page.height - page.top - page.bottom,
+            ),
+            opts: *opts,
+            svg: None,
+        };
+        generator.svg = generator.barcode_svg(&template.blocks);
+        generator
+    }
+
+    /// Module and bar height of `barcode.svg`; `None` without Barcode blocks. Every Barcode block
+    /// shows the lower part of this one image, scaled to its own module: the SVG has the module of the
+    /// first block and bars taller than any block shows (twice the tallest, for a block with a narrower
+    /// module, whose image is scaled down), so that the guard bars always stick out 5 modules.
+    fn barcode_svg(&self, blocks: &[Block]) -> Option<(f64, f64)> {
+        let mut found = Vec::new();
+        self.barcodes(blocks, self.area_mm.0, &mut found);
+        let (module, _) = *found.first()?;
+        let tallest = found.iter().map(|b| b.1).fold(self.area_mm.1, f64::max);
+        Some((module, 2.0 * tallest))
+    }
+
+    /// Appends (module, `height_mm`) of every Barcode block in `blocks`, which are `width_mm` wide.
+    fn barcodes(&self, blocks: &[Block], width_mm: f64, found: &mut Vec<(f64, f64)>) {
+        for block in blocks {
+            match &block.body {
+                BlockBody::Barcode { height_mm, .. } => found.push((
+                    fit_module_mm(width_mm, self.opts.dpi),
+                    f64::from(*height_mm),
+                )),
+                BlockBody::Columns { columns, gap_mm } => {
+                    let width = column_width(width_mm, columns.len(), *gap_mm);
+                    for column in columns {
+                        self.barcodes(column, width, found);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// A full-width block with `blocks` one under another: one Typst code expression. `width_mm` is
+    /// the width of the column the blocks are in.
+    fn flow(&self, blocks: &[Block], copy: CopyRole, width_mm: f64) -> String {
         let mut out = String::from("block(width: 100%, {\n");
         for block in blocks {
             let shown = match block.copies {
@@ -249,7 +307,7 @@ impl Generator {
                 CopyFilter::Client => copy == CopyRole::Client,
             };
             if shown {
-                self.block(&mut out, &block.body, copy);
+                self.block(&mut out, &block.body, copy, width_mm);
             }
         }
         out.push_str("})");
@@ -257,13 +315,14 @@ impl Generator {
     }
 
     /// Appends one code expression and a line break (Typst joins the lines of a code block).
-    fn block(&self, out: &mut String, body: &BlockBody, copy: CopyRole) {
+    fn block(&self, out: &mut String, body: &BlockBody, copy: CopyRole, width_mm: f64) {
         match body {
             BlockBody::Text {
                 text,
                 size_pt,
                 bold,
                 align,
+                one_line,
             } => {
                 let mut style = String::new();
                 if let Some(size) = size_pt {
@@ -272,45 +331,96 @@ impl Generator {
                 if *bold {
                     style.push_str("weight: \"bold\", ");
                 }
-                let _ = write!(
-                    out,
-                    "block(width: 100%, align({}, text({style}{})))",
-                    align_name(*align),
-                    expr(&pieces(text, true))
-                );
+                if *one_line {
+                    // The text style is set around the block, so that the em of its spacing and of the
+                    // clip outset is this text's. One-line blocks stack like the lines of a paragraph.
+                    let _ = write!(
+                        out,
+                        "{{ set text({style}); set block(spacing: 0.5em); one-line({}, {}) }}",
+                        align_name(*align),
+                        one_line_expr(&pieces(text, true))
+                    );
+                } else {
+                    // A line to write on runs to the end of left-aligned text; elsewhere it would push
+                    // the text to the edges.
+                    let value = if *align == Align::Left {
+                        expr(&pieces(text, true))
+                    } else {
+                        short_line_expr(&pieces(text, true))
+                    };
+                    let _ = write!(
+                        out,
+                        "block(width: 100%, align({}, text({style}{value})))",
+                        align_name(*align),
+                    );
+                }
             }
             BlockBody::Fields { rows } => {
                 out.push_str("{\nlet cells = ()\n");
                 for row in rows {
                     field_row(out, row);
                 }
+                // A blank form gets room to write and only its lines to write on.
                 out.push_str(
-                    "if cells.len() > 0 { table(columns: (auto, 1fr), stroke: (x: none, y: 0.3pt + luma(170)), \
-                     inset: (x: 1mm, y: 0.8mm), ..cells) }\n}",
+                    "if cells.len() > 0 { table(columns: (auto, 1fr), \
+                     stroke: if data.blank { none } else { (x: none, y: 0.3pt + luma(170)) }, \
+                     inset: (x: 1mm, y: if data.blank { 2mm } else { 1.2mm }), ..cells) }\n}",
                 );
             }
             BlockBody::Barcode {
                 height_mm,
                 digits,
                 align,
+                fill,
             } => {
-                let (w, h) = upc_a_size_mm(self.module_mm, f64::from(*height_mm));
+                let module = fit_module_mm(width_mm, self.opts.dpi);
+                let (w, h) = upc_a_size_mm(module, f64::from(*height_mm));
+                // The whole image at this block's module: its natural size, scaled.
+                let image_h = self.svg.map_or(h, |(svg_module, bars)| {
+                    upc_a_size_mm(svg_module, bars).1 * module / svg_module
+                });
+                let under_bars = if *digits { ", digits" } else { "" };
                 let digits = if *digits {
                     format!(
-                        ", align(center, text(size: {}, data.barcode))",
-                        pt(self.module_mm * DIGITS_PT_PER_MODULE_MM)
+                        "align(center, text(size: {}, data.barcode))",
+                        pt((module * DIGITS_PT_PER_MODULE_MM).max(DIGITS_MIN_PT))
                     )
                 } else {
-                    String::new()
+                    "none".to_owned()
                 };
-                let _ = write!(
-                    out,
-                    "if data.barcode != none {{ align({}, block(width: {w}, stack(spacing: 0.5mm, \
-                     image(\"barcode.svg\", width: {w}, height: {h}, fit: \"stretch\"){digits}))) }}",
-                    align_name(*align),
-                    w = mm(w),
-                    h = mm(h),
-                );
+                // The lower `height` of the image (see `barcode_svg`), at this block's module.
+                let symbol = |height: &str| {
+                    format!(
+                        "align({}, block(width: {w}, stack(spacing: {gap}, box(width: {w}, \
+                         height: {height}, clip: true, place(bottom + left, image(\"barcode.svg\", \
+                         width: {w}, height: {image_h}, fit: \"stretch\"))){under_bars})))",
+                        align_name(*align),
+                        w = mm(w),
+                        image_h = mm(image_h),
+                        gap = mm(DIGITS_GAP_MM),
+                    )
+                };
+                if *fill && copy == CopyRole::Single {
+                    // The block takes the height the other blocks leave; the bars get it less the digits.
+                    let _ = write!(
+                        out,
+                        "if data.barcode != none {{ block(width: 100%, height: 1fr, layout(size => {{
+  let digits = {digits}
+  let free = size.height - if digits == none {{ 0pt }} else {{ measure(digits).height + {gap} }}
+  let height = calc.max(free, {h})
+  {symbol}
+}})) }}",
+                        gap = mm(DIGITS_GAP_MM),
+                        h = mm(h),
+                        symbol = symbol("height"),
+                    );
+                } else {
+                    let _ = write!(
+                        out,
+                        "if data.barcode != none {{ let digits = {digits}; {} }}",
+                        symbol(&mm(h))
+                    );
+                }
             }
             BlockBody::Signatures { left, right } => {
                 let _ = write!(
@@ -333,25 +443,92 @@ impl Generator {
                         "1fr, ".repeat(columns.len()),
                         mm(f64::from(*gap_mm))
                     );
+                    let width = column_width(width_mm, columns.len(), *gap_mm);
                     for column in columns {
                         out.push_str(",\n");
-                        out.push_str(&self.flow(column, copy));
+                        out.push_str(&self.flow(column, copy, width));
                     }
                     out.push(')');
                 }
             }
-            BlockBody::CopyLabel => {
+            BlockBody::CopyLabel { align } => {
                 let label = match copy {
                     CopyRole::Single => None,
                     CopyRole::Service => Some(SERVICE_COPY),
                     CopyRole::Client => Some(CLIENT_COPY),
                 };
                 if let Some(label) = label {
-                    let _ = write!(out, "block(text(style: \"italic\", {}))", typst_str(label));
+                    let _ = write!(
+                        out,
+                        "block(width: 100%, align({}, text(style: \"italic\", {})))",
+                        align_name(*align),
+                        typst_str(label)
+                    );
                 }
             }
+            BlockBody::CalibrationMarks => self.calibration_marks(out),
         }
         out.push('\n');
+    }
+
+    /// See [`BlockBody::CalibrationMarks`]. The marks are as thick as two dots of a 203 dpi printer.
+    fn calibration_marks(&self, out: &mut String) {
+        const EDGE_MM: f64 = 0.3;
+        const STROKE_MM: f64 = 0.25;
+        let (width, height) = self.area_mm;
+        // The outer edge of the frame line is `EDGE_MM` inside the area.
+        let inset = EDGE_MM + STROKE_MM / 2.0;
+        let mut size = format!(
+            "{} × {} мм",
+            decimal(self.page.width),
+            decimal(self.page.height)
+        );
+        if let Some(dpi) = self.opts.dpi {
+            let _ = write!(size, " · {dpi} dpi");
+        }
+        let (dx, dy) = self.opts.offset_mm;
+        let offset = format!(
+            "смещение {}/{}",
+            decimal(f64::from(dx)),
+            decimal(f64::from(dy))
+        );
+        let _ = write!(
+            out,
+            "block(width: 100%, height: {height}, {{
+place(top + left, dx: {inset}, dy: {inset}, rect(width: 100% - {inset2}, height: 100% - {inset2}, stroke: {stroke}))
+place(center + horizon, line(length: {cross}, stroke: {stroke}))
+place(center + horizon, line(length: {cross}, angle: 90deg, stroke: {stroke}))
+place(center + bottom, dy: -1.5mm, align(center, text(size: 7pt, ({size}, linebreak(), {offset}).join())))
+}})",
+            height = mm(height),
+            inset = mm(inset),
+            inset2 = mm(2.0 * inset),
+            stroke = mm(STROKE_MM),
+            cross = mm(width.min(height) * 0.3),
+            size = typst_str(&size),
+            offset = typst_str(&offset),
+        );
+    }
+}
+
+/// Width of each of `count` equal columns `gap_mm` apart in `width_mm`.
+fn column_width(width_mm: f64, count: usize, gap_mm: f32) -> f64 {
+    let count = count.max(1) as f64;
+    (width_mm - f64::from(gap_mm) * (count - 1.0)) / count
+}
+
+/// A number for people: at most two decimals, a decimal comma and a real minus (`-1.5` → «−1,5»).
+fn decimal(x: f64) -> String {
+    let x = if x.is_finite() { x } else { 0.0 };
+    let s = format!("{:.2}", x.abs());
+    let s = s
+        .trim_end_matches('0')
+        .trim_end_matches('.')
+        .replace('.', ",");
+    if x < 0.0 && s != "0" {
+        format!("−{s}")
+    } else {
+        s
     }
 }
 
@@ -440,6 +617,31 @@ fn flush(pieces: &mut Vec<Piece>, literal: &mut String) {
     }
 }
 
+/// [`expr`] with short lines to write on (centred text).
+fn short_line_expr(pieces: &[Piece]) -> String {
+    let parts: Vec<String> = pieces
+        .iter()
+        .map(|p| match p {
+            Piece::Field(field) => format!("v({}, line: short-line)", typst_str(field.key)),
+            other => expr(std::slice::from_ref(other)),
+        })
+        .collect();
+    join_parts(parts)
+}
+
+/// One Typst code expression for `pieces` in one line: values through `v1`, line breaks as spaces.
+fn one_line_expr(pieces: &[Piece]) -> String {
+    let parts: Vec<String> = pieces
+        .iter()
+        .map(|p| match p {
+            Piece::Text(text) => typst_str(text),
+            Piece::Field(field) => format!("v1({})", typst_str(field.key)),
+            Piece::Break => "\" \"".to_owned(),
+        })
+        .collect();
+    join_parts(parts)
+}
+
 /// One Typst code expression for `pieces`.
 fn expr(pieces: &[Piece]) -> String {
     let parts: Vec<String> = pieces
@@ -450,6 +652,10 @@ fn expr(pieces: &[Piece]) -> String {
             Piece::Break => "linebreak()".to_owned(),
         })
         .collect();
+    join_parts(parts)
+}
+
+fn join_parts(parts: Vec<String>) -> String {
     match parts.as_slice() {
         [] => "\"\"".to_owned(),
         [one] => one.clone(),
