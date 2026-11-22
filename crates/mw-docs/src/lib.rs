@@ -3,10 +3,12 @@
 //! Later layers build Typst source from a template and compile it; the result is a [`Rendered`]
 //! document that turns into PDF or PNG pages.
 
+mod barcode;
 mod fonts;
 mod render;
 mod world;
 
+pub use barcode::{module_mm, upc_a_svg};
 pub use fonts::font_covers;
 pub use render::{DocsError, Rendered};
 

@@ -18,6 +18,7 @@ typst-pdf = { workspace = true }
 typst-render = { workspace = true }
 typst-layout = { workspace = true }
 comemo = { workspace = true }
+mw-domain = { path = "../mw-domain" }
 
 [dev-dependencies]
 mw-docs = { path = ".", features = ["testing"] }
