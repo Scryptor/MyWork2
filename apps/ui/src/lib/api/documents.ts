@@ -2,7 +2,7 @@ import type { DocumentFormat } from '$api/DocumentFormat';
 import type { DocumentKind } from '$api/DocumentKind';
 import type { DocumentPages } from '$api/DocumentPages';
 import type { DocumentQuery } from '$api/DocumentQuery';
-import { request, requestBlob } from './client.js';
+import { request, requestFile } from './client.js';
 
 /** How a document is built: the label and its offset, the printer's resolution, the raster's (PNG only). */
 export interface DocumentOptions {
@@ -39,15 +39,32 @@ export function documentQuery(format: DocumentFormat, opts: DocumentOptions): Do
 	return q;
 }
 
-export const documentPdf = (
+/** A PDF of the document and the name the server gave it (`akt-priema-<номер>.pdf`). */
+export interface DocumentPdf {
+	blob: Blob;
+	filename: string;
+}
+
+/** The name of a PDF that came without one: plain, not made up from the order. */
+const UNNAMED_PDF = 'document.pdf';
+
+export async function documentPdf(
 	kind: DocumentKind,
 	target: DocumentTarget,
 	opts: PdfOptions = {}
-): Promise<Blob> => requestBlob(path(kind, target), { query: documentQuery('pdf', opts) });
+): Promise<DocumentPdf> {
+	const file = await requestFile(path(kind, target), { query: documentQuery('pdf', opts) });
+	return { blob: file.blob, filename: file.filename ?? UNNAMED_PDF };
+}
 
+/** The pages as PNG; `signal` calls the request off (a preview closed before the answer). */
 export const documentPages = (
 	kind: DocumentKind,
 	target: DocumentTarget,
-	opts: DocumentOptions = {}
+	opts: DocumentOptions = {},
+	signal?: AbortSignal
 ): Promise<DocumentPages> =>
-	request<DocumentPages>('GET', path(kind, target), { query: documentQuery('png', opts) });
+	request<DocumentPages>('GET', path(kind, target), {
+		query: documentQuery('png', opts),
+		signal
+	});

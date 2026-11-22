@@ -65,7 +65,7 @@ describe('documentPdf', () => {
 				new Response('%PDF-1.7', { status: 200, headers: { 'Content-Type': 'application/pdf' } })
 		);
 		// A caller that gets around the type still sends no `dpi`: the server would refuse it with 400.
-		const blob = await documentPdf('intake_act', { orderId: 7 }, {
+		const { blob } = await documentPdf('intake_act', { orderId: 7 }, {
 			printerDpi: 203,
 			offsetMm: [0.5, 0],
 			dpi: 300
@@ -76,6 +76,20 @@ describe('documentPdf', () => {
 			path: '/api/v1/orders/7/documents/intake_act',
 			params: { format: 'pdf', printer_dpi: '203', offset_x_mm: '0.5', offset_y_mm: '0' }
 		});
+	});
+
+	it('is named as the server names it: «Сохранить PDF» keeps that name', async () => {
+		stubFetch(
+			() =>
+				new Response('%PDF', {
+					status: 200,
+					headers: { 'Content-Disposition': 'inline; filename="akt-priema-42.pdf"' }
+				})
+		);
+		expect((await documentPdf('intake_act', { orderId: 42 })).filename).toBe('akt-priema-42.pdf');
+		// No name in the answer: a plain one, not one made up from the order.
+		stubFetch(() => new Response('%PDF', { status: 200 }));
+		expect((await documentPdf('intake_act', { orderId: 42 })).filename).toBe('document.pdf');
 	});
 
 	it('without an order: the document itself (blank act) or the sample', async () => {
@@ -124,6 +138,13 @@ describe('documentPages', () => {
 				label_h_mm: '40'
 			}
 		});
+	});
+
+	it('a preview closed before the answer calls its request off', async () => {
+		const fn = stubFetch(() => new Response('{}', { status: 200 }));
+		const controller = new AbortController();
+		await documentPages('intake_act', { orderId: 3 }, {}, controller.signal);
+		expect(fn.mock.calls[0]![1]?.signal).toBe(controller.signal);
 	});
 
 	it('the sample of a document of an order is asked without an order', async () => {

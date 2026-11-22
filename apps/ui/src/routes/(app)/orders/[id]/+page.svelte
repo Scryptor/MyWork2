@@ -39,6 +39,7 @@
 	import { createOrderMedia, type OrderMedia } from '#lib/orders/photos.svelte.js';
 	import SaveIndicator from '#lib/orders/SaveIndicator.svelte';
 	import { deviceOf } from '#lib/orders/view.js';
+	import PrintMenu from '#lib/print/PrintMenu.svelte';
 	import Button from '#lib/ui/Button.svelte';
 	import Callout from '#lib/ui/Callout.svelte';
 	import DropdownMenu from '#lib/ui/DropdownMenu.svelte';
@@ -255,8 +256,9 @@
 		});
 	});
 
-	// «Выдать» on Ctrl/⌘+Enter; the order panel over the card has its own.
+	// «Выдать» on Ctrl/⌘+Enter and the act on Ctrl/⌘P; the order panel over the card has its own.
 	$effect(() => orderActions.issueShortcut(() => orderPanel.id === null));
+	$effect(() => orderActions.printShortcut(() => orderPanel.id === null));
 
 	let tab = $state('order');
 	const TABS = [
@@ -393,6 +395,15 @@
 					disabled={!canEdit}
 					onclick={() => orderActions.openIssue()}>{t.issue}</Button
 				>
+			{/if}
+			{#if order}
+				<PrintMenu
+					{issued}
+					wasIssued={order.issued_at !== null}
+					compact={display.phone}
+					onprint={(kind) => void orderActions.print(kind)}
+					onpreview={(kind, kinds) => void orderActions.preview(kind, kinds)}
+				/>
 			{/if}
 			{#if orderActions.menuItems.length > 0}
 				<DropdownMenu items={orderActions.menuItems} label={t.moreActions}>

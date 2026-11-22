@@ -1,6 +1,7 @@
 <!-- «Принять по гарантии» of an issued order (spec 6.4): the complaint and the day the client came back,
      today by default. Ctrl/⌘+Enter accepts. The server's errors show at their fields; one about the
-     status (no status «Принят по гарантии», the order is not issued) shows above the form. -->
+     status (no status «Принят по гарантии», the order is not issued) shows above the form. Once accepted,
+     the warranty intake act is printed when its switch is on (the intake act's, kept on this computer). -->
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import type { NewWarrantyCase } from '$api/NewWarrantyCase';
@@ -10,10 +11,12 @@
 	import { submitShortcut } from '#lib/design/hotkeys.svelte.js';
 	import { isoDay, startOfDay } from '#lib/format/date.js';
 	import { ru } from '#lib/i18n/ru.js';
+	import { printSettings } from '#lib/print/settings.svelte.js';
 	import Button from '#lib/ui/Button.svelte';
 	import Callout from '#lib/ui/Callout.svelte';
 	import DateInput from '#lib/ui/DateInput.svelte';
 	import Dialog from '#lib/ui/Dialog.svelte';
+	import Switch from '#lib/ui/Switch.svelte';
 	import Textarea from '#lib/ui/Textarea.svelte';
 
 	let {
@@ -138,6 +141,12 @@
 			}
 			bind:invalid={dateInvalid}
 			error={errors.at}
+		/>
+		<Switch
+			label={ru.print.onWarranty}
+			bind:checked={
+				() => printSettings.onIntake.act, (v) => printSettings.set({ onIntake: { act: v } })
+			}
 		/>
 	</div>
 	{#snippet footer()}

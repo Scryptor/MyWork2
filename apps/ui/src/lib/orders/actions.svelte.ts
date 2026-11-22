@@ -1,6 +1,7 @@
 // What the panel and the full card do with their open order (spec 6.2–6.4): the status with «Отменить»,
 // «Выдать», «Вернуть в работу», «Принять по гарантии». Every write goes through the order's editor.
 import { tick } from 'svelte';
+import type { DocumentKind } from '$api/DocumentKind';
 import type { NewWarrantyCase } from '$api/NewWarrantyCase';
 import type { OrderPatch } from '$api/OrderPatch';
 import type { Status } from '$api/Status';
@@ -10,6 +11,13 @@ import { app } from '#lib/app/context.svelte.js';
 import { undo } from '#lib/app/undo.svelte.js';
 import { registerHotkey } from '#lib/design/hotkeys.svelte.js';
 import { ru } from '#lib/i18n/ru.js';
+import {
+	openPreview,
+	printDocument,
+	printShortcut,
+	shortcutKind
+} from '#lib/print/print.svelte.js';
+import { printSettings } from '#lib/print/settings.svelte.js';
 import type { MenuItem } from '#lib/ui/DropdownMenu.svelte';
 import { toast } from '#lib/ui/toast/toast.svelte.js';
 import { revertIssue, revertStatus, saveErrorText, type OrderEditor } from './editor.svelte.js';
@@ -157,6 +165,8 @@ export class OrderActions {
 		undo.push(t.statusChanged(id, app.statusById(o.status_id)?.name ?? ''), () =>
 			this.#undoIssue(id, before.status, clearIssuedAt)
 		);
+		// «Печатать акт выдачи»: the order is issued already, a failure to print is only told.
+		if (printSettings.onIssue.act) void printDocument('issue_act', { orderId: id });
 	}
 
 	async #undoIssue(id: number, statusId: number, clearIssuedAt: boolean): Promise<void> {
@@ -193,6 +203,33 @@ export class OrderActions {
 		this.warrantyOpen = false;
 		await tick();
 		toast.show({ message: t.warrantyAccepted(id), tone: 'success' });
+		// «Печатать акт приёма по гарантии» (the switch of the intake act): the case is saved already.
+		if (printSettings.onIntake.act) void printDocument('warranty_intake_act', { orderId: id });
+	}
+
+	/** Prints a document of the order shown, once what is typed is saved: the server prints what it has. */
+	async print(kind: DocumentKind): Promise<void> {
+		const ed = this.editor;
+		if (!ed) return;
+		await ed.flush();
+		await printDocument(kind, { orderId: ed.order.id });
+	}
+
+	/** The preview of a document of the order shown, after the save; it can switch to the others. */
+	async preview(kind: DocumentKind, kinds: readonly DocumentKind[]): Promise<void> {
+		const ed = this.editor;
+		if (!ed) return;
+		await ed.flush();
+		openPreview(kind, { orderId: ed.order.id }, kinds);
+	}
+
+	/**
+	 * Ctrl/⌘P: the intake act of an order in work, the issue act of an issued one (fields included, not over
+	 * a dialog). Call it in an effect, like `issueShortcut`; `when` gives the key to the panel over the card.
+	 */
+	printShortcut(when: () => boolean = () => true): (() => void) | undefined {
+		if (!this.editor) return;
+		return printShortcut(() => void this.print(shortcutKind(this.issued)), when);
 	}
 
 	/**

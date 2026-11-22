@@ -1,10 +1,14 @@
 <!-- «Документы и реквизиты» (spec 6.8, plan 6): the firm's phone, details and legal details and the terms
-     of the acts, as they are printed; the server's settings, saved as they are typed. -->
+     of the acts, as they are printed; the server's settings, saved as they are typed. Below, every document
+     with its «Образец»: the preview on a sample order and these settings. -->
 <script lang="ts">
 	import { onDestroy } from 'svelte';
+	import type { DocumentKind } from '$api/DocumentKind';
 	import { updateSettings } from '#lib/api/catalogs.js';
 	import { app } from '#lib/app/context.svelte.js';
 	import { ru } from '#lib/i18n/ru.js';
+	import { documentName, openPreview } from '#lib/print/print.svelte.js';
+	import Button from '#lib/ui/Button.svelte';
 	import SaveNote from '#lib/settings/SaveNote.svelte';
 	import {
 		createSettingsEditor,
@@ -35,6 +39,17 @@
 		{ field: 'intake_terms', label: t.intakeTerms, help: help.intakeTerms, rows: 5 },
 		{ field: 'issue_terms', label: t.issueTerms, help: help.issueTerms, rows: 4 },
 		{ field: 'firm_legal_details', label: t.firmLegal, help: help.firmLegal, rows: 3 }
+	];
+
+	/** Every document, in the order of the work: the acts, the blank one, the labels. */
+	const DOCUMENTS: DocumentKind[] = [
+		'intake_act',
+		'issue_act',
+		'warranty_intake_act',
+		'warranty_issue_act',
+		'blank_intake_act',
+		'sticker',
+		'calibration'
 	];
 
 	onDestroy(() => {
@@ -75,6 +90,25 @@
 	</div>
 </Card>
 
+<Card>
+	<div class="fields">
+		<h2 class="subtitle">{ru.print.documentsList}</h2>
+		<p class="note">{ru.print.documentsNote}</p>
+		<ul class="documents" aria-label={ru.print.documentsList}>
+			{#each DOCUMENTS as kind (kind)}
+				<li>
+					<span>{documentName(kind)}</span>
+					<Button
+						size="sm"
+						aria-label={ru.print.sampleOf(documentName(kind))}
+						onclick={() => openPreview(kind, {})}>{ru.print.sampleButton}</Button
+					>
+				</li>
+			{/each}
+		</ul>
+	</div>
+</Card>
+
 <style>
 	.title {
 		margin: 0;
@@ -90,5 +124,28 @@
 		margin: 0;
 		color: var(--text-3);
 		font-size: var(--text-sm);
+	}
+	.subtitle {
+		margin: 0;
+		font-size: var(--text-lg);
+		font-weight: 600;
+	}
+	.documents {
+		display: flex;
+		flex-direction: column;
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+	.documents li {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--space-3);
+		padding: var(--space-2) 0;
+		border-top: 1px solid var(--border);
+	}
+	.documents li:first-child {
+		border-top: 0;
 	}
 </style>

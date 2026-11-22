@@ -1,0 +1,206 @@
+<!-- The preview of a document (spec 7, plan 6): its pages as pictures, «Сохранить PDF» under the server's
+     file name and, in the desktop program, «Печать». The pictures are `blob:` addresses: they are freed
+     when the preview closes or shows another document, and a request still on its way then is called
+     off. Without `request` it is closed. -->
+<script lang="ts">
+	import Download from '@lucide/svelte/icons/download';
+	import Printer from '@lucide/svelte/icons/printer';
+	import { untrack } from 'svelte';
+	import type { DocumentKind } from '$api/DocumentKind';
+	import type { DocumentPages } from '$api/DocumentPages';
+	import { errorMessage } from '#lib/api/client.js';
+	import type { DocumentTarget } from '#lib/api/documents.js';
+	import { ru } from '#lib/i18n/ru.js';
+	import Button from '#lib/ui/Button.svelte';
+	import Callout from '#lib/ui/Callout.svelte';
+	import Select from '#lib/ui/Select.svelte';
+	import Sheet from '#lib/ui/Sheet.svelte';
+	import Skeleton from '#lib/ui/Skeleton.svelte';
+	import { canPrintDirectly } from './platform.js';
+	import {
+		documentName,
+		documentTitle,
+		previewPages,
+		printDocument,
+		savePdf,
+		type PreviewRequest
+	} from './print.svelte.js';
+
+	type Target = DocumentTarget;
+
+	let {
+		request,
+		load = previewPages,
+		save = savePdf,
+		print = canPrintDirectly() ? printDocument : null,
+		onclose
+	}: {
+		/** What is shown; null: the preview is closed. */
+		request: PreviewRequest | null;
+		/** The pages of a document (the server's by default; the showcase has its own). */
+		load?: (kind: DocumentKind, target: Target, signal: AbortSignal) => Promise<DocumentPages>;
+		/** «Сохранить PDF»; throws what to say. */
+		save?: (kind: DocumentKind, target: Target) => Promise<void>;
+		/** «Печать»: only where the program prints by itself; null — no button. */
+		print?: ((kind: DocumentKind, target: Target) => void) | null;
+		/** The preview is closed (✕, Esc, «Печать»). */
+		onclose: () => void;
+	} = $props();
+
+	const t = ru.print;
+
+	/** The document shown: the one asked for, or another of the same order chosen here. */
+	let kind = $state<DocumentKind>('intake_act');
+	$effect.pre(() => {
+		const r = request;
+		if (r) untrack(() => (kind = r.kind));
+	});
+	const kinds = $derived(request?.kinds ?? []);
+	const kindItems = $derived(kinds.map((k) => ({ value: k, label: documentName(k) })));
+
+	interface Shown {
+		urls: string[];
+		widthMm: number;
+	}
+	let shown = $state.raw<Shown | null>(null);
+	let error = $state<string | null>(null);
+	/** «Повторить» asks again. */
+	let attempt = $state(0);
+
+	/** A page of PNG in base64 as a picture of this page's own. */
+	function pictureOf(base64: string): string {
+		const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+		return URL.createObjectURL(new Blob([bytes], { type: 'image/png' }));
+	}
+
+	$effect(() => {
+		const r = request;
+		const k = kind;
+		void attempt;
+		if (!r) return;
+		const controller = new AbortController();
+		let urls: string[] = [];
+		untrack(() => {
+			shown = null;
+			error = null;
+		});
+		load(k, r.target, controller.signal).then(
+			(doc) => {
+				if (controller.signal.aborted) return;
+				urls = doc.pages.map(pictureOf);
+				shown = { urls, widthMm: doc.width_mm };
+			},
+			(e: unknown) => {
+				if (!controller.signal.aborted) error = errorMessage(e);
+			}
+		);
+		return () => {
+			controller.abort();
+			for (const url of urls) URL.revokeObjectURL(url);
+		};
+	});
+
+	let saving = $state(false);
+	let saveError = $state<string | null>(null);
+	$effect.pre(() => {
+		void request;
+		void kind;
+		untrack(() => (saveError = null));
+	});
+
+	async function saveShown() {
+		const r = request;
+		if (!r || saving) return;
+		saving = true;
+		saveError = null;
+		try {
+			await save(kind, r.target);
+		} catch (e) {
+			saveError = errorMessage(e);
+		} finally {
+			saving = false;
+		}
+	}
+
+	function printShown() {
+		const r = request;
+		if (!r || !print) return;
+		const k = kind;
+		onclose();
+		print(k, r.target);
+	}
+
+	const title = $derived(request ? documentTitle(kind, request.target) : '');
+</script>
+
+<Sheet bind:open={() => request !== null, (v) => !v && onclose()} {title}>
+	{#snippet header()}
+		{#if kindItems.length > 1}
+			<div class="kind">
+				<Select
+					label={t.document}
+					items={kindItems}
+					bind:value={() => kind, (v) => v && (kind = v)}
+				/>
+			</div>
+		{/if}
+	{/snippet}
+
+	{#if error}
+		<Callout tone="danger">
+			{error}
+			{#snippet actions()}
+				<Button size="sm" onclick={() => attempt++}>{ru.common.retry}</Button>
+			{/snippet}
+		</Callout>
+	{:else if shown}
+		<div class="pages" style:--page-width="{shown.widthMm}mm">
+			{#each shown.urls as url, i (url)}
+				<img class="page" src={url} alt={t.page(i + 1, shown.urls.length)} />
+			{/each}
+		</div>
+	{:else}
+		<div class="loading" aria-busy="true" aria-label={t.pagesLoading}>
+			<Skeleton height="24rem" />
+		</div>
+	{/if}
+
+	{#snippet footer()}
+		{#if saveError}<p class="failed" role="alert">{saveError}</p>{/if}
+		<Button icon={Download} busy={saving} onclick={() => void saveShown()}>{t.savePdf}</Button>
+		{#if print}
+			<Button variant="primary" icon={Printer} onclick={printShown}>{t.printButton}</Button>
+		{/if}
+	{/snippet}
+</Sheet>
+
+<style>
+	.kind {
+		max-width: 20rem;
+	}
+	.pages {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: var(--space-4);
+		padding: var(--space-2) 0 var(--space-4);
+	}
+	/* A page in its own size where it fits (a label is small), never wider than the sheet. */
+	.page {
+		display: block;
+		width: var(--page-width);
+		max-width: 100%;
+		height: auto;
+		border: 1px solid var(--border);
+		box-shadow: var(--shadow-md);
+	}
+	.loading {
+		padding: var(--space-2) 0;
+	}
+	.failed {
+		flex: 1 0 100%;
+		margin: 0;
+		color: var(--danger-text);
+		text-align: end;
+	}
+</style>

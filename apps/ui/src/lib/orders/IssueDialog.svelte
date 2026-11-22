@@ -1,5 +1,6 @@
 <!-- «Выдать» (spec 6.4): what is required is filled in right here, then the sum to pay; Ctrl/⌘+Enter
-     issues. The fields the dialog changed are saved first, then the order is issued. -->
+     issues. The fields the dialog changed are saved first, then the order is issued; then the issue act
+     is printed when «Печатать акт выдачи» is on (kept on this computer). -->
 <script lang="ts" module>
 	/** What the dialog fills in before the order is issued. */
 	export interface IssueValues {
@@ -20,12 +21,14 @@
 	import { submitShortcut } from '#lib/design/hotkeys.svelte.js';
 	import { formatMoney } from '#lib/format/money.js';
 	import { ru } from '#lib/i18n/ru.js';
+	import { printSettings } from '#lib/print/settings.svelte.js';
 	import Button from '#lib/ui/Button.svelte';
 	import Callout from '#lib/ui/Callout.svelte';
 	import Combobox from '#lib/ui/Combobox.svelte';
 	import Dialog from '#lib/ui/Dialog.svelte';
 	import MoneyInput from '#lib/ui/MoneyInput.svelte';
 	import Select from '#lib/ui/Select.svelte';
+	import Switch from '#lib/ui/Switch.svelte';
 	import Textarea from '#lib/ui/Textarea.svelte';
 	import { masterChoices, masterOf, masterValue, type MasterList } from './masters.js';
 	import { isNoWarranty, issueWarranty, toPay } from './view.js';
@@ -265,6 +268,12 @@
 					}
 				}
 				error={missing.warranty ? t.required : serverErrors.warranty}
+			/>
+			<Switch
+				label={ru.print.onIssue}
+				bind:checked={
+					() => printSettings.onIssue.act, (v) => printSettings.set({ onIssue: { act: v } })
+				}
 			/>
 		</div>
 	{/if}

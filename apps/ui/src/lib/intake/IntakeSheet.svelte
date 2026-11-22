@@ -20,6 +20,8 @@
 	import { masterChoices, masterOf, masterValue, type MasterList } from '#lib/orders/masters.js';
 	import { orderPanel } from '#lib/orders/panel.svelte.js';
 	import { createDraftMedia, type Media } from '#lib/orders/photos.svelte.js';
+	import { printDocuments } from '#lib/print/print.svelte.js';
+	import { printSettings } from '#lib/print/settings.svelte.js';
 	import Button from '#lib/ui/Button.svelte';
 	import ChipGroup from '#lib/ui/ChipGroup.svelte';
 	import Combobox from '#lib/ui/Combobox.svelte';
@@ -54,7 +56,7 @@
 	} from './draft.js';
 	import IntakeAside from './IntakeAside.svelte';
 	import IntakePhotos, { MAX_INTAKE_PHOTOS } from './IntakePhotos.svelte';
-	import { intake } from './intake.svelte.js';
+	import { intake, intakeDocuments } from './intake.svelte.js';
 
 	const t = ru.intake;
 	/** Pause after the last key before the draft is written and the suggestions are asked. */
@@ -539,6 +541,8 @@
 			tone: 'success',
 			action: { label: t.open, run: () => void orderPanel.open(id) }
 		});
+		// The switches «Акт приёма» and «Наклейка»: the order is saved, a failure to print is only told.
+		void printDocuments(intakeDocuments(printSettings.onIntake), { orderId: id });
 	}
 
 	/** Focus lost while the form was inert goes back where it was, if the sheet is still open. */

@@ -1,3 +1,4 @@
+import type { DocumentKind } from '$api/DocumentKind';
 import type { Permission } from '$api/Permission';
 import type { WarningCode } from '$api/WarningCode';
 
@@ -852,6 +853,7 @@ export const ru = {
 		panel: 'Панель заказа',
 		neighbour: 'Соседний заказ',
 		issue: 'Выдать',
+		printAct: 'Печать акта',
 		list: 'Список',
 		filter: 'Фильтр списка',
 		nextRow: 'Следующая строка',
@@ -1029,6 +1031,10 @@ export const ru = {
 		],
 		/** «Новый заказ». */
 		intake: {
+			print: [
+				'Что напечатать, когда заказ принят: акт приёма — на принтер актов, наклейку со штрихкодом заказа — на принтер наклеек. Принтеры выбираются в «Настройки → Печать».',
+				'Выбор запоминается на этом компьютере. В браузере вместо печати открывается предпросмотр: из него документ сохраняется в PDF.'
+			],
 			phoneNote: [
 				'Чей это номер или когда по нему звонить: «жена», «рабочий», «после 18».',
 				'Пометка видна рядом с номером: в заказе, в карточке клиента и при приёме.'
@@ -1258,7 +1264,47 @@ export const ru = {
 		notWhole: 'Введите целое число',
 		onlyInProgram: 'Печать на принтер — только в программе для компьютера',
 		noDefaultPrinter: 'Принтер по умолчанию не задан',
-		failed: 'Не удалось напечатать'
+		failed: 'Не удалось напечатать',
+		/** «Не удалось напечатать. Принтер «X» не найден»: the error's own text, as it is. */
+		failedWith: (text: string) => `Не удалось напечатать. ${text}`,
+		sent: (printer: string) => `Отправлено на ${printer}`,
+		documents: {
+			intake_act: 'Акт приёма',
+			issue_act: 'Акт выдачи',
+			warranty_intake_act: 'Акт приёма по гарантии',
+			warranty_issue_act: 'Акт выдачи после гарантии',
+			blank_intake_act: 'Пустой акт приёма',
+			sticker: 'Наклейка',
+			calibration: 'Пробная наклейка'
+		} satisfies Record<DocumentKind, string>,
+		/** The menu of an order and its button. */
+		print: 'Печать',
+		/** A word Ctrl K finds «Пустой акт приёма» by. */
+		blankKeyword: 'бланк',
+		previewItem: 'Предпросмотр…',
+		/** The title of the preview: the document of an order, a sample of one, or the document itself. */
+		ofOrder: (name: string, id: number) => `${name} · № ${id}`,
+		sample: (name: string) => `Образец · ${name}`,
+		document: 'Документ',
+		page: (n: number, of: number) => `Страница ${n} из ${of}`,
+		pagesLoading: 'Документ готовится…',
+		preview: 'Предпросмотр',
+		printButton: 'Печать',
+		savePdf: 'Сохранить PDF',
+		/** The intake, the issue and the warranty case: printed once the order is saved. */
+		afterIntake: 'Печать после приёма',
+		onIssue: 'Печатать акт выдачи',
+		onWarranty: 'Печатать акт приёма по гарантии',
+		/** «Документы и реквизиты»: the documents with their samples. */
+		documentsList: 'Документы',
+		documentsNote:
+			'Так документы выглядят на примерном заказе с вашими реквизитами. Наклейки — в размере из «Печать».',
+		sampleButton: 'Образец',
+		sampleOf: (name: string) => `Образец: ${name}`,
+		/** «Печать»: the calibration label on the label printer. */
+		calibration: 'Пробная наклейка',
+		calibrationNote:
+			'Рамка у самого края наклейки и перекрестие в центре, с подписью: размер, разрешение и смещение. Если рамка обрезана или съехала, поправьте смещение.'
 	},
 	/** «Часовой пояс» of «Общие»: the groups of the list; Russia by its cities, west to east. */
 	timezones: {

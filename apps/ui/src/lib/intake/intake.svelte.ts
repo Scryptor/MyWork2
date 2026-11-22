@@ -1,4 +1,6 @@
+import type { DocumentKind } from '$api/DocumentKind';
 import { onSessionReset } from '#lib/app/session-reset.js';
+import type { PrintSettings } from '#lib/print/settings.svelte.js';
 
 export interface IntakePrefill {
 	/** Intake for this client (from the client's card). */
@@ -135,3 +137,11 @@ class Intake {
 export const intake = new Intake();
 
 onSessionReset(() => intake.reset());
+
+/** What is printed once an order is taken in: the switches of the intake, the act before the sticker. */
+export function intakeDocuments(on: PrintSettings['onIntake']): DocumentKind[] {
+	return [
+		...(on.act ? (['intake_act'] as const) : []),
+		...(on.sticker ? (['sticker'] as const) : [])
+	];
+}

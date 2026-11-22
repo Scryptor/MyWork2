@@ -23,6 +23,7 @@
 	import { formatRelative } from '#lib/format/date.js';
 	import { dialNumber } from '#lib/format/phone.js';
 	import { ru } from '#lib/i18n/ru.js';
+	import PrintMenu from '#lib/print/PrintMenu.svelte';
 	import Button from '#lib/ui/Button.svelte';
 	import Callout from '#lib/ui/Callout.svelte';
 	import DropdownMenu, { type MenuItem } from '#lib/ui/DropdownMenu.svelte';
@@ -241,8 +242,9 @@
 		await goto(href);
 	}
 
-	// «Выдать»: Ctrl/⌘+Enter from the panel.
+	// «Выдать»: Ctrl/⌘+Enter from the panel; its act: Ctrl/⌘P.
 	$effect(() => orderActions.issueShortcut());
+	$effect(() => orderActions.printShortcut());
 
 	const menu = $derived<MenuItem[]>([
 		...orderActions.menuItems,
@@ -259,6 +261,17 @@
 			<IconButton {...props} label={t.moreActions} icon={Ellipsis} {variant} />
 		{/snippet}
 	</DropdownMenu>
+{/snippet}
+
+{#snippet printMenu(o: NonNullable<typeof order>, compact: boolean)}
+	<PrintMenu
+		{issued}
+		wasIssued={o.issued_at !== null}
+		{compact}
+		variant={compact ? 'ghost' : 'secondary'}
+		onprint={(kind) => void orderActions.print(kind)}
+		onpreview={(kind, kinds) => void orderActions.preview(kind, kinds)}
+	/>
 {/snippet}
 
 {#snippet statusPicker()}
@@ -278,6 +291,7 @@
 >
 	{#snippet actions()}
 		{#if display.phone}
+			{#if order}{@render printMenu(order, true)}{/if}
 			{@render moreMenu('ghost')}
 		{:else if order}
 			<IconButton label={t.openCard} icon={Maximize2} onclick={() => void openCard()} />
@@ -363,6 +377,7 @@
 			{@render statusPicker()}
 		{:else}
 			{@render moreMenu('secondary')}
+			{#if order}{@render printMenu(order, false)}{/if}
 			<span class="grow"></span>
 			{#if order && !issued}
 				<Button

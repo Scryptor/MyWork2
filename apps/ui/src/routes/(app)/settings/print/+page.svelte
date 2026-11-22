@@ -1,10 +1,13 @@
 <!-- «Печать» (spec 5.2, plan 6): kept on this computer only; every field applies at once. The program
      prints by itself and has the printers and the copies; a browser prints through a PDF, so there only
-     what shapes the document is here: the label, its offset, the printer's resolution. -->
+     what shapes the document is here: the label, its offset, the printer's resolution. «Пробная наклейка»
+     prints the calibration label with them (in a browser: its preview). -->
 <script lang="ts">
+	import Printer from '@lucide/svelte/icons/printer';
 	import { onMount } from 'svelte';
 	import { ru } from '#lib/i18n/ru.js';
 	import { canPrintDirectly, listPrinters, type PrinterInfo } from '#lib/print/platform.js';
+	import { printDocument } from '#lib/print/print.svelte.js';
 	import {
 		COPIES,
 		formatMm,
@@ -15,6 +18,7 @@
 		PRINTER_DPIS,
 		printSettings
 	} from '#lib/print/settings.svelte.js';
+	import Button from '#lib/ui/Button.svelte';
 	import Callout from '#lib/ui/Callout.svelte';
 	import Card from '#lib/ui/Card.svelte';
 	import HelpHint from '#lib/ui/HelpHint.svelte';
@@ -280,6 +284,12 @@
 				options={DPIS}
 				bind:value={() => printSettings.dpi, (v) => printSettings.set({ dpi: v })}
 			/>
+		</div>
+		<div class="field">
+			<Button icon={Printer} onclick={() => void printDocument('calibration', {})}
+				>{t.calibration}</Button
+			>
+			<p class="note">{t.calibrationNote}</p>
 		</div>
 		{#if direct}
 			<div class="row">

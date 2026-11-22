@@ -1,7 +1,8 @@
 <!-- The frame of every screen of the program (spec 5.1): shell, Ctrl K, the scanner, undo, and the
-     layers that open from anywhere: the order panel and the intake sheet. -->
+     layers that open from anywhere: the order panel, the intake sheet and the preview of a document. -->
 <script lang="ts">
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
+	import FileText from '@lucide/svelte/icons/file-text';
 	import KeyRound from '@lucide/svelte/icons/key-round';
 	import LogOut from '@lucide/svelte/icons/log-out';
 	import Monitor from '@lucide/svelte/icons/monitor';
@@ -63,6 +64,8 @@
 	import DisputeDialog from '#lib/orders/DisputeDialog.svelte';
 	import OrderPanel from '#lib/orders/OrderPanel.svelte';
 	import { orderPanel } from '#lib/orders/panel.svelte.js';
+	import DocumentPreview from '#lib/print/DocumentPreview.svelte';
+	import { preview, printDocument } from '#lib/print/print.svelte.js';
 	import AppShell from '#lib/ui/shell/AppShell.svelte';
 	import BottomNav from '#lib/ui/shell/BottomNav.svelte';
 	import type { NavItem } from '#lib/ui/shell/nav.js';
@@ -219,6 +222,12 @@
 			label: ru.app.themeCommand[t],
 			icon: THEME_ICONS[t]
 		})),
+		{
+			id: 'cmd:blankAct',
+			label: ru.print.documents.blank_intake_act,
+			icon: FileText,
+			keywords: [ru.print.print, ru.print.blankKeyword]
+		},
 		{ id: 'cmd:settings', label: ru.app.settings, icon: Settings },
 		{ id: 'cmd:appearance', label: ru.settings.appearance, icon: Palette },
 		{ id: 'cmd:sizeUp', label: ru.shortcuts.sizeUp, icon: ZoomIn, shortcut: 'Mod+Plus' },
@@ -254,6 +263,7 @@
 		if (kind === 'client') return void goto(resolve(clientHref(Number(value))));
 		const [command, arg] = value.split(':');
 		if (command === 'intake') intake.open();
+		else if (command === 'blankAct') void printDocument('blank_intake_act', {});
 		else if (command === 'theme') prefs.set({ theme: arg as ThemePref });
 		else if (command === 'settings') void goto(resolve('settings'));
 		else if (command === 'appearance') void goto(resolve('settings/appearance'));
@@ -335,7 +345,8 @@
 			title: ru.shortcuts.panel,
 			items: [
 				{ label: ru.shortcuts.neighbour, shortcut: 'Alt+ArrowDown' },
-				{ label: ru.shortcuts.issue, shortcut: 'Mod+Enter' }
+				{ label: ru.shortcuts.issue, shortcut: 'Mod+Enter' },
+				{ label: ru.shortcuts.printAct, shortcut: 'Mod+P' }
 			]
 		}
 	];
@@ -400,6 +411,7 @@
 <DisputeDialog />
 
 <IntakeSheet />
+<DocumentPreview request={preview.current} onclose={() => preview.close()} />
 
 <CommandPalette
 	bind:open={paletteOpen}

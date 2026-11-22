@@ -1,10 +1,22 @@
+import type { AppSettings } from '$api/AppSettings';
 import type { Order } from '$api/Order';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { ServerInfo } from '$api/ServerInfo';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '#lib/api/client.js';
-import { order } from '#lib/app/fixtures.test-helper.js';
+import { app } from '#lib/app/context.svelte.js';
+import { order, POINTS, STATUSES, user } from '#lib/app/fixtures.test-helper.js';
+import { __resetHotkeysForTests } from '#lib/design/hotkeys.svelte.js';
+import { DEFAULT_PRINT_SETTINGS, printSettings } from '#lib/print/settings.svelte.js';
 import { toast } from '#lib/ui/toast/toast.svelte.js';
-import { closeEditor, unsavedText } from './actions.svelte.js';
+import { closeEditor, OrderActions, unsavedText } from './actions.svelte.js';
 import type { Conflict, OrderEditor, OrderField } from './editor.svelte.js';
+
+// Printing itself is `print.svelte.ts`'s (tested there): here only what the order asks of it.
+const print = vi.hoisted(() => ({ printDocument: vi.fn(async () => {}), openPreview: vi.fn() }));
+vi.mock('#lib/print/print.svelte.js', async (original) => ({
+	...(await original<typeof import('#lib/print/print.svelte.js')>()),
+	...print
+}));
 
 /** An editor whose flush ends as given: saved, failed with an error, or with a disputed field. */
 function editor(o: Order, end: 'saved' | 'error' | 'conflict') {
@@ -56,5 +68,119 @@ describe('closeEditor', () => {
 		]);
 		expect(unsavedText(ed)).toBe('Изменения № 5 не сохранены: Заказ изменили на другом компьютере');
 		expect(ed.dispose).toHaveBeenCalled();
+	});
+});
+
+describe('printing an order', () => {
+	const ISSUED = 4;
+	beforeEach(() => {
+		app.set({
+			server: {} as ServerInfo,
+			me: user({ permissions: ['orders_edit'] }),
+			statuses: STATUSES,
+			points: POINTS,
+			settings: { issue_required: [], default_warranty: '' } as unknown as AppSettings
+		});
+	});
+	afterEach(() => {
+		vi.clearAllMocks();
+		app.reset();
+		printSettings.set(DEFAULT_PRINT_SETTINGS);
+		localStorage.clear();
+		__resetHotkeysForTests();
+	});
+
+	/** An editor of `o` whose saves are done; `run` answers with `after` (the issued order). */
+	function shown(o: Order, after: Order = o) {
+		const flush = vi.fn(async () => true);
+		const ed = {
+			order: o,
+			conflicts: new Map(),
+			autosave: { error: null, flush: vi.fn(async () => {}) },
+			flush,
+			run: vi.fn(async () => after),
+			dispose: vi.fn()
+		} as unknown as OrderEditor;
+		return { actions: new OrderActions(() => ed), flush };
+	}
+	const ctrlP = () =>
+		document.body.dispatchEvent(
+			new KeyboardEvent('keydown', {
+				key: 'p',
+				code: 'KeyP',
+				ctrlKey: true,
+				bubbles: true,
+				cancelable: true
+			})
+		);
+
+	it('Ctrl/⌘P prints the intake act of an order in work and the issue act of an issued one', async () => {
+		const inWork = shown(order(7, { status_id: 2 }));
+		const stop = inWork.actions.printShortcut();
+		ctrlP();
+		await settle();
+		expect(print.printDocument).toHaveBeenLastCalledWith('intake_act', { orderId: 7 });
+		stop?.();
+
+		shown(
+			order(8, { status_id: ISSUED, issued_at: '2026-11-20T12:00:00' })
+		).actions.printShortcut();
+		ctrlP();
+		await settle();
+		expect(print.printDocument).toHaveBeenLastCalledWith('issue_act', { orderId: 8 });
+	});
+
+	it('what is typed is saved before the server makes the document', async () => {
+		const { actions, flush } = shown(order(7));
+		let savedFirst = false;
+		print.printDocument.mockImplementationOnce(async () => {
+			savedFirst = flush.mock.calls.length === 1;
+		});
+		await actions.print('sticker');
+		expect(savedFirst).toBe(true);
+		expect(print.printDocument).toHaveBeenCalledWith('sticker', { orderId: 7 });
+	});
+
+	it('the issue prints the issue act after it is saved, when «Печатать акт выдачи» is on', async () => {
+		const o = order(7, { status_id: 3 });
+		const issued = { ...o, status_id: ISSUED, issued_at: '2026-11-20T12:00:00', version: 2 };
+		const on = shown(o, issued);
+		on.actions.issueOpen = true;
+		await on.actions.issue({
+			work_done: '',
+			master_user_id: null,
+			final_price: null,
+			discount: 0,
+			warranty: ''
+		});
+		await settle();
+		expect(on.actions.issueOpen).toBe(false);
+		expect(print.printDocument).toHaveBeenCalledWith('issue_act', { orderId: 7 });
+
+		vi.clearAllMocks();
+		printSettings.set({ onIssue: { act: false } });
+		await shown(o, issued).actions.issue({
+			work_done: '',
+			master_user_id: null,
+			final_price: null,
+			discount: 0,
+			warranty: ''
+		});
+		await settle();
+		expect(print.printDocument).not.toHaveBeenCalled();
+	});
+
+	it('the warranty case prints its intake act when «Печатать акт приёма по гарантии» is on', async () => {
+		const o = order(9, { status_id: ISSUED, issued_at: '2026-11-20T12:00:00' });
+		const on = shown(o);
+		await on.actions.acceptWarranty({ complaint: 'Снова не включается' });
+		await settle();
+		expect(print.printDocument).toHaveBeenCalledWith('warranty_intake_act', { orderId: 9 });
+
+		vi.clearAllMocks();
+		printSettings.set({ onIntake: { act: false } });
+		await shown(o).actions.acceptWarranty({ complaint: 'Снова не включается' });
+		await settle();
+		expect(print.printDocument).not.toHaveBeenCalled();
 	});
 });

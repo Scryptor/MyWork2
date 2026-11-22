@@ -16,18 +16,34 @@ const server = (port: number, extra = '') => ({
 	stderr: 'pipe' as const
 });
 
+const ports = [4173, 4174, ...Object.values(FRESH_PORTS).flatMap((ports) => Object.values(ports))];
+
+// Printing after an intake and an issue is on by default; in a browser it opens the preview, which would
+// cover the screen in every test that accepts or issues an order. Off here, in every origin; the tests of
+// printing (e2e/print.spec.ts) start with a clean browser and so with the defaults.
+const printOff = JSON.stringify({
+	v: 1,
+	onIntake: { act: false, sticker: false },
+	onIssue: { act: false }
+});
+const storageState = {
+	cookies: [],
+	origins: ports.map((port) => ({
+		origin: `http://127.0.0.1:${port}`,
+		localStorage: [{ name: 'mw.print', value: printOff }]
+	}))
+};
+
 export default defineConfig({
 	testDir: 'e2e',
 	// Builds `make_fixture` once, before the tests (the import tests run it).
 	globalSetup: './e2e/support/global-setup.ts',
-	use: { baseURL: 'http://127.0.0.1:4173' },
+	use: { baseURL: 'http://127.0.0.1:4173', storageState },
 	webServer: [
 		server(4173),
 		server(4174, ' --admin'),
 		// Never one left from an earlier run: its base would be set up already.
-		...Object.values(FRESH_PORTS)
-			.flatMap((ports) => Object.values(ports))
-			.map((port) => ({ ...server(port, ' --fresh'), reuseExistingServer: false }))
+		...ports.slice(2).map((port) => ({ ...server(port, ' --fresh'), reuseExistingServer: false }))
 	],
 	projects: [
 		{

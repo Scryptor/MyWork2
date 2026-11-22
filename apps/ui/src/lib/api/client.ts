@@ -177,15 +177,44 @@ export async function upload<T>(path: string, body: Blob, query?: Query): Promis
 	return (await readBody(response)) as T;
 }
 
-/** A binary response (an attachment's file or thumbnail, a document's PDF), fetched with the token. */
-export async function requestBlob(
+/**
+ * The name of a file in `Content-Disposition`: `filename*=UTF-8''…` (RFC 5987, an attachment's own name)
+ * first, then `filename="…"` or `filename=…`; null when there is none, or it does not decode.
+ */
+export function fileNameOf(header: string | null): string | null {
+	if (header === null) return null;
+	const encoded = /filename\*\s*=\s*UTF-8''([^;]+)/i.exec(header)?.[1];
+	if (encoded !== undefined) {
+		try {
+			return decodeURIComponent(encoded.trim()) || null;
+		} catch {
+			return null;
+		}
+	}
+	const plain = /filename\s*=\s*(?:"([^"]*)"|([^;]+))/i.exec(header);
+	return (plain?.[1] ?? plain?.[2]?.trim()) || null;
+}
+
+/** A binary response with the name the server gave it (`Content-Disposition`), fetched with the token. */
+export async function requestFile(
 	path: string,
 	opts: { query?: Query; signal?: AbortSignal } = {}
-): Promise<Blob> {
+): Promise<{ blob: Blob; filename: string | null }> {
 	const response = await send('GET', path, opts.query, {
 		headers: authHeaders(),
 		signal: opts.signal
 	});
 	if (!response.ok) return fail(response, 'GET', path);
-	return response.blob();
+	return {
+		blob: await response.blob(),
+		filename: fileNameOf(response.headers.get('Content-Disposition'))
+	};
+}
+
+/** A binary response (an attachment's file or thumbnail), fetched with the token. */
+export async function requestBlob(
+	path: string,
+	opts: { query?: Query; signal?: AbortSignal } = {}
+): Promise<Blob> {
+	return (await requestFile(path, opts)).blob;
 }

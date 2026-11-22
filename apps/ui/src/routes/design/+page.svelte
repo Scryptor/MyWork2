@@ -8,6 +8,7 @@
 	import Media from './sections/Media.svelte';
 	import Ordering from './sections/Ordering.svelte';
 	import Navigation from './sections/Navigation.svelte';
+	import Print from './sections/Print.svelte';
 	import Table from './sections/Table.svelte';
 	import Tokens from './sections/Tokens.svelte';
 
@@ -94,6 +95,11 @@
 	<section id="media">
 		<h2>Медиа</h2>
 		<Media />
+	</section>
+
+	<section id="print">
+		<h2>Печать</h2>
+		<Print />
 	</section>
 </main>
 

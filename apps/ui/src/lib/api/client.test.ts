@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, apiUrl, errorMessage, request, setUnauthenticatedHandler } from './client.js';
+import {
+	ApiError,
+	apiUrl,
+	errorMessage,
+	fileNameOf,
+	request,
+	requestFile,
+	setUnauthenticatedHandler
+} from './client.js';
 import { revokeToken } from './auth.js';
 import { clearToken, getToken, setSessionLostHandler, setToken } from './session.js';
 
@@ -225,5 +233,42 @@ describe('errorMessage', () => {
 			'Нет связи с сервером'
 		);
 		expect(errorMessage(new TypeError('x is undefined'))).toBe('Не удалось выполнить запрос');
+	});
+});
+
+describe('the name of a file the server sends', () => {
+	it('is read from Content-Disposition: a plain name, a quoted one, the UTF-8 one first', () => {
+		expect(fileNameOf('inline; filename="akt-priema-42.pdf"')).toBe('akt-priema-42.pdf');
+		expect(fileNameOf('attachment; filename=naklejka.pdf')).toBe('naklejka.pdf');
+		// RFC 5987: an attachment's own name, percent-encoded, wins over the ASCII one.
+		expect(
+			fileNameOf(
+				'attachment; filename="a.pdf"; filename*=UTF-8\'\'%D0%B0%D0%BA%D1%82%20%E2%84%961.pdf'
+			)
+		).toBe('акт №1.pdf');
+	});
+
+	it('is null without the header, without a name or with a name that does not decode', () => {
+		expect(fileNameOf(null)).toBeNull();
+		expect(fileNameOf('inline')).toBeNull();
+		expect(fileNameOf('inline; filename=""')).toBeNull();
+		expect(fileNameOf("attachment; filename*=UTF-8''%E0%A4%A")).toBeNull();
+	});
+
+	it('comes with the file: the body as a blob and the name of its header', async () => {
+		vi.stubGlobal(
+			'fetch',
+			async () =>
+				new Response('%PDF', {
+					status: 200,
+					headers: {
+						'Content-Type': 'application/pdf',
+						'Content-Disposition': 'inline; filename="akt-vydachi-7.pdf"'
+					}
+				})
+		);
+		const file = await requestFile('/orders/7/documents/issue_act', { query: { format: 'pdf' } });
+		expect(file.filename).toBe('akt-vydachi-7.pdf');
+		expect(await file.blob.text()).toBe('%PDF');
 	});
 });

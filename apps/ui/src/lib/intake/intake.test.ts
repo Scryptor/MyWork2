@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { intake, SUBMIT_TIMEOUT_MS } from './intake.svelte.js';
+import { intake, intakeDocuments, SUBMIT_TIMEOUT_MS } from './intake.svelte.js';
 
 /** A request that answers when told to. */
 function later<T>() {
@@ -194,5 +194,14 @@ describe('intake', () => {
 			value: 1
 		});
 		expect(send).toHaveBeenCalledOnce();
+	});
+});
+
+describe('the documents of an accepted order', () => {
+	it('are what the switches of the intake say: the act first, then the sticker', () => {
+		expect(intakeDocuments({ act: true, sticker: true })).toEqual(['intake_act', 'sticker']);
+		expect(intakeDocuments({ act: true, sticker: false })).toEqual(['intake_act']);
+		expect(intakeDocuments({ act: false, sticker: true })).toEqual(['sticker']);
+		expect(intakeDocuments({ act: false, sticker: false })).toEqual([]);
 	});
 });
