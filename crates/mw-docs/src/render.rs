@@ -62,6 +62,12 @@ pub(crate) fn compile(
 }
 
 impl Rendered {
+    /// The laid-out document, for tests that look at the positions of what is printed.
+    #[cfg(test)]
+    pub(crate) fn document(&self) -> &PagedDocument {
+        &self.doc
+    }
+
     pub fn page_count(&self) -> usize {
         self.doc.pages().len()
     }

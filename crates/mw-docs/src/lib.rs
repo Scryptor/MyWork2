@@ -7,6 +7,8 @@
 mod barcode;
 pub mod fields;
 mod fonts;
+#[cfg(test)]
+mod layout_tests;
 pub mod model;
 mod render;
 mod standard;

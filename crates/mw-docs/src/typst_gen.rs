@@ -261,34 +261,51 @@ impl Generator {
             opts: *opts,
             svg: None,
         };
-        generator.svg = generator.barcode_svg(&template.blocks);
+        generator.svg = generator.barcode_svg(template);
         generator
     }
 
     /// Module and bar height of `barcode.svg`; `None` without Barcode blocks. Every Barcode block
-    /// shows the lower part of this one image, scaled to its own module: the SVG has the module of the
-    /// first block and bars taller than any block shows (twice the tallest, for a block with a narrower
-    /// module, whose image is scaled down), so that the guard bars always stick out 5 modules.
-    fn barcode_svg(&self, blocks: &[Block]) -> Option<(f64, f64)> {
+    /// shows the lower part of this one image, scaled to its own module, so that the guard bars always
+    /// stick out 5 of its modules. The SVG has the module of the first block and bars just long enough
+    /// for every block: a block with module `m` showing bars `H` high needs `H / m` modules of them.
+    fn barcode_svg(&self, template: &Template) -> Option<(f64, f64)> {
         let mut found = Vec::new();
-        self.barcodes(blocks, self.area_mm.0, &mut found);
-        let (module, _) = *found.first()?;
-        let tallest = found.iter().map(|b| b.1).fold(self.area_mm.1, f64::max);
-        Some((module, 2.0 * tallest))
+        self.barcodes(template, &template.blocks, self.area_mm.0, &mut found);
+        let (svg_module, _) = *found.first()?;
+        let modules = found
+            .iter()
+            .map(|&(module, bars)| bars / module)
+            .fold(0.0, f64::max);
+        Some((svg_module, svg_module * modules))
     }
 
-    /// Appends (module, `height_mm`) of every Barcode block in `blocks`, which are `width_mm` wide.
-    fn barcodes(&self, blocks: &[Block], width_mm: f64, found: &mut Vec<(f64, f64)>) {
+    /// Appends (module, the longest bars it shows) of every Barcode block in `blocks`, which are
+    /// `width_mm` wide. A block that fills the page shows at most the page area.
+    fn barcodes(
+        &self,
+        template: &Template,
+        blocks: &[Block],
+        width_mm: f64,
+        found: &mut Vec<(f64, f64)>,
+    ) {
         for block in blocks {
             match &block.body {
-                BlockBody::Barcode { height_mm, .. } => found.push((
-                    fit_module_mm(width_mm, self.opts.dpi),
-                    f64::from(*height_mm),
-                )),
+                BlockBody::Barcode {
+                    height_mm, fill, ..
+                } => {
+                    let height = f64::from(*height_mm);
+                    let bars = if *fill && template.layout == Layout::OnePerPage {
+                        height.max(self.area_mm.1)
+                    } else {
+                        height
+                    };
+                    found.push((fit_module_mm(width_mm, self.opts.dpi), bars));
+                }
                 BlockBody::Columns { columns, gap_mm } => {
                     let width = column_width(width_mm, columns.len(), *gap_mm);
                     for column in columns {
-                        self.barcodes(column, width, found);
+                        self.barcodes(template, column, width, found);
                     }
                 }
                 _ => {}

@@ -161,7 +161,8 @@ fn empty_fields_print_mywork2_texts_or_hide_the_row() {
         2,
         "{out:?}"
     );
-    assert_eq!(out.matches("Телефон").count(), 2, "{out:?}");
+    // An order without phones has no phone row.
+    assert!(!out.contains("Телефон"), "{out:?}");
     assert!(!out.contains("Цвет"), "{out:?}");
     assert!(!out.contains("Предоплата"), "{out:?}");
 
@@ -171,6 +172,7 @@ fn empty_fields_print_mywork2_texts_or_hide_the_row() {
         "order.discount",
         "order.prepayment",
         "order.issued",
+        "client.phone",
     ] {
         data.values.remove(key);
     }
@@ -179,7 +181,7 @@ fn empty_fields_print_mywork2_texts_or_hide_the_row() {
     assert_eq!(out.matches("Акт выдачи № 1234 от").count(), 2, "{out:?}");
     // The sample firm is on «ул. Мастеров».
     let out = out.replace("Мастеров", "");
-    for hidden in ["Мастер", "Скидка", "Предоплата"] {
+    for hidden in ["Мастер", "Скидка", "Предоплата", "Телефон"] {
         assert!(!out.contains(hidden), "{hidden}: {out:?}");
     }
     assert_eq!(out.matches("К оплате1 300 руб.").count(), 2, "{out:?}");
@@ -204,6 +206,7 @@ fn blank_intake_act_is_a_form_without_order_number_and_barcode() {
     assert_eq!(out.matches("Сервисный центр «Пример»").count(), 2);
     assert_eq!(out.matches("Цвет").count(), 2, "{out:?}");
     assert_eq!(out.matches("Предоплата").count(), 2, "{out:?}");
+    assert_eq!(out.matches("Телефон").count(), 2, "{out:?}");
 }
 
 #[test]
