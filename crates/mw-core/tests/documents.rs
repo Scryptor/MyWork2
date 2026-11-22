@@ -3,7 +3,7 @@
 mod common;
 
 use common::*;
-use mw_core::documents::{DocumentRequest, plain_text};
+use mw_core::documents::{DocumentBytes, DocumentOutput, DocumentRequest, plain_text};
 use mw_core::{ClientRef, CoreError, NewClient, NewOrder, OrderPatch, SettingsPatch};
 use mw_docs::{RenderOptions, font_covers};
 use mw_domain::documents::DocumentKind;
@@ -381,5 +381,151 @@ fn currency_signs_the_document_font_lacks_are_replaced_by_words() {
     }
     for sign in ["$", "€"] {
         assert!(font_covers(sign).is_empty(), "{sign}");
+    }
+}
+
+/// Ruling 12: the sample is the sample order on the firm's own details; an empty setting keeps the
+/// sample value. («Пример» alone is not checked: the sample client lives on «ул. Примерная».)
+#[tokio::test]
+async fn sample_prints_the_firms_own_details_where_they_are_set() -> Result<(), CoreError> {
+    let sample = DocumentRequest {
+        sample: true,
+        ..request(DocumentKind::IntakeAct, None)
+    };
+    for t in cores().await {
+        let out = text(&t, sample).await;
+        assert_twice(
+            t.label,
+            &out,
+            &[
+                "Сервисный центр «Пример»".into(),
+                "ИП Примеров П. П., ИНН 000000000000".into(),
+            ],
+        );
+
+        t.core
+            .update_settings(
+                &admin(),
+                SettingsPatch {
+                    firm_name: Some("Сервис «Тест»".into()),
+                    firm_legal_details: Some("ИП Тестов Т. Т.<br>ИНН 111111111111".into()),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        let out = text(&t, sample).await;
+        assert_twice(
+            t.label,
+            &out,
+            &[
+                "Сервис «Тест»".into(),
+                "ИП Тестов Т. Т.\nИНН 111111111111".into(),
+                // The order, the client and the firm's details left empty come from the sample.
+                "Акт приёма № 1234 от 22 ноября 2026".into(),
+                "КлиентПетров Пётр Петрович".into(),
+                "г. Энск, ул. Мастеров, д. 5".into(),
+            ],
+        );
+        for absent in ["«Пример»", "ИП Примеров"] {
+            assert!(!out.contains(absent), "{}: {absent} в {out:?}", t.label);
+        }
+    }
+    Ok(())
+}
+
+/// Width and height of a PNG from its IHDR chunk.
+fn png_size(png: &[u8]) -> (u32, u32) {
+    assert!(png.starts_with(b"\x89PNG\r\n\x1a\n"), "не PNG");
+    let be = |at: usize| u32::from_be_bytes(png[at..at + 4].try_into().unwrap());
+    (be(16), be(20))
+}
+
+#[tokio::test]
+async fn export_document_gives_a_pdf_or_png_pages() -> Result<(), CoreError> {
+    for t in cores().await {
+        let order = t.core.create_order(&admin(), sample_new_order()).await?;
+        let act = t
+            .core
+            .export_document(
+                &admin(),
+                request(DocumentKind::IntakeAct, Some(order.id)),
+                DocumentOutput::Pdf,
+            )
+            .await?;
+        let DocumentBytes::Pdf(pdf) = &act.bytes else {
+            panic!("{}: {act:?}", t.label);
+        };
+        assert!(pdf.starts_with(b"%PDF-"), "{}", t.label);
+        assert_eq!(act.page_count, 1, "{}", t.label);
+        let (w, h) = act.page_size_mm;
+        assert!(
+            (w - 210.0).abs() < 0.01 && (h - 297.0).abs() < 0.01,
+            "{w}x{h}"
+        );
+
+        let label = DocumentRequest {
+            options: RenderOptions {
+                label_mm: Some((58.0, 40.0)),
+                offset_mm: (0.0, 0.0),
+                dpi: Some(203),
+            },
+            ..request(DocumentKind::Sticker, Some(order.id))
+        };
+        let sticker = t
+            .core
+            .export_document(&admin(), label, DocumentOutput::Png { dpi: 203 })
+            .await?;
+        let DocumentBytes::Png(pages) = &sticker.bytes else {
+            panic!("{}: {sticker:?}", t.label);
+        };
+        assert_eq!((pages.len(), sticker.page_count), (1, 1), "{}", t.label);
+        let (w, h) = sticker.page_size_mm;
+        assert!(
+            (w - 58.0).abs() < 0.01 && (h - 40.0).abs() < 0.01,
+            "{w}x{h}"
+        );
+        let (px_w, px_h) = png_size(&pages[0]);
+        let px = |mm: f64| mm / 25.4 * 203.0;
+        assert!(
+            (f64::from(px_w) - px(58.0)).abs() <= 1.0 && (f64::from(px_h) - px(40.0)).abs() <= 1.0,
+            "{}: {px_w}x{px_h}",
+            t.label
+        );
+    }
+    Ok(())
+}
+
+/// The same checks as `render_document`: the export goes the same way to the data.
+#[tokio::test]
+async fn export_document_fails_as_render_document_does() {
+    for t in cores().await {
+        for req in [
+            request(DocumentKind::IssueAct, None),
+            request(DocumentKind::IssueAct, Some(999_999)),
+        ] {
+            let rendered = t.core.render_document(&admin(), req).await.err();
+            let exported = t
+                .core
+                .export_document(&admin(), req, DocumentOutput::Pdf)
+                .await
+                .err();
+            assert!(rendered.is_some(), "{}: {req:?}", t.label);
+            assert_eq!(
+                format!("{exported:?}"),
+                format!("{rendered:?}"),
+                "{}: {req:?}",
+                t.label
+            );
+        }
+        let sample = DocumentRequest {
+            sample: true,
+            ..request(DocumentKind::IssueAct, None)
+        };
+        assert_validation(
+            t.core
+                .export_document(&admin(), sample, DocumentOutput::Png { dpi: 0 })
+                .await,
+            &[("dpi", "out_of_range")],
+        );
     }
 }

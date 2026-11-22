@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 
 use chrono::{Datelike, NaiveDate};
 use mw_db::entity::service_point;
-use mw_docs::{DocumentData, RenderOptions, Rendered, sample_data, standard_template};
+use mw_docs::{DocsError, DocumentData, RenderOptions, Rendered, sample_data, standard_template};
 use mw_domain::documents::DocumentKind;
 use mw_domain::money::{Money, format_money_doc};
 use mw_domain::phone::format_phone;
@@ -26,30 +26,111 @@ pub struct DocumentRequest {
     /// Заказ, из которого печатается документ ([`DocumentKind::for_order`]); у пустого акта приёма
     /// и калибровки не учитывается.
     pub order_id: Option<i64>,
-    /// Образец на данных-примерах (`mw_docs::sample_data`) — для видов из заказа без `order_id`.
+    /// Образец — для видов из заказа без `order_id`: заказ, клиент и дата — примеры
+    /// (`mw_docs::sample_data`), фирма и точка — из настроек, где они заданы.
     pub sample: bool,
     /// Размер наклейки, смещение и DPI принтера — как пришли.
     pub options: RenderOptions,
 }
 
+/// В каком виде выгрузить документ.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DocumentOutput {
+    Pdf,
+    /// Страницы PNG с разрешением `dpi` (растр для печати или предпросмотра).
+    Png {
+        dpi: u32,
+    },
+}
+
+/// Готовый документ: PDF или PNG по странице.
+#[derive(Clone, PartialEq, Eq)]
+pub enum DocumentBytes {
+    Pdf(Vec<u8>),
+    Png(Vec<Vec<u8>>),
+}
+
+/// В отладочном выводе — размеры, а не байты.
+impl std::fmt::Debug for DocumentBytes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Pdf(pdf) => write!(f, "Pdf({} байт)", pdf.len()),
+            Self::Png(pages) => {
+                let sizes: Vec<usize> = pages.iter().map(Vec::len).collect();
+                write!(f, "Png({sizes:?} байт)")
+            }
+        }
+    }
+}
+
+/// Выгруженный документ.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DocumentFile {
+    /// Размер первой страницы, мм (ширина, высота).
+    pub page_size_mm: (f64, f64),
+    pub page_count: usize,
+    pub bytes: DocumentBytes,
+}
+
 impl Core {
+    /// Документ в PDF или PNG. API документов зовёт только этот метод: рендер и выгрузка в байты
+    /// идут одним заданием под ограничителем рендера (растр A4 тяжелее самой компиляции). Данные и
+    /// проверки — те же, что у [`Core::render_document`]. Неверный `dpi` у PNG — ошибка проверки
+    /// поля `dpi`.
+    pub async fn export_document(
+        &self,
+        actor: &Actor,
+        req: DocumentRequest,
+        output: DocumentOutput,
+    ) -> Result<DocumentFile, CoreError> {
+        self.rendered(actor, req, move |doc| {
+            let bytes = match output {
+                DocumentOutput::Pdf => DocumentBytes::Pdf(doc.pdf()?),
+                DocumentOutput::Png { dpi } => DocumentBytes::Png(doc.png_pages(dpi)?),
+            };
+            Ok(DocumentFile {
+                page_size_mm: doc.page_size_mm(),
+                page_count: doc.page_count(),
+                bytes,
+            })
+        })
+        .await
+    }
+
     /// Строит документ. Из заказа — с теми же правами, что и просмотр заказа (`get_order`): нужен
     /// `order_id` (он важнее `sample`) или `sample`, иначе ошибка проверки. Пустой акт приёма и
     /// калибровка — всегда без заказа. Рендер идёт вне рабочих потоков, не больше
-    /// [`MAX_CONCURRENT_RENDERS`] одновременно.
+    /// [`MAX_CONCURRENT_RENDERS`] одновременно. Для текста документа (`Rendered::text`); байты для
+    /// печати отдаёт [`Core::export_document`].
     pub async fn render_document(
         &self,
         actor: &Actor,
         req: DocumentRequest,
     ) -> Result<Rendered, CoreError> {
+        self.rendered(actor, req, Ok).await
+    }
+
+    /// Данные документа, затем рендер и `finish` одним заданием под ограничителем рендера.
+    async fn rendered<R: Send + 'static>(
+        &self,
+        actor: &Actor,
+        req: DocumentRequest,
+        finish: impl FnOnce(Rendered) -> Result<R, DocsError> + Send + 'static,
+    ) -> Result<R, CoreError> {
         let data = self.document_data(actor, &req).await?;
         let template = standard_template(req.kind);
         let options = req.options;
         self.render_gate
-            .run(move || mw_docs::render(&template, &data, &options))
+            .run(move || mw_docs::render(&template, &data, &options).and_then(finish))
             .await?
-            .map_err(|e| {
-                CoreError::Internal(format!("документ «{}» не построен: {e}", req.kind.as_str()))
+            .map_err(|e| match e {
+                DocsError::Dpi(_) => {
+                    CoreError::Validation(vec![FieldError::new("dpi", "out_of_range")])
+                }
+                e => CoreError::Internal(format!(
+                    "документ «{}» не построен: {e}",
+                    req.kind.as_str()
+                )),
             })
     }
 
@@ -83,7 +164,16 @@ impl Core {
                     let point = self.point_name(order.service_point_id).await?;
                     Ok(order_data(&order, &client, &point, &settings, today))
                 }
-                (None, true) => Ok(sample_data(req.kind)),
+                // Образец — на своих реквизитах: фирма и точка из настроек, где они заданы.
+                (None, true) => {
+                    let point = self.point_name(settings.default_service_point_id).await?;
+                    let mut data = sample_data(req.kind);
+                    let own = firm_values(&settings, &point)
+                        .into_iter()
+                        .filter(|(_, value)| !value.trim().is_empty());
+                    data.values.extend(own);
+                    Ok(data)
+                }
                 (None, false) => Err(CoreError::Validation(vec![FieldError::required(
                     "order_id",
                 )])),
@@ -104,9 +194,9 @@ impl Core {
     }
 }
 
-/// Поля фирмы, точки и документа: реквизиты и договоры — простым текстом ([`plain_text`]);
-/// сохранённые настройки не меняются.
-fn own_values(settings: &AppSettings, point: &str, today: NaiveDate) -> BTreeMap<String, String> {
+/// Поля фирмы и точки: реквизиты и договоры — простым текстом ([`plain_text`]); сохранённые
+/// настройки не меняются.
+fn firm_values(settings: &AppSettings, point: &str) -> BTreeMap<String, String> {
     [
         ("firm.name", plain_text(&settings.firm_name)),
         ("firm.phone", plain_text(&settings.firm_phone)),
@@ -115,11 +205,17 @@ fn own_values(settings: &AppSettings, point: &str, today: NaiveDate) -> BTreeMap
         ("firm.intake_terms", plain_text(&settings.intake_terms)),
         ("firm.issue_terms", plain_text(&settings.issue_terms)),
         ("point.name", point.to_owned()),
-        ("doc.date", date_ru(today)),
     ]
     .into_iter()
     .map(|(key, value)| (key.to_owned(), value))
     .collect()
+}
+
+/// Свои поля документа: фирма, точка и дата документа.
+fn own_values(settings: &AppSettings, point: &str, today: NaiveDate) -> BTreeMap<String, String> {
+    let mut values = firm_values(settings, point);
+    values.insert("doc.date".to_owned(), date_ru(today));
+    values
 }
 
 /// Все поля реестра: свои — из настроек, остальные — из заказа и клиента. Пустая сумма (нет
@@ -571,6 +667,49 @@ mod tests {
                 .await
                 .unwrap();
             assert_eq!(calibration, DocumentData::default(), "{label}");
+        }
+    }
+
+    /// Образец: заказ, клиент и дата — примеры; фирма и точка — из настроек, где они заданы.
+    #[tokio::test]
+    async fn sample_takes_the_firm_and_the_point_from_the_settings_where_set() {
+        for (label, db) in mw_db::testing::all_backends().await {
+            let clock = Arc::new(FixedClock::new(
+                Utc.with_ymd_and_hms(2027, 3, 8, 9, 0, 0).unwrap(),
+            ));
+            let core = Core::open(db, clock, "UTC").await.unwrap();
+            let point = core
+                .create_service_point(&admin(), "Северная")
+                .await
+                .unwrap();
+            let settings = SettingsPatch {
+                firm_name: Some("Сервис".into()),
+                intake_terms: Some("Принято.<br>Без вскрытия.".into()),
+                default_service_point_id: Some(Some(point.id)),
+                ..Default::default()
+            };
+            core.update_settings(&admin(), settings).await.unwrap();
+            let sample = DocumentRequest {
+                sample: true,
+                ..request(DocumentKind::IssueAct, None)
+            };
+            let data = core.document_data(&admin(), &sample).await.unwrap();
+            let expected = sample_data(DocumentKind::IssueAct);
+            let keys: BTreeSet<&str> = data.values.keys().map(String::as_str).collect();
+            let all: BTreeSet<&str> = fields().iter().map(|f| f.key).collect();
+            assert_eq!(keys, all, "{label}");
+            for (key, value) in &data.values {
+                let wanted = match key.as_str() {
+                    "firm.name" => "Сервис",
+                    "firm.intake_terms" => "Принято.\nБез вскрытия.",
+                    "point.name" => "Северная",
+                    _ => expected.values[key].as_str(),
+                };
+                assert_eq!(value, wanted, "{label}: {key}");
+            }
+            assert_eq!(data.values["doc.date"], "22 ноября 2026", "{label}");
+            assert_eq!(data.barcode, expected.barcode, "{label}");
+            assert!(!data.blank, "{label}");
         }
     }
 
