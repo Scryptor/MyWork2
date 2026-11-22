@@ -56,13 +56,20 @@ fn modules(code: &str) -> Option<[bool; BAR_MODULES]> {
     Some(out)
 }
 
+/// Size (width, height) in mm of the SVG that [`upc_a_svg`] makes.
+pub(crate) fn upc_a_size_mm(module_mm: f64, height_mm: f64) -> (f64, f64) {
+    (
+        (BAR_MODULES + 2 * QUIET_ZONE_MODULES) as f64 * module_mm,
+        height_mm + GUARD_EXTENSION_MODULES as f64 * module_mm,
+    )
+}
+
 /// SVG of a UPC-A code in millimetres: black `<rect>` bars (adjacent modules merged), no text.
 /// `height_mm` is the height of regular bars; guard bars are 5 modules longer. The width is
 /// (95 + 2 * 9) modules, the quiet zone included. `None` for an invalid code.
 pub fn upc_a_svg(code: &str, module_mm: f64, height_mm: f64) -> Option<String> {
     let bits = modules(code)?;
-    let width = (BAR_MODULES + 2 * QUIET_ZONE_MODULES) as f64 * module_mm;
-    let guard_height = height_mm + GUARD_EXTENSION_MODULES as f64 * module_mm;
+    let (width, guard_height) = upc_a_size_mm(module_mm, height_mm);
     let mut svg = String::new();
     let _ = write!(
         svg,

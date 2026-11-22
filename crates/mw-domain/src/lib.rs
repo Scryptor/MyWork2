@@ -52,6 +52,7 @@ macro_rules! code_enum {
 
 pub mod barcode;
 pub mod dictionary;
+pub mod documents;
 pub mod issue;
 pub mod money;
 pub mod permission;

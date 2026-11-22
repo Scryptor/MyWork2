@@ -2690,6 +2690,8 @@ dependencies = [
  "comemo",
  "mw-docs",
  "mw-domain",
+ "serde",
+ "serde_json",
  "thiserror",
  "typst",
  "typst-layout",

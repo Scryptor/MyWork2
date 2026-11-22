@@ -19,6 +19,8 @@ typst-render = { workspace = true }
 typst-layout = { workspace = true }
 comemo = { workspace = true }
 mw-domain = { path = "../mw-domain" }
+serde = { workspace = true }
+serde_json = { workspace = true }
 
 [dev-dependencies]
 mw-docs = { path = ".", features = ["testing"] }
