@@ -13,6 +13,7 @@
 
 - [Спецификация](docs/superpowers/specs/2026-11-11-mywork3-crossplatform-design.md)
 - [Дорожная карта и планы](docs/superpowers/plans/README.md)
+- [Идеи для программы](docs/superpowers/plans/README.md#идеи-для-программы)
 - [Разбор старой программы](docs/legacy/mywork2-analysis.md)
 - [Репозиторий на GitHub](https://github.com/Scryptor/MyWork2) — issues и pull request'ы
 - [Спецификация интерфейса](docs/superpowers/specs/2026-11-15-ui-design-system-design.md)
