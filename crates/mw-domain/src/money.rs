@@ -1,5 +1,6 @@
 //! Денежный тип проекта: сумма в копейках (`i64`), без чисел с плавающей точкой.
 
+use std::borrow::Cow;
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
@@ -148,22 +149,39 @@ impl Money {
 /// `mw-core`, `tests/documents.rs`).
 pub const DOC_CURRENCY_REPLACEMENTS: [(&str, &str); 3] = [("₽", "руб."), ("₸", "тг"), ("₴", "грн")];
 
+/// Текст для печатного документа: каждый знак из [`DOC_CURRENCY_REPLACEMENTS`] — словом, остальное
+/// как есть. В словах замен знаков нет, так что повторный вызов ничего не меняет.
+pub fn doc_text(text: &str) -> Cow<'_, str> {
+    if !DOC_CURRENCY_REPLACEMENTS
+        .iter()
+        .any(|(sign, _)| text.contains(sign))
+    {
+        return Cow::Borrowed(text);
+    }
+    let mut out = String::with_capacity(text.len() + 8);
+    for c in text.chars() {
+        let mut buf = [0; 4];
+        let sign = &*c.encode_utf8(&mut buf);
+        match DOC_CURRENCY_REPLACEMENTS.iter().find(|(s, _)| *s == sign) {
+            Some((_, word)) => out.push_str(word),
+            None => out.push(c),
+        }
+    }
+    Cow::Owned(out)
+}
+
 /// Сумма для печатного документа: как `formatMoney` в `apps/ui/src/lib/format/money.ts` (примеры в
-/// тестах обеих сторон общие), но знак из [`DOC_CURRENCY_REPLACEMENTS`] заменяется словом; пустой
-/// `symbol` — без знака.
+/// тестах обеих сторон общие), но знак из [`DOC_CURRENCY_REPLACEMENTS`] заменяется словом
+/// ([`doc_text`]); пустой `symbol` — без знака.
 pub fn format_money_doc(m: Money, symbol: &str) -> String {
     let mut text = String::new();
     if m.kopecks() < 0 {
         text.push('\u{2212}');
     }
     text.push_str(&m.unsigned_text('\u{202f}'));
-    let symbol = DOC_CURRENCY_REPLACEMENTS
-        .iter()
-        .find(|(sign, _)| *sign == symbol)
-        .map_or(symbol, |(_, word)| word);
     if !symbol.is_empty() {
         text.push('\u{a0}');
-        text.push_str(symbol);
+        text.push_str(&doc_text(symbol));
     }
     text
 }
@@ -246,6 +264,20 @@ mod tests {
         assert_eq!(format_money_doc(m, "₴"), "1\u{202f}500\u{a0}грн");
         assert_eq!(format_money_doc(m, "руб."), "1\u{202f}500\u{a0}руб.");
         assert_eq!(format_money_doc(m, "Br"), "1\u{202f}500\u{a0}Br");
+    }
+
+    #[test]
+    fn doc_text_replaces_every_sign_the_font_lacks_and_only_once() {
+        assert_eq!(
+            doc_text("Оплата 500 ₽, 2000 ₸ или 70₴."),
+            "Оплата 500 руб., 2000 тг или 70грн."
+        );
+        assert_eq!(doc_text("₽₽"), "руб.руб.");
+        for text in ["Без знаков: $ € руб.", "", "₽ и ₸", "₴"] {
+            let once = doc_text(text);
+            assert_eq!(doc_text(&once), once, "{text:?}");
+        }
+        assert!(matches!(doc_text("1 500 $"), std::borrow::Cow::Borrowed(_)));
     }
 
     #[test]

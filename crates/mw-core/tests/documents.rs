@@ -156,7 +156,7 @@ fn plain_text_turns_mywork2_html_into_lines() {
         ("  <br>текст<br>  ", "текст"),
         ("<font color=\"red\">Важно</font>", "Важно"),
         ("<!-- <br> -->текст", "текст"),
-        ("&copy; 2026 &#0; &#xZZ;", "&copy; 2026 &#0; &#xZZ;"),
+        ("&copy; 2026 &#0; &#xZZ;", "© 2026 &#0; &#xZZ;"),
     ];
     for (html, text) in examples {
         assert_eq!(plain_text(html), text, "{html:?}");
@@ -170,6 +170,78 @@ fn plain_text_turns_mywork2_html_into_lines() {
     ] {
         assert_eq!(plain_text(text), text, "{text:?}");
     }
+}
+
+/// Разметкой считаются только знакомые теги HTML: адреса, ссылки и слова в угловых скобках
+/// остаются текстом.
+#[test]
+fn plain_text_keeps_angle_brackets_that_are_not_html() {
+    for text in [
+        "Пишите: <info@service.ru>",
+        "Сайт <https://service.ru/price>",
+        "<Важно> Без чека не выдаём",
+        "a < b > c",
+        "<a.b> <bra> <pre-order> <b1> <brx>",
+        "Цена &laquo без точки с запятой",
+        "&unknown; &laquo",
+    ] {
+        assert_eq!(plain_text(text), text, "{text:?}");
+    }
+    let examples = [
+        (
+            "&laquo;Пример&raquo; &mdash; &ndash; &hellip;",
+            "«Пример» — – …",
+        ),
+        ("Д&apos;Артаньян &copy; 2026", "Д'Артаньян © 2026"),
+        ("<p>A<p>B", "A\nB"),
+        ("Шапка<div>Текст</div>", "Шапка\nТекст"),
+        (
+            "<table><tr><td>а</td></tr><tr><td>б</td></tr></table>",
+            "а\nб",
+        ),
+        (
+            "Начало<H2 class=\"x\">Раздел</H2>Текст",
+            "Начало\nРаздел\nТекст",
+        ),
+        ("<ol><li>раз<li>два</ol>", "раз\nдва"),
+        ("<P>A</P><P>B</P>", "A\nB"),
+        ("<p>A</p>\n<p>\nB</p>", "A\nB"),
+        ("<!DOCTYPE html><p>Текст</p>", "Текст"),
+        (
+            "<b>жирно</b> <I>курсив</I> <a href=\"x\">ссылка</a>",
+            "жирно курсив ссылка",
+        ),
+        ("<img src=\"logo.png\"/>Текст<hr>", "Текст"),
+        (
+            "<html><head><title></title></head><body>Текст</body></html>",
+            "Текст",
+        ),
+    ];
+    for (html, text) in examples {
+        assert_eq!(plain_text(html), text, "{html:?}");
+    }
+}
+
+/// Без закрывающих `>` и `;` разбор не просматривает остаток текста заново на каждом `<` и `&`.
+#[test]
+fn plain_text_is_linear_on_unclosed_brackets_and_ampersands() {
+    let inputs = [
+        "<&".repeat(50_000),
+        "<a&b".repeat(25_000),
+        "<br ".repeat(25_000),
+        "&#x".repeat(33_000),
+        "<!--".repeat(25_000),
+    ];
+    let started = std::time::Instant::now();
+    for input in &inputs {
+        let out = plain_text(input);
+        assert!(out.len() >= input.len() / 2, "{}", out.len());
+    }
+    let elapsed = started.elapsed();
+    assert!(
+        elapsed < std::time::Duration::from_millis(1000),
+        "{elapsed:?}"
+    );
 }
 
 #[tokio::test]
@@ -382,6 +454,101 @@ fn currency_signs_the_document_font_lacks_are_replaced_by_words() {
     for sign in ["$", "€"] {
         assert!(font_covers(sign).is_empty(), "{sign}");
     }
+}
+
+/// Знаки, которых нет в шрифте, печатаются словами и в свободном тексте: в неисправности, работах,
+/// договорах и сведениях о фирме — так же, как в суммах.
+#[tokio::test]
+async fn currency_signs_in_free_text_print_as_words() -> Result<(), CoreError> {
+    for t in cores().await {
+        t.core
+            .update_settings(
+                &admin(),
+                SettingsPatch {
+                    issue_terms: Some("Диагностика — 500 ₽, для Казахстана 2000 ₸.".into()),
+                    firm_details: Some("Оплата в ₴ не принимается".into()),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        let order = t
+            .core
+            .create_order(
+                &admin(),
+                NewOrder {
+                    malfunction: "Не включается после ремонта за 3000 ₽".into(),
+                    ..sample_new_order()
+                },
+            )
+            .await?;
+        let order = t
+            .core
+            .update_order(
+                &admin(),
+                order.id,
+                order.version,
+                OrderPatch {
+                    work_done: Some("Замена платы (₸ 15 000)".into()),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        let out = text(&t, request(DocumentKind::IssueAct, Some(order.id))).await;
+        assert!(
+            font_covers(&out).is_empty(),
+            "{}: {:?} в {out:?}",
+            t.label,
+            font_covers(&out)
+        );
+        assert_twice(
+            t.label,
+            &out,
+            &[
+                "Диагностика — 500 руб., для Казахстана 2000 тг.".into(),
+                "Оплата в грн не принимается".into(),
+                "НеисправностьНе включается после ремонта за 3000 руб.".into(),
+                "Выполненные работыЗамена платы (тг 15 000)".into(),
+            ],
+        );
+    }
+    Ok(())
+}
+
+/// Знак валюты с пробелами по краям — как в интерфейсе: обрезанный, а пустой — «₽» (в документе
+/// «руб.»).
+#[tokio::test]
+async fn a_blank_or_padded_currency_symbol_prints_as_the_interface_shows_it()
+-> Result<(), CoreError> {
+    for t in cores().await {
+        let order = t
+            .core
+            .create_order(
+                &admin(),
+                NewOrder {
+                    prepayment: Money::from_rubles(1500),
+                    ..sample_new_order()
+                },
+            )
+            .await?;
+        for (symbol, shown) in [("  ", "руб."), (" ₽ ", "руб."), (" $ ", "$")] {
+            t.core
+                .update_settings(
+                    &admin(),
+                    SettingsPatch {
+                        currency_symbol: Some(symbol.into()),
+                        ..Default::default()
+                    },
+                )
+                .await?;
+            let out = text(&t, request(DocumentKind::IntakeAct, Some(order.id))).await;
+            assert_twice(
+                t.label,
+                &out,
+                &[format!("Предоплата{}", sum(&format!("1 500_{shown}")))],
+            );
+        }
+    }
+    Ok(())
 }
 
 /// Ruling 12: the sample is the sample order on the firm's own details; an empty setting keeps the

@@ -186,6 +186,30 @@ async fn without_an_order_the_blank_and_calibration_print_and_the_rest_are_sampl
     }
 }
 
+/// Документы с данными клиента не оседают в кэше браузера и прокси: оба маршрута, PDF и PNG.
+#[tokio::test]
+async fn documents_are_never_cached() {
+    for t in apis(Listen::Network).await {
+        let token = t.admin_token().await;
+        let order = create_order(&t, &token, new_order("Иван", "", "A", "B")).await;
+        let id = order["id"].as_i64().unwrap();
+        for path in [
+            format!("/api/v1/orders/{id}/documents/intake_act"),
+            format!("/api/v1/orders/{id}/documents/sticker?format=png"),
+            "/api/v1/documents/issue_act".to_owned(),
+            "/api/v1/documents/calibration?format=png".to_owned(),
+        ] {
+            let (status, headers, _) = t.get_raw(&path, &token).await;
+            assert_eq!(status, 200, "{}: {path}", t.label);
+            assert_eq!(
+                headers["cache-control"], "private, no-store",
+                "{}: {path}",
+                t.label
+            );
+        }
+    }
+}
+
 #[tokio::test]
 async fn documents_need_a_signed_in_user() {
     for t in apis(Listen::Network).await {

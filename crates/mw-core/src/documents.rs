@@ -3,18 +3,22 @@
 //! Значения полей (`mw_docs::fields`) собираются здесь как текст; в разметку Typst они не попадают —
 //! генератор читает их из `data.json` внутри документа.
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 
 use chrono::{Datelike, NaiveDate};
 use mw_db::entity::service_point;
 use mw_docs::{DocsError, DocumentData, RenderOptions, Rendered, sample_data, standard_template};
 use mw_domain::documents::DocumentKind;
-use mw_domain::money::{Money, format_money_doc};
+use mw_domain::money::{Money, doc_text, format_money_doc};
 use mw_domain::phone::format_phone;
 use mw_domain::validation::FieldError;
 use sea_orm::EntityTrait;
 
 use crate::{Actor, AppSettings, Client, Core, CoreError, Order};
+
+/// Знак валюты, когда в настройках он пустой (как `DEFAULT_CURRENCY` интерфейса).
+const DEFAULT_CURRENCY: &str = "₽";
 
 /// Сколько документов строится одновременно; остальные ждут своей очереди.
 pub(crate) const MAX_CONCURRENT_RENDERS: usize = 2;
@@ -107,8 +111,8 @@ pub struct DocumentFile {
 impl Core {
     /// Документ в PDF или PNG. API документов зовёт только этот метод: рендер и выгрузка в байты
     /// идут одним заданием под ограничителем рендера (растр A4 тяжелее самой компиляции). Данные и
-    /// проверки — те же, что у [`Core::render_document`]. Неверный `dpi` у PNG — ошибка проверки
-    /// поля `dpi`.
+    /// проверки — те же, что у `Core::render_document` (он только для тестов). Неверный `dpi` у
+    /// PNG — ошибка проверки поля `dpi`.
     pub async fn export_document(
         &self,
         actor: &Actor,
@@ -140,8 +144,9 @@ impl Core {
     /// Строит документ. Из заказа — с теми же правами, что и просмотр заказа (`get_order`): нужен
     /// `order_id` (он важнее `sample`) или `sample`, иначе ошибка проверки. Пустой акт приёма и
     /// калибровка — всегда без заказа. Рендер идёт вне рабочих потоков, не больше
-    /// [`MAX_CONCURRENT_RENDERS`] одновременно. Для текста документа (`Rendered::text`); байты для
-    /// печати отдаёт [`Core::export_document`].
+    /// [`MAX_CONCURRENT_RENDERS`] одновременно. Для текста документа (`Rendered::text`) в тестах;
+    /// байты для печати отдаёт [`Core::export_document`].
+    #[cfg(any(test, feature = "testing"))]
     pub async fn render_document(
         &self,
         actor: &Actor,
@@ -175,8 +180,22 @@ impl Core {
             })
     }
 
-    /// Значения полей документа.
+    /// Значения полей документа; знаки валют, которых нет в шрифте, в них — словами ([`doc_text`]).
     pub(crate) async fn document_data(
+        &self,
+        actor: &Actor,
+        req: &DocumentRequest,
+    ) -> Result<DocumentData, CoreError> {
+        let mut data = self.field_values(actor, req).await?;
+        for value in data.values.values_mut() {
+            if let Cow::Owned(text) = doc_text(value) {
+                *value = text;
+            }
+        }
+        Ok(data)
+    }
+
+    async fn field_values(
         &self,
         actor: &Actor,
         req: &DocumentRequest,
@@ -268,7 +287,11 @@ fn order_data(
     settings: &AppSettings,
     today: NaiveDate,
 ) -> DocumentData {
-    let symbol = settings.currency_symbol.as_str();
+    // Как в интерфейсе (`setCurrencySymbol`): знак без пробелов по краям, пустой — «₽».
+    let symbol = match settings.currency_symbol.trim() {
+        "" => DEFAULT_CURRENCY,
+        symbol => symbol,
+    };
     let money = |m: Money| format_money_doc(m, symbol);
     let positive = |m: Money| {
         if m > Money::ZERO {
@@ -404,70 +427,158 @@ fn amount_due(final_price: Option<Money>, prepayment: Money, discount: Money) ->
 /// Текст из настроек для печати: HTML из MyWork 2 — простым текстом с переносами строк, обычный
 /// текст — как есть.
 ///
-/// `<br>`, `</p>`, `</div>`, `</li>` — перевод строки (и перевод строки сразу за ними в исходном
-/// тексте с ним сливается: MyWork 2 вставлял текст в HTML, где он ничего не значил); остальные теги
-/// и комментарии убираются; `&nbsp; &amp; &lt; &gt; &quot; &#NNN; &#xHH;` раскрываются, незнакомое
-/// остаётся как написано. Больше двух переводов строк подряд — два, края обрезаются.
+/// Тег — только знакомый элемент HTML (`HTML_ELEMENTS`, без учёта регистра), за именем которого
+/// пробел, `/` или `>`: `<info@service.ru>`, `<https://…>` и `<Важно>` — текст. `<br>` и конец
+/// `p`, `div`, `li`, `tr`, `h1`–`h6` — перевод строки, начало `p`, `div`, `li`, `tr`, `h1`–`h6` —
+/// тоже, если строка уже начата (перевод строки сразу за ними в исходном тексте с ним сливается:
+/// MyWork 2 вставлял текст в HTML, где он ничего не значил); остальные теги и комментарии
+/// убираются. `&nbsp; &amp; &lt; &gt; &quot; &apos; &laquo; &raquo; &mdash; &ndash; &hellip;
+/// &copy; &#NNN; &#xHH;` раскрываются, незнакомое остаётся как написано. Больше двух переводов
+/// строк подряд — два, края обрезаются. Время — линейное от длины текста.
 pub fn plain_text(html_or_text: &str) -> String {
     let text = html_or_text.replace("\r\n", "\n").replace('\r', "\n");
-    let mut out = String::with_capacity(text.len());
+    // Комментарий без конца дальше по тексту — не комментарий; так `<!--` не ищет `-->` до конца
+    // текста раз за разом.
+    let last_comment_end = text.rfind("-->");
+    let mut out = Lines::default();
     let mut rest = text.as_str();
     while let Some(at) = rest.find(['<', '&']) {
-        out.push_str(&rest[..at]);
+        out.push(&rest[..at]);
         rest = &rest[at..];
-        if let Some((len, breaks)) = tag(rest) {
+        let offset = text.len() - rest.len();
+        let comment_may_end = last_comment_end.is_some_and(|end| end >= offset + "<!--".len());
+        if let Some((len, kind)) = tag(rest, comment_may_end) {
             rest = &rest[len..];
-            if breaks {
-                out.push('\n');
+            match kind {
+                TagKind::Inline => {}
+                TagKind::LineBreak => out.line_break(),
+                TagKind::Block => {
+                    if !out.at_line_start {
+                        out.line_break();
+                    }
+                }
+            }
+            if kind != TagKind::Inline {
                 rest = after_source_line_break(rest);
             }
         } else if let Some((len, c)) = entity(rest) {
-            out.push(c);
+            out.push(c.encode_utf8(&mut [0; 4]));
             rest = &rest[len..];
         } else {
             // `<` или `&`, за которыми нет разметки, — обычный знак (оба однобайтовые).
-            out.push_str(&rest[..1]);
+            out.push(&rest[..1]);
             rest = &rest[1..];
         }
     }
-    out.push_str(rest);
-    at_most_two_line_breaks(out.trim())
+    out.push(rest);
+    at_most_two_line_breaks(out.text.trim())
 }
 
-/// Тег или комментарий в начале `s`: его длина и признак «переносит строку». Тег начинается с `<`,
-/// за которым латинская буква, `/`, `!` или `?`, и кончается первым `>`; иначе это не тег.
-fn tag(s: &str) -> Option<(usize, bool)> {
+/// Простой текст и признак «строка ещё не начата» (в ней одни пробелы).
+struct Lines {
+    text: String,
+    at_line_start: bool,
+}
+
+impl Default for Lines {
+    fn default() -> Self {
+        Self {
+            text: String::new(),
+            at_line_start: true,
+        }
+    }
+}
+
+impl Lines {
+    fn push(&mut self, s: &str) {
+        self.text.push_str(s);
+        if let Some(last) = s.trim_end_matches([' ', '\t']).chars().last() {
+            self.at_line_start = last == '\n';
+        }
+    }
+
+    fn line_break(&mut self) {
+        self.push("\n");
+    }
+}
+
+/// Элементы HTML, которые встречаются в текстах MyWork 2, через пробел; `<` с другим словом —
+/// обычный текст. Элементы-строки: их начало и конец — граница строки.
+const HTML_ELEMENTS: &str = "a b big blockquote body br center div em font h1 h2 h3 h4 h5 h6 head \
+    hr html i img li meta nobr ol p pre s small span strike strong sub sup table tbody td th thead \
+    title tr u ul wbr !doctype";
+const LINE_ELEMENTS: &str = "p div li tr h1 h2 h3 h4 h5 h6";
+
+/// Дальше этого тег не ищет свой `>`, сущность — свою `;` (байты).
+const TAG_WINDOW: usize = 1024;
+const ENTITY_WINDOW: usize = 10;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TagKind {
+    /// Убирается.
+    Inline,
+    /// `<br>` и конец элемента-строки: перевод строки.
+    LineBreak,
+    /// Начало элемента-строки: перевод строки, если строка уже начата.
+    Block,
+}
+
+/// Начало `s` не длиннее `max` байт, по границе знака.
+fn window(s: &str, max: usize) -> &str {
+    let mut end = s.len().min(max);
+    while !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    &s[..end]
+}
+
+/// Тег или комментарий в начале `s`: его длина и что он значит для строк. `comment_may_end` —
+/// дальше в тексте есть `-->`.
+fn tag(s: &str, comment_may_end: bool) -> Option<(usize, TagKind)> {
     let body = s.strip_prefix('<')?;
     if let Some(comment) = body.strip_prefix("!--") {
+        if !comment_may_end {
+            return None;
+        }
         let end = comment.find("-->")?;
-        return Some(("<!--".len() + end + "-->".len(), false));
+        return Some(("<!--".len() + end + "-->".len(), TagKind::Inline));
     }
     let (closing, name_start) = match body.strip_prefix('/') {
         Some(name_start) => (true, name_start),
         None => (false, body),
     };
-    if !name_start.starts_with(|c: char| c.is_ascii_alphabetic() || c == '!' || c == '?') {
+    let name_len = name_start
+        .bytes()
+        .take(12)
+        .take_while(|b| b.is_ascii_alphanumeric() || *b == b'!')
+        .count();
+    let (name, after_name) = name_start.split_at(name_len);
+    let known = |list: &str| list.split(' ').any(|e| e.eq_ignore_ascii_case(name));
+    if !known(HTML_ELEMENTS)
+        || !after_name.starts_with(|c: char| c.is_whitespace() || c == '/' || c == '>')
+    {
         return None;
     }
-    let end = body.find('>')?;
-    if body[..end].contains('<') {
-        return None;
-    }
-    let name = name_start
-        .chars()
-        .take_while(char::is_ascii_alphanumeric)
-        .collect::<String>()
-        .to_ascii_lowercase();
-    let breaks = name == "br" || (closing && matches!(name.as_str(), "p" | "div" | "li"));
-    Some(("<".len() + end + ">".len(), breaks))
+    // До своего `>`, не через другой `<`.
+    let end = window(after_name, TAG_WINDOW)
+        .find(['<', '>'])
+        .filter(|&end| after_name[end..].starts_with('>'))?;
+    let len = s.len() - after_name.len() + end + ">".len();
+    let kind = if name.eq_ignore_ascii_case("br") || (closing && known(LINE_ELEMENTS)) {
+        TagKind::LineBreak
+    } else if known(LINE_ELEMENTS) {
+        TagKind::Block
+    } else {
+        TagKind::Inline
+    };
+    Some((len, kind))
 }
 
 /// Знакомая HTML-сущность в начале `s`: её длина и знак. Управляющие знаки, кроме перевода строки
 /// и табуляции, не раскрываются.
 fn entity(s: &str) -> Option<(usize, char)> {
     let body = s.strip_prefix('&')?;
-    // Самая длинная — `#x10FFFF`.
-    let end = body.find(';').filter(|&end| end <= "#x10FFFF".len())?;
+    let end = window(body, ENTITY_WINDOW).find(';')?;
     let name = &body[..end];
     let c = match name {
         "nbsp" => '\u{a0}',
@@ -475,6 +586,13 @@ fn entity(s: &str) -> Option<(usize, char)> {
         "lt" => '<',
         "gt" => '>',
         "quot" => '"',
+        "apos" => '\'',
+        "laquo" => '«',
+        "raquo" => '»',
+        "mdash" => '—',
+        "ndash" => '–',
+        "hellip" => '…',
+        "copy" => '©',
         _ => {
             let code = name.strip_prefix('#')?;
             let value = match code.strip_prefix(['x', 'X']) {
