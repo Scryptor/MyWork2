@@ -1,10 +1,18 @@
 {
 	"$schema": "../gen/schemas/desktop-schema.json",
 	"identifier": "default",
-	"description": "Окно программы на адресе встроенного сервера: только выбор папки и события окна.",
+	"description": "Окно программы на адресе встроенного сервера: выбор папки, события окна, принтеры и печать.",
 	"windows": ["main"],
 	"remote": {
 		"urls": ["http://127.0.0.1:*"]
 	},
-	"permissions": ["core:event:allow-listen", "core:event:allow-unlisten", "dialog:allow-open"]
+	"permissions": [
+		"core:event:allow-listen",
+		"core:event:allow-unlisten",
+		"dialog:allow-open",
+		"allow-list-printers",
+		"allow-print-format",
+		"allow-print-pdf",
+		"allow-print-pages"
+	]
 }

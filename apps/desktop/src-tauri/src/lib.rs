@@ -1,11 +1,13 @@
 //! Программа MyWork для компьютера: окно Tauri над встроенным сервером.
 //!
 //! Сервер (`mw-server`) слушает 127.0.0.1 и раздаёт интерфейс; окно открывает его адрес, и интерфейс
-//! говорит с сервером по HTTP, как в браузере. Через Tauri идут только выбор папки (`tauri-plugin-dialog`)
-//! и события окна. Одна копия на папку данных (`mw_server::lock`), закрытие окна останавливает сервер штатно.
+//! говорит с сервером по HTTP, как в браузере. Через Tauri идут только выбор папки (`tauri-plugin-dialog`),
+//! события окна и печать на принтер этого компьютера (`print`). Одна копия на папку данных (`mw_server::lock`),
+//! закрытие окна останавливает сервер штатно.
 
 pub mod launch;
 pub mod navigation;
+pub mod print;
 
 use mw_server::LogGuard;
 use mw_server::lock::{self, DataDirLock, LockError};
@@ -109,6 +111,12 @@ pub fn run() {
     };
     let built = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .invoke_handler(tauri::generate_handler![
+            print::list_printers,
+            print::print_format,
+            print::print_pdf,
+            print::print_pages
+        ])
         .manage(desktop)
         .setup(move |app| {
             let _ = APP.set(app.handle().clone());
@@ -408,9 +416,10 @@ mod tests {
         assert_eq!(names, vec![std::ffi::OsString::from(CRASH_FILE)]);
     }
 
-    /// Права окна — узкие: только адрес встроенного сервера, только выбор папки и события окна.
+    /// Права окна — узкие: только адрес встроенного сервера, только выбор папки, события окна и печать.
     #[test]
-    fn the_window_rights_reach_only_the_embedded_server_and_only_folder_and_window_events() {
+    fn the_window_rights_reach_only_the_embedded_server_and_only_folders_window_events_and_printing()
+     {
         let capability: serde_json::Value =
             serde_json::from_str(include_str!("../capabilities/default.json")).unwrap();
         assert_eq!(capability["windows"], serde_json::json!([MAIN_WINDOW]));
@@ -419,7 +428,11 @@ mod tests {
             serde_json::json!([
                 "core:event:allow-listen",
                 "core:event:allow-unlisten",
-                "dialog:allow-open"
+                "dialog:allow-open",
+                "allow-list-printers",
+                "allow-print-format",
+                "allow-print-pdf",
+                "allow-print-pages"
             ])
         );
         let urls = capability["remote"]["urls"].as_array().unwrap();

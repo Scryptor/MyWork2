@@ -21,7 +21,8 @@ name = "mw-desktop"
 path = "src/main.rs"
 
 [lints.rust]
-unsafe_code = "forbid"
+# `unsafe` — только в вызовах winspool и GDI (`print/windows.rs`, модуль `gdi` разрешает его себе).
+unsafe_code = "deny"
 
 [lints.clippy]
 unwrap_used = "deny"
@@ -32,14 +33,26 @@ tauri-build = { version = "2.7", features = [] }
 
 [dependencies]
 mw-server = { path = "../../../crates/mw-server" }
+base64 = "0.22"
 chrono = "0.4"
 open = "5"
+serde = { version = "1", features = ["derive"] }
 tauri = { version = "2.12", features = [] }
 tauri-plugin-dialog = "2.8"
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
 tracing = "0.1"
 serde_json = "1"
 url = "2"
+
+# Печать в Windows: принтеры (winspool), GDI и задание печати; страницы PNG от сервера.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_Graphics_Printing",
+    "Win32_Storage_Xps",
+] }
+image = { version = "0.25", default-features = false, features = ["png"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros", "net", "io-util"] }

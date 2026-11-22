@@ -3779,9 +3779,12 @@ dependencies = [
 name = "mw-desktop"
 version = "0.0.1"
 dependencies = [
+ "base64 0.22.1",
  "chrono",
+ "image",
  "mw-server",
  "open",
+ "serde",
  "serde_json",
  "tauri",
  "tauri-build",
@@ -3790,6 +3793,7 @@ dependencies = [
  "tokio",
  "tracing",
  "url",
+ "windows",
 ]
 
 [[package]]
