@@ -54,6 +54,7 @@
 	}
 </script>
 
+<!-- svelte-ignore a11y_interactive_supports_focus -->
 <div
 	class="swatches"
 	role="radiogroup"

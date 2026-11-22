@@ -141,6 +141,35 @@ describe('printing an order', () => {
 		expect(print.printDocument).toHaveBeenCalledWith('sticker', { orderId: 7 });
 	});
 
+	it('what is typed is not saved: nothing is printed and the notice says why', async () => {
+		const ed = editor(order(7), 'error');
+		const actions = new OrderActions(() => ed);
+		await actions.print('sticker');
+		expect(print.printDocument).not.toHaveBeenCalled();
+		expect(toast.items.map((t) => [t.message, t.tone])).toEqual([
+			[
+				'Не напечатано: изменения № 7 не сохранены (Нет связи с сервером). Документ напечатался бы без них',
+				'danger'
+			]
+		]);
+	});
+
+	it('the preview still opens over an unsaved order, with a warning that it shows what is saved', async () => {
+		const ed = editor(order(7), 'conflict');
+		const actions = new OrderActions(() => ed);
+		await actions.preview('intake_act', ['intake_act', 'sticker']);
+		expect(print.openPreview).toHaveBeenCalledWith('intake_act', { orderId: 7 }, [
+			'intake_act',
+			'sticker'
+		]);
+		expect(toast.items.map((t) => [t.message, t.tone])).toEqual([
+			[
+				'В предпросмотре — сохранённый заказ: изменения № 7 не сохранены (Заказ изменили на другом компьютере)',
+				'neutral'
+			]
+		]);
+	});
+
 	it('the issue prints the issue act after it is saved, when «Печатать акт выдачи» is on', async () => {
 		const o = order(7, { status_id: 3 });
 		const issued = { ...o, status_id: ISSUED, issued_at: '2026-11-20T12:00:00', version: 2 };
@@ -155,7 +184,8 @@ describe('printing an order', () => {
 		});
 		await settle();
 		expect(on.actions.issueOpen).toBe(false);
-		expect(print.printDocument).toHaveBeenCalledWith('issue_act', { orderId: 7 });
+		// The first issue: the ordinary act.
+		expect(print.printDocument).toHaveBeenCalledExactlyOnceWith('issue_act', { orderId: 7 });
 
 		vi.clearAllMocks();
 		printSettings.set({ onIssue: { act: false } });
@@ -168,6 +198,25 @@ describe('printing an order', () => {
 		});
 		await settle();
 		expect(print.printDocument).not.toHaveBeenCalled();
+	});
+
+	it('a re-issue after a warranty case prints the issue act after warranty: the order had an issue date', async () => {
+		// The warranty intake keeps the first issue date, and the re-issue keeps it too.
+		const o = order(8, { status_id: 3, issued_at: '2026-11-01T10:00:00' });
+		const reissued = { ...o, status_id: ISSUED, version: 2 };
+		const on = shown(o, reissued);
+		on.actions.issueOpen = true;
+		await on.actions.issue({
+			work_done: '',
+			master_user_id: null,
+			final_price: null,
+			discount: 0,
+			warranty: ''
+		});
+		await settle();
+		expect(print.printDocument).toHaveBeenCalledExactlyOnceWith('warranty_issue_act', {
+			orderId: 8
+		});
 	});
 
 	it('the warranty case prints its intake act when «Печатать акт приёма по гарантии» is on', async () => {

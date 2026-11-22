@@ -52,6 +52,12 @@
 		'calibration'
 	];
 
+	/** The sample is drawn with what is typed: the save of it (in its pause or on its way) comes first. */
+	async function sample(kind: DocumentKind) {
+		await editor.flush();
+		openPreview(kind, {});
+	}
+
 	onDestroy(() => {
 		void editor.flush().finally(() => editor.dispose());
 	});
@@ -101,7 +107,7 @@
 					<Button
 						size="sm"
 						aria-label={ru.print.sampleOf(documentName(kind))}
-						onclick={() => openPreview(kind, {})}>{ru.print.sampleButton}</Button
+						onclick={() => void sample(kind)}>{ru.print.sampleButton}</Button
 					>
 				</li>
 			{/each}

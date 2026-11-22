@@ -17,9 +17,14 @@ const platform = vi.hoisted(() => ({
 vi.mock('#lib/print/platform.js', () => platform);
 const documents = vi.hoisted(() => ({ documentPdf: vi.fn(), documentPages: vi.fn() }));
 vi.mock('#lib/api/documents.js', () => documents);
+const navigation = vi.hoisted(() => ({ goto: vi.fn(async () => {}) }));
+vi.mock('$app/navigation', () => navigation);
+vi.mock('$app/paths', () => ({ resolve: (p: string) => `/${p}` }));
 
 import {
+	ACT_DPI,
 	documentOptions,
+	issueKind,
 	menuDocuments,
 	openPreview,
 	preview,
@@ -66,6 +71,15 @@ afterEach(() => {
 const toasts = () => toast.items.map((t) => [t.message, t.tone, t.action?.label]);
 
 describe('the printer of a document', () => {
+	const ACTS = [
+		'intake_act',
+		'issue_act',
+		'warranty_intake_act',
+		'warranty_issue_act',
+		'blank_intake_act'
+	] as const;
+	const LABELS = ['sticker', 'calibration'] as const;
+
 	beforeEach(() =>
 		printSettings.set({
 			actPrinter: 'Акты HP',
@@ -74,35 +88,36 @@ describe('the printer of a document', () => {
 			labelCopies: 3,
 			labelMm: [40, 30],
 			offsetMm: [1.5, -1],
-			dpi: 300
+			dpi: 600
 		})
 	);
 
-	it('acts go to the act printer on A4, without the label and its offset', () => {
-		for (const kind of [
-			'intake_act',
-			'issue_act',
-			'warranty_intake_act',
-			'warranty_issue_act',
-			'blank_intake_act'
-		] as const) {
-			expect(printTarget(kind)).toEqual({ printer: 'Акты HP', copies: 2, mediaMm: null });
-			expect(documentOptions(kind)).toEqual({ printerDpi: 300 });
+	it('acts go to the act printer on A4 at 300 dpi, whatever the label printer’s resolution', () => {
+		expect(ACT_DPI).toBe(300);
+		for (const dpi of [203, 600] as const) {
+			printSettings.set({ dpi });
+			for (const kind of ACTS) {
+				expect(printTarget(kind)).toEqual({ printer: 'Акты HP', copies: 2, mediaMm: null });
+				expect(documentOptions(kind)).toEqual({ printerDpi: 300 });
+			}
 		}
 	});
 
-	it('the sticker and the calibration go to the label printer in the label’s size and offset', () => {
-		for (const kind of ['sticker', 'calibration'] as const) {
-			expect(printTarget(kind)).toEqual({
-				printer: 'Xprinter XP-365B',
-				copies: 3,
-				mediaMm: [40, 30]
-			});
-			expect(documentOptions(kind)).toEqual({
-				printerDpi: 300,
-				labelMm: [40, 30],
-				offsetMm: [1.5, -1]
-			});
+	it('the sticker and the calibration go to the label printer in its size, offset and resolution', () => {
+		for (const dpi of [203, 600] as const) {
+			printSettings.set({ dpi });
+			for (const kind of LABELS) {
+				expect(printTarget(kind)).toEqual({
+					printer: 'Xprinter XP-365B',
+					copies: 3,
+					mediaMm: [40, 30]
+				});
+				expect(documentOptions(kind)).toEqual({
+					printerDpi: dpi,
+					labelMm: [40, 30],
+					offsetMm: [1.5, -1]
+				});
+			}
 		}
 	});
 
@@ -111,7 +126,7 @@ describe('the printer of a document', () => {
 		expect(documents.documentPdf).toHaveBeenCalledWith(
 			'sticker',
 			{ orderId: 42 },
-			{ printerDpi: 300, labelMm: [40, 30], offsetMm: [1.5, -1] }
+			{ printerDpi: 600, labelMm: [40, 30], offsetMm: [1.5, -1] }
 		);
 		expect(platform.printPdf).toHaveBeenCalledWith({
 			printer: 'Xprinter XP-365B',
@@ -123,7 +138,19 @@ describe('the printer of a document', () => {
 		expect(preview.current).toBeNull();
 	});
 
-	it('Windows: pages of PNG in the printer’s resolution, the barcode fitted to the same dots', async () => {
+	it('a PDF larger than one piece of the base64 encoder goes whole', async () => {
+		// 0x8000 bytes a piece: three pieces and a bit, every byte value.
+		const bytes = Uint8Array.from({ length: 3 * 0x8000 + 17 }, (_, i) => (i * 7 + 3) % 256);
+		documents.documentPdf.mockResolvedValue({
+			blob: new Blob([bytes], { type: 'application/pdf' }),
+			filename: 'akt-priema-42.pdf'
+		});
+		await printDocument('intake_act', { orderId: 42 });
+		const sent = platform.printPdf.mock.calls[0]![0].pdfBase64 as string;
+		expect(Uint8Array.from(atob(sent), (c) => c.charCodeAt(0))).toEqual(bytes);
+	});
+
+	it('Windows: an act in pages of PNG at 300 dpi, its barcode fitted to the same dots', async () => {
 		platform.printFormat.mockResolvedValue('png');
 		await printDocument('intake_act', { orderId: 42 });
 		expect(documents.documentPdf).not.toHaveBeenCalled();
@@ -141,6 +168,20 @@ describe('the printer of a document', () => {
 			copies: 2
 		});
 		expect(toasts()).toEqual([['Отправлено на Акты HP', 'success', undefined]]);
+	});
+
+	it('Windows: a label in pages of PNG at the label printer’s resolution', async () => {
+		platform.printFormat.mockResolvedValue('png');
+		documents.documentPages.mockResolvedValue({ ...PAGES, dpi: 600 });
+		await printDocument('sticker', { orderId: 42 });
+		expect(documents.documentPages).toHaveBeenCalledWith(
+			'sticker',
+			{ orderId: 42 },
+			{ printerDpi: 600, labelMm: [40, 30], offsetMm: [1.5, -1], dpi: 600 }
+		);
+		expect(platform.printPages).toHaveBeenCalledWith(
+			expect.objectContaining({ printer: 'Xprinter XP-365B', dpi: 600, copies: 3 })
+		);
 	});
 
 	it('«Принтер по умолчанию» is the system’s default printer, named in the notice', async () => {
@@ -181,6 +222,19 @@ describe('without a printer: the preview', () => {
 		await printDocument('sticker', { orderId: 7 });
 		expect(preview.current?.kind).toBe('sticker');
 		expect(platform.printPdf).not.toHaveBeenCalled();
+	});
+
+	it('asked from the preview (no preview): a notice with «Настройки печати», the preview does not come back', async () => {
+		platform.listPrinters.mockResolvedValue([{ name: 'Акты HP', is_default: false }]);
+		await printDocument('intake_act', { orderId: 7 }, { noPreview: true });
+		expect(preview.current).toBeNull();
+		expect(platform.printPdf).not.toHaveBeenCalled();
+		expect(toasts()).toEqual([
+			['Принтер не выбран, а принтера по умолчанию в системе нет', 'danger', 'Настройки печати']
+		]);
+		await toast.items[0]!.action!.run();
+		expect(navigation.goto).toHaveBeenCalledWith('/settings/print');
+		expect(preview.current).toBeNull();
 	});
 
 	it('the program saying «Принтер по умолчанию не задан» is the same case', async () => {
@@ -280,6 +334,24 @@ describe('several documents', () => {
 		expect(preview.current).toBeNull();
 	});
 
+	it('over a form that stays open: without a printer a notice, never a preview over it', async () => {
+		platform.listPrinters.mockResolvedValue([{ name: 'Акты HP', is_default: false }]);
+		await printDocuments(['intake_act', 'sticker'], { orderId: 9 }, { noPreview: true });
+		expect(preview.current).toBeNull();
+		expect(platform.printPdf).not.toHaveBeenCalled();
+		expect(toasts()).toContainEqual([
+			'Принтер не выбран, а принтера по умолчанию в системе нет',
+			'danger',
+			'Настройки печати'
+		]);
+	});
+
+	it('over a form that stays open: with a printer each goes to it', async () => {
+		await printDocuments(['intake_act', 'sticker'], { orderId: 9 }, { noPreview: true });
+		expect(platform.printPdf.mock.calls.map(([a]) => a.printer)).toEqual(['Акты HP', 'Акты HP']);
+		expect(preview.current).toBeNull();
+	});
+
 	it('the same document asked again while its preview is open is not queued twice', () => {
 		openPreview('intake_act', { orderId: 9 });
 		openPreview('intake_act', { orderId: 9 });
@@ -301,9 +373,7 @@ describe('«Сохранить PDF»', () => {
 		expect(documents.documentPdf).toHaveBeenCalledWith(
 			'intake_act',
 			{ orderId: 42 },
-			{
-				printerDpi: 203
-			}
+			{ printerDpi: 300 }
 		);
 		expect(names).toEqual(['akt-priema-42.pdf']);
 		click.mockRestore();
@@ -392,5 +462,12 @@ describe('Ctrl/⌘P', () => {
 		press();
 		await settle();
 		expect([panel.mock.calls.length, card.mock.calls.length]).toEqual([1, 1]);
+	});
+});
+
+describe('the act of an issue', () => {
+	it('is the issue act the first time, the one after warranty once the order had an issue date', () => {
+		expect(issueKind(false)).toBe('issue_act');
+		expect(issueKind(true)).toBe('warranty_issue_act');
 	});
 });

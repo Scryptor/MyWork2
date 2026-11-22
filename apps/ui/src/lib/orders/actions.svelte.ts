@@ -12,6 +12,7 @@ import { undo } from '#lib/app/undo.svelte.js';
 import { registerHotkey } from '#lib/design/hotkeys.svelte.js';
 import { ru } from '#lib/i18n/ru.js';
 import {
+	issueKind,
 	openPreview,
 	printDocument,
 	printShortcut,
@@ -26,10 +27,13 @@ import type { IssueValues } from './IssueDialog.svelte';
 const t = ru.order;
 
 /** Why the order's own changes are not saved: the failed save, or a conflict waiting for a choice. */
+function unsavedReason(ed: OrderEditor): string {
+	return ed.conflicts.size > 0 ? t.conflictTitle : (ed.lost ?? saveErrorText(ed.autosave.error));
+}
+
+/** «Изменения № N не сохранены: …». */
 export function unsavedText(ed: OrderEditor): string {
-	const reason =
-		ed.conflicts.size > 0 ? t.conflictTitle : (ed.lost ?? saveErrorText(ed.autosave.error));
-	return t.unsaved(ed.order.id, reason);
+	return t.unsaved(ed.order.id, unsavedReason(ed));
 }
 
 /**
@@ -165,8 +169,10 @@ export class OrderActions {
 		undo.push(t.statusChanged(id, app.statusById(o.status_id)?.name ?? ''), () =>
 			this.#undoIssue(id, before.status, clearIssuedAt)
 		);
-		// «Печатать акт выдачи»: the order is issued already, a failure to print is only told.
-		if (printSettings.onIssue.act) void printDocument('issue_act', { orderId: id });
+		// «Печатать акт выдачи»: the order is issued already, a failure to print is only told. Issued before
+		// (a re-issue after a warranty case): the act after warranty.
+		if (printSettings.onIssue.act)
+			void printDocument(issueKind(before.issuedAt !== null), { orderId: id });
 	}
 
 	async #undoIssue(id: number, statusId: number, clearIssuedAt: boolean): Promise<void> {
@@ -207,19 +213,36 @@ export class OrderActions {
 		if (printSettings.onIntake.act) void printDocument('warranty_intake_act', { orderId: id });
 	}
 
-	/** Prints a document of the order shown, once what is typed is saved: the server prints what it has. */
+	/**
+	 * Prints a document of the order shown, once what is typed is saved: the server prints what it has.
+	 * When the save fails (or waits for a conflict to be decided) nothing is printed: a notice says why.
+	 */
 	async print(kind: DocumentKind): Promise<void> {
 		const ed = this.editor;
 		if (!ed) return;
-		await ed.flush();
+		if (!(await ed.flush())) {
+			toast.show({
+				message: ru.print.notPrintedUnsaved(ed.order.id, unsavedReason(ed)),
+				tone: 'danger'
+			});
+			return;
+		}
 		await printDocument(kind, { orderId: ed.order.id });
 	}
 
-	/** The preview of a document of the order shown, after the save; it can switch to the others. */
+	/**
+	 * The preview of a document of the order shown, after the save; it can switch to the others. Over a
+	 * save that failed it opens all the same, with a notice: it shows the order as saved.
+	 */
 	async preview(kind: DocumentKind, kinds: readonly DocumentKind[]): Promise<void> {
 		const ed = this.editor;
 		if (!ed) return;
-		await ed.flush();
+		if (!(await ed.flush())) {
+			toast.show({
+				message: ru.print.previewUnsaved(ed.order.id, unsavedReason(ed)),
+				tone: 'neutral'
+			});
+		}
 		openPreview(kind, { orderId: ed.order.id }, kinds);
 	}
 

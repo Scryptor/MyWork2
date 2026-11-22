@@ -1,5 +1,7 @@
 import type { DocumentKind } from '$api/DocumentKind';
 import { onSessionReset } from '#lib/app/session-reset.js';
+import { canPrintDirectly } from '#lib/print/platform.js';
+import type { PrintOptions } from '#lib/print/print.svelte.js';
 import type { PrintSettings } from '#lib/print/settings.svelte.js';
 
 export interface IntakePrefill {
@@ -144,4 +146,15 @@ export function intakeDocuments(on: PrintSettings['onIntake']): DocumentKind[] {
 		...(on.act ? (['intake_act'] as const) : []),
 		...(on.sticker ? (['sticker'] as const) : [])
 	];
+}
+
+/**
+ * How the documents of an accepted order print, or null for not at all. `close`: the sheet went — as
+ * usual, in a browser the preview. `other`: another order is typed in the sheet meanwhile — only straight
+ * to a printer, never a preview over the form (without a printer: a notice). A sheet that stays with
+ * changes the order lacks (`acceptedAnswer` is `keep`) prints nothing: the paper would lack them.
+ */
+export function intakePrintOptions(sheet: 'close' | 'other'): PrintOptions | null {
+	if (sheet === 'close') return {};
+	return canPrintDirectly() ? { noPreview: true } : null;
 }

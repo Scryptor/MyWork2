@@ -3,6 +3,8 @@
 // PDF». A failure is a notice with «Предпросмотр»: printing never throws at whoever asked for it (an
 // intake, an issue: their order is saved already).
 
+import { goto } from '$app/navigation';
+import { resolve } from '$app/paths';
 import type { DocumentKind } from '$api/DocumentKind';
 import type { DocumentPages } from '$api/DocumentPages';
 import { ApiError, errorMessage } from '#lib/api/client.js';
@@ -23,6 +25,12 @@ import { printSettings } from './settings.svelte.js';
 
 /** The pages of the preview: enough for a screen. */
 export const PREVIEW_DPI = 110;
+
+/**
+ * Acts on A4 are made at this resolution: the barcode fitted to its dots, the pages of Windows rendered at
+ * it (it divides 600 and 1200). The resolution of «Печать» is the label printer's, as its offset is.
+ */
+export const ACT_DPI = 300;
 
 /** Printed on the label printer in the label's size; the rest are acts on A4. */
 export const isLabel = (kind: DocumentKind): boolean =>
@@ -56,6 +64,10 @@ export function printTarget(kind: DocumentKind): {
 		: { printer: printSettings.actPrinter, copies: printSettings.actCopies, mediaMm: null };
 }
 
+/** The resolution a document is printed at: of the label printer for a label, `ACT_DPI` for an act. */
+export const printerDpi = (kind: DocumentKind): number =>
+	isLabel(kind) ? printSettings.dpi : ACT_DPI;
+
 /**
  * How the server makes it: the barcode fitted to the printer's dots (a preview too, so it shows what is
  * printed); a label in its size, moved by its offset. Acts on A4 get neither.
@@ -63,12 +75,19 @@ export function printTarget(kind: DocumentKind): {
 export function documentOptions(kind: DocumentKind): PdfOptions {
 	return isLabel(kind)
 		? {
-				printerDpi: printSettings.dpi,
+				printerDpi: printerDpi(kind),
 				labelMm: printSettings.labelMm,
 				offsetMm: printSettings.offsetMm
 			}
-		: { printerDpi: printSettings.dpi };
+		: { printerDpi: printerDpi(kind) };
 }
+
+/**
+ * The act printed after «Выдать»: the issue act the first time; the issue act after warranty once the order
+ * had an issue date before this issue (spec 6.4) — the warranty intake and the re-issue keep that date.
+ */
+export const issueKind = (wasIssued: boolean): DocumentKind =>
+	wasIssued ? 'warranty_issue_act' : 'issue_act';
 
 /** Ctrl/⌘P: an order not issued yet prints its intake act, an issued one its issue act. */
 export const shortcutKind = (issued: boolean): DocumentKind =>
@@ -173,7 +192,7 @@ async function send(kind: DocumentKind, target: DocumentTarget, printer: string)
 	const { copies, mediaMm } = printTarget(kind);
 	const opts = documentOptions(kind);
 	if ((await printFormat()) === 'png') {
-		const pages = await documentPages(kind, target, { ...opts, dpi: printSettings.dpi });
+		const pages = await documentPages(kind, target, { ...opts, dpi: printerDpi(kind) });
 		await printPages({
 			printer,
 			pagesBase64: pages.pages,
@@ -203,12 +222,26 @@ function failureText(e: unknown): string {
 // eslint-disable-next-line svelte/prefer-svelte-reactivity -- bookkeeping, nothing renders it
 const sending = new Set<string>();
 
+export interface PrintOptions {
+	/**
+	 * The preview does not open by itself: asked from the preview (its «Печать»), or over a form that stays
+	 * open (the intake with another order typed). Without a printer a notice says why and leads to
+	 * «Настройки → Печать». A browser has no printer: the caller does not ask then.
+	 */
+	noPreview?: boolean;
+}
+
 /**
  * Prints a document on this computer and says where it went. In a browser, or without a printer, the
- * preview opens instead; a failure is a notice with its text and «Предпросмотр». The same document of the
- * same order asked again while it is being sent is dropped. Never throws.
+ * preview opens instead (with `noPreview` and no printer: a notice); a failure is a notice with its text
+ * and «Предпросмотр». The same document of the same order asked again while it is being sent is dropped.
+ * Never throws.
  */
-export async function printDocument(kind: DocumentKind, target: DocumentTarget): Promise<void> {
+export async function printDocument(
+	kind: DocumentKind,
+	target: DocumentTarget,
+	opts: PrintOptions = {}
+): Promise<void> {
 	if (!canPrintDirectly()) {
 		openPreview(kind, target);
 		return;
@@ -222,7 +255,15 @@ export async function printDocument(kind: DocumentKind, target: DocumentTarget):
 		toast.show({ message: ru.print.sent(printer), tone: 'success' });
 	} catch (e) {
 		if (noPrinter(e)) {
-			openPreview(kind, target);
+			if (opts.noPreview) {
+				toast.show({
+					message: ru.print.noPrinterChosen,
+					tone: 'danger',
+					action: { label: ru.print.printSettings, run: () => goto(resolve('settings/print')) }
+				});
+			} else {
+				openPreview(kind, target);
+			}
 			return;
 		}
 		toast.show({
@@ -238,9 +279,10 @@ export async function printDocument(kind: DocumentKind, target: DocumentTarget):
 /** Several documents of one order (the act and the sticker of an intake), one after another. */
 export async function printDocuments(
 	kinds: readonly DocumentKind[],
-	target: DocumentTarget
+	target: DocumentTarget,
+	opts: PrintOptions = {}
 ): Promise<void> {
-	for (const kind of kinds) await printDocument(kind, target);
+	for (const kind of kinds) await printDocument(kind, target, opts);
 }
 
 /**

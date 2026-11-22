@@ -558,12 +558,18 @@ test('«Принять» again after no answer gets the order the server made, n
 	expect((await fetchOrder(request, id)).malfunction).toBe(marker);
 });
 
-test('«Принять» again after no answer and an edit: the order is that of the first attempt, the sheet says so', async ({
+test('«Принять» again after no answer and an edit: the order is that of the first attempt, the sheet says so and prints nothing', async ({
 	page,
 	request
 }) => {
 	const marker = uniq('Не включается');
 	const late = await acceptWithoutAnswer(page, request, marker);
+	// «Акт приёма» on: the act of that order would lack the changes on the sheet, it is not printed.
+	const act = sheetOf(page)
+		.getByRole('group', { name: 'Печать после приёма' })
+		.getByRole('switch', { name: 'Акт приёма' });
+	await act.click();
+	await expect(act).toBeChecked();
 	await commentOf(page).fill('Позвонить вечером');
 	await page.keyboard.press(`${await mod(page)}+Enter`);
 	const note = acceptedNote(page);
@@ -579,6 +585,7 @@ test('«Принять» again after no answer and an edit: the order is that of
 	await sheetOf(page).getByRole('button', { name: 'Открыть' }).click();
 	await expect(sheetOf(page)).toBeHidden();
 	await expect(panelOf(page, id)).toBeVisible();
+	await expect(page.getByRole('dialog', { name: /^Акт приёма/ })).toHaveCount(0);
 });
 
 test('no answer for a new client, Esc, N: the client that attempt made is found, «Это он» keeps it one order', async ({

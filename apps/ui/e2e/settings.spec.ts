@@ -350,6 +350,8 @@ test.describe('server settings', () => {
 		request
 	}) => {
 		let symbol: string | null = null;
+		// Every PATCH of the settings is answered here and never reaches the server, on purpose: what the page
+		// saves besides the symbol (nothing, in this test) would change the settings of every other spec.
 		await page.route('**/api/v1/settings', async (route) => {
 			const method = route.request().method();
 			if (method === 'PATCH') {

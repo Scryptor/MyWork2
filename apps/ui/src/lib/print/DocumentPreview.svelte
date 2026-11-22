@@ -1,7 +1,8 @@
 <!-- The preview of a document (spec 7, plan 6): its pages as pictures, «Сохранить PDF» under the server's
-     file name and, in the desktop program, «Печать». The pictures are `blob:` addresses: they are freed
-     when the preview closes or shows another document, and a request still on its way then is called
-     off. Without `request` it is closed. -->
+     file name and, in the desktop program, «Печать» (Ctrl/⌘P too; in a browser the key only keeps the
+     browser's printing of the page away). The pictures are `blob:` addresses: they are freed when the
+     preview closes or shows another document, and a request still on its way then is called off; what
+     was shown goes with them. Without `request` it is closed. -->
 <script lang="ts">
 	import Download from '@lucide/svelte/icons/download';
 	import Printer from '@lucide/svelte/icons/printer';
@@ -10,6 +11,7 @@
 	import type { DocumentPages } from '$api/DocumentPages';
 	import { errorMessage } from '#lib/api/client.js';
 	import type { DocumentTarget } from '#lib/api/documents.js';
+	import { registerHotkey } from '#lib/design/hotkeys.svelte.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import Button from '#lib/ui/Button.svelte';
 	import Callout from '#lib/ui/Callout.svelte';
@@ -23,7 +25,8 @@
 		previewPages,
 		printDocument,
 		savePdf,
-		type PreviewRequest
+		type PreviewRequest,
+		type PrintOptions
 	} from './print.svelte.js';
 
 	type Target = DocumentTarget;
@@ -42,7 +45,7 @@
 		/** «Сохранить PDF»; throws what to say. */
 		save?: (kind: DocumentKind, target: Target) => Promise<void>;
 		/** «Печать»: only where the program prints by itself; null — no button. */
-		print?: ((kind: DocumentKind, target: Target) => void) | null;
+		print?: ((kind: DocumentKind, target: Target, opts: PrintOptions) => void) | null;
 		/** The preview is closed (✕, Esc, «Печать»). */
 		onclose: () => void;
 	} = $props();
@@ -79,15 +82,21 @@
 		void attempt;
 		if (!r) return;
 		const controller = new AbortController();
-		let urls: string[] = [];
-		untrack(() => {
-			shown = null;
-			error = null;
-		});
+		const urls: string[] = [];
+		const free = () => {
+			for (const url of urls.splice(0)) URL.revokeObjectURL(url);
+		};
 		load(k, r.target, controller.signal).then(
 			(doc) => {
 				if (controller.signal.aborted) return;
-				urls = doc.pages.map(pictureOf);
+				try {
+					// Each address is kept as it is made: a broken page frees the ones before it.
+					for (const page of doc.pages) urls.push(pictureOf(page));
+				} catch {
+					free();
+					error = t.pagesFailed;
+					return;
+				}
 				shown = { urls, widthMm: doc.width_mm };
 			},
 			(e: unknown) => {
@@ -96,8 +105,23 @@
 		);
 		return () => {
 			controller.abort();
-			for (const url of urls) URL.revokeObjectURL(url);
+			free();
+			// Opened again or on another document, it starts from nothing: no freed page, no old failure.
+			shown = null;
+			error = null;
 		};
+	});
+
+	// Ctrl/⌘P over the preview is its «Печать», in fields too; in a browser it only takes the key.
+	$effect(() => {
+		if (!request) return;
+		return registerHotkey(
+			'Mod+P',
+			(e) => {
+				if (!e.repeat) printShown();
+			},
+			{ allowInFields: true, allowWithOverlay: true }
+		);
 	});
 
 	let saving = $state(false);
@@ -127,7 +151,7 @@
 		if (!r || !print) return;
 		const k = kind;
 		onclose();
-		print(k, r.target);
+		print(k, r.target, { noPreview: true });
 	}
 
 	const title = $derived(request ? documentTitle(kind, request.target) : '');

@@ -5,6 +5,7 @@ import type { DocumentPages } from '$api/DocumentPages';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '#lib/api/client.js';
 import type { DocumentTarget } from '#lib/api/documents.js';
+import { __resetHotkeysForTests } from '#lib/design/hotkeys.svelte.js';
 
 // The preview: the pages of a document as pictures from `blob:` addresses, «Сохранить PDF», and «Печать»
 // in the desktop program. The addresses go when the preview closes or shows something else; a request
@@ -34,7 +35,10 @@ beforeEach(() => {
 	};
 	URL.revokeObjectURL = (url: string) => void revoked.push(url);
 });
-afterEach(() => vi.clearAllMocks());
+afterEach(() => {
+	vi.clearAllMocks();
+	__resetHotkeysForTests();
+});
 const live = () => made.filter((u) => !revoked.includes(u));
 
 const pages = (n: number, width_mm = 210, height_mm = 297): DocumentPages => ({
@@ -184,7 +188,134 @@ describe('the preview', () => {
 		await view.rerender({ print });
 		await userEvent.click(screen.getByRole('button', { name: 'Печать' }));
 		expect(onclose).toHaveBeenCalled();
-		expect(print).toHaveBeenCalledWith('intake_act', { orderId: 42 });
+		// Without a printer the preview is not opened again: printing says so instead.
+		expect(print).toHaveBeenCalledWith('intake_act', { orderId: 42 }, { noPreview: true });
+	});
+
+	const ctrlP = (repeat = false) => {
+		const e = new KeyboardEvent('keydown', {
+			key: 'p',
+			code: 'KeyP',
+			ctrlKey: true,
+			repeat,
+			bubbles: true,
+			cancelable: true
+		});
+		document.body.dispatchEvent(e);
+		return e;
+	};
+
+	it('Ctrl/⌘P while it is open is its own «Печать»; in a browser the key is only taken', async () => {
+		const print = vi.fn();
+		const onclose = vi.fn();
+		const view = render(DocumentPreview, {
+			request: request(),
+			load: async () => pages(1),
+			save: vi.fn(),
+			print,
+			onclose
+		});
+		expect(ctrlP().defaultPrevented).toBe(true);
+		expect(ctrlP(true).defaultPrevented).toBe(true);
+		expect(onclose).toHaveBeenCalledOnce();
+		expect(print).toHaveBeenCalledExactlyOnceWith(
+			'intake_act',
+			{ orderId: 42 },
+			{ noPreview: true }
+		);
+
+		await view.rerender({ print: null });
+		onclose.mockClear();
+		// The browser's printing of the page does not open over the preview either.
+		expect(ctrlP().defaultPrevented).toBe(true);
+		expect(onclose).not.toHaveBeenCalled();
+
+		await view.rerender({ request: null });
+		expect(ctrlP().defaultPrevented).toBe(false);
+	});
+
+	it('a page that is not a picture is said; the pages made before it are freed', async () => {
+		const unhandled = vi.fn();
+		process.on('unhandledRejection', unhandled);
+		try {
+			render(DocumentPreview, {
+				request: request(),
+				load: async () => ({ ...pages(1), pages: ['iVBORw0KGgo=', '%%% не base64 %%%'] }),
+				save: vi.fn(),
+				print: null,
+				onclose: () => {}
+			});
+			expect(await screen.findByText('Не удалось показать страницы документа')).toBeInTheDocument();
+			expect(made).toHaveLength(1);
+			expect(live()).toEqual([]);
+			expect(screen.queryByRole('img')).toBeNull();
+			await new Promise((r) => setTimeout(r, 0));
+			expect(unhandled).not.toHaveBeenCalled();
+		} finally {
+			process.off('unhandledRejection', unhandled);
+		}
+	});
+
+	/** Everything put on the page while `run` runs: the sources of pictures and the texts. */
+	async function added(run: () => Promise<void>) {
+		const seen: string[] = [];
+		const watch = new MutationObserver((records) => {
+			for (const r of records)
+				for (const node of r.addedNodes) {
+					if (!(node instanceof Element)) continue;
+					seen.push(node.textContent ?? '');
+					for (const img of [node, ...node.querySelectorAll('img')])
+						if (img instanceof HTMLImageElement) seen.push(img.getAttribute('src') ?? '');
+				}
+		});
+		watch.observe(document.body, { childList: true, subtree: true });
+		await run();
+		await new Promise((r) => setTimeout(r, 0));
+		watch.disconnect();
+		return seen;
+	}
+
+	it('opened again, it never shows the pages of before, freed already', async () => {
+		const load = vi
+			.fn<(k: DocumentKind, t: DocumentTarget, s: AbortSignal) => Promise<DocumentPages>>()
+			.mockResolvedValueOnce(pages(1))
+			.mockReturnValue(new Promise<DocumentPages>(() => {}));
+		const view = render(DocumentPreview, {
+			request: request(),
+			load,
+			save: vi.fn(),
+			print: null,
+			onclose: () => {}
+		});
+		await screen.findByRole('img', { name: 'Страница 1 из 1' });
+		await view.rerender({ request: null });
+		expect(revoked).toEqual(['blob:page-1-image/png']);
+		const seen = await added(async () => {
+			await view.rerender({ request: request({ kind: 'issue_act', kinds: ['issue_act'] }) });
+			await screen.findByLabelText('Документ готовится…');
+		});
+		expect(seen.filter((s) => s.startsWith('blob:'))).toEqual([]);
+	});
+
+	it('opened again, it never shows the failure of before', async () => {
+		const load = vi
+			.fn<(k: DocumentKind, t: DocumentTarget, s: AbortSignal) => Promise<DocumentPages>>()
+			.mockRejectedValueOnce(new ApiError(0, 'network', 'Нет связи с сервером', null))
+			.mockReturnValue(new Promise<DocumentPages>(() => {}));
+		const view = render(DocumentPreview, {
+			request: request(),
+			load,
+			save: vi.fn(),
+			print: null,
+			onclose: () => {}
+		});
+		await screen.findByText('Нет связи с сервером');
+		await view.rerender({ request: null });
+		const seen = await added(async () => {
+			await view.rerender({ request: request() });
+			await screen.findByLabelText('Документ готовится…');
+		});
+		expect(seen.filter((s) => s.includes('Нет связи'))).toEqual([]);
 	});
 
 	it('names a sample and a document without an order', () => {

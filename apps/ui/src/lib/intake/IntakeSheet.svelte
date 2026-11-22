@@ -59,7 +59,7 @@
 	} from './draft.js';
 	import IntakeAside from './IntakeAside.svelte';
 	import IntakePhotos, { MAX_INTAKE_PHOTOS } from './IntakePhotos.svelte';
-	import { intake, intakeDocuments } from './intake.svelte.js';
+	import { intake, intakeDocuments, intakePrintOptions } from './intake.svelte.js';
 
 	const t = ru.intake;
 	/** Pause after the last key before the draft is written and the suggestions are asked. */
@@ -523,12 +523,15 @@
 		// The photos of the draft went with the order.
 		settled.add(form.key);
 		emitOrderChanged(order, 'created');
+		let sheet: 'close' | 'other' = 'close';
 		if (!answer.current) {
 			settleLate(sent, order);
 		} else if (draft.key !== form.key) {
 			// Another order is typed meanwhile (another client): it stays, the toast tells about this one.
+			sheet = 'other';
 		} else if (acceptedAnswer(draft) === 'keep') {
-			// The order an earlier attempt made: the changes since are not in it, the sheet says so.
+			// The order an earlier attempt made: the changes since are not in it, the sheet says so. Nothing
+			// is printed: the paper would lack them (the order's «Печать» prints it once they are in).
 			draft.acceptedAs = { id: order.id, key: form.key, clientId: order.client_id };
 			return;
 		} else {
@@ -545,7 +548,9 @@
 			action: { label: t.open, run: () => void orderPanel.open(id) }
 		});
 		// The switches «Акт приёма» and «Наклейка»: the order is saved, a failure to print is only told.
-		void printDocuments(intakeDocuments(printSettings.onIntake), { orderId: id });
+		const printing = intakePrintOptions(sheet);
+		if (printing !== null)
+			void printDocuments(intakeDocuments(printSettings.onIntake), { orderId: id }, printing);
 	}
 
 	/** Focus lost while the form was inert goes back where it was, if the sheet is still open. */

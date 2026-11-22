@@ -162,6 +162,8 @@ test('Ctrl/⌘P in the panel opens the intake act, not the browser’s printing'
 	await page.keyboard.press('Escape');
 	await expect(preview).toBeHidden();
 	await expect(panel).toBeVisible();
+	// Esc gives the focus back where the key was pressed: typing goes on.
+	await expect(panel.getByRole('textbox', { name: 'Неисправность' })).toBeFocused();
 });
 
 test('Ctrl/⌘P on the card of an issued order opens its issue act', async ({ page, request }) => {
@@ -179,7 +181,7 @@ test('Ctrl/⌘P on the card of an issued order opens its issue act', async ({ pa
 test.describe('intake', () => {
 	const sheetOf = (page: Page) => page.getByRole('dialog', { name: 'Новый заказ' });
 
-	async function accept(page: Page, act: boolean, browserName: string) {
+	async function accept(page: Page, act: boolean, browserName: string, withSticker = false) {
 		await page.goto('/orders');
 		await expect(page.getByRole('heading', { name: 'Заказы', level: 1 })).toBeVisible();
 		await page.keyboard.press('n');
@@ -205,6 +207,12 @@ test.describe('intake', () => {
 		await expect(sticker).toBeFocused();
 		await page.keyboard.press(`Shift+${tab}`);
 		await expect(actSwitch).toBeFocused();
+		if (withSticker) {
+			await sticker.focus();
+			await page.keyboard.press('Space');
+			await expect(sticker).toBeChecked();
+			await actSwitch.focus();
+		}
 		if (!act) await page.keyboard.press('Space');
 		await expect(actSwitch).toBeChecked({ checked: act });
 		// Ctrl/⌘+Enter on a switch accepts the order, the switch stays as it is.
@@ -223,6 +231,23 @@ test.describe('intake', () => {
 		const id = await accept(page, true, browserName);
 		await expectPage(previewOf(page, `Акт приёма · № ${id}`));
 		expect((await fetchOrder(request, id)).malfunction).toBe('Не заряжается');
+	});
+
+	test('with «Наклейка» on too, its preview follows the act’s once that is closed', async ({
+		page,
+		browserName
+	}) => {
+		const id = await accept(page, true, browserName, true);
+		const act = previewOf(page, `Акт приёма · № ${id}`);
+		await expectPage(act);
+		const sticker = previewOf(page, `Наклейка · № ${id}`);
+		await expect(sticker).toHaveCount(0);
+		await page.keyboard.press('Escape');
+		await expect(act).toBeHidden();
+		await expectPage(sticker);
+		await page.keyboard.press('Escape');
+		await expect(sticker).toBeHidden();
+		await expect(page.getByRole('dialog')).toHaveCount(0);
 	});
 
 	test('with it off nothing opens, and the switch is remembered on this computer', async ({
@@ -263,6 +288,26 @@ test('«Выдать» with «Печатать акт выдачи» opens the i
 	expect((await fetchOrder(request, o.id)).issued_at).not.toBeNull();
 });
 
+test('Ctrl/⌘+Enter on «Печатать акт выдачи» issues the order and opens its act, not toggling the switch', async ({
+	page,
+	request
+}) => {
+	const m = uniq('M');
+	const ready = await statusId(request, 'Готов');
+	const o = await createOrder(request, { model: m, status_id: ready, master: 'Тестов' });
+	await patchOrder(request, o.id, { work_done: 'Замена разъёма', final_price: 150000 });
+	const panel = await openPanel(page, m, o.id);
+	await panel.getByRole('button', { name: /^Выдать/ }).click();
+	const dialog = page.getByRole('dialog', { name: `Выдача заказа № ${o.id}` });
+	const printAct = dialog.getByRole('switch', { name: 'Печатать акт выдачи' });
+	await expect(printAct).toBeChecked();
+	await printAct.focus();
+	await page.keyboard.press(`${await mod(page)}+Enter`);
+	await expect(dialog).toBeHidden();
+	await expectPage(previewOf(page, `Акт выдачи · № ${o.id}`));
+	expect((await fetchOrder(request, o.id)).issued_at).not.toBeNull();
+});
+
 test('«Принять по гарантии» with its switch opens the warranty intake act', async ({
 	page,
 	request
@@ -279,9 +324,33 @@ test('«Принять по гарантии» with its switch opens the warrant
 	await expect(printAct).toBeChecked();
 	await expectBeside(printAct, dialog.getByRole('button', { name: /^Принять/ }));
 	await dialog.getByRole('textbox', { name: /^Жалоба/ }).fill('Снова не заряжается');
+	// Ctrl/⌘+Enter from the switch too: it accepts, the switch is not toggled.
+	await printAct.focus();
 	await page.keyboard.press(`${await mod(page)}+Enter`);
 	await expect(dialog).toBeHidden();
 	await expectPage(previewOf(page, `Акт приёма по гарантии · № ${o.id}`));
+});
+
+test('«Выдать» after a warranty case opens the issue act after warranty', async ({
+	page,
+	request
+}) => {
+	const m = uniq('M');
+	const o = await createOrder(request, { model: m, master: 'Тестов' });
+	await patchOrder(request, o.id, { work_done: 'Замена разъёма', final_price: 150000 });
+	const issued = await setStatus(request, o.id, await statusId(request, 'Выдан'));
+	const warranty = await request.post(
+		`/api/v1/orders/${o.id}/warranty-case?version=${issued.version}`,
+		{ data: { complaint: 'Снова не заряжается' } }
+	);
+	expect(warranty.ok()).toBe(true);
+	const panel = await openPanel(page, m, o.id);
+	await panel.getByRole('button', { name: /^Выдать/ }).click();
+	const dialog = page.getByRole('dialog', { name: `Выдача заказа № ${o.id}` });
+	await expect(dialog.getByRole('switch', { name: 'Печатать акт выдачи' })).toBeChecked();
+	await dialog.getByRole('button', { name: /^Выдать/ }).click();
+	await expect(dialog).toBeHidden();
+	await expectPage(previewOf(page, `Акт выдачи после гарантии · № ${o.id}`));
 });
 
 test('Ctrl K «Пустой акт приёма» opens the blank act', async ({ page }) => {
@@ -293,6 +362,40 @@ test('Ctrl K «Пустой акт приёма» opens the blank act', async ({
 	await palette.getByRole('combobox').fill('пустой акт');
 	await palette.getByRole('option', { name: /Пустой акт приёма/ }).click();
 	await expectPage(previewOf(page, 'Пустой акт приёма'));
+});
+
+test('«Образец» waits for the terms just typed: the sample is asked for once they are saved', async ({
+	page
+}) => {
+	const events: string[] = [];
+	// A slow save: a sample asked for before its answer would be drawn with the old terms. The terms of the
+	// shared server stay as they are: the save is answered here, on purpose, with what was sent on top.
+	await page.route('**/api/v1/settings', async (route) => {
+		if (route.request().method() !== 'PATCH') return route.continue();
+		const sent = route.request().postDataJSON() as object;
+		await new Promise((r) => setTimeout(r, 500));
+		const response = await page.request.get('/api/v1/settings');
+		await route.fulfill({ response, json: { ...(await response.json()), ...sent } });
+	});
+	page.on('requestfinished', (r) => {
+		if (r.method() === 'PATCH' && new URL(r.url()).pathname === '/api/v1/settings')
+			events.push('saved');
+	});
+	page.on('request', (r) => {
+		if (new URL(r.url()).pathname === '/api/v1/documents/intake_act') events.push('sample');
+	});
+	await page.goto('/settings/documents');
+	const field = page.getByRole('textbox', { name: 'Условия приёма' });
+	await expect(field).toBeEnabled();
+	await field.fill(uniq('Условия'));
+	// Right away, before the pause of the autosave is over.
+	await page
+		.getByRole('list', { name: 'Документы' })
+		.getByRole('button', { name: 'Образец: Акт приёма', exact: true })
+		.click();
+	await expectPage(previewOf(page, 'Образец · Акт приёма'));
+	expect(events).toContain('saved');
+	expect(events.indexOf('saved')).toBeLessThan(events.indexOf('sample'));
 });
 
 test('settings: «Образец» of every document and «Пробная наклейка» open their preview', async ({

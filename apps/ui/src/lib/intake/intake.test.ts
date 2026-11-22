@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { intake, intakeDocuments, SUBMIT_TIMEOUT_MS } from './intake.svelte.js';
+
+const platform = vi.hoisted(() => ({ canPrintDirectly: vi.fn<() => boolean>() }));
+vi.mock('#lib/print/platform.js', () => platform);
+
+import { intake, intakeDocuments, intakePrintOptions, SUBMIT_TIMEOUT_MS } from './intake.svelte.js';
 
 /** A request that answers when told to. */
 function later<T>() {
@@ -203,5 +207,21 @@ describe('the documents of an accepted order', () => {
 		expect(intakeDocuments({ act: true, sticker: false })).toEqual(['intake_act']);
 		expect(intakeDocuments({ act: false, sticker: true })).toEqual(['sticker']);
 		expect(intakeDocuments({ act: false, sticker: false })).toEqual([]);
+	});
+});
+
+describe('how the documents of an accepted order print', () => {
+	it('the sheet went: as usual, in a browser the preview', () => {
+		for (const direct of [true, false]) {
+			platform.canPrintDirectly.mockReturnValue(direct);
+			expect(intakePrintOptions('close')).toEqual({});
+		}
+	});
+
+	it('another order is typed in the sheet: straight to a printer or not at all, never a preview over it', () => {
+		platform.canPrintDirectly.mockReturnValue(true);
+		expect(intakePrintOptions('other')).toEqual({ noPreview: true });
+		platform.canPrintDirectly.mockReturnValue(false);
+		expect(intakePrintOptions('other')).toBeNull();
 	});
 });
