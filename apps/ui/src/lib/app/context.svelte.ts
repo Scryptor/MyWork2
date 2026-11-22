@@ -6,6 +6,7 @@ import type { ServicePoint } from '$api/ServicePoint';
 import type { Status } from '$api/Status';
 import { getSettings, listServicePoints, listStatuses } from '#lib/api/catalogs.js';
 import { onSessionReset } from '#lib/app/session-reset.js';
+import { setCurrencySymbol } from '#lib/format/currency.svelte.js';
 import { readStorage, removeStorage, writeStorage } from '#lib/design/storage.js';
 
 /** The point chosen in the top bar, kept on this device; none stored is «Все точки». */
@@ -50,6 +51,7 @@ class AppContext {
 
 	set(data: AppData): void {
 		this.#data = data;
+		setCurrencySymbol(data.settings.currency_symbol);
 		this.#point = storedPoint(data.points);
 	}
 
@@ -57,6 +59,7 @@ class AppContext {
 	reset(): void {
 		this.#data = null;
 		this.#point = null;
+		setCurrencySymbol(null);
 	}
 
 	get server(): ServerInfo {
@@ -101,6 +104,7 @@ class AppContext {
 	async refreshCatalogs(): Promise<void> {
 		const [statuses, points, settings] = await readCatalogs();
 		this.#data = { ...this.#get(), statuses, points, settings };
+		setCurrencySymbol(settings.currency_symbol);
 		if (this.#point !== null && !points.some((p) => p.id === this.#point && !p.archived)) {
 			this.point = null;
 		}

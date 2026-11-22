@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { setCurrencySymbol } from '#lib/format/currency.svelte.js';
 import Harness from './FieldHarness.test-helper.svelte';
 
 const NNBSP = '\u202f';
@@ -11,7 +12,15 @@ function selectAll(input: HTMLElement) {
 	if (input instanceof HTMLInputElement) input.setSelectionRange(0, input.value.length);
 }
 
+afterEach(() => setCurrencySymbol(null));
+
 describe('MoneyInput', () => {
+	it('shows the currency of the settings as the suffix', () => {
+		setCurrencySymbol('$');
+		render(Harness, { kind: 'money', money: 650000 });
+		expect(screen.getByText('$')).toBeInTheDocument();
+		expect(screen.queryByText('₽')).toBeNull();
+	});
 	it('shows a formatted value without focus and the currency suffix', () => {
 		render(Harness, { kind: 'money', money: 650000 });
 		expect(screen.getByLabelText('Сумма')).toHaveValue(`6${NNBSP}500`);

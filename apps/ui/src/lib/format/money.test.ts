@@ -1,8 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { setCurrencySymbol } from './currency.svelte.js';
 import { formatMoney, MAX_MONEY_KOPECKS, parseMoney } from './money.js';
 
 const N = ' ';
 const B = ' ';
+
+afterEach(() => setCurrencySymbol(null));
 
 describe('formatMoney', () => {
 	it('formats kopecks', () => {
@@ -12,6 +15,18 @@ describe('formatMoney', () => {
 		expect(formatMoney(12345678900)).toBe(`123${N}456${N}789${B}₽`);
 		expect(formatMoney(-50000)).toBe(`−500${B}₽`);
 		expect(formatMoney(650000, { currency: null })).toBe(`6${N}500`);
+	});
+});
+
+describe('formatMoney: the currency of the settings', () => {
+	it('uses the symbol of the settings when none is given, and ₽ until they are loaded', () => {
+		expect(formatMoney(650000)).toBe(`6${N}500${B}₽`);
+		setCurrencySymbol('$');
+		expect(formatMoney(650000)).toBe(`6${N}500${B}$`);
+		expect(formatMoney(650000, { currency: '€' })).toBe(`6${N}500${B}€`);
+		expect(formatMoney(650000, { currency: null })).toBe(`6${N}500`);
+		setCurrencySymbol('   ');
+		expect(formatMoney(650000)).toBe(`6${N}500${B}₽`);
 	});
 });
 

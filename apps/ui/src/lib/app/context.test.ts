@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AppSettings } from '$api/AppSettings';
 import type { ServerInfo } from '$api/ServerInfo';
+import { formatMoney } from '#lib/format/money.js';
 import { POINTS, STATUSES, user } from './fixtures.test-helper.js';
 import { POINT_KEY, app, readCatalogs, type AppData } from './context.svelte.js';
 
@@ -37,6 +38,27 @@ describe('app context', () => {
 		expect(app.statusById(3)?.name).toBe('Готов');
 		expect(app.statusById(99)).toBeUndefined();
 		expect(app.activePoints.map((p) => p.name)).toEqual(['Центр']);
+	});
+
+	it('takes the currency of the settings for every amount, and forgets it on reset', async () => {
+		app.set(data({ settings: { ...SETTINGS, currency_symbol: '$' } }));
+		expect(formatMoney(650000)).toBe('6\u202f500\u00a0$');
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (url: string) => {
+				const path = new URL(url, 'http://localhost').pathname;
+				const body = path.endsWith('/statuses')
+					? STATUSES
+					: path.endsWith('/service-points')
+						? POINTS
+						: { ...SETTINGS, currency_symbol: '€' };
+				return new Response(JSON.stringify(body), { status: 200 });
+			})
+		);
+		await app.refreshCatalogs();
+		expect(formatMoney(650000)).toBe('6\u202f500\u00a0€');
+		app.reset();
+		expect(formatMoney(650000)).toBe('6\u202f500\u00a0₽');
 	});
 
 	it('keeps the chosen point on the device; an archived or unknown one is «Все точки»', () => {

@@ -4,6 +4,7 @@ import type { AboutInfo } from '$api/AboutInfo';
 import type { ServerInfo } from '$api/ServerInfo';
 import {
 	createOrder,
+	patchOrder,
 	E2E_ADMIN_LOGIN,
 	E2E_ADMIN_PASSWORD,
 	sessionToken,
@@ -339,6 +340,60 @@ test.describe('server settings', () => {
 		await expect(page.getByText('Обязательное поле')).toBeVisible();
 		await page.reload();
 		await expect(page.getByRole('textbox', { name: 'Валюта' })).toHaveValue(before);
+	});
+
+	// The currency is the one setting every other spec of the shared server shows (amounts in the lists and
+	// panels): so the server keeps its «₽» and this page's settings come from here. Only the symbol the
+	// «Валюта» field saves is held back; everything else is the real settings.
+	test('«Валюта» $ puts $ on the amounts of the order panel, ₽ puts them back', async ({
+		page,
+		request
+	}) => {
+		let symbol: string | null = null;
+		await page.route('**/api/v1/settings', async (route) => {
+			const method = route.request().method();
+			if (method === 'PATCH') {
+				const sent = route.request().postDataJSON() as { currency_symbol?: string };
+				if (sent.currency_symbol !== undefined) symbol = sent.currency_symbol;
+			} else if (method !== 'GET') {
+				await route.continue();
+				return;
+			}
+			const real = await currentSettings(request);
+			await route.fulfill({
+				json: { ...real, currency_symbol: symbol ?? real.currency_symbol }
+			});
+		});
+		const m = uniq('M');
+		const created = await createOrder(request, { model: m, prepayment: 50000 });
+		const o = await patchOrder(request, created.id, { final_price: 350000 });
+
+		const currency = () => page.getByRole('textbox', { name: 'Валюта' });
+		await page.goto('/settings/general');
+		await expect(currency()).toHaveValue('₽');
+		let saved = settingsSaved(page);
+		await currency().fill('$');
+		await saved;
+
+		await page.goto(`/orders?q=${encodeURIComponent(m)}&chips=all`);
+		const row = page
+			.getByRole('grid', { name: 'Заказы' })
+			.getByRole('row')
+			.filter({ has: page.getByRole('gridcell', { name: String(o.id), exact: true }) });
+		await expect(row).toContainText(/3\s500\s\$/);
+		await row.getByRole('gridcell').nth(3).click();
+		const panel = page.getByRole('dialog', { name: new RegExp(`^№ ${o.id}(?!\\d)`) });
+		await expect(panel).toContainText(/Предоплата\s+500\s\$/);
+		await expect(panel.getByText(/^К оплате/)).toHaveText(/^К оплате\s3\s000\s\$$/);
+		await expect(panel.getByText('$', { exact: true }).first()).toBeVisible();
+		await expect(panel.getByText('₽')).toHaveCount(0);
+
+		await page.goto('/settings/general');
+		saved = settingsSaved(page);
+		await currency().fill('₽');
+		await saved;
+		await page.goto(`/orders?q=${encodeURIComponent(m)}&chips=all`);
+		await expect(row).toContainText(/3\s500\s₽/);
 	});
 
 	// The counter only goes up and every order takes a number from it, so two browsers on one server would

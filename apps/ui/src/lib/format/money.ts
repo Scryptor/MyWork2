@@ -1,11 +1,13 @@
+import { currencySymbol } from './currency.svelte.js';
 import { groupDigits } from './digits.js';
 
 export const MAX_MONEY_KOPECKS = 99_999_999_999;
 
 const NBSP = ' ';
 
+/** `currency` is the symbol of the settings unless given; `null` is a bare number. */
 export function formatMoney(kopecks: number, opts?: { currency?: string | null }): string {
-	const currency = opts?.currency === undefined ? '₽' : opts.currency;
+	const currency = opts?.currency === undefined ? currencySymbol() : opts.currency;
 	const negative = kopecks < 0;
 	const abs = Math.abs(Math.trunc(kopecks));
 	const whole = Math.floor(abs / 100);

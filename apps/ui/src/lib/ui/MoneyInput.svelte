@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
+	import { currencySymbol } from '#lib/format/currency.svelte.js';
 	import { formatMoney, parseMoney } from '#lib/format/money.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import Field from './Field.svelte';
@@ -8,7 +9,7 @@
 		value = $bindable(null),
 		invalid = $bindable(false),
 		nullable = true,
-		currency = '₽',
+		currency,
 		placeholder,
 		label,
 		hint,
@@ -22,6 +23,7 @@
 		/** Out: the text is not an amount (the value keeps the last amount typed); forms do not submit. */
 		invalid?: boolean;
 		nullable?: boolean;
+		/** The symbol after the amount; the currency of the settings unless given. */
 		currency?: string;
 		placeholder?: string;
 		label?: string;
@@ -134,7 +136,7 @@
 					if (e.key === 'Enter') showError = invalid;
 				}}
 			/>
-			<span class="mw-affix">{currency}</span>
+			<span class="mw-affix">{currency ?? currencySymbol()}</span>
 		</div>
 	{/snippet}
 </Field>
