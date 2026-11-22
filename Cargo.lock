@@ -2648,6 +2648,7 @@ dependencies = [
  "mime_guess",
  "mw-core",
  "mw-db",
+ "mw-docs",
  "mw-domain",
  "sea-orm",
  "serde",

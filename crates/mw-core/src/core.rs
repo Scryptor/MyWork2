@@ -10,7 +10,9 @@ use sea_orm::{
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
-use crate::auth::{HashGate, MAX_CONCURRENT_PASSWORD_HASHES};
+use crate::auth::MAX_CONCURRENT_PASSWORD_HASHES;
+use crate::documents::MAX_CONCURRENT_RENDERS;
+use crate::gate::BlockingGate;
 use crate::settings::{self, AppSettings};
 use crate::{Clock, CoreError};
 
@@ -20,7 +22,10 @@ pub struct Core {
     pub(crate) db: DatabaseConnection,
     pub(crate) clock: Arc<dyn Clock>,
     pub(crate) settings: Arc<RwLock<AppSettings>>,
-    pub(crate) hash_gate: HashGate,
+    /// Вычисления Argon2: каждое занимает ЦП и ~19 МиБ памяти.
+    pub(crate) hash_gate: BlockingGate,
+    /// Рендер документов Typst: каждый занимает ЦП и десятки МиБ памяти.
+    pub(crate) render_gate: BlockingGate,
     /// Корень папки данных: файлы вложений лежат в `<корень>/attachments`.
     pub(crate) data_dir: Option<PathBuf>,
     /// Фоновые задачи, которые нельзя бросать при остановке (перенос файлов черновиков, импорт).
@@ -44,7 +49,11 @@ impl Core {
             db,
             clock,
             settings: Arc::new(RwLock::new(loaded)),
-            hash_gate: HashGate::new(MAX_CONCURRENT_PASSWORD_HASHES),
+            hash_gate: BlockingGate::new(
+                MAX_CONCURRENT_PASSWORD_HASHES,
+                "сбой вычисления хэша пароля",
+            ),
+            render_gate: BlockingGate::new(MAX_CONCURRENT_RENDERS, "сбой построения документа"),
             data_dir: None,
             background: TaskTracker::new(),
             shutdown: CancellationToken::new(),

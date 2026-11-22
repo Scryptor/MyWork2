@@ -1,15 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import { dialNumber, formatPhone, phoneDigits, phoneKey } from './phone.js';
 
+/** The same examples are in `crates/mw-domain/src/phone.rs` (`format_phone`): documents print numbers as here. */
+const FORMAT_EXAMPLES: [string, string][] = [
+	['89211234567', '+7 921 123-45-67'],
+	['79211234567', '+7 921 123-45-67'],
+	['9211234567', '+7 921 123-45-67'],
+	['123456', '12-34-56'],
+	['12345', '12345'],
+	['19211234567', '19211234567'],
+	['4951234567890', '4951234567890'],
+	['', '']
+];
+
 describe('phone', () => {
-	it('formats', () => {
-		expect(formatPhone('89211234567')).toBe('+7 921 123-45-67');
-		expect(formatPhone('79211234567')).toBe('+7 921 123-45-67');
-		expect(formatPhone('9211234567')).toBe('+7 921 123-45-67');
-		expect(formatPhone('123456')).toBe('12-34-56');
-		expect(formatPhone('12345')).toBe('12345');
-		expect(formatPhone('4951234567890')).toBe('4951234567890');
-		expect(formatPhone('')).toBe('');
+	it.each(FORMAT_EXAMPLES)('formats «%s»', (digits, shown) => {
+		expect(formatPhone(digits)).toBe(shown);
 	});
 	it('extracts digits', () => {
 		expect(phoneDigits('+7 (921) 123-45-67')).toBe('79211234567');

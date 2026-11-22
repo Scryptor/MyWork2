@@ -114,19 +114,15 @@ impl Money {
             .ok_or(MoneyParseError::Overflow)
     }
 
-    /// Форматирует для показа: тысячи через неразрывный пробел, запятая
-    /// перед копейками; копейки опускаются, если их нет.
-    pub fn format_ru(self) -> String {
+    /// Сумма без знака: тысячи через `separator`, запятая перед копейками, если они есть.
+    fn unsigned_text(self, separator: char) -> String {
         let abs = self.0.unsigned_abs();
         let (rubles, kopecks) = (abs / 100, abs % 100);
         let digits = rubles.to_string();
         let mut out = String::new();
-        if self.0 < 0 {
-            out.push('-');
-        }
         for (i, ch) in digits.chars().enumerate() {
             if i > 0 && (digits.len() - i) % 3 == 0 {
-                out.push('\u{a0}');
+                out.push(separator);
             }
             out.push(ch);
         }
@@ -135,6 +131,41 @@ impl Money {
         }
         out
     }
+
+    /// Форматирует для показа: тысячи через неразрывный пробел, запятая
+    /// перед копейками; копейки опускаются, если их нет.
+    pub fn format_ru(self) -> String {
+        let mut out = String::new();
+        if self.0 < 0 {
+            out.push('-');
+        }
+        out.push_str(&self.unsigned_text('\u{a0}'));
+        out
+    }
+}
+
+/// Знаки валют, которых нет в шрифте документов, и чем они печатаются (тест покрытия шрифта — в
+/// `mw-core`, `tests/documents.rs`).
+pub const DOC_CURRENCY_REPLACEMENTS: [(&str, &str); 3] = [("₽", "руб."), ("₸", "тг"), ("₴", "грн")];
+
+/// Сумма для печатного документа: как `formatMoney` в `apps/ui/src/lib/format/money.ts` (примеры в
+/// тестах обеих сторон общие), но знак из [`DOC_CURRENCY_REPLACEMENTS`] заменяется словом; пустой
+/// `symbol` — без знака.
+pub fn format_money_doc(m: Money, symbol: &str) -> String {
+    let mut text = String::new();
+    if m.kopecks() < 0 {
+        text.push('\u{2212}');
+    }
+    text.push_str(&m.unsigned_text('\u{202f}'));
+    let symbol = DOC_CURRENCY_REPLACEMENTS
+        .iter()
+        .find(|(sign, _)| *sign == symbol)
+        .map_or(symbol, |(_, word)| word);
+    if !symbol.is_empty() {
+        text.push('\u{a0}');
+        text.push_str(symbol);
+    }
+    text
 }
 
 impl fmt::Display for Money {
@@ -185,6 +216,36 @@ mod tests {
             Money::from_kopecks(12_345_678_900).format_ru(),
             "123\u{a0}456\u{a0}789"
         );
+    }
+
+    /// Общие примеры с `formatMoney` (`apps/ui/src/lib/format/money.test.ts`): знаки, которые есть в
+    /// шрифте документов, печатаются как в интерфейсе.
+    const FORMAT_MONEY_EXAMPLES: [(i64, &str, &str); 7] = [
+        (650_000, "$", "6\u{202f}500\u{a0}$"),
+        (650_050, "$", "6\u{202f}500,50\u{a0}$"),
+        (0, "€", "0\u{a0}€"),
+        (5, "$", "0,05\u{a0}$"),
+        (12_345_678_900, "$", "123\u{202f}456\u{202f}789\u{a0}$"),
+        (-50_000, "$", "\u{2212}500\u{a0}$"),
+        (650_000, "", "6\u{202f}500"),
+    ];
+
+    #[test]
+    fn format_money_doc_matches_the_interface() {
+        for (kopecks, symbol, shown) in FORMAT_MONEY_EXAMPLES {
+            let m = Money::from_kopecks(kopecks);
+            assert_eq!(format_money_doc(m, symbol), shown, "{kopecks} {symbol}");
+        }
+    }
+
+    #[test]
+    fn format_money_doc_replaces_signs_the_font_lacks() {
+        let m = Money::from_rubles(1500);
+        assert_eq!(format_money_doc(m, "₽"), "1\u{202f}500\u{a0}руб.");
+        assert_eq!(format_money_doc(m, "₸"), "1\u{202f}500\u{a0}тг");
+        assert_eq!(format_money_doc(m, "₴"), "1\u{202f}500\u{a0}грн");
+        assert_eq!(format_money_doc(m, "руб."), "1\u{202f}500\u{a0}руб.");
+        assert_eq!(format_money_doc(m, "Br"), "1\u{202f}500\u{a0}Br");
     }
 
     #[test]

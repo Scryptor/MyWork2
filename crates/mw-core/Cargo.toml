@@ -11,6 +11,7 @@ workspace = true
 [dependencies]
 mw-domain = { path = "../mw-domain" }
 mw-db = { path = "../mw-db" }
+mw-docs = { path = "../mw-docs" }
 sea-orm = { workspace = true }
 chrono = { workspace = true }
 chrono-tz = { workspace = true }

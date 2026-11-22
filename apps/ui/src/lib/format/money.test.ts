@@ -15,6 +15,23 @@ describe('formatMoney', () => {
 	});
 });
 
+/** The same examples are in `crates/mw-domain/src/money.rs` (`format_money_doc`): documents print sums as here. */
+const SHARED_EXAMPLES: [number, string, string][] = [
+	[650000, '$', `6${N}500${B}$`],
+	[650050, '$', `6${N}500,50${B}$`],
+	[0, '€', `0${B}€`],
+	[5, '$', `0,05${B}$`],
+	[12345678900, '$', `123${N}456${N}789${B}$`],
+	[-50000, '$', `−500${B}$`],
+	[650000, '', `6${N}500`]
+];
+
+describe('formatMoney: examples shared with printed documents', () => {
+	it.each(SHARED_EXAMPLES)('%i %s', (kopecks, currency, shown) => {
+		expect(formatMoney(kopecks, { currency })).toBe(shown);
+	});
+});
+
 describe('parseMoney', () => {
 	it('parses valid input', () => {
 		expect(parseMoney('6500')).toBe(650000);
