@@ -118,6 +118,26 @@ test('without «settings_manage» every section opens read-only, without failure
 	await expect(page.getByRole('textbox', { name: 'Долгая диагностика, дней' })).toBeDisabled();
 	await quiet();
 
+	await page.goto('/settings/documents');
+	await expect(callout(page)).toBeVisible();
+	for (const name of [
+		'Телефон сервиса',
+		'Адрес и часы работы',
+		'Реквизиты',
+		'Условия приёма',
+		'Условия выдачи'
+	]) {
+		await expect(page.getByRole('textbox', { name, exact: true })).toBeDisabled();
+	}
+	await quiet();
+
+	// «Печать» is this computer's, not the server's: no right is needed to set it up.
+	await page.goto('/settings/print');
+	await expect(page.getByText('Печать из браузера — через PDF')).toBeVisible();
+	await expect(callout(page)).toHaveCount(0);
+	await expect(page.getByRole('radio', { name: '40 × 30 мм' })).toBeEnabled();
+	await quiet();
+
 	await page.goto('/settings/dictionaries?kind=brand');
 	await expect(callout(page)).toBeVisible();
 	// The brand is in an order: not «в 0 заказах», no count at all.

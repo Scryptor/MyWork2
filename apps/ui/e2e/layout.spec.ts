@@ -545,6 +545,16 @@ async function serverSettingsScenes(
 	);
 	await scene(page, c, 'orders-settings', bars, pending);
 
+	await page.goto('/settings/documents');
+	await expect(page.getByRole('heading', { name: 'Документы и реквизиты' })).toBeVisible();
+	await expect(page.getByRole('textbox', { name: 'Условия приёма', exact: true })).toBeEnabled();
+	await scene(page, c, 'documents-settings', bars, pending);
+
+	await page.goto('/settings/print');
+	await expect(page.getByRole('heading', { name: 'Печать', exact: true })).toBeVisible();
+	await expect(page.getByRole('radiogroup', { name: 'Размер наклейки' })).toBeVisible();
+	await scene(page, c, 'print-settings', bars, pending);
+
 	await page.goto('/settings/dictionaries?kind=device_type');
 	await expect(page.getByRole('heading', { name: 'Справочники' })).toBeVisible();
 	// Loaded: the values with their counts (the archived one of the seed is there).

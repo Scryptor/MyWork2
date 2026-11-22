@@ -1,10 +1,12 @@
 import BookOpen from '@lucide/svelte/icons/book-open';
 import CircleDot from '@lucide/svelte/icons/circle-dot';
+import FileText from '@lucide/svelte/icons/file-text';
 import FolderInput from '@lucide/svelte/icons/folder-input';
 import Info from '@lucide/svelte/icons/info';
 import ListOrdered from '@lucide/svelte/icons/list-ordered';
 import MapPin from '@lucide/svelte/icons/map-pin';
 import Palette from '@lucide/svelte/icons/palette';
+import Printer from '@lucide/svelte/icons/printer';
 import ShieldCheck from '@lucide/svelte/icons/shield-check';
 import Settings2 from '@lucide/svelte/icons/settings-2';
 import Users from '@lucide/svelte/icons/users';
@@ -25,6 +27,8 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
 	{ id: 'general', label: ru.settings.general, icon: Settings2, href: 'settings/general' },
 	{ id: 'appearance', label: ru.settings.appearance, icon: Palette, href: 'settings/appearance' },
 	{ id: 'orders', label: ru.settings.ordersTitle, icon: ListOrdered, href: 'settings/orders' },
+	{ id: 'documents', label: ru.settings.documents, icon: FileText, href: 'settings/documents' },
+	{ id: 'print', label: ru.settings.print, icon: Printer, href: 'settings/print' },
 	{
 		id: 'dictionaries',
 		label: ru.settings.dictionaries,

@@ -177,9 +177,15 @@ export async function upload<T>(path: string, body: Blob, query?: Query): Promis
 	return (await readBody(response)) as T;
 }
 
-/** A binary response (an attachment's file or thumbnail), fetched with the token. */
-export async function requestBlob(path: string, signal?: AbortSignal): Promise<Blob> {
-	const response = await send('GET', path, undefined, { headers: authHeaders(), signal });
+/** A binary response (an attachment's file or thumbnail, a document's PDF), fetched with the token. */
+export async function requestBlob(
+	path: string,
+	opts: { query?: Query; signal?: AbortSignal } = {}
+): Promise<Blob> {
+	const response = await send('GET', path, opts.query, {
+		headers: authHeaders(),
+		signal: opts.signal
+	});
 	if (!response.ok) return fail(response, 'GET', path);
 	return response.blob();
 }

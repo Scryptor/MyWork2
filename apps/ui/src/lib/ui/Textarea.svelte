@@ -12,6 +12,7 @@
 		error,
 		required = false,
 		disabled = false,
+		onblur,
 		id
 	}: {
 		value: string;
@@ -25,6 +26,7 @@
 		error?: string;
 		required?: boolean;
 		disabled?: boolean;
+		onblur?: () => void;
 		id?: string;
 	} = $props();
 
@@ -62,7 +64,8 @@
 				{disabled}
 				aria-describedby={f.describedBy}
 				aria-invalid={f.invalid ? 'true' : undefined}
-				aria-required={required ? 'true' : undefined}></textarea>
+				aria-required={required ? 'true' : undefined}
+				{onblur}></textarea>
 		</div>
 	{/snippet}
 </Field>
