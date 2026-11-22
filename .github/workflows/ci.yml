@@ -61,6 +61,18 @@ jobs:
       - name: Test
         run: cargo test --workspace
 
+  # Licences of the Rust dependencies (deny.toml): no MPL and no copyleft in the program.
+  deny:
+    name: cargo-deny licenses
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny
+      - run: cargo deny check licenses
+
   ui:
     name: ui (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

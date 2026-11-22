@@ -1,0 +1,17 @@
+[package]
+name = "mw-docs"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+thiserror = { workspace = true }
+typst = { workspace = true }
+typst-pdf = { workspace = true }
+typst-render = { workspace = true }
+typst-layout = { workspace = true }
+comemo = { workspace = true }
