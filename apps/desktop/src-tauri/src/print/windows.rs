@@ -77,6 +77,15 @@ pub(super) fn decode_pages(pages: &[String]) -> Result<Vec<Vec<u8>>, String> {
         .collect()
 }
 
+/// Текст ошибки шага с текстом Windows, если она его дала. GDI ставит код ошибки не всегда: без него (код 0) —
+/// только `what`, неизменный текст, который называет шаг.
+pub(super) fn with_windows_text(what: &str, windows: Option<&str>) -> String {
+    match windows.map(str::trim) {
+        Some(text) if !text.is_empty() => format!("{what}: {text}"),
+        _ => what.to_string(),
+    }
+}
+
 /// Строки 24-битного DIB из RGBA (`width` точек в строке): синий, зелёный, красный; строка дополнена нулями до
 /// кратной 4 байтам длины; порядок строк — как в картинке (DIB сверху вниз). Прозрачное ложится на белый лист.
 pub(super) fn dib_rows(rgba: &[u8], width: usize) -> Vec<u8> {
@@ -108,8 +117,8 @@ pub(super) fn dib_rows(rgba: &[u8], width: usize) -> Vec<u8> {
 #[deny(clippy::undocumented_unsafe_blocks)]
 mod gdi {
     use super::super::{PrinterInfo, check_copies, known_printer};
-    use super::{decode_pages, dib_rows, page_limits, target_rect};
-    use ::windows::Win32::Foundation::ERROR_INSUFFICIENT_BUFFER;
+    use super::{decode_pages, dib_rows, page_limits, target_rect, with_windows_text};
+    use ::windows::Win32::Foundation::{ERROR_INSUFFICIENT_BUFFER, SetLastError, WIN32_ERROR};
     use ::windows::Win32::Graphics::Gdi::{
         BI_RGB, BITMAPINFO, BITMAPINFOHEADER, COLORONCOLOR, CreateDCW, DIB_RGB_COLORS, DeleteDC,
         GDI_ERROR, GET_DEVICE_CAPS_INDEX, GetDeviceCaps, HDC, LOGPIXELSX, LOGPIXELSY,
@@ -199,6 +208,7 @@ mod gdi {
             let (mut needed, mut returned) = (0u32, 0u32);
             let bytes = as_bytes_mut(&mut words);
             let buffer = if bytes.is_empty() { None } else { Some(bytes) };
+            clear_last_error();
             // SAFETY: `buffer` — живой срез (или его нет), его длину функция получает вместе с ним; `needed` и
             // `returned` — указатели на живые локальные переменные; имя сервера — пустое (этот компьютер).
             let listed = unsafe {
@@ -213,9 +223,9 @@ mod gdi {
                     words = vec![0; (needed as usize).div_ceil(size_of::<u64>())];
                 }
                 Err(e) => {
-                    return Err(format!(
-                        "Не удалось получить список принтеров: {}",
-                        e.message()
+                    return Err(with_windows_text(
+                        "Не удалось получить список принтеров",
+                        windows_text(&e).as_deref(),
                     ));
                 }
             }
@@ -267,14 +277,25 @@ mod gdi {
         String::from_utf16(&name[..end]).ok()
     }
 
-    /// Ошибка шага печати с текстом последней ошибки Windows (если она есть); вызывать сразу после шага.
+    /// Сбрасывает код последней ошибки потока перед проверяемым вызовом: GDI ставит его не всегда, и без сброса
+    /// в тексте ошибки оказался бы код прошлого вызова.
+    fn clear_last_error() {
+        // SAFETY: функция только записывает код последней ошибки текущего потока.
+        unsafe { SetLastError(WIN32_ERROR(0)) };
+    }
+
+    /// Текст ошибки Windows; для кода 0 (ошибки нет) — `None`.
+    fn windows_text(error: &Error) -> Option<String> {
+        (!error.code().is_ok()).then(|| error.message())
+    }
+
+    /// Ошибка шага печати с текстом последней ошибки Windows (если она есть); вызывать сразу после шага, перед
+    /// которым был [`clear_last_error`].
     fn print_error(step: &str) -> String {
-        let error = Error::from_thread();
-        if error.code().is_ok() {
-            format!("Ошибка печати: {step}")
-        } else {
-            format!("Ошибка печати: {step}: {}", error.message())
-        }
+        with_windows_text(
+            &format!("Ошибка печати: {step}"),
+            windows_text(&Error::from_thread()).as_deref(),
+        )
     }
 
     fn page_error(error: image::ImageError) -> String {
@@ -300,6 +321,7 @@ mod gdi {
     impl PrinterDc {
         fn open(printer: &str) -> Result<Self, String> {
             let name = wide(printer);
+            clear_last_error();
             // SAFETY: имя драйвера — литерал с нулём, имя принтера — живой буфер с нулём (`wide`); порт и DEVMODE
             // не передаются — настройки принтера по умолчанию.
             let dc =
@@ -345,6 +367,7 @@ mod gdi {
                 lpszDocName: PCWSTR(title.as_ptr()),
                 ..Default::default()
             };
+            clear_last_error();
             // SAFETY: `info` и строка названия живы до конца вызова; контекст открыт.
             if unsafe { StartDocW(dc.0, &info) } <= 0 {
                 return Err(print_error("задание не началось"));
@@ -358,10 +381,12 @@ mod gdi {
             dib: &Dib,
             (x, y, width, height): (i32, i32, i32, i32),
         ) -> Result<(), String> {
+            clear_last_error();
             // SAFETY: контекст открыт, задание начато (`open`).
             if unsafe { StartPage(self.dc.0) } <= 0 {
                 return Err(print_error("страница не началась"));
             }
+            clear_last_error();
             // SAFETY: `dib.bits` — строки картинки `dib.width` × `dib.height`, как описывает `dib.info` (24 бита,
             // строка кратна 4 байтам); оба живы до конца вызова, функция их только читает. Начатую страницу при
             // ошибке выбрасывает `AbortDoc` (`drop` задания).
@@ -385,6 +410,7 @@ mod gdi {
             if lines == 0 || lines == GDI_ERROR {
                 return Err(print_error("страница не нарисовалась"));
             }
+            clear_last_error();
             // SAFETY: страница начата выше.
             if unsafe { EndPage(self.dc.0) } <= 0 {
                 return Err(print_error("страница не закончилась"));
@@ -393,6 +419,7 @@ mod gdi {
         }
 
         fn finish(mut self) -> Result<(), String> {
+            clear_last_error();
             // SAFETY: задание начато и ещё не закончено (`open`).
             if unsafe { EndDoc(self.dc.0) } <= 0 {
                 // `drop` отменит задание.
@@ -425,7 +452,7 @@ mod gdi {
             let image = png_reader(png, max)
                 .decode()
                 .map_err(page_error)?
-                .to_rgba8();
+                .into_rgba8();
             let (width, height) = image.dimensions();
             // Размеры не больше `max` (`page_limits`: тысячи точек) — в i32 помещаются.
             let (width, height) = (width as i32, height as i32);
@@ -524,6 +551,18 @@ mod tests {
         assert_eq!(
             decode_pages(&[half.clone(), half]),
             Err("Документ для печати больше 64 МБ".to_string())
+        );
+    }
+
+    /// GDI ставит код ошибки не всегда: без текста Windows (или с пустым) — только шаг, как он есть.
+    #[test]
+    fn a_failed_step_names_itself_and_adds_the_windows_text_when_there_is_one() {
+        let step = "Ошибка печати: страница не началась";
+        assert_eq!(with_windows_text(step, None), step);
+        assert_eq!(with_windows_text(step, Some(" \r\n")), step);
+        assert_eq!(
+            with_windows_text(step, Some("Отказано в доступе.\r\n")),
+            "Ошибка печати: страница не началась: Отказано в доступе."
         );
     }
 
