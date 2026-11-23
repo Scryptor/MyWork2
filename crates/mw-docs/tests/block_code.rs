@@ -307,6 +307,16 @@ fn qr_block(link: &str) -> Block {
     })
 }
 
+/// A QR block with a caption wider than the code, set to the left.
+fn captioned_qr_block(link: &str) -> Block {
+    block(BlockBody::Qr {
+        link: link.to_owned(),
+        size_mm: 15.0,
+        caption: "Мы на Google Картах".to_owned(),
+        align: Align::Left,
+    })
+}
+
 #[test]
 fn qr_block_with_preset_becomes_code() {
     let t = template(
@@ -323,6 +333,20 @@ fn qr_block_with_preset_becomes_code() {
     assert!(got == pages(&t, &data), "prints otherwise:\n{code}");
     let png = rendered(&t, &data).png_pages(300).expect("png");
     assert_eq!(decode_all(&png[0]), ["https://maps.google.com/?q=example"]);
+}
+
+/// The caption measured to its width (wider than the code) prints the same in code.
+#[test]
+fn qr_block_with_a_wide_caption_becomes_the_same_code() {
+    let t = template(
+        Layout::OnePerPage,
+        vec![text("до"), captioned_qr_block("{фирма.гугл_карты}")],
+    );
+    let code = block_code(&t, &[1]).expect("a preset QR converts");
+    let data = sample_data(DocumentKind::IntakeAct);
+    let got = pages(&converted(&t, &[1], code.clone()), &data);
+    assert!(got == pages(&t, &data), "prints otherwise:\n{code}");
+    assert!(rendered(&t, &data).text().contains("Мы на Google Картах"));
 }
 
 #[test]
