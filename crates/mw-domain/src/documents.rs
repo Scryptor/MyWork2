@@ -78,17 +78,32 @@ mod tests {
 
     #[test]
     fn editable_ordinal_and_labels() {
-        let editable: Vec<_> = DocumentKind::ALL
+        let not_editable: Vec<_> = DocumentKind::ALL
             .into_iter()
             .filter(|k| !k.editable())
             .collect();
-        assert_eq!(editable, [DocumentKind::Calibration]);
+        assert_eq!(not_editable, [DocumentKind::Calibration]);
         let ordinals: Vec<_> = DocumentKind::ALL
             .into_iter()
             .map(DocumentKind::ordinal)
             .collect();
         assert_eq!(ordinals, [1, 2, 3, 4, 5, 6, 7]);
-        assert_eq!(DocumentKind::Sticker.label_ru(), "Наклейка");
+        let labels: Vec<_> = DocumentKind::ALL
+            .into_iter()
+            .map(DocumentKind::label_ru)
+            .collect();
+        assert_eq!(
+            labels,
+            [
+                "Акт приёма",
+                "Акт выдачи",
+                "Акт приёма по гарантии",
+                "Акт выдачи после гарантии",
+                "Пустой акт приёма",
+                "Наклейка",
+                "Пробная наклейка",
+            ]
+        );
     }
 
     #[test]
