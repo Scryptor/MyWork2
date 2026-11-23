@@ -49,6 +49,7 @@ export { default as Switch } from './Switch.svelte';
 export { default as Tabs } from './Tabs.svelte';
 export { default as TagInput } from './TagInput.svelte';
 export { default as TabPane } from './TabPane.svelte';
+export { default as CodeEditor } from './CodeEditor.svelte';
 export { default as Textarea } from './Textarea.svelte';
 export { default as TextInput } from './TextInput.svelte';
 export { default as Timeline } from './Timeline.svelte';

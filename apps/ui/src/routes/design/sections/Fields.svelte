@@ -2,6 +2,7 @@
 	import Search from '@lucide/svelte/icons/search';
 	import {
 		Checkbox,
+		CodeEditor,
 		ChipGroup,
 		Combobox,
 		DateInput,
@@ -43,6 +44,8 @@
 	let password = $state('secret');
 	let search = $state('');
 	let area = $state('');
+	let code = $state('#let total = 3\n#total + x\n= Заголовок');
+	let codeErrors = $state([{ line: 2, column: 10, message: 'unknown variable: x' }]);
 	let money = $state<number | null>(650000);
 	let moneyHint = $state<number | null>(null);
 	let moneyErr = $state<number | null>(null);
@@ -121,6 +124,15 @@
 	</TextInput>
 	<Textarea bind:value={area} label="Многострочное" hint="Растёт по содержимому" />
 </div>
+
+<h3>Редактор кода</h3>
+<CodeEditor
+	bind:value={code}
+	label="Typst-код"
+	hint="Номера строк, моноширинный шрифт; Tab переводит фокус"
+	rows={6}
+	errors={codeErrors}
+/>
 
 <h3>Деньги и телефон</h3>
 <div class="grid">

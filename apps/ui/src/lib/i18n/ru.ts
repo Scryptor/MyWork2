@@ -338,6 +338,12 @@ const importExplain: Record<WarningCode, string[]> = {
 };
 
 export const ru = {
+	ui: {
+		codeEditor: {
+			error: (line: number, column: number, message: string) =>
+				`Строка ${line}, знак ${column}: ${message}`
+		}
+	},
 	common: {
 		close: 'Закрыть',
 		cancel: 'Отмена',
