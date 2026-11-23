@@ -1,3 +1,18 @@
+<script module lang="ts">
+	/**
+	 * Levels over `--z-panel` of the open panels. The panel opened last is on top, as `layers` takes it
+	 * (Esc, input), wherever its portal is in the page: the order panel of the layout is in the DOM
+	 * before a page's own panel, and an order opened from the client's panel went under it.
+	 */
+	const openLevels: number[] = [];
+	/** `--z-panel` + 9 stays under `--z-scrim`. */
+	const TOP_LEVEL = 9;
+
+	function nextLevel(): number {
+		return openLevels.length === 0 ? 0 : Math.min(TOP_LEVEL, Math.max(...openLevels) + 1);
+	}
+</script>
+
 <script lang="ts">
 	import { display } from '#lib/design/prefs.svelte.js';
 	import { Portal } from 'bits-ui';
@@ -45,14 +60,21 @@
 		onclose?.();
 	}
 
-	/** While the panel is in the DOM: a 'panel' layer (Esc closes it), focus inside, focus back. */
+	/**
+	 * While the panel is in the DOM: a 'panel' layer (Esc closes it) on top of the open ones, focus
+	 * inside, focus back.
+	 */
 	function lifecycle(node: HTMLElement) {
 		return untrack(() => {
 			const previous = document.activeElement;
+			const level = nextLevel();
+			openLevels.push(level);
+			node.style.setProperty('--panel-level', String(level));
 			const off = layers.open('panel', close, () => node);
 			panel = node;
 			node.focus({ preventScroll: true });
 			return () => {
+				openLevels.splice(openLevels.indexOf(level), 1);
 				off();
 				panel = null;
 				// The page stays live under the panel: focus the user moved there stays there.
@@ -159,7 +181,7 @@
 <style>
 	.slide-over {
 		position: fixed;
-		z-index: var(--z-panel);
+		z-index: calc(var(--z-panel) + var(--panel-level, 0));
 		top: 0;
 		right: 0;
 		bottom: 0;

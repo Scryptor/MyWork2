@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { createClient, createOrder, fetchClient, uniq, uniqPhone } from './support/api';
 
 // «Клиенты» on the server of 4173 (open mode: every right). The database is shared by every test and
@@ -20,6 +20,22 @@ const orderPanelOf = (page: Page, id: number) =>
 	page.getByRole('dialog', { name: new RegExp(`^№ ${id}(?!\\d)`) });
 const sheetOf = (page: Page) => page.getByRole('dialog', { name: 'Новый заказ' });
 const toastsOf = (page: Page) => page.getByRole('status', { name: 'Уведомления' });
+
+/**
+ * The panel is on top: nothing covers its middle. `toBeVisible` does not tell — an order panel opened
+ * under the client's panel is "visible" while the screen shows only the client.
+ */
+async function expectOnTop(panel: Locator) {
+	await expect
+		.poll(() =>
+			panel.evaluate((el) => {
+				const r = el.getBoundingClientRect();
+				const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+				return hit !== null && el.contains(hit);
+			})
+		)
+		.toBe(true);
+}
 
 /** A client name nobody else has, in mixed case: the screen shows it as it is. */
 const clientName = () => `Клиентова ${uniq('k')}`;
@@ -232,6 +248,51 @@ test('an order of the client opens its panel with «← к клиенту», and
 	await expect(page).toHaveURL(new RegExp(`/clients\\?client=${o.client_id}$`));
 });
 
+// MyWork 2 did not open an order clicked in the client's list of earlier orders: here every way to
+// the client's panel ends in an order panel, for the older order as well as the newer one.
+test('earlier orders open from the client panel reached by Ctrl K and by «открыть»', async ({
+	page,
+	request
+}) => {
+	const name = clientName();
+	const older = await createOrder(request, { clientName: name, model: uniq('M') });
+	const newer = await createOrder(request, {
+		client: { existing: older.client_id },
+		model: uniq('M')
+	});
+	const orderIn = (id: number) =>
+		panelOf(page, name)
+			.getByRole('list', { name: 'Заказы клиента' })
+			.getByRole('button', { name: new RegExp(`^№ ${id}(?!\\d)`) });
+
+	// Ctrl K: the client, then the older order of their list.
+	await page.goto('/orders?chips=all');
+	await expect(page.getByRole('grid', { name: 'Заказы' })).toBeVisible();
+	await page.keyboard.press(`${await mod(page)}+KeyK`);
+	const palette = page.getByRole('dialog', { name: 'Найти или выполнить' });
+	await palette.getByRole('combobox').fill(name);
+	await palette.getByRole('option', { name: new RegExp(`^${name}`) }).click();
+	await expect(panelOf(page, name)).toBeVisible();
+	await orderIn(older.id).click();
+	await expect(orderPanelOf(page, older.id)).toBeVisible();
+	await expectOnTop(orderPanelOf(page, older.id));
+
+	// «открыть» at the client of that order: their panel again, and the newer order opens from it.
+	await orderPanelOf(page, older.id).getByRole('link', { name: 'открыть' }).click();
+	await expect(orderPanelOf(page, older.id)).toBeHidden();
+	await expect(panelOf(page, name)).toBeVisible();
+	await orderIn(newer.id).click();
+	await expect(orderPanelOf(page, newer.id)).toBeVisible();
+	await expectOnTop(orderPanelOf(page, newer.id));
+
+	// «← к клиенту», and the older one opens once more.
+	await orderPanelOf(page, newer.id).getByRole('link', { name: '← к клиенту' }).click();
+	await expect(orderPanelOf(page, newer.id)).toBeHidden();
+	await orderIn(older.id).click();
+	await expect(orderPanelOf(page, older.id)).toBeVisible();
+	await expectOnTop(orderPanelOf(page, older.id));
+});
+
 test('«Новый заказ» opens the intake with this client', async ({ page, request }) => {
 	const name = clientName();
 	const c = await createClient(request, { full_name: name });
@@ -388,6 +449,33 @@ test.describe('on a phone', () => {
 		await card.click();
 		await expect(panelOf(page, name)).toBeVisible();
 		await expect(page).toHaveURL(new RegExp(`client=${o.client_id}`));
+	});
+
+	test('an earlier order opens from the client on the whole screen, and «← к клиенту» returns', async ({
+		page,
+		request
+	}) => {
+		const name = clientName();
+		const older = await createOrder(request, { clientName: name, model: uniq('M') });
+		await createOrder(request, { client: { existing: older.client_id }, model: uniq('M') });
+		// As the program starts: on «Заказы», then «Клиенты» of the bottom navigation.
+		await page.goto('/orders');
+		await page
+			.getByRole('navigation', { name: 'Основная навигация' })
+			.getByRole('link', { name: 'Клиенты' })
+			.click();
+		await filterOf(page).fill(name);
+		await page.getByRole('button', { name: new RegExp(`^${name}`) }).click();
+		await expect(panelOf(page, name)).toBeVisible();
+		await panelOf(page, name)
+			.getByRole('list', { name: 'Заказы клиента' })
+			.getByRole('button', { name: new RegExp(`^№ ${older.id}(?!\\d)`) })
+			.click();
+		await expect(orderPanelOf(page, older.id)).toBeVisible();
+		await expectOnTop(orderPanelOf(page, older.id));
+		await orderPanelOf(page, older.id).getByRole('link', { name: '← к клиенту' }).click();
+		await expect(orderPanelOf(page, older.id)).toBeHidden();
+		await expect(panelOf(page, name)).toBeVisible();
 	});
 });
 
