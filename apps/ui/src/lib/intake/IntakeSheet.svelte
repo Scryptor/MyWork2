@@ -59,7 +59,7 @@
 	} from './draft.js';
 	import IntakeAside from './IntakeAside.svelte';
 	import IntakePhotos, { MAX_INTAKE_PHOTOS } from './IntakePhotos.svelte';
-	import { intake, intakeDocuments, intakePrintOptions } from './intake.svelte.js';
+	import { intake, intakeDocuments, intakePrintOptions, printSheet } from './intake.svelte.js';
 
 	const t = ru.intake;
 	/** Pause after the last key before the draft is written and the suggestions are asked. */
@@ -548,7 +548,7 @@
 			action: { label: t.open, run: () => void orderPanel.open(id) }
 		});
 		// The switches «Акт приёма» and «Наклейка»: the order is saved, a failure to print is only told.
-		const printing = intakePrintOptions(sheet);
+		const printing = intakePrintOptions(printSheet(answer.current, sheet, intake.isOpen));
 		if (printing !== null)
 			void printDocuments(intakeDocuments(printSettings.onIntake), { orderId: id }, printing);
 	}

@@ -3,7 +3,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 const platform = vi.hoisted(() => ({ canPrintDirectly: vi.fn<() => boolean>() }));
 vi.mock('#lib/print/platform.js', () => platform);
 
-import { intake, intakeDocuments, intakePrintOptions, SUBMIT_TIMEOUT_MS } from './intake.svelte.js';
+import {
+	intake,
+	intakeDocuments,
+	intakePrintOptions,
+	printSheet,
+	SUBMIT_TIMEOUT_MS
+} from './intake.svelte.js';
 
 /** A request that answers when told to. */
 function later<T>() {
@@ -223,5 +229,23 @@ describe('how the documents of an accepted order print', () => {
 		expect(intakePrintOptions('other')).toEqual({ noPreview: true });
 		platform.canPrintDirectly.mockReturnValue(false);
 		expect(intakePrintOptions('other')).toBeNull();
+	});
+});
+
+describe('the sheet an answer prints over', () => {
+	it('an answer in time keeps the sheet as it decided', () => {
+		expect(printSheet(true, 'close', false)).toBe('close');
+		expect(printSheet(true, 'other', true)).toBe('other');
+	});
+
+	it('a late answer with a sheet open now is over a form that stays: no preview over it', () => {
+		platform.canPrintDirectly.mockReturnValue(false);
+		expect(intakePrintOptions(printSheet(false, 'close', true))).toBeNull();
+		platform.canPrintDirectly.mockReturnValue(true);
+		expect(intakePrintOptions(printSheet(false, 'close', true))).toEqual({ noPreview: true });
+	});
+
+	it('a late answer with no sheet open prints as usual', () => {
+		expect(printSheet(false, 'close', false)).toBe('close');
 	});
 });

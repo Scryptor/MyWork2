@@ -6,8 +6,14 @@
 	import Printer from '@lucide/svelte/icons/printer';
 	import { onMount } from 'svelte';
 	import { ru } from '#lib/i18n/ru.js';
-	import { canPrintDirectly, listPrinters, type PrinterInfo } from '#lib/print/platform.js';
-	import { printDocument } from '#lib/print/print.svelte.js';
+	import {
+		canPrintDirectly,
+		listPrinters,
+		printFormat,
+		type PrinterInfo,
+		type PrintFormat
+	} from '#lib/print/platform.js';
+	import { actDpiHelp, printDocument } from '#lib/print/print.svelte.js';
 	import {
 		COPIES,
 		formatMm,
@@ -33,8 +39,14 @@
 	/** The printers of this computer; null while they are asked for (or when they could not be). */
 	let printers = $state.raw<PrinterInfo[] | null>(null);
 	let printersError = $state<string | null>(null);
+	/** What this system prints (Windows: pages of PNG); null in a browser, or until the program says. */
+	let format = $state<PrintFormat | null>(null);
 	onMount(() => {
 		if (!direct) return;
+		printFormat().then(
+			(f) => (format = f),
+			() => {}
+		);
 		listPrinters().then(
 			(list) => (printers = list),
 			(e: unknown) => (printersError = t.printersFailed(e instanceof Error ? e.message : String(e)))
@@ -277,7 +289,7 @@
 		<div class="field">
 			<span class="head">
 				<span class="label">{t.dpi}</span>
-				<HelpHint title={t.dpi} text={help.dpi} />
+				<HelpHint title={t.dpi} text={[...help.dpi, actDpiHelp(format)]} />
 			</span>
 			<SegmentedControl
 				label={t.dpi}

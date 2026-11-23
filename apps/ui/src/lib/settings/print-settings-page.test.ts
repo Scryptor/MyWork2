@@ -9,11 +9,13 @@ import { DEFAULT_PRINT_SETTINGS, printSettings } from '#lib/print/settings.svelt
 const platform = vi.hoisted(() => ({
 	direct: false,
 	canPrintDirectly: vi.fn(),
-	listPrinters: vi.fn()
+	listPrinters: vi.fn(),
+	printFormat: vi.fn()
 }));
 vi.mock('#lib/print/platform.js', () => ({
 	canPrintDirectly: platform.canPrintDirectly,
-	listPrinters: platform.listPrinters
+	listPrinters: platform.listPrinters,
+	printFormat: platform.printFormat
 }));
 
 import Page from './PrintSettingsHarness.test-helper.svelte';
@@ -30,6 +32,8 @@ beforeEach(() => {
 	platform.canPrintDirectly.mockReset();
 	platform.canPrintDirectly.mockImplementation(() => platform.direct);
 	platform.listPrinters.mockReset();
+	platform.printFormat.mockReset();
+	platform.printFormat.mockResolvedValue('pdf');
 	platform.listPrinters.mockResolvedValue([
 		{ name: 'Акты HP', is_default: true },
 		{ name: 'Xprinter XP-365B', is_default: false }

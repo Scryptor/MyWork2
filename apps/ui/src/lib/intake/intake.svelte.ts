@@ -158,3 +158,16 @@ export function intakePrintOptions(sheet: 'close' | 'other'): PrintOptions | nul
 	if (sheet === 'close') return {};
 	return canPrintDirectly() ? { noPreview: true } : null;
 }
+
+/**
+ * Which way the documents of an accepted order are printed after the answer: an answer that came late
+ * (`current` false: the sheet it was sent from is closed or opened again) with a sheet open now is over
+ * a form that stays, like another order typed — never a preview over it.
+ */
+export function printSheet(
+	current: boolean,
+	sheet: 'close' | 'other',
+	open: boolean
+): 'close' | 'other' {
+	return !current && open ? 'other' : sheet;
+}

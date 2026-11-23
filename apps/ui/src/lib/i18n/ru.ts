@@ -947,9 +947,13 @@ export const ru = {
 			],
 			dpi: [
 				'Сколько точек на дюйм печатает принтер наклеек: у термопринтеров обычно 203, реже 300 или 600 — это указано в описании принтера.',
-				'Под эти точки программа подгоняет полоски штрихкода, чтобы сканер читал его уверенно.',
-				'Акты печатаются в 300 точек на дюйм, эта настройка на них не влияет.'
+				'Под эти точки программа подгоняет полоски штрихкода, чтобы сканер читал его уверенно.'
 			],
+			/** Under the resolution of the label printer: how acts are printed (Windows, pages of PNG). */
+			dpiActsPng: 'Акты печатаются в 300 точек на дюйм. Эта настройка на них не влияет.',
+			/** The same on macOS and Linux (CUPS), and in a browser: a PDF. */
+			dpiActsPdf:
+				'Акты уходят на принтер в PDF; штрихкод выровнен по сетке 300 точек на дюйм. Эта настройка на них не влияет.',
 			copies: [
 				'Сколько экземпляров печатать за раз, от 1 до 99.',
 				'На листе акта уже два экземпляра — для клиента и для сервиса, так что обычно хватает одной копии.'
@@ -1272,6 +1276,8 @@ export const ru = {
 		noDefaultPrinter: 'Принтер по умолчанию не задан',
 		/** «Печать» of the preview with no printer to print on. */
 		noPrinterChosen: 'Принтер не выбран, а принтера по умолчанию в системе нет',
+		/** The system lists no printer at all. */
+		noPrintersFound: 'Принтеры не найдены',
 		printSettings: 'Настройки печати',
 		/** Printing an order whose own changes are not saved: the server would print the order without them. */
 		notPrintedUnsaved: (id: number, reason: string) =>

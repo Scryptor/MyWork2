@@ -23,6 +23,7 @@ vi.mock('$app/paths', () => ({ resolve: (p: string) => `/${p}` }));
 
 import {
 	ACT_DPI,
+	actDpiHelp,
 	documentOptions,
 	issueKind,
 	menuDocuments,
@@ -224,6 +225,14 @@ describe('without a printer: the preview', () => {
 		expect(platform.printPdf).not.toHaveBeenCalled();
 	});
 
+	it('asked from the preview with no printer in the system: «Принтеры не найдены»', async () => {
+		platform.listPrinters.mockResolvedValue([]);
+		printSettings.set({ actPrinter: 'Акты HP' });
+		await printDocument('intake_act', { orderId: 7 }, { noPreview: true });
+		expect(preview.current).toBeNull();
+		expect(toasts()).toEqual([['Принтеры не найдены', 'danger', 'Настройки печати']]);
+	});
+
 	it('asked from the preview (no preview): a notice with «Настройки печати», the preview does not come back', async () => {
 		platform.listPrinters.mockResolvedValue([{ name: 'Акты HP', is_default: false }]);
 		await printDocument('intake_act', { orderId: 7 }, { noPreview: true });
@@ -339,10 +348,26 @@ describe('several documents', () => {
 		await printDocuments(['intake_act', 'sticker'], { orderId: 9 }, { noPreview: true });
 		expect(preview.current).toBeNull();
 		expect(platform.printPdf).not.toHaveBeenCalled();
-		expect(toasts()).toContainEqual([
-			'Принтер не выбран, а принтера по умолчанию в системе нет',
-			'danger',
-			'Настройки печати'
+		expect(toasts()).toEqual([
+			['Принтер не выбран, а принтера по умолчанию в системе нет', 'danger', 'Настройки печати']
+		]);
+	});
+
+	it('over a form that stays open: a computer without printers is one notice «Принтеры не найдены», not two', async () => {
+		platform.listPrinters.mockResolvedValue([]);
+		await printDocuments(['intake_act', 'sticker'], { orderId: 9 }, { noPreview: true });
+		expect(preview.current).toBeNull();
+		expect(toasts()).toEqual([['Принтеры не найдены', 'danger', 'Настройки печати']]);
+	});
+
+	it('over a form that stays open: different reasons for the act and the sticker are told once each', async () => {
+		platform.listPrinters.mockResolvedValue([{ name: 'Акты HP', is_default: false }]);
+		printSettings.set({ actPrinter: 'Акты HP' });
+		await printDocuments(['intake_act', 'sticker'], { orderId: 9 }, { noPreview: true });
+		expect(platform.printPdf).toHaveBeenCalledOnce();
+		expect(toasts()).toEqual([
+			['Отправлено на Акты HP', 'success', undefined],
+			['Принтер не выбран, а принтера по умолчанию в системе нет', 'danger', 'Настройки печати']
 		]);
 	});
 
@@ -481,5 +506,17 @@ describe('the act of an issue', () => {
 			expect(issueKind(name), name).toBe('issue_act');
 		}
 		expect(issueKind(undefined)).toBe('issue_act');
+	});
+});
+
+describe('the sentence about acts under the printer resolution', () => {
+	it('Windows prints their pages at 300 dpi; CUPS and a browser send a PDF with the barcode on that grid', () => {
+		expect(actDpiHelp('png')).toBe(
+			'Акты печатаются в 300 точек на дюйм. Эта настройка на них не влияет.'
+		);
+		for (const format of ['pdf', null] as const)
+			expect(actDpiHelp(format)).toBe(
+				'Акты уходят на принтер в PDF; штрихкод выровнен по сетке 300 точек на дюйм. Эта настройка на них не влияет.'
+			);
 	});
 });

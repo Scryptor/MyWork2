@@ -21,7 +21,14 @@ import { normalizeSearch } from '#lib/format/search.js';
 import { ru } from '#lib/i18n/ru.js';
 import { downloadBlob } from '#lib/platform/download.js';
 import { toast } from '#lib/ui/toast/toast.svelte.js';
-import { canPrintDirectly, listPrinters, printFormat, printPages, printPdf } from './platform.js';
+import {
+	canPrintDirectly,
+	listPrinters,
+	printFormat,
+	printPages,
+	printPdf,
+	type PrintFormat
+} from './platform.js';
 import { printSettings } from './settings.svelte.js';
 
 /** The pages of the preview: enough for a screen. */
@@ -32,6 +39,14 @@ export const PREVIEW_DPI = 110;
  * it (it divides 600 and 1200). The resolution of «Печать» is the label printer's, as its offset is.
  */
 export const ACT_DPI = 300;
+
+/**
+ * The sentence about acts under the label printer's resolution (`ru.help.print.dpi`): Windows prints their
+ * pages at `ACT_DPI`; CUPS gets the vector PDF, and `ACT_DPI` is only the grid of the barcode. A browser
+ * (no format) prints through a PDF too.
+ */
+export const actDpiHelp = (format: PrintFormat | null): string =>
+	format === 'png' ? ru.help.print.dpiActsPng : ru.help.print.dpiActsPdf;
 
 /** Printed on the label printer in the label's size; the rest are acts on A4. */
 export const isLabel = (kind: DocumentKind): boolean =>
@@ -191,13 +206,18 @@ async function base64Of(blob: Blob): Promise<string> {
 	return btoa(binary);
 }
 
-/** No printer to print on: none in the system, or none chosen and no default one. */
-class NoPrinter extends Error {}
+/** No printer to print on: none in the system (`found` false), or none chosen and no default one. */
+class NoPrinter extends Error {
+	constructor(readonly found: boolean) {
+		super();
+	}
+}
 
 async function printerName(chosen: string | null): Promise<string> {
 	const printers = await listPrinters();
+	if (printers.length === 0) throw new NoPrinter(false);
 	const name = chosen ?? printers.find((p) => p.is_default)?.name;
-	if (printers.length === 0 || name === undefined) throw new NoPrinter();
+	if (name === undefined) throw new NoPrinter(true);
 	return name;
 }
 
@@ -223,6 +243,18 @@ async function send(kind: DocumentKind, target: DocumentTarget, printer: string)
 
 const noPrinter = (e: unknown) =>
 	e instanceof NoPrinter || (e instanceof Error && e.message === ru.print.noDefaultPrinter);
+
+/** Why there is no printer: none in the system, or none chosen and no default one. */
+const noPrinterText = (e: unknown) =>
+	e instanceof NoPrinter && !e.found ? ru.print.noPrintersFound : ru.print.noPrinterChosen;
+
+/** The notice of a document asked over a form: no printer, and the way to «Настройки → Печать». */
+const showNoPrinter = (message: string) =>
+	toast.show({
+		message,
+		tone: 'danger',
+		action: { label: ru.print.printSettings, run: () => goto(resolve('settings/print')) }
+	});
 
 function failureText(e: unknown): string {
 	const text = e instanceof ApiError ? errorMessage(e) : e instanceof Error ? e.message : '';
@@ -256,12 +288,22 @@ export async function printDocument(
 	target: DocumentTarget,
 	opts: PrintOptions = {}
 ): Promise<void> {
+	const noPrinterNotice = await printOne(kind, target, opts);
+	if (noPrinterNotice !== null) showNoPrinter(noPrinterNotice);
+}
+
+/** `printDocument` without the notice about a missing printer: its text is returned for the caller to show. */
+async function printOne(
+	kind: DocumentKind,
+	target: DocumentTarget,
+	opts: PrintOptions
+): Promise<string | null> {
 	if (!canPrintDirectly()) {
 		openPreview(kind, target);
-		return;
+		return null;
 	}
 	const job = `${kind}:${target.orderId ?? ''}`;
-	if (sending.has(job)) return;
+	if (sending.has(job)) return null;
 	sending.add(job);
 	try {
 		const printer = await printerName(printTarget(kind).printer);
@@ -269,16 +311,9 @@ export async function printDocument(
 		toast.show({ message: ru.print.sent(printer), tone: 'success' });
 	} catch (e) {
 		if (noPrinter(e)) {
-			if (opts.noPreview) {
-				toast.show({
-					message: ru.print.noPrinterChosen,
-					tone: 'danger',
-					action: { label: ru.print.printSettings, run: () => goto(resolve('settings/print')) }
-				});
-			} else {
-				openPreview(kind, target);
-			}
-			return;
+			if (opts.noPreview) return noPrinterText(e);
+			openPreview(kind, target);
+			return null;
 		}
 		toast.show({
 			message: failureText(e),
@@ -288,15 +323,24 @@ export async function printDocument(
 	} finally {
 		sending.delete(job);
 	}
+	return null;
 }
 
-/** Several documents of one order (the act and the sticker of an intake), one after another. */
+/**
+ * Several documents of one order (the act and the sticker of an intake), one after another. Without a
+ * printer over a form that stays open the notice is one: the same words are not told twice.
+ */
 export async function printDocuments(
 	kinds: readonly DocumentKind[],
 	target: DocumentTarget,
 	opts: PrintOptions = {}
 ): Promise<void> {
-	for (const kind of kinds) await printDocument(kind, target, opts);
+	const notices: string[] = [];
+	for (const kind of kinds) {
+		const notice = await printOne(kind, target, opts);
+		if (notice !== null && !notices.includes(notice)) notices.push(notice);
+	}
+	for (const notice of notices) showNoPrinter(notice);
 }
 
 /**
