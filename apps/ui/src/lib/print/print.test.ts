@@ -1,3 +1,4 @@
+import { ru } from '#lib/i18n/ru.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '#lib/api/client.js';
 import { __resetHotkeysForTests } from '#lib/design/hotkeys.svelte.js';
@@ -527,6 +528,17 @@ describe('the sentence about acts under the printer resolution', () => {
 			expect(actDpiHelp(format)).toBe(
 				'Акты уходят на принтер в PDF; штрихкод выровнен по сетке 300 точек на дюйм. Эта настройка на них не влияет.'
 			);
+	});
+});
+
+describe('the sentence about acts while the format of the program is not known', () => {
+	it('in the program, without an answer: no word about a PDF', () => {
+		expect(actDpiHelp(null, true)).toBe(ru.help.print.dpiActsNeutral);
+		expect(actDpiHelp(null, true)).not.toContain('PDF');
+		// The answer wins; a browser prints through a PDF.
+		expect(actDpiHelp('png', true)).toBe(ru.help.print.dpiActsPng);
+		expect(actDpiHelp('pdf', true)).toBe(ru.help.print.dpiActsPdf);
+		expect(actDpiHelp(null, false)).toBe(ru.help.print.dpiActsPdf);
 	});
 });
 

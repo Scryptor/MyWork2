@@ -1,6 +1,6 @@
 import {
 	expect,
-	test,
+	test as base,
 	type APIRequestContext,
 	type Locator,
 	type Page,
@@ -14,12 +14,19 @@ import type { LoginResponse } from '$api/LoginResponse';
 import type { Role } from '$api/Role';
 import type { Template } from '$api/Template';
 import type { User } from '$api/User';
+import { ownOrigin } from './support/fresh';
 import { E2E_ADMIN_LOGIN, E2E_ADMIN_PASSWORD, createOrder, uniq } from './support/api';
 
 // The template editor (plan 7.1): opened from «Документы и реквизиты», blocks added and typed into are
 // saved by themselves, Ctrl/⌘Z outside the fields undoes the template's edit, «Сбросить к стандартному»
 // makes it standard again. Templates are the server's, shared by every test on it: each browser edits its
 // own document (the projects may run at once), and the standard one is put back after every test.
+// The templates are one per base, and the printing specs (print, bulk-print) render the acts and stickers of
+// the server of 4173: so the editor has a server of its own per engine, and no spec of printing sees a
+// template made here (or the editor one made there).
+const test = base.extend({
+	baseURL: async ({ browserName }, use) => use(ownOrigin('templates', browserName))
+});
 
 test.use({ screen: { width: 1280, height: 720 }, viewport: { width: 1280, height: 720 } });
 
@@ -59,15 +66,10 @@ async function openEditor(page: Page, info: TestInfo) {
 	await expect(blocks(page).getByRole('button', { name: 'Страница', exact: true })).toBeVisible();
 }
 
-/**
- * A choice of a segmented control: its radio is covered by the label, so it is clicked with force, and
- * again if the properties moved under the click while the page was still laying them out.
- */
+/** A choice of a segmented control. */
 async function choose(radio: Locator) {
-	await expect(async () => {
-		await radio.click({ force: true });
-		await expect(radio).toBeChecked({ timeout: 1000 });
-	}).toPass();
+	await radio.click();
+	await expect(radio).toBeChecked();
 }
 
 /** «Добавить блок» → the type; the new block is chosen. */

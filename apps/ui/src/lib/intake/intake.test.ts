@@ -1,8 +1,24 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const platform = vi.hoisted(() => ({ canPrintDirectly: vi.fn<() => boolean>() }));
+const platform = vi.hoisted(() => ({
+	canPrintDirectly: vi.fn<() => boolean>(),
+	listPrinters: vi.fn(),
+	printFormat: vi.fn(),
+	printPdf: vi.fn(),
+	printPages: vi.fn()
+}));
 vi.mock('#lib/print/platform.js', () => platform);
+const documents = vi.hoisted(() => ({
+	documentPdf: vi.fn(),
+	documentPages: vi.fn(),
+	documentBatchPdf: vi.fn()
+}));
+vi.mock('#lib/api/documents.js', () => documents);
+vi.mock('$app/navigation', () => ({ goto: vi.fn(async () => {}) }));
+vi.mock('$app/paths', () => ({ resolve: (p: string) => `/${p}` }));
 
+import { printDocuments, preview } from '#lib/print/print.svelte.js';
+import { toast } from '#lib/ui/toast/toast.svelte.js';
 import {
 	intake,
 	intakeDocuments,
@@ -22,7 +38,12 @@ function later<T>() {
 	return { promise, resolve, reject };
 }
 
-afterEach(() => intake.close());
+afterEach(() => {
+	intake.close();
+	preview.reset();
+	toast.clear();
+	vi.clearAllMocks();
+});
 
 describe('intake', () => {
 	it('opens with a prefill and closes without it', () => {
@@ -247,5 +268,55 @@ describe('the sheet an answer prints over', () => {
 
 	it('a late answer with no sheet open prints as usual', () => {
 		expect(printSheet(false, 'close', false)).toBe('close');
+	});
+});
+
+describe('an answer that comes late, printed through the way the sheet decides', () => {
+	const toasts = () => toast.items.map((t) => [t.message, t.tone]);
+	/** What the sheet does once the answer is in: the options of `printSheet`, then the documents. */
+	const printAfter = (current: boolean, open: boolean) => {
+		const options = intakePrintOptions(printSheet(current, 'close', open));
+		return options === null
+			? Promise.resolve()
+			: printDocuments(intakeDocuments({ act: true, sticker: false }), { orderId: 5 }, options);
+	};
+
+	beforeEach(() => {
+		platform.canPrintDirectly.mockReturnValue(true);
+		platform.listPrinters.mockResolvedValue([{ name: 'Акты HP', is_default: true }]);
+		platform.printFormat.mockResolvedValue('pdf');
+		platform.printPdf.mockResolvedValue(undefined);
+		documents.documentPdf.mockResolvedValue({
+			blob: new Blob(['%PDF'], { type: 'application/pdf' }),
+			filename: 'akt-priema-5.pdf'
+		});
+	});
+
+	it('the form stays open: the act goes to the printer and no preview opens over it', async () => {
+		intake.open();
+		await printAfter(false, intake.isOpen);
+		expect(platform.printPdf).toHaveBeenCalledOnce();
+		expect(preview.current).toBeNull();
+		expect(toasts()).toEqual([['Отправлено на Акты HP', 'success']]);
+	});
+
+	it('the form stays open and there is no printer: a notice, still no preview', async () => {
+		platform.listPrinters.mockResolvedValue([]);
+		intake.open();
+		await printAfter(false, intake.isOpen);
+		expect(preview.current).toBeNull();
+		expect(toasts()).toEqual([['Принтеры не найдены', 'danger']]);
+	});
+
+	it('a list of printers that could not be read is a failure, not «Принтеры не найдены»', async () => {
+		platform.listPrinters.mockRejectedValue(new Error('lpstat не ответил'));
+		intake.open();
+		await printAfter(false, intake.isOpen);
+		expect(platform.printPdf).not.toHaveBeenCalled();
+		expect(preview.current).toBeNull();
+		const messages = toasts().map(([message]) => message);
+		expect(messages).toHaveLength(1);
+		expect(messages[0]).toContain('lpstat не ответил');
+		expect(messages[0]).not.toContain('Принтеры не найдены');
 	});
 });

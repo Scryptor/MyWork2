@@ -1,6 +1,7 @@
-import { render, screen, waitFor } from '@testing-library/svelte';
+import { cleanup, render, screen, waitFor } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ru } from '#lib/i18n/ru.js';
 import { DEFAULT_PRINT_SETTINGS, printSettings } from '#lib/print/settings.svelte.js';
 
 // «Настройки → Печать»: kept on this computer. In a browser it explains that printing goes through a
@@ -165,6 +166,49 @@ describe('in the program', () => {
 		await userEvent.click(option('Xprinter XP-365B'));
 		expect(printSettings.actPrinter).toBe('Xprinter XP-365B');
 		expect(printSettings.labelPrinter).toBeNull();
+	});
+
+	/** The text of the hint of the printer's resolution, opened. */
+	async function dpiHint() {
+		await userEvent.click(
+			screen.getByRole('button', { name: ru.help.open('Разрешение принтера, DPI') })
+		);
+		return screen.getByRole('dialog').textContent ?? '';
+	}
+
+	it('Windows (pages of PNG): the hint says acts are printed at 300 dpi, with no word about a PDF', async () => {
+		platform.printFormat.mockResolvedValue('png');
+		render(Page);
+		await waitFor(() => expect(platform.printFormat).toHaveBeenCalledOnce());
+		await waitFor(async () => {
+			const text = await dpiHint();
+			expect(text).toContain('Акты печатаются в 300 точек на дюйм');
+			expect(text).not.toContain('PDF');
+			await userEvent.keyboard('{Escape}');
+		});
+	});
+
+	it('before the program answers (or if it does not) the hint has no word about a PDF either', async () => {
+		platform.printFormat.mockReturnValue(new Promise(() => {}));
+		render(Page);
+		const text = await dpiHint();
+		expect(text).toContain(ru.help.print.dpiActsNeutral);
+		expect(text).not.toContain('PDF');
+		await userEvent.keyboard('{Escape}');
+
+		platform.printFormat.mockRejectedValue(new Error('нет ответа'));
+		cleanup();
+		render(Page);
+		await waitFor(() => expect(platform.printFormat).toHaveBeenCalledTimes(2));
+		expect(await dpiHint()).not.toContain('PDF');
+	});
+
+	it('macOS and Linux (a PDF): the hint says so', async () => {
+		render(Page);
+		await waitFor(async () => {
+			expect(await dpiHint()).toContain('Акты уходят на принтер в PDF');
+			await userEvent.keyboard('{Escape}');
+		});
 	});
 
 	it('«Принтер по умолчанию» puts the choice back to the system’s', async () => {

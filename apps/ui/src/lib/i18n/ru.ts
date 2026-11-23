@@ -951,6 +951,8 @@ export const ru = {
 			],
 			/** Under the resolution of the label printer: how acts are printed (Windows, pages of PNG). */
 			dpiActsPng: 'Акты печатаются в 300 точек на дюйм. Эта настройка на них не влияет.',
+			/** The same while the program has not said what the system prints (or cannot say). */
+			dpiActsNeutral: 'Эта настройка относится только к наклейкам, на акты она не влияет.',
 			/** The same on macOS and Linux (CUPS), and in a browser: a PDF. */
 			dpiActsPdf:
 				'Акты уходят на принтер в PDF; штрихкод выровнен по сетке 300 точек на дюйм. Эта настройка на них не влияет.',

@@ -289,7 +289,7 @@
 		<div class="field">
 			<span class="head">
 				<span class="label">{t.dpi}</span>
-				<HelpHint title={t.dpi} text={[...help.dpi, actDpiHelp(format)]} />
+				<HelpHint title={t.dpi} text={[...help.dpi, actDpiHelp(format, direct)]} />
 			</span>
 			<SegmentedControl
 				label={t.dpi}

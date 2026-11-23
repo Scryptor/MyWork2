@@ -44,10 +44,14 @@ export const ACT_DPI = 300;
 /**
  * The sentence about acts under the label printer's resolution (`ru.help.print.dpi`): Windows prints their
  * pages at `ACT_DPI`; CUPS gets the vector PDF, and `ACT_DPI` is only the grid of the barcode. A browser
- * (no format) prints through a PDF too.
+ * prints through a PDF too. In the program, until it has said what the system prints (and if it never
+ * does), a neutral sentence: neither «PDF» nor 300 dpi is promised for what is not known.
  */
-export const actDpiHelp = (format: PrintFormat | null): string =>
-	format === 'png' ? ru.help.print.dpiActsPng : ru.help.print.dpiActsPdf;
+export const actDpiHelp = (format: PrintFormat | null, inProgram = false): string => {
+	if (format === 'png') return ru.help.print.dpiActsPng;
+	if (format === null && inProgram) return ru.help.print.dpiActsNeutral;
+	return ru.help.print.dpiActsPdf;
+};
 
 /** Printed on the label printer in the label's size; the rest are acts on A4. */
 export const isLabel = (kind: DocumentKind): boolean =>
