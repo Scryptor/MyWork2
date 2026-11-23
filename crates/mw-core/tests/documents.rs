@@ -279,11 +279,11 @@ fn plain_text_is_linear_on_unclosed_brackets_and_ampersands() {
         let out = plain_text(input);
         assert!(out.len() >= input.len() / 2, "{}", out.len());
     }
+    // Квадратичный разбор просматривал бы на каждом `<` и `&` остаток в десятки тысяч знаков: миллиарды
+    // шагов, десятки секунд в отладочной сборке. Линейный укладывается в доли секунды; запас до 5 с —
+    // для загруженных машин CI (на macOS бывало 1,15 с).
     let elapsed = started.elapsed();
-    assert!(
-        elapsed < std::time::Duration::from_millis(1000),
-        "{elapsed:?}"
-    );
+    assert!(elapsed < std::time::Duration::from_secs(5), "{elapsed:?}");
 }
 
 #[tokio::test]
