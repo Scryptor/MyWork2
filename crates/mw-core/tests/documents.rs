@@ -223,6 +223,26 @@ fn plain_text_keeps_angle_brackets_that_are_not_html() {
     }
 }
 
+/// Строка из одних пробелов и табуляций пуста: «больше двух переводов строк» действует через неё.
+#[test]
+fn plain_text_collapses_blank_lines() {
+    assert_eq!(plain_text("а\n   \n \t \n\nб"), "а\n\nб");
+}
+
+/// Инструкции `<?…?>`, теги с двоеточием (`<o:p>`) и `tfoot`/`code` из Word и редакторов — не текст.
+#[test]
+fn plain_text_drops_office_tags() {
+    let html = "<p>Текст<o:p></o:p></p><?xml version=\"1.0\"?><table><tfoot><tr><td>Итог</td></tr></tfoot></table>";
+    assert_eq!(plain_text(html), "Текст\nИтог");
+    assert_eq!(plain_text("<code>а</code> <o:p>б</o:p>"), "а б");
+}
+
+/// `<?` без `?>` дальше по тексту — обычный текст.
+#[test]
+fn plain_text_keeps_question_text() {
+    assert_eq!(plain_text("a <? b"), "a <? b");
+}
+
 /// Без закрывающих `>` и `;` разбор не просматривает остаток текста заново на каждом `<` и `&`.
 #[test]
 fn plain_text_is_linear_on_unclosed_brackets_and_ampersands() {
@@ -232,6 +252,7 @@ fn plain_text_is_linear_on_unclosed_brackets_and_ampersands() {
         "<br ".repeat(25_000),
         "&#x".repeat(33_000),
         "<!--".repeat(25_000),
+        "<?".repeat(25_000),
     ];
     let started = std::time::Instant::now();
     for input in &inputs {

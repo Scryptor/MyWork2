@@ -459,15 +459,19 @@ fn amount_due(final_price: Option<Money>, prepayment: Money, discount: Money) ->
 /// пробел, `/` или `>`: `<info@service.ru>`, `<https://…>` и `<Важно>` — текст. `<br>` и конец
 /// `p`, `div`, `li`, `tr`, `h1`–`h6` — перевод строки, начало `p`, `div`, `li`, `tr`, `h1`–`h6` —
 /// тоже, если строка уже начата (перевод строки сразу за ними в исходном тексте с ним сливается:
-/// MyWork 2 вставлял текст в HTML, где он ничего не значил); остальные теги и комментарии
-/// убираются. `&nbsp; &amp; &lt; &gt; &quot; &apos; &laquo; &raquo; &mdash; &ndash; &hellip;
-/// &copy; &#NNN; &#xHH;` раскрываются, незнакомое остаётся как написано. Больше двух переводов
-/// строк подряд — два, края обрезаются. Время — линейное от длины текста.
+/// MyWork 2 вставлял текст в HTML, где он ничего не значил); остальные теги, комментарии и
+/// инструкции `<?…?>` убираются (без `?>` дальше по тексту `<?` — текст); имя тега может быть с
+/// пространством имён (`<o:p>`) — такой тег строчный и тоже убирается. `&nbsp; &amp; &lt; &gt; &quot; &apos; &laquo; &raquo; &mdash; &ndash; &hellip;
+/// &copy; &#NNN; &#xHH;` раскрываются, незнакомое остаётся как написано. Строка из одних пробелов и
+/// табуляций пуста: пробелы выбрасываются; больше двух переводов строк подряд — два, края
+/// обрезаются. Время — линейное от длины текста.
 pub fn plain_text(html_or_text: &str) -> String {
     let text = html_or_text.replace("\r\n", "\n").replace('\r', "\n");
     // Комментарий без конца дальше по тексту — не комментарий; так `<!--` не ищет `-->` до конца
     // текста раз за разом.
     let last_comment_end = text.rfind("-->");
+    // То же для инструкции `<?…?>`.
+    let last_instruction_end = text.rfind("?>");
     let mut out = Lines::default();
     let mut rest = text.as_str();
     while let Some(at) = rest.find(['<', '&']) {
@@ -475,7 +479,9 @@ pub fn plain_text(html_or_text: &str) -> String {
         rest = &rest[at..];
         let offset = text.len() - rest.len();
         let comment_may_end = last_comment_end.is_some_and(|end| end >= offset + "<!--".len());
-        if let Some((len, kind)) = tag(rest, comment_may_end) {
+        let instruction_may_end =
+            last_instruction_end.is_some_and(|end| end >= offset + "<?".len());
+        if let Some((len, kind)) = tag(rest, comment_may_end, instruction_may_end) {
             rest = &rest[len..];
             match kind {
                 TagKind::Inline => {}
@@ -533,8 +539,8 @@ impl Lines {
 /// Элементы HTML, которые встречаются в текстах MyWork 2, через пробел; `<` с другим словом —
 /// обычный текст. Элементы-строки: их начало и конец — граница строки.
 const HTML_ELEMENTS: &str = "a b big blockquote body br center div em font h1 h2 h3 h4 h5 h6 head \
-    hr html i img li meta nobr ol p pre s small span strike strong sub sup table tbody td th thead \
-    title tr u ul wbr !doctype";
+    hr html i img li meta nobr ol p pre s small span strike strong sub sup table tbody td tfoot th \
+    thead title tr u ul wbr !doctype code";
 const LINE_ELEMENTS: &str = "p div li tr h1 h2 h3 h4 h5 h6";
 
 /// Дальше этого тег не ищет свой `>`, сущность — свою `;` (байты).
@@ -562,8 +568,15 @@ fn window(s: &str, max: usize) -> &str {
 
 /// Тег или комментарий в начале `s`: его длина и что он значит для строк. `comment_may_end` —
 /// дальше в тексте есть `-->`.
-fn tag(s: &str, comment_may_end: bool) -> Option<(usize, TagKind)> {
+fn tag(s: &str, comment_may_end: bool, instruction_may_end: bool) -> Option<(usize, TagKind)> {
     let body = s.strip_prefix('<')?;
+    if let Some(instruction) = body.strip_prefix('?') {
+        if !instruction_may_end {
+            return None;
+        }
+        let end = instruction.find("?>")?;
+        return Some(("<?".len() + end + "?>".len(), TagKind::Inline));
+    }
     if let Some(comment) = body.strip_prefix("!--") {
         if !comment_may_end {
             return None;
@@ -578,11 +591,15 @@ fn tag(s: &str, comment_may_end: bool) -> Option<(usize, TagKind)> {
     let name_len = name_start
         .bytes()
         .take(12)
-        .take_while(|b| b.is_ascii_alphanumeric() || *b == b'!')
+        .take_while(|b| b.is_ascii_alphanumeric() || matches!(*b, b'!' | b':'))
         .count();
     let (name, after_name) = name_start.split_at(name_len);
     let known = |list: &str| list.split(' ').any(|e| e.eq_ignore_ascii_case(name));
-    if !known(HTML_ELEMENTS)
+    // `<o:p>` из Word: пространство имён, за двоеточием что-то есть (`<https://…>` — текст).
+    let namespaced = name
+        .split_once(':')
+        .is_some_and(|(space, local)| !space.is_empty() && !local.is_empty());
+    if !(known(HTML_ELEMENTS) || namespaced)
         || !after_name.starts_with(|c: char| c.is_whitespace() || c == '/' || c == '>')
     {
         return None;
@@ -644,12 +661,26 @@ fn after_source_line_break(rest: &str) -> &str {
 fn at_most_two_line_breaks(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut run = 0;
+    // Пробелы и табуляции после перевода строки: выбрасываются, если строка осталась пустой.
+    let mut pending = String::new();
     for c in text.chars() {
-        run = if c == '\n' { run + 1 } else { 0 };
-        if run <= 2 {
+        if matches!(c, ' ' | '\t') && run > 0 {
+            pending.push(c);
+            continue;
+        }
+        if c == '\n' {
+            pending.clear();
+            run += 1;
+        } else {
+            out.push_str(&pending);
+            pending.clear();
+            run = 0;
+        }
+        if c != '\n' || run <= 2 {
             out.push(c);
         }
     }
+    out.push_str(&pending);
     out
 }
 
