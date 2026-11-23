@@ -32,11 +32,18 @@ jobs:
             extension: exe
     steps:
       - uses: actions/checkout@v5
-      - name: Установить системные библиотеки Linux
+      # Медленное зеркало может оборвать apt по `timeout` посреди dpkg; следующая попытка сначала
+      # доделывает то, что dpkg оставил ненастроенным, иначе apt не запустится («dpkg was interrupted»).
+      - name: Установить системные библиотеки Linux (до трёх попыток по 5 минут)
         if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libsoup-3.0-dev librsvg2-dev libayatana-appindicator3-dev
+        shell: bash
+        timeout-minutes: 32
+        run: >-
+          for i in 1 2 3; do
+          sudo dpkg --configure -a;
+          timeout 300 sudo apt-get update &&
+          timeout 300 sudo apt-get install -y libwebkit2gtk-4.1-dev libsoup-3.0-dev librsvg2-dev libayatana-appindicator3-dev
+          && exit 0; echo "retry $i"; done; exit 1
       - name: Установить Rust
         shell: bash
         run: rustup toolchain install
