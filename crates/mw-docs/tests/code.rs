@@ -238,6 +238,25 @@ fn error_inside_a_helper_points_at_the_call() {
     assert_eq!((place.block.as_slice(), place.line), (&[0][..], 2), "{d:?}");
 }
 
+/// A message longer than 2000 characters is cut: a string of any length the code makes
+/// (`"я" * 5000`) does not go into the answer whole.
+#[test]
+fn long_messages_are_cut() {
+    let d = diagnostics(&template(
+        Layout::OnePerPage,
+        vec![code(r#"#panic("я" * 5000)"#)],
+    ));
+    assert_eq!(d.len(), 1);
+    let message = &d[0].message;
+    assert_eq!(message.chars().count(), 2000, "{}", message.len());
+    assert!(message.ends_with('…'), "{}", message.len());
+    assert!(
+        message.starts_with("panicked with: яяя"),
+        "{}",
+        message.len()
+    );
+}
+
 #[test]
 fn two_copies_report_one_error() {
     let d = diagnostics(&template(Layout::TwoPerA4, vec![code("#nope")]));

@@ -26,6 +26,9 @@ use super::text::typst_str;
 const CODE_HEADER_LINES: u32 = 2;
 /// At most this many diagnostics: the first errors are the ones worth reading.
 const MAX_DIAGNOSTICS: usize = 20;
+/// A message or a hint is at most this many characters: the code can make one of any length
+/// (`#panic("x" * 10000000)`).
+const MAX_MESSAGE_CHARS: usize = 2000;
 /// The helpers every code file imports.
 const HELPERS_PATH: &str = "/mw.typ";
 
@@ -164,8 +167,8 @@ impl CodeSources {
     }
 
     /// The errors of a compilation in `world` as diagnostics of the author's code: one per place and
-    /// message (both copies of a block report the same error), at most [`MAX_DIAGNOSTICS`]. Warnings
-    /// are dropped.
+    /// message (both copies of a block report the same error), at most [`MAX_DIAGNOSTICS`], each text
+    /// [`cut`]. Warnings are dropped.
     pub(crate) fn diagnostics(
         &self,
         world: &dyn World,
@@ -181,10 +184,22 @@ impl CodeSources {
             .filter(|error| error.severity == Severity::Error)
             .map(|error| CodeDiagnostic {
                 place: place(world, &blocks, &error),
-                message: error.message.to_string(),
-                hints: error.hints.iter().map(|hint| hint.v.to_string()).collect(),
+                message: cut(&error.message),
+                hints: error.hints.iter().map(|hint| cut(&hint.v)).collect(),
             });
         distinct(all)
+    }
+}
+
+/// `text` of at most [`MAX_MESSAGE_CHARS`] characters: a longer one ends with «…» in place of the
+/// rest.
+fn cut(text: &str) -> String {
+    match text.char_indices().nth(MAX_MESSAGE_CHARS) {
+        Some(_) => {
+            let kept: String = text.chars().take(MAX_MESSAGE_CHARS - 1).collect();
+            format!("{kept}…")
+        }
+        None => text.to_owned(),
     }
 }
 
@@ -293,6 +308,16 @@ mod tests {
             })
             .collect();
         assert_eq!(got, [(1, "a", "first"), (2, "a", ""), (1, "b", "")]);
+    }
+
+    #[test]
+    fn long_texts_are_cut_by_characters() {
+        let short = "я".repeat(MAX_MESSAGE_CHARS);
+        assert_eq!(cut(&short), short);
+        let long = cut(&"я".repeat(MAX_MESSAGE_CHARS + 1));
+        assert_eq!(long.chars().count(), MAX_MESSAGE_CHARS);
+        assert_eq!(long, format!("{}…", "я".repeat(MAX_MESSAGE_CHARS - 1)));
+        assert_eq!(cut(""), "");
     }
 
     #[test]

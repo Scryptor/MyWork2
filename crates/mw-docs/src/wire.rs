@@ -142,8 +142,12 @@ pub(crate) fn send(
     message: &impl Serialize,
     frames: &[&[u8]],
 ) -> io::Result<()> {
-    let json =
-        serde_json::to_vec(message).map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+    let json = serde_json::to_vec(message).map_err(|e| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("сообщение не записано: {}", json_error(&e)),
+        )
+    })?;
     write_frame(output, &json)?;
     for frame in frames {
         write_frame(output, frame)?;
@@ -159,5 +163,41 @@ pub(crate) fn receive<T: DeserializeOwned>(input: &mut impl Read) -> io::Result<
     };
     serde_json::from_slice(&json)
         .map(Some)
-        .map_err(|e| protocol(format!("сообщение не разобрано: {e}")))
+        .map_err(|e| protocol(format!("сообщение не разобрано: {}", json_error(&e))))
+}
+
+/// Ошибка JSON для журнала: вид и место, без её текста — serde_json цитирует в нём значения
+/// (`invalid type: string "…"`), а это могут быть данные заказа.
+fn json_error(error: &serde_json::Error) -> String {
+    format!(
+        "{:?}, строка {}, знак {}",
+        error.classify(),
+        error.line(),
+        error.column()
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Текст ошибки протокола уходит в журнал родителя и в stderr рендерера: значений из сообщения
+    /// в нём нет (serde_json пишет `invalid type: string "…"`), только вид ошибки и место.
+    #[test]
+    fn a_message_that_does_not_parse_is_not_quoted() {
+        let mut pipe = Vec::new();
+        let written = write_frame(
+            &mut pipe,
+            r#"{"Compiled":{"index":"Иван Секретов"}}"#.as_bytes(),
+        );
+        assert!(written.is_ok(), "{written:?}");
+        let error = match receive::<Reply>(&mut pipe.as_slice()) {
+            Err(error) => error,
+            Ok(_) => panic!("ждали ошибку протокола"),
+        };
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        let text = error.to_string();
+        assert!(!text.contains("Секретов"), "{text}");
+        assert!(text.contains("Data, строка 1, знак"), "{text}");
+    }
 }

@@ -4,14 +4,15 @@
 //!
 //! Процесс запускается по первому заданию (или заранее — [`RenderPool::warm`]) и после ответа
 //! возвращается к простаивающим. Процесс, у которого вышел срок, упавший или с ошибкой ввода-вывода,
-//! убивается и в пул не возвращается.
+//! убивается и в пул не возвращается; замена ему запускается заранее, в фоне.
 
 use std::borrow::Cow;
 use std::io::{self, BufReader, BufWriter, Read};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, ChildStdout, Command, ExitStatus, Stdio};
 #[cfg(feature = "testing")]
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError, TryRecvError};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
@@ -54,8 +55,13 @@ struct Inner {
     fonts: FontSources,
     limits: WorkerLimits,
     idle: Mutex<Vec<Worker>>,
+    /// Идёт замена убитого процесса ([`RenderPool::rewarm`]): не больше одной за раз.
+    rewarming: AtomicBool,
     #[cfg(feature = "testing")]
     started: AtomicUsize,
+    /// Поток последней замены — чтобы тест её дождался.
+    #[cfg(feature = "testing")]
+    rewarm_thread: Mutex<Option<std::thread::JoinHandle<()>>>,
 }
 
 impl RenderPool {
@@ -68,8 +74,11 @@ impl RenderPool {
                 fonts,
                 limits,
                 idle: Mutex::new(Vec::new()),
+                rewarming: AtomicBool::new(false),
                 #[cfg(feature = "testing")]
                 started: AtomicUsize::new(0),
+                #[cfg(feature = "testing")]
+                rewarm_thread: Mutex::new(None),
             }),
         }
     }
@@ -83,6 +92,8 @@ impl RenderPool {
     /// - [`DocsError::CodeTimeout`] — документ компилировался дольше `per_document`;
     /// - [`DocsError::TooSlow`] — задание шло дольше своего бюджета и ещё секунды;
     /// - [`DocsError::WorkerCrashed`] — процесс закрылся или сломал протокол посреди задания.
+    ///
+    /// Вместо убитого процесса в фоне сразу запускается новый ([`RenderPool::rewarm`]).
     pub fn run(&self, job: &Job) -> Result<JobResult, DocsError> {
         let mut worker = match self.idle_worker() {
             Some(worker) => worker,
@@ -94,7 +105,10 @@ impl RenderPool {
                 answer
             }
             // Процесс уже остановлен (stdin, kill, wait) и в пул не возвращается.
-            Outcome::Broken(error) => Err(error),
+            Outcome::Broken(error) => {
+                self.rewarm();
+                Err(error)
+            }
         }
     }
 
@@ -111,6 +125,54 @@ impl RenderPool {
     #[cfg(feature = "testing")]
     pub fn started_for_tests(&self) -> usize {
         self.inner.started.load(Ordering::SeqCst)
+    }
+
+    /// Ждёт конца последней замены убитого процесса, если она была. Только с фичей `testing`.
+    #[cfg(feature = "testing")]
+    pub fn wait_rewarm_for_tests(&self) {
+        let thread = self
+            .inner
+            .rewarm_thread
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take();
+        if let Some(thread) = thread {
+            assert!(thread.join().is_ok(), "поток замены процесса упал");
+        }
+    }
+
+    /// Заменяет убитый процесс заранее: следующее задание (печать сохранённого шаблона, где код
+    /// снова выйдет за срок) не ждёт холодного запуска внутри разрешения рендера. Процесс
+    /// запускается [`RenderPool::warm`] в фоновом потоке — только если простаивающих нет и замена
+    /// ещё не идёт. Поток держит пул, пока процесс запускается (до `startup`), и отдаёт его
+    /// простаивающим; пул, отпущенный всеми, закрывает его.
+    fn rewarm(&self) {
+        if !self.idle().is_empty() || self.inner.rewarming.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let pool = self.clone();
+        let spawned = std::thread::Builder::new()
+            .name("mw-render-rewarm".to_owned())
+            .spawn(move || {
+                pool.warm();
+                pool.inner.rewarming.store(false, Ordering::SeqCst);
+            });
+        match spawned {
+            #[cfg(feature = "testing")]
+            Ok(thread) => {
+                *self
+                    .inner
+                    .rewarm_thread
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner) = Some(thread);
+            }
+            #[cfg(not(feature = "testing"))]
+            Ok(_) => {}
+            Err(error) => {
+                self.inner.rewarming.store(false, Ordering::SeqCst);
+                tracing::warn!("процесс-рендерер заранее не запущен: поток не создан: {error}");
+            }
+        }
     }
 
     fn idle(&self) -> MutexGuard<'_, Vec<Worker>> {

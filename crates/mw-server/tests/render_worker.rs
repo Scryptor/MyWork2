@@ -91,8 +91,11 @@ fn endless_code_is_stopped_and_the_next_job_works() {
     assert_eq!(result.map(|_| ()), Err(DocsError::CodeTimeout));
     assert!(took < Duration::from_secs(10), "оборвали за {took:?}");
 
+    // Убитый процесс не вернулся к простаивающим: вместо него заранее запущен новый, и следующее
+    // задание берёт его, а не запускает свой.
+    pool.wait_rewarm_for_tests();
+    assert_eq!(pool.started_for_tests(), 2);
     assert_pdf_of_one_page(pool.run(&good_job()));
-    // Убитый процесс не вернулся к простаивающим: второе задание запустило новый.
     assert_eq!(pool.started_for_tests(), 2);
 }
 
@@ -211,7 +214,9 @@ async fn http(addr: std::net::SocketAddr, path: &str, body: &serde_json::Value) 
 }
 
 /// Сервер с процессом-рендерером: бесконечный цикл своего кода в превью обрывается пределом
-/// документа ядра — 422 `code_timeout` раньше `REQUEST_TIMEOUT`; следующее превью строится.
+/// документа ядра — 422 `code_timeout` раньше `REQUEST_TIMEOUT`; следующее превью строится. Время
+/// меряется на готовом процессе: холодный запуск со шрифтами системы в отладочной сборке (Windows CI)
+/// в предел не входит.
 #[tokio::test]
 async fn http_preview_with_endless_code_times_out() {
     for (label, db) in mw_db::testing::all_backends().await {
@@ -231,6 +236,11 @@ async fn http_preview_with_endless_code_times_out() {
             stopped.await.ok();
         }));
         let preview = "/api/v1/document-templates/sticker/preview";
+
+        // Рабочий код: после ответа процесс-рендерер готов.
+        let good = good_job().template;
+        let (status, body) = http(addr, preview, &serde_json::json!({ "template": good })).await;
+        assert_eq!(status, 200, "{label}: {body}");
 
         let endless = code_job(ENDLESS_CODE, Duration::from_secs(20)).template;
         let started = Instant::now();
