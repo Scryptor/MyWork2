@@ -461,7 +461,8 @@ fn amount_due(final_price: Option<Money>, prepayment: Money, discount: Money) ->
 /// тоже, если строка уже начата (перевод строки сразу за ними в исходном тексте с ним сливается:
 /// MyWork 2 вставлял текст в HTML, где он ничего не значил); остальные теги, комментарии и
 /// инструкции `<?…?>` убираются (без `?>` дальше по тексту `<?` — текст); имя тега может быть с
-/// пространством имён (`<o:p>`) — такой тег строчный и тоже убирается. `&nbsp; &amp; &lt; &gt; &quot; &apos; &laquo; &raquo; &mdash; &ndash; &hellip;
+/// пространством имён из одних букв (`<o:p>`, `<v:shape>`) — такой тег строчный и тоже убирается;
+/// `<10:30>` — текст. `&nbsp; &amp; &lt; &gt; &quot; &apos; &laquo; &raquo; &mdash; &ndash; &hellip;
 /// &copy; &#NNN; &#xHH;` раскрываются, незнакомое остаётся как написано. Строка из одних пробелов и
 /// табуляций пуста: пробелы выбрасываются; больше двух переводов строк подряд — два, края
 /// обрезаются. Время — линейное от длины текста.
@@ -595,10 +596,14 @@ fn tag(s: &str, comment_may_end: bool, instruction_may_end: bool) -> Option<(usi
         .count();
     let (name, after_name) = name_start.split_at(name_len);
     let known = |list: &str| list.split(' ').any(|e| e.eq_ignore_ascii_case(name));
-    // `<o:p>` из Word: пространство имён, за двоеточием что-то есть (`<https://…>` — текст).
-    let namespaced = name
-        .split_once(':')
-        .is_some_and(|(space, local)| !space.is_empty() && !local.is_empty());
+    // `<o:p>`, `<v:shape>` из Word: пространство имён и имя — только буквы (`<10:30>` и
+    // `<https://…>` — текст).
+    let namespaced = name.split_once(':').is_some_and(|(space, local)| {
+        !space.is_empty()
+            && !local.is_empty()
+            && space.bytes().all(|b| b.is_ascii_alphabetic())
+            && local.bytes().all(|b| b.is_ascii_alphabetic())
+    });
     if !(known(HTML_ELEMENTS) || namespaced)
         || !after_name.starts_with(|c: char| c.is_whitespace() || c == '/' || c == '>')
     {

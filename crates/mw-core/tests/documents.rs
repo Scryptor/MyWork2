@@ -235,6 +235,22 @@ fn plain_text_drops_office_tags() {
     let html = "<p>Текст<o:p></o:p></p><?xml version=\"1.0\"?><table><tfoot><tr><td>Итог</td></tr></tfoot></table>";
     assert_eq!(plain_text(html), "Текст\nИтог");
     assert_eq!(plain_text("<code>а</code> <o:p>б</o:p>"), "а б");
+    assert_eq!(
+        plain_text("а<v:shape id=\"x\">б</v:shape><O:P class=\"y\">в"),
+        "абв"
+    );
+}
+
+/// Двоеточие в `<…>` — тег только из букв по обе стороны (`o:p`); время и адреса остаются текстом.
+#[test]
+fn plain_text_keeps_colon_text_that_is_not_a_tag() {
+    for text in [
+        "работаем <10:30>",
+        "до </10:30>",
+        "<1a:b> <a:1> <a:> <:b> <a:b:c> <mailto:x@y> <https://x.ru>",
+    ] {
+        assert_eq!(plain_text(text), text, "{text:?}");
+    }
 }
 
 /// `<?` без `?>` дальше по тексту — обычный текст.
