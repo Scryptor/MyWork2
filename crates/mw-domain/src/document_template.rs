@@ -793,7 +793,7 @@ mod tests {
         assert_eq!(t.validate(), Ok(()));
         t.blocks.push(text("ж".repeat(1_600), None));
         assert_eq!(t.validate(), Ok(()));
-        t.blocks.push(text("ж".repeat(1), None));
+        t.blocks.push(text("ж".into(), None));
         assert_eq!(errs(&t), [pair("blocks", "text_budget")]);
     }
 
