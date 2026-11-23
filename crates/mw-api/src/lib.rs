@@ -33,7 +33,7 @@ pub use dto::{
     LegacyImportCheck, LegacyImportStart, LoginRequest, LoginResponse, NewServicePoint,
     NextOrderNumber, OrderCommentPage, OrderCommentQuery, OrderListQuery, OrderPage,
     OrderSummaryQuery, OrderValuesQuery, PageQuery, PhoneQuery, ReorderRequest, ServerInfo,
-    SetPasswordRequest, StatusChange, VersionParam,
+    SetPasswordRequest, StatusChange, TemplatePreview, VersionParam,
 };
 pub use error::{ErrorBody, ErrorCode, ErrorField};
 pub use state::ApiConfig;

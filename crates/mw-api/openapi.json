@@ -1382,6 +1382,339 @@
         ]
       }
     },
+    "/api/v1/document-fields": {
+      "get": {
+        "tags": [
+          "Документы"
+        ],
+        "summary": "Поля подстановки для меню «вставить поле» (достаточно войти).",
+        "operationId": "list_fields",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DocumentField"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/document-templates": {
+      "get": {
+        "tags": [
+          "Документы"
+        ],
+        "summary": "Виды документов, шаблоны которых можно менять (достаточно войти).",
+        "operationId": "list_templates",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DocumentTemplateInfo"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/document-templates/{kind}": {
+      "get": {
+        "tags": [
+          "Документы"
+        ],
+        "summary": "Шаблон вида со стандартным образцом (достаточно войти). Калибровка не редактируется: 422.",
+        "operationId": "get_template",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "description": "Вид документа",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/DocumentKind"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentTemplate"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Документы"
+        ],
+        "summary": "Сохраняет шаблон по номеру правки (право «настройки»). Модель, равная стандартной, сбрасывает\nшаблон. Устаревшая `version` — 409, неверная модель — 422 по полям.",
+        "operationId": "save_template",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "description": "Вид документа",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/DocumentKind"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TemplateSave"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentTemplate"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/document-templates/{kind}/file": {
+      "get": {
+        "tags": [
+          "Документы"
+        ],
+        "summary": "Шаблон как файл `.mwtemplate` (достаточно войти).",
+        "operationId": "export_template_file",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "description": "Вид документа",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/DocumentKind"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Файл шаблона (вложение)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateFile"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Документы"
+        ],
+        "summary": "Разбирает файл `.mwtemplate` для вида и возвращает модель; ничего не сохраняет (право\n«настройки»). Ошибки формата — 422 по полям.",
+        "operationId": "import_template_file",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "description": "Вид документа",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/DocumentKind"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TemplateFile"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Template"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/document-templates/{kind}/preview": {
+      "post": {
+        "tags": [
+          "Документы"
+        ],
+        "summary": "Превью черновика шаблона в PNG, без сохранения (право «настройки»). Без `order_id` — образец.",
+        "operationId": "preview_template",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "description": "Вид документа",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/DocumentKind"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TemplatePreview"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentPages"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/documents/{kind}": {
       "get": {
         "tags": [
@@ -4408,6 +4741,15 @@
           }
         }
       },
+      "Align": {
+        "type": "string",
+        "description": "Horizontal alignment.",
+        "enum": [
+          "left",
+          "center",
+          "right"
+        ]
+      },
       "AppSettings": {
         "type": "object",
         "description": "Настройки предприятия. Хранятся по строке на поле в таблице `settings` (ключ — имя поля,\nзначение — JSON).",
@@ -4687,6 +5029,247 @@
             "minimum": 0
           }
         }
+      },
+      "Block": {
+        "type": "object",
+        "required": [
+          "copies",
+          "body"
+        ],
+        "properties": {
+          "body": {
+            "$ref": "#/components/schemas/BlockBody"
+          },
+          "copies": {
+            "$ref": "#/components/schemas/CopyFilter",
+            "description": "The copies the block is printed in."
+          }
+        },
+        "additionalProperties": false
+      },
+      "BlockBody": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "text",
+              "bold",
+              "align",
+              "type"
+            ],
+            "properties": {
+              "align": {
+                "$ref": "#/components/schemas/Align"
+              },
+              "bold": {
+                "type": "boolean"
+              },
+              "one_line": {
+                "type": "boolean",
+                "description": "One line that never wraps: line breaks become spaces and what does not fit is cut off at the\nright edge (stickers)."
+              },
+              "size_pt": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "format": "float",
+                "description": "`None` — the template's `font_size_pt`."
+              },
+              "text": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "text"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "A table «label — value».",
+            "required": [
+              "rows",
+              "type"
+            ],
+            "properties": {
+              "rows": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/FieldRow"
+                }
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "fields"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The order's UPC-A barcode; nothing when the document has no valid code. The module is 0.33 mm\n(with printer DPI, a whole number of dots) and shrinks when the code does not fit the width of\nthe column: down to 2 dots, without DPI down to 0.25 mm.",
+            "required": [
+              "height_mm",
+              "digits",
+              "align",
+              "type"
+            ],
+            "properties": {
+              "align": {
+                "$ref": "#/components/schemas/Align"
+              },
+              "digits": {
+                "type": "boolean",
+                "description": "Print the digits under the bars."
+              },
+              "fill": {
+                "type": "boolean",
+                "description": "In a single-copy document the bars grow to the height the other blocks leave free on the\npage, never lower than `height_mm` (one sticker for any label size). Ignored in\n[`Layout::TwoPerA4`], where each copy is measured to fit its half."
+              },
+              "height_mm": {
+                "type": "number",
+                "format": "float",
+                "description": "Height of the regular bars; the guard bars are 5 modules longer."
+              },
+              "stretch": {
+                "type": "boolean",
+                "description": "The module grows until the code fills the width of the column (with DPI by whole printer\ndots); never below the nominal 0.33 mm, except on a narrow label, where it shrinks as usual."
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "barcode"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Two signature lines side by side, each after its caption.",
+            "required": [
+              "left",
+              "right",
+              "type"
+            ],
+            "properties": {
+              "left": {
+                "type": "string"
+              },
+              "right": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "signatures"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "A horizontal line across the column.",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "separator"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Vertical space.",
+            "required": [
+              "mm",
+              "type"
+            ],
+            "properties": {
+              "mm": {
+                "type": "number",
+                "format": "float"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "spacer"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Columns of equal width, each a flow of blocks.",
+            "required": [
+              "columns",
+              "gap_mm",
+              "type"
+            ],
+            "properties": {
+              "columns": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Block"
+                  }
+                }
+              },
+              "gap_mm": {
+                "type": "number",
+                "format": "float"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "columns"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "«Экземпляр сервиса» or «Экземпляр клиента», by the copy.",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "align": {
+                "$ref": "#/components/schemas/Align"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "copy_label"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "A test label for setting up a printer, as tall as the page area: a frame 0.3 mm inside its\nedges, a crosshair in the centre and a caption «W × H мм · N dpi · смещение X/Y» from the\nrender options (page size, printer DPI when given, offset).",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "calibration_marks"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "Text in `Text`, `FieldRow::value` and `Signatures` may contain substitutions such as `{заказ.номер}`\n(список — в модуле `fields` крейта `mw-docs`); an unknown one is printed as written."
       },
       "CaptionPatch": {
         "type": "object",
@@ -4977,6 +5560,14 @@
           "orders_count"
         ]
       },
+      "CopyFilter": {
+        "type": "string",
+        "enum": [
+          "both",
+          "service",
+          "client"
+        ]
+      },
       "CurrentUser": {
         "type": "object",
         "description": "Кто делает запросы.",
@@ -5136,6 +5727,24 @@
         },
         "additionalProperties": false
       },
+      "DocumentField": {
+        "type": "object",
+        "description": "Поле подстановки для меню «вставить поле».",
+        "required": [
+          "placeholder",
+          "label"
+        ],
+        "properties": {
+          "label": {
+            "type": "string",
+            "description": "Название для человека."
+          },
+          "placeholder": {
+            "type": "string",
+            "description": "Имя в тексте шаблона, без скобок."
+          }
+        }
+      },
       "DocumentFormat": {
         "type": "string",
         "description": "Формат выгрузки документа.",
@@ -5188,6 +5797,83 @@
             "type": "number",
             "format": "float",
             "description": "Ширина первой страницы, мм."
+          }
+        }
+      },
+      "DocumentTemplate": {
+        "type": "object",
+        "description": "Шаблон документа с его стандартным образцом.",
+        "required": [
+          "id",
+          "kind",
+          "template",
+          "standard",
+          "custom",
+          "version",
+          "updated_at"
+        ],
+        "properties": {
+          "custom": {
+            "type": "boolean",
+            "description": "Сохранён шаблон предприятия, а не стандартный."
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Позиция вида в `DocumentKind::ALL`, начиная с 1."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/DocumentKind"
+          },
+          "standard": {
+            "$ref": "#/components/schemas/Template",
+            "description": "Стандартный шаблон вида — к чему сбрасывать."
+          },
+          "template": {
+            "$ref": "#/components/schemas/Template",
+            "description": "Действующий шаблон: сохранённый или стандартный."
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Когда сохранён, местное время предприятия; `None` — не сохраняли."
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Номер правки; 0 — шаблон ещё не сохраняли."
+          }
+        }
+      },
+      "DocumentTemplateInfo": {
+        "type": "object",
+        "description": "Строка списка шаблонов.",
+        "required": [
+          "kind",
+          "custom",
+          "version",
+          "updated_at"
+        ],
+        "properties": {
+          "custom": {
+            "type": "boolean"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/DocumentKind"
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       },
@@ -5285,6 +5971,33 @@
             "description": "Сообщение по-русски."
           }
         }
+      },
+      "FieldRow": {
+        "type": "object",
+        "required": [
+          "label",
+          "value",
+          "hide_if_empty"
+        ],
+        "properties": {
+          "bold": {
+            "type": "boolean",
+            "description": "Print the row bold: both the label and the value."
+          },
+          "hide_if_empty": {
+            "type": "boolean",
+            "description": "Skip the row when every substitution in `value` is empty (a value without substitutions: when it\nis blank). A blank form keeps the row."
+          },
+          "label": {
+            "type": "string",
+            "description": "Plain text, printed as written."
+          },
+          "value": {
+            "type": "string",
+            "description": "Text with substitutions."
+          }
+        },
+        "additionalProperties": false
       },
       "FileStats": {
         "type": "object",
@@ -5521,6 +6234,15 @@
           "issued"
         ]
       },
+      "Layout": {
+        "type": "string",
+        "description": "How the copies of a document are laid out.",
+        "enum": [
+          "one_per_page",
+          "two_per_a4",
+          "sheet_per_copy"
+        ]
+      },
       "LegacyImportCheck": {
         "type": "object",
         "description": "Проверка папки MyWork 2 перед переносом.",
@@ -5653,6 +6375,34 @@
             "description": "Пользователь."
           }
         }
+      },
+      "Margins": {
+        "type": "object",
+        "required": [
+          "top",
+          "right",
+          "bottom",
+          "left"
+        ],
+        "properties": {
+          "bottom": {
+            "type": "number",
+            "format": "float"
+          },
+          "left": {
+            "type": "number",
+            "format": "float"
+          },
+          "right": {
+            "type": "number",
+            "format": "float"
+          },
+          "top": {
+            "type": "number",
+            "format": "float"
+          }
+        },
+        "additionalProperties": false
       },
       "MasterUser": {
         "type": "object",
@@ -6784,6 +7534,68 @@
           "master"
         ]
       },
+      "PageSetup": {
+        "type": "object",
+        "required": [
+          "size",
+          "landscape",
+          "margins_mm"
+        ],
+        "properties": {
+          "landscape": {
+            "type": "boolean",
+            "description": "Swaps the width and the height of `size`."
+          },
+          "margins_mm": {
+            "$ref": "#/components/schemas/Margins"
+          },
+          "size": {
+            "$ref": "#/components/schemas/PageSize"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PageSize": {
+        "oneOf": [
+          {
+            "type": "string",
+            "enum": [
+              "a4"
+            ]
+          },
+          {
+            "type": "string",
+            "enum": [
+              "a5"
+            ]
+          },
+          {
+            "type": "object",
+            "required": [
+              "custom"
+            ],
+            "properties": {
+              "custom": {
+                "type": "object",
+                "required": [
+                  "width_mm",
+                  "height_mm"
+                ],
+                "properties": {
+                  "height_mm": {
+                    "type": "number",
+                    "format": "float"
+                  },
+                  "width_mm": {
+                    "type": "number",
+                    "format": "float"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
       "Permission": {
         "type": "string",
         "enum": [
@@ -7325,6 +8137,152 @@
           "name": {
             "type": "string",
             "description": "Название."
+          }
+        },
+        "additionalProperties": false
+      },
+      "Template": {
+        "type": "object",
+        "required": [
+          "kind",
+          "page",
+          "layout",
+          "font_size_pt",
+          "blocks"
+        ],
+        "properties": {
+          "blocks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Block"
+            }
+          },
+          "font_size_pt": {
+            "type": "number",
+            "format": "float",
+            "description": "Base text size."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/DocumentKind"
+          },
+          "layout": {
+            "$ref": "#/components/schemas/Layout"
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageSetup"
+          }
+        },
+        "additionalProperties": false
+      },
+      "TemplateFile": {
+        "type": "object",
+        "description": "Файл `.mwtemplate`: шаблон с признаком формата и версией.",
+        "required": [
+          "format",
+          "format_version",
+          "template"
+        ],
+        "properties": {
+          "format": {
+            "type": "string"
+          },
+          "format_version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "template": {
+            "$ref": "#/components/schemas/Template"
+          }
+        },
+        "additionalProperties": false
+      },
+      "TemplatePreview": {
+        "type": "object",
+        "description": "Превью черновика шаблона: модель и параметры отрисовки (как у `DocumentQuery`, PNG).",
+        "required": [
+          "template"
+        ],
+        "properties": {
+          "dpi": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Разрешение растра, точек на дюйм (72–600); по умолчанию 110.",
+            "minimum": 0
+          },
+          "label_h_mm": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float",
+            "description": "Высота наклейки, мм (15–200); только вместе с `label_w_mm`."
+          },
+          "label_w_mm": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float",
+            "description": "Ширина наклейки, мм (15–200); только вместе с `label_h_mm`."
+          },
+          "offset_x_mm": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float",
+            "description": "Сдвиг содержимого вправо, мм (от −10 до 10)."
+          },
+          "offset_y_mm": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float",
+            "description": "Сдвиг содержимого вниз, мм (от −10 до 10)."
+          },
+          "order_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Заказ для данных; без него — образец (у пустого акта заказа нет)."
+          },
+          "printer_dpi": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Разрешение принтера, точек на дюйм (72–600).",
+            "minimum": 0
+          },
+          "template": {
+            "$ref": "#/components/schemas/Template",
+            "description": "Черновик шаблона; не сохраняется."
+          }
+        },
+        "additionalProperties": false
+      },
+      "TemplateSave": {
+        "type": "object",
+        "description": "Что сохранить: модель и номер правки, на которой она основана.",
+        "required": [
+          "template",
+          "version"
+        ],
+        "properties": {
+          "template": {
+            "$ref": "#/components/schemas/Template"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
           }
         },
         "additionalProperties": false

@@ -4,6 +4,7 @@ use std::fmt;
 
 use chrono::NaiveDateTime;
 use mw_core::User;
+use mw_domain::document_template::Template;
 use mw_domain::permission::PermissionSet;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -601,6 +602,36 @@ pub struct DocumentQuery {
     /// Сдвиг содержимого вправо, мм (от −10 до 10); по умолчанию 0.
     pub offset_x_mm: Option<f32>,
     /// Сдвиг содержимого вниз, мм (от −10 до 10); по умолчанию 0.
+    pub offset_y_mm: Option<f32>,
+}
+
+/// Превью черновика шаблона: модель и параметры отрисовки (как у `DocumentQuery`, PNG).
+#[derive(Debug, Clone, Deserialize, TS, ToSchema)]
+#[serde(deny_unknown_fields)]
+#[ts(optional_fields)]
+pub struct TemplatePreview {
+    /// Черновик шаблона; не сохраняется.
+    pub template: Template,
+    /// Заказ для данных; без него — образец (у пустого акта заказа нет).
+    #[serde(default)]
+    pub order_id: Option<i64>,
+    /// Разрешение растра, точек на дюйм (72–600); по умолчанию 110.
+    #[serde(default)]
+    pub dpi: Option<u32>,
+    /// Разрешение принтера, точек на дюйм (72–600).
+    #[serde(default)]
+    pub printer_dpi: Option<u32>,
+    /// Ширина наклейки, мм (15–200); только вместе с `label_h_mm`.
+    #[serde(default)]
+    pub label_w_mm: Option<f32>,
+    /// Высота наклейки, мм (15–200); только вместе с `label_w_mm`.
+    #[serde(default)]
+    pub label_h_mm: Option<f32>,
+    /// Сдвиг содержимого вправо, мм (от −10 до 10).
+    #[serde(default)]
+    pub offset_x_mm: Option<f32>,
+    /// Сдвиг содержимого вниз, мм (от −10 до 10).
+    #[serde(default)]
     pub offset_y_mm: Option<f32>,
 }
 

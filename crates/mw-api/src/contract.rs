@@ -97,5 +97,12 @@ pub fn export_typescript(dir: &Path) -> Result<(), ts_rs::ExportError> {
     DocumentQuery::export_all(&cfg)?;
     DocumentPages::export_all(&cfg)?;
     mw_domain::documents::DocumentKind::export_all(&cfg)?;
+    crate::TemplatePreview::export_all(&cfg)?;
+    mw_core::DocumentTemplate::export_all(&cfg)?;
+    mw_core::DocumentTemplateInfo::export_all(&cfg)?;
+    mw_core::TemplateSave::export_all(&cfg)?;
+    mw_core::DocumentField::export_all(&cfg)?;
+    mw_domain::document_template::Template::export_all(&cfg)?;
+    mw_domain::document_template::TemplateFile::export_all(&cfg)?;
     Ok(())
 }

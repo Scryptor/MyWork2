@@ -11,6 +11,7 @@ mod audit;
 mod auth;
 mod catalogs;
 mod clients;
+mod document_templates;
 mod documents;
 mod legacy_import;
 mod meta;
@@ -96,6 +97,17 @@ pub(crate) fn api_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(orders::accept_warranty_case))
         .routes(routes!(documents::order_document))
         .routes(routes!(documents::sample_document))
+        .routes(routes!(document_templates::list_templates))
+        .routes(routes!(
+            document_templates::get_template,
+            document_templates::save_template
+        ))
+        .routes(routes!(document_templates::preview_template))
+        .routes(routes!(
+            document_templates::export_template_file,
+            document_templates::import_template_file
+        ))
+        .routes(routes!(document_templates::list_fields))
         .routes(routes!(users::list_users, users::create_user))
         .routes(routes!(users::update_user))
         .routes(routes!(users::set_user_password))

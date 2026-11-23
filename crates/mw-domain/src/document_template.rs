@@ -146,6 +146,7 @@ pub enum BlockBody {
     Spacer { mm: f32 },
     /// Columns of equal width, each a flow of blocks.
     Columns {
+        #[schema(no_recursion)]
         columns: Vec<Vec<Block>>,
         gap_mm: f32,
     },

@@ -15,7 +15,7 @@ use crate::extract::{Json, Path, Query};
 use crate::state::AppState;
 
 /// Разрешение растра PNG по умолчанию: хватает для предпросмотра на экране.
-const DEFAULT_PNG_DPI: u32 = 110;
+pub(super) const DEFAULT_PNG_DPI: u32 = 110;
 
 /// Документ заказа: акт приёма или выдачи, гарантийный акт, наклейка (достаточно войти; права те же,
 /// что у просмотра заказа). Пустой акт приёма и калибровка заказа не используют.
@@ -85,15 +85,11 @@ async fn respond(
             "Параметр dpi задаёт разрешение растра и нужен только для формата png",
         ));
     }
-    let label_mm = match (q.label_w_mm, q.label_h_mm) {
-        (Some(w), Some(h)) => Some((w, h)),
-        (None, None) => None,
-        _ => {
-            return Err(ApiError::bad_request(
-                "Размер наклейки задаётся парой: укажите label_w_mm и label_h_mm вместе",
-            ));
-        }
-    };
+    let options = render_options(
+        (q.label_w_mm, q.label_h_mm),
+        (q.offset_x_mm, q.offset_y_mm),
+        q.printer_dpi,
+    )?;
     let raster_dpi = q.dpi.unwrap_or(DEFAULT_PNG_DPI);
     let output = match format {
         DocumentFormat::Pdf => DocumentOutput::Pdf,
@@ -103,11 +99,7 @@ async fn respond(
         kind,
         order_id,
         sample: order_id.is_none() && kind.for_order(),
-        options: RenderOptions {
-            label_mm,
-            offset_mm: (q.offset_x_mm.unwrap_or(0.0), q.offset_y_mm.unwrap_or(0.0)),
-            dpi: q.printer_dpi,
-        },
+        options,
         draft: None,
     };
     let file = state.core.export_document(actor, request, output).await?;
@@ -122,16 +114,7 @@ async fn respond(
             }
             response
         }
-        DocumentBytes::Png(pages) => {
-            let engine = base64::engine::general_purpose::STANDARD;
-            Json(DocumentPages {
-                dpi: raster_dpi,
-                width_mm: file.page_size_mm.0 as f32,
-                height_mm: file.page_size_mm.1 as f32,
-                pages: pages.iter().map(|png| engine.encode(png)).collect(),
-            })
-            .into_response()
-        }
+        DocumentBytes::Png(pages) => png_response(&pages, file.page_size_mm, raster_dpi),
     };
     response.headers_mut().insert(
         header::CACHE_CONTROL,
@@ -140,9 +123,43 @@ async fn respond(
     Ok(response)
 }
 
-/// Имя файла: латиница и цифры, чтобы заголовок остался ASCII.
-fn file_name(kind: DocumentKind, order_number: Option<i64>) -> String {
-    let base = match kind {
+/// Параметры отрисовки из запроса: размер наклейки — только парой.
+pub(super) fn render_options(
+    label_mm: (Option<f32>, Option<f32>),
+    offset_mm: (Option<f32>, Option<f32>),
+    printer_dpi: Option<u32>,
+) -> Result<RenderOptions, ApiError> {
+    let label_mm = match label_mm {
+        (Some(w), Some(h)) => Some((w, h)),
+        (None, None) => None,
+        _ => {
+            return Err(ApiError::bad_request(
+                "Размер наклейки задаётся парой: укажите label_w_mm и label_h_mm вместе",
+            ));
+        }
+    };
+    Ok(RenderOptions {
+        label_mm,
+        offset_mm: (offset_mm.0.unwrap_or(0.0), offset_mm.1.unwrap_or(0.0)),
+        dpi: printer_dpi,
+    })
+}
+
+/// Страницы PNG как `DocumentPages` (base64).
+pub(super) fn png_response(pages: &[Vec<u8>], page_size_mm: (f64, f64), dpi: u32) -> Response {
+    let engine = base64::engine::general_purpose::STANDARD;
+    Json(DocumentPages {
+        dpi,
+        width_mm: page_size_mm.0 as f32,
+        height_mm: page_size_mm.1 as f32,
+        pages: pages.iter().map(|png| engine.encode(png)).collect(),
+    })
+    .into_response()
+}
+
+/// Основа имени файла: латиница и цифры, чтобы заголовок остался ASCII.
+pub(super) fn file_base(kind: DocumentKind) -> &'static str {
+    match kind {
         DocumentKind::IntakeAct => "akt-priema",
         DocumentKind::IssueAct => "akt-vydachi",
         DocumentKind::WarrantyIntakeAct => "akt-priema-garantiya",
@@ -150,7 +167,12 @@ fn file_name(kind: DocumentKind, order_number: Option<i64>) -> String {
         DocumentKind::BlankIntakeAct => "akt-priema-pustoj",
         DocumentKind::Sticker => "naklejka",
         DocumentKind::Calibration => "kalibrovka",
-    };
+    }
+}
+
+/// Имя файла PDF.
+fn file_name(kind: DocumentKind, order_number: Option<i64>) -> String {
+    let base = file_base(kind);
     match order_number {
         Some(number) => format!("{base}-{number}.pdf"),
         None => format!("{base}.pdf"),
