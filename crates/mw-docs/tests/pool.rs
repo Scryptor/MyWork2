@@ -84,6 +84,15 @@ fn fake_workers() {
             frame("%PDF-fake"),
         ),
     );
+    // Первый запуск закрывается через 0,3 с, остальные живут (счётчик — файл рядом).
+    let dies_first = script(
+        dir.path(),
+        "dies-first.sh",
+        &format!(
+            "d=$(dirname \"$0\"); if [ -f \"$d/count\" ]; then {ready}; exec sleep 30; \
+             else : > \"$d/count\"; {ready}; sleep 0.3; fi"
+        ),
+    );
     let long = Duration::from_secs(60);
     let second = Duration::from_secs(1);
 
@@ -146,4 +155,17 @@ fn fake_workers() {
     assert_eq!(spare.run(&job()).map(|_| ()), Err(DocsError::CodeTimeout));
     spare.wait_rewarm_for_tests();
     assert_eq!(spare.started_for_tests(), 2);
+
+    // Среди простаивающих закрывшийся: его заменяют, даже если простаивающие ещё есть.
+    let dying = pool(dies_first, long, Duration::from_millis(300));
+    dying.warm(); // процесс 1: закроется через 0,3 с
+    dying.warm(); // процесс 2: живой, лежит последним
+    std::thread::sleep(Duration::from_millis(800));
+    assert_eq!(dying.run(&job()).map(|_| ()), Err(DocsError::CodeTimeout)); // взял 2, убит по сроку
+    dying.wait_rewarm_for_tests();
+    assert_eq!(
+        dying.started_for_tests(),
+        3,
+        "среди простаивающих только закрывшийся — замена нужна"
+    );
 }

@@ -113,10 +113,16 @@ fn docs_error(e: DocsError, kind: DocumentKind) -> CoreError {
             CoreError::Unavailable(NO_CODE_RENDERER)
         }
         // Без общей ветки: новый вариант `DocsError` не соберётся, пока его здесь нет.
-        e @ (DocsError::Compile(_)
-        | DocsError::Pdf(_)
-        | DocsError::Png(_)
-        | DocsError::BadFileName(_)) => {
+        // Тексты ошибок PDF и PNG могут нести значения из заказа — в ошибку не попадают.
+        DocsError::Pdf(_) => CoreError::Internal(format!(
+            "документ «{}» не построен: не собран PDF",
+            kind.as_str()
+        )),
+        DocsError::Png(_) => CoreError::Internal(format!(
+            "документ «{}» не построен: не собран PNG",
+            kind.as_str()
+        )),
+        e @ (DocsError::Compile(_) | DocsError::BadFileName(_)) => {
             CoreError::Internal(format!("документ «{}» не построен: {e}", kind.as_str()))
         }
     }
@@ -1088,6 +1094,20 @@ mod tests {
     use crate::{
         ClientPhone, ClientRef, FixedClock, NewClient, NewOrder, NewUser, OrderPatch, SettingsPatch,
     };
+
+    #[test]
+    fn pdf_and_png_errors_carry_no_document_text() {
+        for e in [
+            DocsError::Pdf(vec!["ЗНАЧЕНИЕ-ИЗ-ЗАКАЗА".into()]),
+            DocsError::Png("ЗНАЧЕНИЕ-ИЗ-ЗАКАЗА".into()),
+        ] {
+            let CoreError::Internal(text) = docs_error(e, DocumentKind::IntakeAct) else {
+                panic!()
+            };
+            assert!(!text.contains("ЗНАЧЕНИЕ-ИЗ-ЗАКАЗА"), "{text}");
+            assert!(text.contains("intake_act"), "{text}");
+        }
+    }
 
     async fn core_on_22_november(db: sea_orm::DatabaseConnection) -> Core {
         let clock = Arc::new(FixedClock::new(

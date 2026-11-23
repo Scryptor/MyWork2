@@ -12,11 +12,18 @@ export function insertAtCaret(
 	return { value: value.slice(0, start) + insert + value.slice(end), caret: start + insert.length };
 }
 
+/** Whether a `(` or `{` in markup after `line` (the markup line before it) opens code. */
+function opensCode(line: string): boolean {
+	return /#[\w.-]*$/.test(line) || /#(?:if|for|while|let|set|show)\b/.test(line);
+}
+
 /**
  * Whether the caret after `before` is in code mode of Typst (inside `#{…}`, `#(…)`, `#if … {…}`), where
  * a field is `v("…")` and `#` is an error; in markup (the top of the code, inside `[…]`) it is
  * `#v("…")`. A guess by brackets: the last unclosed of `{`, `(`, `[` decides; brackets in strings (in
- * code) and in comments do not count.
+ * code) and in comments do not count. In markup `(` and `{` open code only right after `#`, after
+ * `#` with a name or a path (`#v(`, `#calc.min(`), or after `#if`/`#for`/`#while`/`#let`/`#set`/`#show`
+ * on the same line; any other one is text, and `)`/`}` in markup close nothing.
  */
 export function inTypstCode(before: string): boolean {
 	const open: string[] = [];
@@ -33,9 +40,13 @@ export function inTypstCode(before: string): boolean {
 		} else if (c === '"' && code()) {
 			i++;
 			while (i < before.length && before[i] !== '"') i += before[i] === '\\' ? 2 : 1;
-		} else if (c === '{' || c === '(' || c === '[') {
+		} else if (c === '[') {
 			open.push(c);
-		} else if (c === '}' || c === ')' || c === ']') {
+		} else if (c === '{' || c === '(') {
+			if (code() || opensCode(before.slice(before.lastIndexOf('\n', i - 1) + 1, i))) open.push(c);
+		} else if (c === ']') {
+			open.pop();
+		} else if ((c === '}' || c === ')') && code()) {
 			open.pop();
 		}
 	}

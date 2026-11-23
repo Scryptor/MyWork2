@@ -37,6 +37,15 @@ describe('inTypstCode', () => {
 		expect(inTypstCode('#{\n  text(size: 8pt, ')).toBe(true);
 		expect(inTypstCode('#{\n  text[a] + ')).toBe(true);
 	});
+	it('does not take a bracket of the text for code', () => {
+		expect(inTypstCode('Телефон (рабочий) ')).toBe(false);
+		expect(inTypstCode('Цена (руб.: ')).toBe(false);
+		expect(inTypstCode('#text(size: 8pt)[ примечание (мелко ')).toBe(false);
+		expect(inTypstCode('Скобка ) лишняя #v(')).toBe(true);
+		expect(inTypstCode('#calc.min(')).toBe(true);
+		expect(inTypstCode('#if data.blank { ')).toBe(true);
+		expect(inTypstCode('#{ let a = (1, ')).toBe(true);
+	});
 	it('does not count brackets in strings and comments', () => {
 		expect(inTypstCode('#v("{(") ')).toBe(false);
 		expect(inTypstCode('#{ "}" + ')).toBe(true);

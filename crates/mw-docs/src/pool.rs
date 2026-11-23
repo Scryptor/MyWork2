@@ -143,19 +143,32 @@ impl RenderPool {
 
     /// Заменяет убитый процесс заранее: следующее задание (печать сохранённого шаблона, где код
     /// снова выйдет за срок) не ждёт холодного запуска внутри разрешения рендера. Процесс
-    /// запускается [`RenderPool::warm`] в фоновом потоке — только если простаивающих нет и замена
-    /// ещё не идёт. Поток держит пул, пока процесс запускается (до `startup`), и отдаёт его
+    /// запускается [`RenderPool::warm`] в фоновом потоке — только если готовых простаивающих нет
+    /// (закрывшиеся убираются отсюда) и замена ещё не идёт. Поток держит пул, пока процесс запускается (до `startup`), и отдаёт его
     /// простаивающим; пул, отпущенный всеми, закрывает его.
     fn rewarm(&self) {
-        if !self.idle().is_empty() || self.inner.rewarming.swap(true, Ordering::SeqCst) {
+        let (none_ready, closed) = {
+            let mut idle = self.idle();
+            let mut closed = Vec::new();
+            for mut worker in std::mem::take(&mut *idle) {
+                if worker.is_ready() {
+                    idle.push(worker);
+                } else {
+                    closed.push(worker);
+                }
+            }
+            (idle.is_empty(), closed)
+        };
+        drop(closed);
+        if !none_ready || self.inner.rewarming.swap(true, Ordering::SeqCst) {
             return;
         }
         let pool = self.clone();
         let spawned = std::thread::Builder::new()
             .name("mw-render-rewarm".to_owned())
             .spawn(move || {
+                let _guard = RewarmGuard(&pool.inner.rewarming);
                 pool.warm();
-                pool.inner.rewarming.store(false, Ordering::SeqCst);
             });
         match spawned {
             #[cfg(feature = "testing")]
@@ -474,9 +487,32 @@ fn next_event(input: &mut impl Read) -> io::Result<Option<Event>> {
     Ok(Some(event))
 }
 
+/// Снимает флаг замены, когда поток замены кончил — и при панике внутри `warm`.
+struct RewarmGuard<'a>(&'a AtomicBool);
+
+impl Drop for RewarmGuard<'_> {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rewarm_flag_is_released_even_on_panic() {
+        let flag = AtomicBool::new(true);
+        drop(RewarmGuard(&flag));
+        assert!(!flag.load(Ordering::SeqCst));
+        flag.store(true, Ordering::SeqCst);
+        let caught = std::panic::catch_unwind(|| {
+            let _guard = RewarmGuard(&flag);
+            panic!("warm");
+        });
+        assert!(caught.is_err());
+        assert!(!flag.load(Ordering::SeqCst));
+    }
 
     fn event(reply: &Reply, frames: &[&[u8]]) -> io::Result<Option<Event>> {
         let mut pipe = Vec::new();
