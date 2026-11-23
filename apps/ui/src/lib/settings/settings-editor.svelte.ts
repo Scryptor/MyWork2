@@ -16,7 +16,7 @@ export type SettingsField = keyof SettingsPatch;
 const INTEGER = /^\d+$/;
 
 /** The firm's links printed as QR codes. */
-const LINKS: string[] = ['firm_telegram', 'firm_google_maps', 'firm_yandex_maps'];
+const LINKS: readonly SettingsField[] = ['firm_telegram', 'firm_google_maps', 'firm_yandex_maps'];
 
 /** What the server meant by a code in a field, in words of this field. */
 function fieldMessage(field: string, code: string, fallback: string): string {
@@ -28,7 +28,7 @@ function fieldMessage(field: string, code: string, fallback: string): string {
 		if (field === 'currency_symbol') return t.currencyLong;
 	}
 	if (code === 'not_a_link') return t.notALink;
-	if (code === 'too_long' && LINKS.includes(field)) return t.linkTooLong;
+	if (code === 'too_long' && LINKS.some((link) => link === field)) return t.linkTooLong;
 	if (code === 'invalid') {
 		if (field === 'timezone') return t.unknownTimezone;
 		if (field === 'default_service_point_id') return t.unknownPoint;
