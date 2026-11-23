@@ -38,6 +38,7 @@ thiserror = { workspace = true }
 chrono = { workspace = true }
 
 [dev-dependencies]
+mw-docs = { path = "../mw-docs", features = ["testing"] }
 mw-legacy = { path = "../mw-legacy", features = ["fixtures", "testing"] }
 serde_json = { workspace = true }
 tempfile = { workspace = true }

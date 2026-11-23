@@ -1,12 +1,29 @@
 use clap::Parser;
-use mw_server::{Cli, init_logging, run};
+use mw_server::{Cli, RENDER_WORKER_ARG, init_logging, run, run_render_worker};
 
-#[tokio::main]
-async fn main() {
+fn main() {
+    // Режим процесса-рендерера — первым делом, до разбора аргументов, журнала и рантайма: в stdout
+    // рендерер пишет только кадры протокола.
+    if std::env::args_os()
+        .nth(1)
+        .is_some_and(|arg| arg == RENDER_WORKER_ARG)
+    {
+        std::process::exit(run_render_worker());
+    }
+    let runtime = match tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(runtime) => runtime,
+        Err(e) => {
+            eprintln!("Ошибка: {e}");
+            std::process::exit(1);
+        }
+    };
     // Код выхода возвращает `main_inner`: охранник журнала внутри неё успевает дописать файл,
     // а `process::exit` его пропустил бы. Выход — `process::exit` и при успехе: рантайм при сбросе
     // ждал бы без конца блокирующую работу запроса, оставленного остановкой (`Server::serve`).
-    let code = main_inner().await;
+    let code = runtime.block_on(main_inner());
     std::process::exit(code);
 }
 

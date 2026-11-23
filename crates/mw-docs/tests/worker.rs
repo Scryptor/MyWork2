@@ -210,9 +210,12 @@ fn variant(error: &DocsError) -> usize {
         DocsError::TooManyPages(_) => 6,
         DocsError::TooManyPixels => 7,
         DocsError::TooSlow => 8,
+        DocsError::CodeTimeout => 9,
+        DocsError::WorkerCrashed => 10,
+        DocsError::WorkerUnavailable(_) => 11,
     }
 }
-const LAST_VARIANT: usize = 8;
+const LAST_VARIANT: usize = 11;
 
 /// По ошибке каждого варианта.
 fn every_error() -> Vec<DocsError> {
@@ -241,6 +244,9 @@ fn every_error() -> Vec<DocsError> {
         DocsError::TooManyPages(201),
         DocsError::TooManyPixels,
         DocsError::TooSlow,
+        DocsError::CodeTimeout,
+        DocsError::WorkerCrashed,
+        DocsError::WorkerUnavailable("не запустился: нет файла".to_owned()),
     ]
 }
 

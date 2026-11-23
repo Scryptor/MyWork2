@@ -37,6 +37,16 @@ pub enum DocsError {
     /// The documents of a job took longer to compile than its time budget.
     #[error("rendering took longer than its budget")]
     TooSlow,
+    /// A document of a template with the author's code compiled longer than the limit for one
+    /// document; the render process was killed.
+    #[error("a document took longer than the code time limit")]
+    CodeTimeout,
+    /// The render process exited or broke the protocol in the middle of a job.
+    #[error("the render process stopped during the job")]
+    WorkerCrashed,
+    /// The render process did not start or did not get ready in time (the reason).
+    #[error("the render process is unavailable: {0}")]
+    WorkerUnavailable(String),
 }
 
 /// [`DocsError`] на проводе процесса-рендерера (`wire`): те же варианты с теми же данными, в JSON —
@@ -54,6 +64,9 @@ pub(crate) enum WireError {
     TooManyPages(usize),
     TooManyPixels,
     TooSlow,
+    CodeTimeout,
+    WorkerCrashed,
+    WorkerUnavailable(String),
 }
 
 impl From<DocsError> for WireError {
@@ -68,6 +81,9 @@ impl From<DocsError> for WireError {
             DocsError::TooManyPages(pages) => Self::TooManyPages(pages),
             DocsError::TooManyPixels => Self::TooManyPixels,
             DocsError::TooSlow => Self::TooSlow,
+            DocsError::CodeTimeout => Self::CodeTimeout,
+            DocsError::WorkerCrashed => Self::WorkerCrashed,
+            DocsError::WorkerUnavailable(reason) => Self::WorkerUnavailable(reason),
         }
     }
 }
@@ -84,6 +100,9 @@ impl From<WireError> for DocsError {
             WireError::TooManyPages(pages) => Self::TooManyPages(pages),
             WireError::TooManyPixels => Self::TooManyPixels,
             WireError::TooSlow => Self::TooSlow,
+            WireError::CodeTimeout => Self::CodeTimeout,
+            WireError::WorkerCrashed => Self::WorkerCrashed,
+            WireError::WorkerUnavailable(reason) => Self::WorkerUnavailable(reason),
         }
     }
 }

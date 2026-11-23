@@ -17,6 +17,8 @@ pub use config::{
 };
 pub use import::{ImportOutcome, run_import_with_db};
 pub use logging::{LogGuard, init_logging};
+/// Режим процесса-рендерера: `main` обеих программ проверяет этот первый аргумент до всего остального.
+pub use mw_docs::{WORKER_ARG as RENDER_WORKER_ARG, worker_main as run_render_worker};
 pub use paths::{
     DataDirOs, PORTABLE_FILE, data_dir_name, os_data_dir, os_data_dir_for, portable_data_dir,
     resolve_data_dir,

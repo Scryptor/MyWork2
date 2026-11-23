@@ -1,6 +1,7 @@
 //! Documents and printing: Typst runs inside the process, with embedded fonts. Besides them it reads fallback fonts from the folders and the system
 //! it is told about ([`configure_fonts`]), and does no other I/O, except in the mode of a separate
 //! render process ([`worker_main`]): there it reads jobs from stdin and writes the results to stdout.
+//! A [`RenderPool`] keeps such processes on the parent's side and kills one whose job runs too long.
 //!
 //! A [`model::Template`] becomes Typst source ([`to_typst`]); [`render`] compiles it with the document
 //! data, which the source reads from a JSON file and never contains. The result is a [`Rendered`]
@@ -14,6 +15,7 @@ mod job;
 #[cfg(test)]
 mod layout_tests;
 pub mod model;
+mod pool;
 mod render;
 mod standard;
 mod typst_gen;
@@ -24,6 +26,7 @@ mod world;
 pub use barcode::{Symbology, code128_svg, module_mm, symbology, upc_a_svg};
 pub use fonts::{FontSet, FontSources, configure_fonts, font_covers, warm_fonts};
 pub use job::{Job, JobBytes, JobLimits, JobOutput, JobResult, run_job, run_job_with_fonts};
+pub use pool::{RenderPool, WorkerLimits};
 pub use render::{DocsError, Rendered, merge};
 pub use standard::{sample_data, standard_template};
 pub use typst_gen::{DocumentData, RenderOptions, block_code, render, render_with_fonts, to_typst};
