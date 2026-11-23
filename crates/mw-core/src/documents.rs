@@ -34,8 +34,26 @@ const RASTER_DPI: std::ops::RangeInclusive<u32> = 72..=600;
 const PRINTER_DPI: std::ops::RangeInclusive<u32> = 72..=600;
 /// Страниц в одном документе не больше: больше значит шаблон, который никто не печатает.
 const MAX_PAGES: usize = 50;
+/// Страниц во всей пачке заказов не больше.
+const MAX_BATCH_PAGES: usize = 200;
+/// Заказов в одной пачке не больше (после удаления повторов).
+const MAX_BATCH_ORDERS: usize = 100;
 /// Пикселей на одну страницу растра: A4 при 600 dpi (около 35 млн) проходит, 420 × 420 мм — нет.
 const MAX_RASTER_PIXELS: f64 = 36_000_000.0;
+
+/// Ошибка рендера как ошибка ядра.
+fn docs_error(e: DocsError, kind: DocumentKind) -> CoreError {
+    match e {
+        DocsError::Dpi(_) => CoreError::Validation(vec![FieldError::new("dpi", "out_of_range")]),
+        DocsError::TooManyPages(_) => {
+            CoreError::Validation(vec![FieldError::new("template", "too_many_pages")])
+        }
+        DocsError::TooManyPixels => {
+            CoreError::Validation(vec![FieldError::new("dpi", "too_many_pixels")])
+        }
+        e => CoreError::Internal(format!("документ «{}» не построен: {e}", kind.as_str())),
+    }
+}
 
 /// Размер наклейки, смещение и DPI принтера в границах; поля названы как параметры запроса API.
 fn check_options(options: &RenderOptions) -> Result<(), CoreError> {
@@ -76,6 +94,17 @@ pub struct DocumentRequest {
     /// Несохранённый шаблон для предпросмотра в редакторе; нужен `SettingsManage`. Без него — сохранённый
     /// шаблон предприятия, а при его отсутствии стандартный.
     pub draft: Option<Template>,
+}
+
+/// Документ одним PDF на несколько заказов.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DocumentBatchRequest {
+    /// Вид из заказа ([`DocumentKind::for_order`]).
+    pub kind: DocumentKind,
+    /// Номера заказов; повторы убираются с сохранением порядка.
+    pub order_ids: Vec<i64>,
+    /// Размер наклейки, смещение и DPI принтера — как пришли.
+    pub options: RenderOptions,
 }
 
 /// В каком виде выгрузить документ.
@@ -157,6 +186,84 @@ impl Core {
         .await
     }
 
+    /// Документы нескольких заказов одним PDF, по заказу подряд. Вид должен печататься из заказа
+    /// (`kind`/`not_allowed`); заказов от 1 до 100 после удаления повторов (`order_ids`/`required`,
+    /// `order_ids`/`too_many`). Данные каждого заказа собираются как у документа одного заказа
+    /// (нет заказа — `NotFound` с его номером); шаблон и логотип читаются один раз. Вся пачка —
+    /// одно задание под ограничителем рендера; больше 50 страниц у заказа или больше 200 во всей
+    /// пачке — `template`/`too_many_pages`.
+    pub async fn export_documents(
+        &self,
+        actor: &Actor,
+        req: DocumentBatchRequest,
+    ) -> Result<DocumentFile, CoreError> {
+        let DocumentBatchRequest {
+            kind,
+            order_ids,
+            options,
+        } = req;
+        if !kind.for_order() {
+            return Err(CoreError::Validation(vec![FieldError::new(
+                "kind",
+                "not_allowed",
+            )]));
+        }
+        let mut seen = std::collections::HashSet::new();
+        let ids: Vec<i64> = order_ids
+            .into_iter()
+            .filter(|id| seen.insert(*id))
+            .collect();
+        if ids.is_empty() {
+            return Err(CoreError::Validation(vec![FieldError::required(
+                "order_ids",
+            )]));
+        }
+        if ids.len() > MAX_BATCH_ORDERS {
+            return Err(CoreError::Validation(vec![FieldError::new(
+                "order_ids",
+                "too_many",
+            )]));
+        }
+        check_options(&options)?;
+        let template = self.template_for_print(kind).await?;
+        let mut datas = Vec::with_capacity(ids.len());
+        for id in ids {
+            let one = DocumentRequest {
+                kind,
+                order_id: Some(id),
+                sample: false,
+                options: options.clone(),
+                draft: None,
+            };
+            datas.push(self.document_values(actor, &one).await?);
+        }
+        let logo = self.firm_logo_png().await;
+        for data in &mut datas {
+            data.logo.clone_from(&logo);
+        }
+        self.render_gate
+            .run(move || {
+                let mut docs = Vec::with_capacity(datas.len());
+                let mut total = 0;
+                for data in &datas {
+                    let doc = mw_docs::render(&template, data, &options)?;
+                    total += doc.page_count();
+                    if doc.page_count() > MAX_PAGES || total > MAX_BATCH_PAGES {
+                        return Err(DocsError::TooManyPages(total));
+                    }
+                    docs.push(doc);
+                }
+                let merged = mw_docs::merge(docs);
+                Ok(DocumentFile {
+                    page_size_mm: merged.page_size_mm(),
+                    page_count: merged.page_count(),
+                    bytes: DocumentBytes::Pdf(merged.pdf()?),
+                })
+            })
+            .await?
+            .map_err(|e| docs_error(e, kind))
+    }
+
     /// Строит документ. Из заказа — с теми же правами, что и просмотр заказа (`get_order`): нужен
     /// `order_id` (он важнее `sample`) или `sample`, иначе ошибка проверки. Пустой акт приёма и
     /// калибровка — всегда без заказа. Рендер идёт вне рабочих потоков, не больше
@@ -192,18 +299,7 @@ impl Core {
                 })
             })
             .await?
-            .map_err(|e| match e {
-                DocsError::Dpi(_) => {
-                    CoreError::Validation(vec![FieldError::new("dpi", "out_of_range")])
-                }
-                DocsError::TooManyPages(_) => {
-                    CoreError::Validation(vec![FieldError::new("template", "too_many_pages")])
-                }
-                DocsError::TooManyPixels => {
-                    CoreError::Validation(vec![FieldError::new("dpi", "too_many_pixels")])
-                }
-                e => CoreError::Internal(format!("документ «{}» не построен: {e}", kind.as_str())),
-            })
+            .map_err(|e| docs_error(e, kind))
     }
 
     /// Модель для рендера: черновик, иначе сохранённая, иначе стандартная (калибровка — всегда
@@ -238,14 +334,24 @@ impl Core {
         actor: &Actor,
         req: &DocumentRequest,
     ) -> Result<DocumentData, CoreError> {
+        let mut data = self.document_values(actor, req).await?;
+        // Логотип фирмы — для блоков «Логотип» любого вида документа, в том числе образца и черновика.
+        data.logo = self.firm_logo_png().await;
+        Ok(data)
+    }
+
+    /// То же без логотипа: пачка заказов читает его один раз.
+    async fn document_values(
+        &self,
+        actor: &Actor,
+        req: &DocumentRequest,
+    ) -> Result<DocumentData, CoreError> {
         let mut data = self.field_values(actor, req).await?;
         for value in data.values.values_mut() {
             if let Cow::Owned(text) = doc_text(value) {
                 *value = text;
             }
         }
-        // Логотип фирмы — для блоков «Логотип» любого вида документа, в том числе образца и черновика.
-        data.logo = self.firm_logo_png().await;
         Ok(data)
     }
 

@@ -1843,6 +1843,68 @@
         ]
       }
     },
+    "/api/v1/documents/{kind}/batch": {
+      "post": {
+        "tags": [
+          "Документы"
+        ],
+        "summary": "Документы нескольких заказов одним PDF (вид из заказа; не больше 100 заказов, 50 страниц на\nзаказ и 200 всего). Права те же, что у документа одного заказа.",
+        "operationId": "batch_document",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "description": "Вид документа",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/DocumentKind"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DocumentBatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "PDF",
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/intake-drafts/{key}": {
       "delete": {
         "tags": [
@@ -5905,6 +5967,65 @@
           "value": {
             "type": "string",
             "description": "Текст значения; крайние пробелы убираются."
+          }
+        },
+        "additionalProperties": false
+      },
+      "DocumentBatch": {
+        "type": "object",
+        "description": "Документ одним PDF на несколько заказов: параметры отрисовки — как у `DocumentQuery`.",
+        "required": [
+          "order_ids"
+        ],
+        "properties": {
+          "label_h_mm": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float",
+            "description": "Высота наклейки, мм (15–200); только вместе с `label_w_mm`."
+          },
+          "label_w_mm": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float",
+            "description": "Ширина наклейки, мм (15–200); только вместе с `label_h_mm`."
+          },
+          "offset_x_mm": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float",
+            "description": "Сдвиг содержимого вправо, мм (от −10 до 10)."
+          },
+          "offset_y_mm": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float",
+            "description": "Сдвиг содержимого вниз, мм (от −10 до 10)."
+          },
+          "order_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "Номера заказов (от 1 до 100); повторы убираются."
+          },
+          "printer_dpi": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Разрешение принтера, точек на дюйм (72–600).",
+            "minimum": 0
           }
         },
         "additionalProperties": false

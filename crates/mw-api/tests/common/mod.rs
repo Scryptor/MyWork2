@@ -135,6 +135,35 @@ impl TestApi {
         (status, headers, bytes)
     }
 
+    /// POST с JSON-телом и токеном; тело ответа как байты.
+    pub async fn post_raw(
+        &self,
+        path: &str,
+        token: &str,
+        body: serde_json::Value,
+    ) -> (u16, HeaderMap, Vec<u8>) {
+        use tower::ServiceExt as _;
+        let mut req = Request::post(path)
+            .header("host", "127.0.0.1:8080")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        req.extensions_mut()
+            .insert(ConnectInfo(SocketAddr::from(([10, 0, 0, 1], 50000))));
+        let resp = self.router.clone().oneshot(req).await.unwrap();
+        let status = resp.status().as_u16();
+        let headers = resp.headers().clone();
+        let bytes = resp
+            .into_body()
+            .collect()
+            .await
+            .unwrap()
+            .to_bytes()
+            .to_vec();
+        (status, headers, bytes)
+    }
+
     /// Отправляет запрос как есть; без `ConnectInfo` подставляет 10.0.0.1:50000.
     pub async fn request(&self, mut req: Request<Body>) -> TestResponse {
         if req.extensions().get::<ConnectInfo<SocketAddr>>().is_none() {

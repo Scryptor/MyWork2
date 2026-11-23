@@ -29,11 +29,11 @@ pub use contract::export_typescript;
 pub use dto::{
     AboutInfo, AttachmentNameQuery, AuditListQuery, AuditPage, BarcodeQuery, CaptionPatch,
     ChangePasswordRequest, ClientListQuery, ClientPage, CurrentUser, DictionaryListQuery,
-    DictionaryValue, DocumentFormat, DocumentPages, DocumentQuery, HistoryQuery, IncludeArchived,
-    LegacyImportCheck, LegacyImportStart, LoginRequest, LoginResponse, NewServicePoint,
-    NextOrderNumber, OrderCommentPage, OrderCommentQuery, OrderListQuery, OrderPage,
-    OrderSummaryQuery, OrderValuesQuery, PageQuery, PhoneQuery, ReorderRequest, ServerInfo,
-    SetPasswordRequest, StatusChange, TemplatePreview, VersionParam,
+    DictionaryValue, DocumentBatch, DocumentFormat, DocumentPages, DocumentQuery, HistoryQuery,
+    IncludeArchived, LegacyImportCheck, LegacyImportStart, LoginRequest, LoginResponse,
+    NewServicePoint, NextOrderNumber, OrderCommentPage, OrderCommentQuery, OrderListQuery,
+    OrderPage, OrderSummaryQuery, OrderValuesQuery, PageQuery, PhoneQuery, ReorderRequest,
+    ServerInfo, SetPasswordRequest, StatusChange, TemplatePreview, VersionParam,
 };
 pub use error::{ErrorBody, ErrorCode, ErrorField};
 pub use state::ApiConfig;

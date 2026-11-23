@@ -69,6 +69,22 @@ pub(crate) fn compile(
     }
 }
 
+/// Склеивает документы в один: страницы по порядку, сведения о документе (`info`) берутся у первого.
+/// Страницы уже разложены и сохраняют свои номера. Пустой список даёт пустой документ без страниц.
+pub fn merge(docs: Vec<Rendered>) -> Rendered {
+    let mut info = typst::model::DocumentInfo::default();
+    let mut pages = typst::diag::EcoVec::new();
+    for (i, mut rendered) in docs.into_iter().enumerate() {
+        if i == 0 {
+            info = std::mem::take(rendered.doc.info_mut());
+        }
+        pages.extend(rendered.doc.pages().iter().cloned());
+    }
+    Rendered {
+        doc: PagedDocument::new(pages, info),
+    }
+}
+
 impl Rendered {
     /// The laid-out document, for tests that look at the positions of what is printed.
     #[cfg(test)]

@@ -605,6 +605,30 @@ pub struct DocumentQuery {
     pub offset_y_mm: Option<f32>,
 }
 
+/// Документ одним PDF на несколько заказов: параметры отрисовки — как у `DocumentQuery`.
+#[derive(Debug, Clone, Deserialize, TS, ToSchema)]
+#[serde(deny_unknown_fields)]
+#[ts(optional_fields)]
+pub struct DocumentBatch {
+    /// Номера заказов (от 1 до 100); повторы убираются.
+    pub order_ids: Vec<i64>,
+    /// Разрешение принтера, точек на дюйм (72–600).
+    #[serde(default)]
+    pub printer_dpi: Option<u32>,
+    /// Ширина наклейки, мм (15–200); только вместе с `label_h_mm`.
+    #[serde(default)]
+    pub label_w_mm: Option<f32>,
+    /// Высота наклейки, мм (15–200); только вместе с `label_w_mm`.
+    #[serde(default)]
+    pub label_h_mm: Option<f32>,
+    /// Сдвиг содержимого вправо, мм (от −10 до 10).
+    #[serde(default)]
+    pub offset_x_mm: Option<f32>,
+    /// Сдвиг содержимого вниз, мм (от −10 до 10).
+    #[serde(default)]
+    pub offset_y_mm: Option<f32>,
+}
+
 /// Превью черновика шаблона: модель и параметры отрисовки (как у `DocumentQuery`, PNG).
 #[derive(Debug, Clone, Deserialize, TS, ToSchema)]
 #[serde(deny_unknown_fields)]

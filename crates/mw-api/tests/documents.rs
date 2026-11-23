@@ -220,3 +220,98 @@ async fn documents_need_a_signed_in_user() {
         assert_eq!(r.status, 401, "{}", t.label);
     }
 }
+
+#[tokio::test]
+async fn batch_comes_as_one_pdf_named_after_the_count() {
+    for t in apis(Listen::Network).await {
+        let token = t.admin_token().await;
+        let mut ids = Vec::new();
+        for _ in 0..3 {
+            let order = create_order(&t, &token, new_order("Иван", "", "A", "B")).await;
+            ids.push(order["id"].as_i64().unwrap());
+        }
+        let body = serde_json::json!({
+            "order_ids": [ids[0], ids[1], ids[2], ids[0]],
+            "label_w_mm": 58, "label_h_mm": 40,
+        });
+        let (status, headers, pdf) = t
+            .post_raw("/api/v1/documents/sticker/batch", &token, body)
+            .await;
+        assert_eq!(status, 200, "{}", t.label);
+        assert_eq!(headers["content-type"], "application/pdf");
+        assert_eq!(
+            headers["content-disposition"], "inline; filename=\"naklejka-3.pdf\"",
+            "{}",
+            t.label
+        );
+        assert_eq!(headers["cache-control"], "private, no-store");
+        assert!(pdf.starts_with(b"%PDF-"), "{}", t.label);
+
+        // Лишнее поле — 400.
+        let r = t
+            .send(
+                axum::http::Method::POST,
+                "/api/v1/documents/sticker/batch",
+                Some(&token),
+                Some(serde_json::json!({"order_ids": [ids[0]], "extra": 1})),
+            )
+            .await;
+        assert_eq!(r.status, 400, "{}: {}", t.label, r.body);
+
+        // Нет заказа — 404 с номером в сообщении.
+        let r = t
+            .send(
+                axum::http::Method::POST,
+                "/api/v1/documents/sticker/batch",
+                Some(&token),
+                Some(serde_json::json!({"order_ids": [ids[0], 999999]})),
+            )
+            .await;
+        assert_eq!(r.status, 404, "{}: {}", t.label, r.body);
+        assert!(
+            r.body["message"]
+                .as_str()
+                .unwrap()
+                .contains("Заказ № 999999 не найден"),
+            "{}: {}",
+            t.label,
+            r.body
+        );
+
+        // Вид без заказа и пустой список — 422.
+        let r = t
+            .send(
+                axum::http::Method::POST,
+                "/api/v1/documents/calibration/batch",
+                Some(&token),
+                Some(serde_json::json!({"order_ids": [ids[0]]})),
+            )
+            .await;
+        assert_eq!(r.status, 422, "{}: {}", t.label, r.body);
+        let r = t
+            .send(
+                axum::http::Method::POST,
+                "/api/v1/documents/sticker/batch",
+                Some(&token),
+                Some(serde_json::json!({"order_ids": []})),
+            )
+            .await;
+        assert_eq!(r.status, 422, "{}: {}", t.label, r.body);
+    }
+}
+
+#[tokio::test]
+async fn batch_needs_a_signed_in_user() {
+    for t in apis(Listen::Network).await {
+        t.create_admin_user("admin").await;
+        let r = t
+            .send(
+                axum::http::Method::POST,
+                "/api/v1/documents/sticker/batch",
+                None,
+                Some(serde_json::json!({"order_ids": [1]})),
+            )
+            .await;
+        assert_eq!(r.status, 401, "{}", t.label);
+    }
+}

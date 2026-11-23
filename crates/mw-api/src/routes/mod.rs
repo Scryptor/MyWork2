@@ -105,6 +105,7 @@ pub(crate) fn api_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(orders::accept_warranty_case))
         .routes(routes!(documents::order_document))
         .routes(routes!(documents::sample_document))
+        .routes(routes!(documents::batch_document))
         .routes(routes!(document_templates::list_templates))
         .routes(routes!(
             document_templates::get_template,

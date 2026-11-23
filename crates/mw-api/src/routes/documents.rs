@@ -4,12 +4,13 @@ use axum::extract::State;
 use axum::http::{HeaderValue, header};
 use axum::response::{IntoResponse, Response};
 use base64::Engine as _;
-use mw_core::documents::{DocumentBytes, DocumentOutput, DocumentRequest};
+use mw_core::CoreError;
+use mw_core::documents::{DocumentBatchRequest, DocumentBytes, DocumentOutput, DocumentRequest};
 use mw_docs::RenderOptions;
 use mw_domain::documents::DocumentKind;
 
 use crate::auth::CurrentActor;
-use crate::dto::{DocumentFormat, DocumentPages, DocumentQuery};
+use crate::dto::{DocumentBatch, DocumentFormat, DocumentPages, DocumentQuery};
 use crate::error::ApiError;
 use crate::extract::{Json, Path, Query};
 use crate::state::AppState;
@@ -72,6 +73,59 @@ pub(super) async fn sample_document(
     respond(&state, &actor, kind, None, q).await
 }
 
+/// Документы нескольких заказов одним PDF (вид из заказа; не больше 100 заказов, 50 страниц на
+/// заказ и 200 всего). Права те же, что у документа одного заказа.
+#[utoipa::path(
+    post,
+    path = "/api/v1/documents/{kind}/batch",
+    tag = "Документы",
+    security(("bearer" = [])),
+    params(("kind" = DocumentKind, Path, description = "Вид документа")),
+    request_body = DocumentBatch,
+    responses((status = 200, description = "PDF", content((Vec<u8> = "application/pdf"))))
+)]
+pub(super) async fn batch_document(
+    State(state): State<AppState>,
+    CurrentActor(actor): CurrentActor,
+    Path(kind): Path<DocumentKind>,
+    Json(body): Json<DocumentBatch>,
+) -> Result<Response, ApiError> {
+    let options = render_options(
+        (body.label_w_mm, body.label_h_mm),
+        (body.offset_x_mm, body.offset_y_mm),
+        body.printer_dpi,
+    )?;
+    // Число заказов в имени файла — после удаления повторов.
+    let count = body
+        .order_ids
+        .iter()
+        .collect::<std::collections::HashSet<_>>()
+        .len();
+    let request = DocumentBatchRequest {
+        kind,
+        order_ids: body.order_ids,
+        options,
+    };
+    let file = state
+        .core
+        .export_documents(&actor, request)
+        .await
+        .map_err(|e| match e {
+            CoreError::NotFound {
+                entity: "заказ",
+                id,
+            } => ApiError::order_not_found(id),
+            e => e.into(),
+        })?;
+    let DocumentBytes::Pdf(pdf) = file.bytes else {
+        return Err(CoreError::Internal("пачка документов вернула не PDF".into()).into());
+    };
+    Ok(no_store(pdf_response(
+        pdf,
+        &format!("{}-{count}.pdf", file_base(kind)),
+    )))
+}
+
 async fn respond(
     state: &AppState,
     actor: &mw_core::Actor,
@@ -106,21 +160,31 @@ async fn respond(
     let mut response = match file.bytes {
         DocumentBytes::Pdf(pdf) => {
             let name = file_name(kind, order_id.filter(|_| kind.for_order()));
-            let mut response = ([(header::CONTENT_TYPE, "application/pdf")], pdf).into_response();
-            if let Ok(v) = HeaderValue::from_str(&format!("inline; filename=\"{name}\"")) {
-                response
-                    .headers_mut()
-                    .insert(header::CONTENT_DISPOSITION, v);
-            }
-            response
+            pdf_response(pdf, &name)
         }
         DocumentBytes::Png(pages) => png_response(&pages, file.page_size_mm, raster_dpi),
     };
+    Ok(no_store(response))
+}
+
+/// PDF с именем файла для показа в окне.
+fn pdf_response(pdf: Vec<u8>, name: &str) -> Response {
+    let mut response = ([(header::CONTENT_TYPE, "application/pdf")], pdf).into_response();
+    if let Ok(v) = HeaderValue::from_str(&format!("inline; filename=\"{name}\"")) {
+        response
+            .headers_mut()
+            .insert(header::CONTENT_DISPOSITION, v);
+    }
+    response
+}
+
+/// Документы с данными клиента не оседают в кэше браузера и прокси.
+fn no_store(mut response: Response) -> Response {
     response.headers_mut().insert(
         header::CACHE_CONTROL,
         HeaderValue::from_static("private, no-store"),
     );
-    Ok(response)
+    response
 }
 
 /// Параметры отрисовки из запроса: размер наклейки — только парой.

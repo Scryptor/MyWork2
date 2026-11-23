@@ -3,7 +3,9 @@
 mod common;
 
 use common::*;
-use mw_core::documents::{DocumentBytes, DocumentOutput, DocumentRequest, plain_text};
+use mw_core::documents::{
+    DocumentBatchRequest, DocumentBytes, DocumentOutput, DocumentRequest, plain_text,
+};
 use mw_core::{ClientRef, CoreError, NewClient, NewOrder, OrderPatch, SettingsPatch};
 use mw_db::entity::order;
 use mw_docs::{RenderOptions, font_covers};
@@ -923,6 +925,198 @@ async fn act_prints_uploaded_logo() -> Result<(), CoreError> {
         core.remove_firm_logo(&admin()).await?;
         assert_eq!(pages().await?, before, "{label}: логотип остался на листе");
         export(DocumentOutput::Pdf).await?;
+    }
+    Ok(())
+}
+
+fn batch(kind: DocumentKind, order_ids: Vec<i64>) -> DocumentBatchRequest {
+    DocumentBatchRequest {
+        kind,
+        order_ids,
+        options: RenderOptions {
+            label_mm: Some((58.0, 40.0)),
+            ..RenderOptions::default()
+        },
+    }
+}
+
+async fn orders(t: &TestCore, n: usize) -> Vec<i64> {
+    let mut ids = Vec::new();
+    for _ in 0..n {
+        ids.push(
+            t.core
+                .create_order(&admin(), sample_new_order())
+                .await
+                .unwrap()
+                .id,
+        );
+    }
+    ids
+}
+
+#[tokio::test]
+async fn batch_pdf_has_a_document_per_order() -> Result<(), CoreError> {
+    for t in cores().await {
+        let ids = orders(&t, 3).await;
+        let stickers = t
+            .core
+            .export_documents(&admin(), batch(DocumentKind::Sticker, ids.clone()))
+            .await?;
+        let DocumentBytes::Pdf(pdf) = &stickers.bytes else {
+            panic!("{}: {stickers:?}", t.label);
+        };
+        assert!(pdf.starts_with(b"%PDF-"), "{}", t.label);
+        assert_eq!(stickers.page_count, 3, "{}", t.label);
+
+        // Акт приёма «2 на лист A4»: на заказ один лист.
+        let acts = t
+            .core
+            .export_documents(
+                &admin(),
+                DocumentBatchRequest {
+                    options: RenderOptions::default(),
+                    ..batch(DocumentKind::IntakeAct, ids)
+                },
+            )
+            .await?;
+        assert_eq!(acts.page_count, 3, "{}", t.label);
+        let (w, h) = acts.page_size_mm;
+        assert!(
+            (w - 210.0).abs() < 0.01 && (h - 297.0).abs() < 0.01,
+            "{w}x{h}"
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn batch_limits() {
+    for t in cores().await {
+        assert_validation(
+            t.core
+                .export_documents(&admin(), batch(DocumentKind::Sticker, vec![]))
+                .await,
+            &[("order_ids", "required")],
+        );
+        assert_validation(
+            t.core
+                .export_documents(&admin(), batch(DocumentKind::Sticker, (1..=101).collect()))
+                .await,
+            &[("order_ids", "too_many")],
+        );
+        // Повторы не считаются: 100 разных номеров по два раза проходят проверку числа.
+        let doubled: Vec<i64> = (1..=100).flat_map(|n| [n, n]).collect();
+        let res = t
+            .core
+            .export_documents(&admin(), batch(DocumentKind::Sticker, doubled))
+            .await;
+        assert!(
+            matches!(res, Err(CoreError::NotFound { .. })),
+            "{}: {res:?}",
+            t.label
+        );
+        assert_validation(
+            t.core
+                .export_documents(&admin(), batch(DocumentKind::Calibration, vec![1]))
+                .await,
+            &[("kind", "not_allowed")],
+        );
+        assert_validation(
+            t.core
+                .export_documents(&admin(), batch(DocumentKind::BlankIntakeAct, vec![1]))
+                .await,
+            &[("kind", "not_allowed")],
+        );
+    }
+}
+
+#[tokio::test]
+async fn batch_drops_repeats() -> Result<(), CoreError> {
+    for t in cores().await {
+        let ids = orders(&t, 2).await;
+        let file = t
+            .core
+            .export_documents(
+                &admin(),
+                batch(DocumentKind::Sticker, vec![ids[0], ids[1], ids[0]]),
+            )
+            .await?;
+        assert_eq!(file.page_count, 2, "{}", t.label);
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn batch_missing_order_names_it() -> Result<(), CoreError> {
+    for t in cores().await {
+        let ids = orders(&t, 1).await;
+        let res = t
+            .core
+            .export_documents(
+                &admin(),
+                batch(DocumentKind::Sticker, vec![ids[0], 999_999]),
+            )
+            .await;
+        assert!(
+            matches!(res, Err(CoreError::NotFound { id: 999_999, .. })),
+            "{}: {res:?}",
+            t.label
+        );
+    }
+    Ok(())
+}
+
+/// Наклейка 58 × 40 мм, текст которой не влезает в одну страницу: ровно три страницы на заказ.
+fn three_page_sticker() -> mw_domain::document_template::Template {
+    use mw_domain::document_template::{Align, Block, BlockBody, CopyFilter};
+    let mut template = mw_docs::standard_template(DocumentKind::Sticker);
+    template.blocks = vec![Block {
+        copies: CopyFilter::Both,
+        body: BlockBody::Text {
+            text: vec!["слово"; WORDS_FOR_THREE_PAGES].join(" "),
+            size_pt: None,
+            bold: false,
+            align: Align::Left,
+            one_line: false,
+        },
+    }];
+    template
+}
+const WORDS_FOR_THREE_PAGES: usize = 200;
+
+#[tokio::test]
+async fn batch_total_page_cap() -> Result<(), CoreError> {
+    for t in cores().await {
+        let saved = t
+            .core
+            .save_document_template(
+                &admin(),
+                DocumentKind::Sticker,
+                mw_core::TemplateSave {
+                    template: three_page_sticker(),
+                    version: 0,
+                },
+            )
+            .await?;
+        let _ = saved;
+        let ids = orders(&t, 67).await;
+        let one = t
+            .core
+            .export_documents(&admin(), batch(DocumentKind::Sticker, vec![ids[0]]))
+            .await?;
+        assert_eq!(one.page_count, 3, "{}: шаблон даёт три страницы", t.label);
+        // 66 × 3 = 198 страниц проходят, 67 × 3 = 201 — нет.
+        let ok = t
+            .core
+            .export_documents(&admin(), batch(DocumentKind::Sticker, ids[..66].to_vec()))
+            .await?;
+        assert_eq!(ok.page_count, 198, "{}", t.label);
+        assert_validation(
+            t.core
+                .export_documents(&admin(), batch(DocumentKind::Sticker, ids))
+                .await,
+            &[("template", "too_many_pages")],
+        );
     }
     Ok(())
 }

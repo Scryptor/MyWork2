@@ -78,6 +78,15 @@ impl ApiError {
         }
     }
 
+    /// Заказ из пачки документов не найден: в сообщении его номер.
+    pub(crate) fn order_not_found(id: i64) -> Self {
+        Self::new(
+            StatusCode::NOT_FOUND,
+            ErrorCode::NotFound,
+            format!("Заказ № {id} не найден"),
+        )
+    }
+
     pub(crate) fn bad_request(message: impl Into<String>) -> Self {
         Self::new(StatusCode::BAD_REQUEST, ErrorCode::BadRequest, message)
     }
