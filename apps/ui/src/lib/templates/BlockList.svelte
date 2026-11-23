@@ -149,6 +149,7 @@
 	<div class="row">
 		<button
 			type="button"
+			title={label}
 			class="pick"
 			class:on={same(selected, e.path)}
 			aria-pressed={same(selected, e.path)}

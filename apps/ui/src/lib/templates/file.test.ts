@@ -59,6 +59,44 @@ describe('readTemplateFile', () => {
 		});
 	});
 
+	it('lists where the mistake is: the block or the page', async () => {
+		const file = {
+			format: 'mwtemplate',
+			template: {
+				blocks: [
+					{ copies: 'both', body: { type: 'spacer', mm: 3 } },
+					{
+						copies: 'both',
+						body: { type: 'text', text: 'Гарантия', size_pt: null, bold: false, align: 'left' }
+					}
+				]
+			}
+		};
+		const r = await readTemplateFile('warranty_intake_act', JSON.stringify(file), async () => {
+			throw invalid(
+				['blocks.1.size_pt', 'Значение вне допустимого диапазона'],
+				['page.margins_mm', 'Поля велики'],
+				['blocks.9.text', 'Нет такого']
+			);
+		});
+		expect(r).toEqual({
+			ok: false,
+			problem: 'misfit',
+			messages: [
+				'Текст · Гарантия: Значение вне допустимого диапазона',
+				'Страница: Поля велики',
+				'Нет такого'
+			]
+		});
+	});
+
+	it('a file that is not shaped like a template still lists the plain texts', async () => {
+		const r = await readTemplateFile('warranty_intake_act', '[1]', async () => {
+			throw invalid(['blocks.0.text', 'Слишком длинный текст']);
+		});
+		expect(r).toEqual({ ok: false, problem: 'misfit', messages: ['Слишком длинный текст'] });
+	});
+
 	it('another failure is not a problem of the file: it is thrown', async () => {
 		const down = new ApiError(0, 'network', 'нет связи', null);
 		await expect(

@@ -588,6 +588,40 @@ async function serverSettingsScenes(
 	await importScenes(page, c, bars, pending);
 }
 
+/**
+ * The template editor (read only: the template is not touched). Wide and medium: the three parts at once.
+ * Narrow (the segments «Блоки · Свойства · Превью»): each part in its turn.
+ */
+async function templateEditorScenes(
+	page: Page,
+	c: ScreenCase,
+	bars: Locator[],
+	pending: () => number
+) {
+	await page.goto('/templates/intake_act');
+	await expect(
+		page
+			.getByRole('region', { name: 'Блоки' })
+			.getByRole('button', { name: 'Страница', exact: true })
+	).toBeVisible();
+	const segments = page.getByRole('radiogroup', { name: 'Часть редактора' });
+	if ((await segments.count()) === 0) {
+		await expect(
+			page.getByRole('region', { name: 'Превью' }).getByRole('img').first()
+		).toBeVisible();
+		await scene(page, c, 'template-editor', bars, pending);
+		return;
+	}
+	await scene(page, c, 'template-editor-blocks', bars, pending);
+	// The segments' radios sit under their labels, so they are clicked with force.
+	await segments.getByRole('radio', { name: 'Превью' }).click({ force: true });
+	await expect(page.getByRole('region', { name: 'Превью' }).getByRole('img').first()).toBeVisible();
+	await scene(page, c, 'template-editor-preview', bars, pending);
+	await segments.getByRole('radio', { name: 'Свойства' }).click({ force: true });
+	await expect(page.getByRole('region', { name: 'Свойства' })).toBeVisible();
+	await scene(page, c, 'template-editor-properties', bars, pending);
+}
+
 /** A phone after the list and the panel: «Настройки» (the list, then «Внешний вид») and the intake. */
 async function phoneScenes(page: Page, c: ScreenCase, seed: Seed, pending: () => number) {
 	await page.goto('/settings');
@@ -797,6 +831,7 @@ for (const c of SCREEN_CASES) {
 			await expect(page.getByRole('heading', { name: 'Внешний вид' })).toBeVisible();
 			await scene(page, c, 'appearance', [banner(page)], pending);
 			await serverSettingsScenes(page, c, [banner(page)], pending);
+			await templateEditorScenes(page, c, [banner(page)], pending);
 
 			// «Выдать» over the panel of a ready order.
 			const readyPanel = await openOrderPanel(page, c, seed, seed.ready);
