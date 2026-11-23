@@ -650,3 +650,22 @@ fn unencodable_value_prints_without_barcode() {
     assert!(crops(&doc).is_empty());
     assert!(!page_texts(&doc).concat().contains("Заказ 5"));
 }
+
+#[test]
+fn code128_too_long_for_the_label_prints_as_text_without_bars() {
+    let label = Some((40.0, 30.0));
+    let options = sticker_options(label, Some(203));
+    // 8 characters are the longest that fit 37 mm at 2 dots a module.
+    let (template, data) = sticker_with("ABCD1234");
+    let doc = render(&template, &data, &options).expect("renders");
+    assert_eq!(crops(&doc).len(), 1);
+
+    let value = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-.$/";
+    assert_eq!(value.len(), 40);
+    let (template, data) = sticker_with(value);
+    let doc = render(&template, &data, &options).expect("renders");
+    assert!(crops(&doc).is_empty(), "no bars");
+    assert_eq!(doc.page_count(), 1);
+    let printed = page_texts(&doc).concat().replace('\u{200b}', "");
+    assert!(printed.contains(value), "{printed:?}");
+}

@@ -135,6 +135,11 @@ impl Shape {
         }
     }
 
+    /// Whether the whole symbol fits `width_mm` at the narrowest module (see [`fit_module_mm`]).
+    pub(crate) fn fits(self, width_mm: f64, dpi: Option<u32>) -> bool {
+        self.modules as f64 * fit_module_mm(width_mm, self.modules, dpi) <= width_mm + 1e-6
+    }
+
     /// A Code 128 code of `symbols` symbols, start, check and stop included.
     fn of_code128(symbols: usize) -> Self {
         Self {
@@ -223,7 +228,7 @@ const PATTERNS: [&str; 107] = [
 ];
 
 /// The symbol values of a Code 128 code for `value`: start, data, check, stop. A value of an even
-/// number of digits goes in set C (two digits a symbol), any other in set B (one character a
+/// number of digits, at least four, goes in set C (two digits a symbol), any other in set B (one character a
 /// symbol). `None` for an empty value, one longer than 40 characters or one with anything but
 /// printable ASCII.
 pub(crate) fn code128_symbols(value: &str) -> Option<Vec<u8>> {
@@ -235,7 +240,7 @@ pub(crate) fn code128_symbols(value: &str) -> Option<Vec<u8>> {
         return None;
     }
     let mut symbols = Vec::with_capacity(bytes.len() + 3);
-    if bytes.len().is_multiple_of(2) && bytes.iter().all(u8::is_ascii_digit) {
+    if bytes.len() >= 4 && bytes.len().is_multiple_of(2) && bytes.iter().all(u8::is_ascii_digit) {
         symbols.push(START_C);
         symbols.extend(
             bytes

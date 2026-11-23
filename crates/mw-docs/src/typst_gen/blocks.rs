@@ -191,6 +191,19 @@ impl Generator {
                 let image_h = self.svg.map_or(h, |(svg_module, bars)| {
                     self.shape.size_mm(svg_module, bars).1 * module / svg_module
                 });
+                // A Code 128 value too long for the block prints as text in place of the bars (UPC-A
+                // keeps its bars at the minimum module, as before). The zero-width spaces let a long
+                // value wrap anywhere.
+                if self.shape != Shape::UPC_A && !self.shape.fits(width_mm, self.opts.dpi) {
+                    let _ = write!(
+                        out,
+                        "if data.barcode != none {{ align({}, text(size: {}, data.barcode.clusters().join(sym.zws))) }}",
+                        align_name(*align),
+                        pt((module * DIGITS_PT_PER_MODULE_MM).max(DIGITS_MIN_PT))
+                    );
+                    out.push('\n');
+                    return;
+                }
                 let under_bars = if *digits { ", digits" } else { "" };
                 let digits = if *digits {
                     format!(
