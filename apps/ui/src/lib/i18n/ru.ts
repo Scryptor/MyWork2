@@ -1210,7 +1210,7 @@ export const ru = {
 		firmDetails: 'Адрес и часы работы',
 		firmLegal: 'Реквизиты',
 		logo: 'Логотип',
-		logoNote: 'Печатается в шапке актов. PNG, JPEG или WebP, не больше 6 МБ.',
+		logoNote: 'Печатается в шапке актов. PNG, JPEG или WebP, не больше 5 МБ.',
 		logoNone: 'Логотип не загружен',
 		logoFile: 'Файл логотипа',
 		logoAlt: 'Логотип сервиса',
