@@ -32,6 +32,10 @@ const LABEL_MM: std::ops::RangeInclusive<f32> = 15.0..=200.0;
 const OFFSET_MM: std::ops::RangeInclusive<f32> = -10.0..=10.0;
 const RASTER_DPI: std::ops::RangeInclusive<u32> = 72..=600;
 const PRINTER_DPI: std::ops::RangeInclusive<u32> = 72..=600;
+/// Страниц в одном документе не больше: больше значит шаблон, который никто не печатает.
+const MAX_PAGES: usize = 50;
+/// Пикселей на одну страницу растра: A4 при 600 dpi (около 35 млн) проходит, 420 × 420 мм — нет.
+const MAX_RASTER_PIXELS: f64 = 36_000_000.0;
 
 /// Размер наклейки, смещение и DPI принтера в границах; поля названы как параметры запроса API.
 fn check_options(options: &RenderOptions) -> Result<(), CoreError> {
@@ -135,7 +139,14 @@ impl Core {
         self.rendered(actor, req, move |doc| {
             let bytes = match output {
                 DocumentOutput::Pdf => DocumentBytes::Pdf(doc.pdf()?),
-                DocumentOutput::Png { dpi } => DocumentBytes::Png(doc.png_pages(dpi)?),
+                DocumentOutput::Png { dpi } => {
+                    let (w, h) = doc.page_size_mm();
+                    let px = |mm: f64| mm / 25.4 * f64::from(dpi);
+                    if px(w) * px(h) > MAX_RASTER_PIXELS {
+                        return Err(DocsError::TooManyPixels);
+                    }
+                    DocumentBytes::Png(doc.png_pages(dpi)?)
+                }
             };
             Ok(DocumentFile {
                 page_size_mm: doc.page_size_mm(),
@@ -172,11 +183,24 @@ impl Core {
         let data = self.document_data(actor, &req).await?;
         let (options, kind) = (req.options, req.kind);
         self.render_gate
-            .run(move || mw_docs::render(&template, &data, &options).and_then(finish))
+            .run(move || {
+                mw_docs::render(&template, &data, &options).and_then(|doc| {
+                    if doc.page_count() > MAX_PAGES {
+                        return Err(DocsError::TooManyPages(doc.page_count()));
+                    }
+                    finish(doc)
+                })
+            })
             .await?
             .map_err(|e| match e {
                 DocsError::Dpi(_) => {
                     CoreError::Validation(vec![FieldError::new("dpi", "out_of_range")])
+                }
+                DocsError::TooManyPages(_) => {
+                    CoreError::Validation(vec![FieldError::new("template", "too_many_pages")])
+                }
+                DocsError::TooManyPixels => {
+                    CoreError::Validation(vec![FieldError::new("dpi", "too_many_pixels")])
                 }
                 e => CoreError::Internal(format!("документ «{}» не построен: {e}", kind.as_str())),
             })

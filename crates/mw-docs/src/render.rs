@@ -21,6 +21,12 @@ pub enum DocsError {
     BadFileName(String),
     #[error("invalid resolution: {0} dpi")]
     Dpi(u32),
+    /// The caller refused a document with more pages than it allows.
+    #[error("document has {0} pages, more than allowed")]
+    TooManyPages(usize),
+    /// The caller refused a raster larger than it allows.
+    #[error("raster page is too large")]
+    TooManyPixels,
 }
 
 /// A compiled document.

@@ -413,7 +413,7 @@ fn barcode_is_printed_only_for_a_valid_code() {
                     gap_mm: 4.0,
                 },
             ),
-            block(CopyFilter::Both, BlockBody::Separator),
+            block(CopyFilter::Both, BlockBody::Separator {}),
             block(CopyFilter::Both, BlockBody::Spacer { mm: 3.0 }),
             text("Конец"),
         ],
@@ -580,7 +580,7 @@ fn model_additions_have_defaults() {
                 fill: false,
                 stretch: false,
             },
-            BlockBody::CalibrationMarks,
+            BlockBody::CalibrationMarks {},
         ]
     );
 }

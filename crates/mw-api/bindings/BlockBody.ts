@@ -13,8 +13,8 @@ export type BlockBody = { "type": "text", text: string,
  */
 size_pt: number | null, bold: boolean, align: Align, 
 /**
- * One line that never wraps: line breaks become spaces and what does not fit is cut off at the
- * right edge (stickers).
+ * One line that never wraps: line breaks become spaces and what does not fit is cut off with
+ * «…» at the right edge (stickers).
  */
 one_line: boolean, } | { "type": "fields", rows: Array<FieldRow>, } | { "type": "barcode", 
 /**
@@ -27,12 +27,12 @@ height_mm: number,
 digits: boolean, align: Align, 
 /**
  * In a single-copy document the bars grow to the height the other blocks leave free on the
- * page, never lower than `height_mm` (one sticker for any label size). Ignored in
- * [`Layout::TwoPerA4`], where each copy is measured to fit its half.
+ * page, never lower than `height_mm` (one sticker for any label size). Counts only in
+ * [`Layout::OnePerPage`]; in the other layouts it is ignored.
  */
 fill: boolean, 
 /**
  * The module grows until the code fills the width of the column (with DPI by whole printer
  * dots); never below the nominal 0.33 mm, except on a narrow label, where it shrinks as usual.
  */
-stretch: boolean, } | { "type": "signatures", left: string, right: string, } | { "type": "separator" } | { "type": "spacer", mm: number, } | { "type": "columns", columns: Array<Array<Block>>, gap_mm: number, } | { "type": "copy_label", align: Align, } | { "type": "calibration_marks" };
+stretch: boolean, } | { "type": "signatures", left: string, right: string, } | { "type": "separator", } | { "type": "spacer", mm: number, } | { "type": "columns", columns: Array<Array<Block>>, gap_mm: number, } | { "type": "copy_label", align: Align, } | { "type": "calibration_marks", };

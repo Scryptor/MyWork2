@@ -240,7 +240,7 @@ impl Generator {
                     text_expr(right, TextMode::Wrap)
                 );
             }
-            BlockBody::Separator => out.push_str("line(length: 100%, stroke: 0.5pt)"),
+            BlockBody::Separator {} => out.push_str("line(length: 100%, stroke: 0.5pt)"),
             BlockBody::Spacer { mm: space } => {
                 let _ = write!(out, "vspace({})", mm(f64::from(*space)));
             }
@@ -275,7 +275,7 @@ impl Generator {
                     );
                 }
             }
-            BlockBody::CalibrationMarks => self.calibration_marks(out),
+            BlockBody::CalibrationMarks {} => self.calibration_marks(out),
         }
         out.push('\n');
     }

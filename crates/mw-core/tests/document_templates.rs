@@ -3,11 +3,13 @@
 mod common;
 
 use common::*;
-use mw_core::documents::DocumentRequest;
+use mw_core::documents::{DocumentOutput, DocumentRequest};
 use mw_core::{CoreError, TemplateSave};
 use mw_db::entity::document_template;
 use mw_docs::{RenderOptions, standard_template};
-use mw_domain::document_template::{Align, BlockBody, Layout, PageSize, Template, TemplateFile};
+use mw_domain::document_template::{
+    Align, BlockBody, Layout, Margins, PageSize, Template, TemplateFile,
+};
 use mw_domain::documents::DocumentKind;
 use mw_domain::permission::Permission;
 use sea_orm::{ActiveModelTrait, EntityTrait, Set};
@@ -314,6 +316,84 @@ async fn draft_renders_without_saving() -> Result<(), CoreError> {
                 .map(|_| ()),
             &[("kind", "not_editable")],
         );
+    }
+    Ok(())
+}
+
+/// Мелкая своя страница и длинный текст: страниц сильно больше предела.
+fn many_pages(kind: DocumentKind) -> Template {
+    let mut template = with_text(kind, &"ж ".repeat(5_000));
+    template.page.size = PageSize::Custom {
+        width_mm: 15.0,
+        height_mm: 15.0,
+    };
+    template.page.margins_mm = Margins {
+        top: 0.0,
+        right: 0.0,
+        bottom: 0.0,
+        left: 0.0,
+    };
+    template.layout = Layout::OnePerPage;
+    template.font_size_pt = 5.0;
+    template
+}
+
+#[tokio::test]
+async fn too_many_pages_is_a_validation_error() -> Result<(), CoreError> {
+    for t in cores().await {
+        let kind = DocumentKind::IntakeAct;
+        let req = || sample(kind, Some(many_pages(kind)));
+        assert_validation(
+            t.core.render_document(&admin(), req()).await.map(|_| ()),
+            &[("template", "too_many_pages")],
+        );
+        assert_validation(
+            t.core
+                .export_document(&admin(), req(), DocumentOutput::Pdf)
+                .await
+                .map(|_| ()),
+            &[("template", "too_many_pages")],
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn raster_pixels_are_capped() -> Result<(), CoreError> {
+    for t in cores().await {
+        let kind = DocumentKind::IntakeAct;
+        let mut huge = with_text(kind, "Большая");
+        huge.layout = Layout::OnePerPage;
+        huge.page.size = PageSize::Custom {
+            width_mm: 420.0,
+            height_mm: 420.0,
+        };
+        assert_validation(
+            t.core
+                .export_document(
+                    &admin(),
+                    sample(kind, Some(huge.clone())),
+                    DocumentOutput::Png { dpi: 600 },
+                )
+                .await
+                .map(|_| ()),
+            &[("dpi", "too_many_pixels")],
+        );
+        // Тот же лист на 300 dpi и A4 на 600 dpi проходят.
+        t.core
+            .export_document(
+                &admin(),
+                sample(kind, Some(huge)),
+                DocumentOutput::Png { dpi: 100 },
+            )
+            .await?;
+        t.core
+            .export_document(
+                &admin(),
+                sample(kind, None),
+                DocumentOutput::Png { dpi: 600 },
+            )
+            .await?;
     }
     Ok(())
 }

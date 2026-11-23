@@ -5066,7 +5066,7 @@
               },
               "one_line": {
                 "type": "boolean",
-                "description": "One line that never wraps: line breaks become spaces and what does not fit is cut off at the\nright edge (stickers)."
+                "description": "One line that never wraps: line breaks become spaces and what does not fit is cut off with\n«…» at the right edge (stickers)."
               },
               "size_pt": {
                 "type": [
@@ -5128,7 +5128,7 @@
               },
               "fill": {
                 "type": "boolean",
-                "description": "In a single-copy document the bars grow to the height the other blocks leave free on the\npage, never lower than `height_mm` (one sticker for any label size). Ignored in\n[`Layout::TwoPerA4`], where each copy is measured to fit its half."
+                "description": "In a single-copy document the bars grow to the height the other blocks leave free on the\npage, never lower than `height_mm` (one sticker for any label size). Counts only in\n[`Layout::OnePerPage`]; in the other layouts it is ignored."
               },
               "height_mm": {
                 "type": "number",

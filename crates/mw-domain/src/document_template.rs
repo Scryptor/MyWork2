@@ -112,8 +112,8 @@ pub enum BlockBody {
         size_pt: Option<f32>,
         bold: bool,
         align: Align,
-        /// One line that never wraps: line breaks become spaces and what does not fit is cut off at the
-        /// right edge (stickers).
+        /// One line that never wraps: line breaks become spaces and what does not fit is cut off with
+        /// «…» at the right edge (stickers).
         #[serde(default)]
         one_line: bool,
     },
@@ -129,8 +129,8 @@ pub enum BlockBody {
         digits: bool,
         align: Align,
         /// In a single-copy document the bars grow to the height the other blocks leave free on the
-        /// page, never lower than `height_mm` (one sticker for any label size). Ignored in
-        /// [`Layout::TwoPerA4`], where each copy is measured to fit its half.
+        /// page, never lower than `height_mm` (one sticker for any label size). Counts only in
+        /// [`Layout::OnePerPage`]; in the other layouts it is ignored.
         #[serde(default)]
         fill: bool,
         /// The module grows until the code fills the width of the column (with DPI by whole printer
@@ -141,7 +141,7 @@ pub enum BlockBody {
     /// Two signature lines side by side, each after its caption.
     Signatures { left: String, right: String },
     /// A horizontal line across the column.
-    Separator,
+    Separator {},
     /// Vertical space.
     Spacer { mm: f32 },
     /// Columns of equal width, each a flow of blocks.
@@ -158,7 +158,7 @@ pub enum BlockBody {
     /// A test label for setting up a printer, as tall as the page area: a frame 0.3 mm inside its
     /// edges, a crosshair in the centre and a caption «W × H мм · N dpi · смещение X/Y» from the
     /// render options (page size, printer DPI when given, offset).
-    CalibrationMarks,
+    CalibrationMarks {},
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, ToSchema)]
@@ -186,6 +186,9 @@ const MAX_ROWS: usize = 50;
 const MAX_LABEL_CHARS: usize = 200;
 const MAX_VALUE_CHARS: usize = 2_000;
 const MAX_CAPTION_CHARS: usize = 200;
+/// Все тексты шаблона вместе: подписи, значения, тексты блоков и подписи для подписей. Не даёт
+/// собрать шаблон, который печатается тысячами страниц.
+const MAX_TEMPLATE_TEXT_CHARS: usize = 20_000;
 /// Минимальный размер места под содержимое, мм.
 const MIN_CONTENT_MM: f32 = 10.0;
 
@@ -213,6 +216,20 @@ fn count_blocks(blocks: &[Block]) -> usize {
                 1 + columns.iter().map(|c| count_blocks(c)).sum::<usize>()
             }
             _ => 1,
+        })
+        .sum()
+}
+
+fn text_chars(blocks: &[Block]) -> usize {
+    let n = |s: &str| s.chars().count();
+    blocks
+        .iter()
+        .map(|b| match &b.body {
+            BlockBody::Text { text, .. } => n(text),
+            BlockBody::Fields { rows } => rows.iter().map(|r| n(&r.label) + n(&r.value)).sum(),
+            BlockBody::Signatures { left, right } => n(left) + n(right),
+            BlockBody::Columns { columns, .. } => columns.iter().map(|c| text_chars(c)).sum(),
+            _ => 0,
         })
         .sum()
 }
@@ -248,6 +265,9 @@ impl Template {
         );
         if count_blocks(&self.blocks) > MAX_BLOCKS {
             errors.push(FieldError::new("blocks", "too_many"));
+        }
+        if text_chars(&self.blocks) > MAX_TEMPLATE_TEXT_CHARS {
+            errors.push(FieldError::new("blocks", "text_budget"));
         }
         self.validate_blocks(&self.blocks, "blocks", false, &mut errors);
         if errors.is_empty() {
@@ -291,7 +311,7 @@ impl Template {
             && !((w - m.left - m.right) >= MIN_CONTENT_MM
                 && (h - m.top - m.bottom) >= MIN_CONTENT_MM)
         {
-            errors.push(FieldError::new("page.margins_mm", "too_large"));
+            errors.push(FieldError::new("page.margins_mm", "no_room"));
         }
     }
 
@@ -363,12 +383,12 @@ impl Template {
                         }
                     }
                 }
-                BlockBody::CalibrationMarks => {
+                BlockBody::CalibrationMarks {} => {
                     if self.kind != DocumentKind::Calibration {
                         errors.push(FieldError::new(at.clone(), "not_allowed"));
                     }
                 }
-                BlockBody::Separator | BlockBody::CopyLabel { .. } => {}
+                BlockBody::Separator {} | BlockBody::CopyLabel { .. } => {}
             }
         }
     }
@@ -410,8 +430,11 @@ impl TemplateFile {
         {
             return Err(invalid("file"));
         }
-        let version = object.get("format_version").and_then(|v| v.as_u64());
-        if !version.is_some_and(|v| (1..=u64::from(TEMPLATE_FILE_VERSION)).contains(&v)) {
+        // Нет версии или она не целое число — это не файл шаблона; «новее» — только целое вне границ.
+        let Some(version) = object.get("format_version").and_then(|v| v.as_u64()) else {
+            return Err(invalid("format"));
+        };
+        if !(1..=u64::from(TEMPLATE_FILE_VERSION)).contains(&version) {
             return Err(vec![FieldError::new("format_version", "unsupported")]);
         }
         let template = object.remove("template").ok_or_else(|| invalid("file"))?;
@@ -553,7 +576,7 @@ mod tests {
         let mut t = base(DocumentKind::IntakeAct);
         t.blocks = vec![Block {
             copies: CopyFilter::Both,
-            body: BlockBody::CalibrationMarks,
+            body: BlockBody::CalibrationMarks {},
         }];
         assert_eq!(errs(&t), [pair("blocks.0", "not_allowed")]);
         t.kind = DocumentKind::Calibration;
@@ -607,7 +630,7 @@ mod tests {
             height_mm: 20.0,
         };
         t.page.margins_mm = m(6.0);
-        assert_eq!(errs(&t), [pair("page.margins_mm", "too_large")]);
+        assert_eq!(errs(&t), [pair("page.margins_mm", "no_room")]);
         t.page.size = PageSize::Custom {
             width_mm: 10.0,
             height_mm: 20.0,
@@ -730,6 +753,86 @@ mod tests {
     }
 
     #[test]
+    fn unit_variants_reject_unknown_keys() {
+        assert!(serde_json::from_str::<BlockBody>(r#"{"type":"separator"}"#).is_ok());
+        assert!(serde_json::from_str::<BlockBody>(r#"{"type":"calibration_marks"}"#).is_ok());
+        assert!(serde_json::from_str::<BlockBody>(r#"{"type":"separator","junk":1}"#).is_err());
+        assert!(
+            serde_json::from_str::<BlockBody>(r#"{"type":"calibration_marks","junk":1}"#).is_err()
+        );
+    }
+
+    #[test]
+    fn text_budget_is_20000_chars_over_all_texts() {
+        let mut t = base(DocumentKind::IntakeAct);
+        t.blocks = vec![
+            text("ж".repeat(10_000), None),
+            Block {
+                copies: CopyFilter::Both,
+                body: BlockBody::Fields {
+                    rows: vec![
+                        FieldRow {
+                            label: "я".repeat(200),
+                            value: "ю".repeat(1_800),
+                            hide_if_empty: false,
+                            bold: false,
+                        };
+                        4
+                    ],
+                },
+            },
+            Block {
+                copies: CopyFilter::Both,
+                body: BlockBody::Signatures {
+                    left: "а".repeat(200),
+                    right: "б".repeat(200),
+                },
+            },
+        ];
+        // 10 000 + 4 × (200 + 1 800) + 400 = 18 400.
+        assert_eq!(t.validate(), Ok(()));
+        t.blocks.push(text("ж".repeat(1_600), None));
+        assert_eq!(t.validate(), Ok(()));
+        t.blocks.push(text("ж".repeat(1), None));
+        assert_eq!(errs(&t), [pair("blocks", "text_budget")]);
+    }
+
+    #[test]
+    fn text_budget_counts_columns_and_chars_not_bytes() {
+        let mut t = base(DocumentKind::IntakeAct);
+        t.blocks = vec![
+            text("ж".repeat(10_000), None),
+            columns(vec![vec![text("ж".repeat(10_000), None)], vec![spacer()]]),
+        ];
+        assert_eq!(t.validate(), Ok(()));
+        t.blocks.push(text("a".into(), None));
+        assert_eq!(errs(&t), [pair("blocks", "text_budget")]);
+    }
+
+    #[test]
+    fn file_without_or_with_fractional_format_version_is_not_a_template() {
+        let t = base(DocumentKind::IntakeAct);
+        let kind = DocumentKind::IssueAct;
+        let ok: serde_json::Value = serde_json::from_str(&file("mwtemplate", 1, &t)).unwrap();
+        let code = |v: serde_json::Value| {
+            let e = TemplateFile::from_value(v, kind).unwrap_err();
+            (e[0].field.clone(), e[0].code.clone())
+        };
+        let mut v = ok.clone();
+        v.as_object_mut().unwrap().remove("format_version");
+        assert_eq!(code(v), pair("format", "invalid"));
+        let mut v = ok.clone();
+        v["format_version"] = 1.5.into();
+        assert_eq!(code(v), pair("format", "invalid"));
+        let mut v = ok.clone();
+        v["format_version"] = "1".into();
+        assert_eq!(code(v), pair("format", "invalid"));
+        let mut v = ok;
+        v["format_version"] = 2.into();
+        assert_eq!(code(v), pair("format_version", "unsupported"));
+    }
+
+    #[test]
     fn content_area_is_checked_after_landscape_swap() {
         let mut t = base(DocumentKind::Sticker);
         t.page.size = PageSize::Custom {
@@ -744,6 +847,6 @@ mod tests {
         };
         assert_eq!(t.validate(), Ok(()));
         t.page.landscape = true;
-        assert_eq!(errs(&t), [pair("page.margins_mm", "too_large")]);
+        assert_eq!(errs(&t), [pair("page.margins_mm", "no_room")]);
     }
 }

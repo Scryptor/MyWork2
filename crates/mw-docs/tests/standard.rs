@@ -277,7 +277,7 @@ fn calibration_label_shows_size_dpi_and_offset() {
         template
             .blocks
             .iter()
-            .any(|b| b.body == BlockBody::CalibrationMarks)
+            .any(|b| b.body == BlockBody::CalibrationMarks {})
     );
     assert_eq!(
         sample_data(DocumentKind::Calibration),

@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 /// Ошибка валидации поля: имя поля и машинный код (`required`, `invalid`, `too_short`,
 /// `duplicate`, `out_of_range`, `estimate_range`, `deleted`, `last_admin`, `last_issued_status`,
-/// `comma`, `changes_term`, `stale`, `closed`, `too_many`, `too_long`, `too_large`, `requires_a4`,
+/// `comma`, `changes_term`, `stale`, `closed`, `too_many`, `too_long`, `too_large`, `no_room`, `text_budget`, `too_many_pages`, `too_many_pixels`, `requires_a4`,
 /// `not_allowed`, `nested_columns`, `fill_in_columns`, `unsupported`, `mismatch`, `not_editable`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
 pub struct FieldError {
@@ -66,7 +66,15 @@ impl FieldError {
             "replace_unsupported" => "Замена возможна только для базы SQLite",
             "too_many" => "Слишком много элементов",
             "too_long" => "Слишком длинный текст",
-            "too_large" => "Поля страницы не оставляют места для содержимого",
+            "too_large" => "Файл слишком большой",
+            "no_room" => "Поля страницы не оставляют места для содержимого",
+            "text_budget" => {
+                "В шаблоне слишком много текста: сократите тексты (не больше 20 000 знаков)"
+            }
+            "too_many_pages" => {
+                "Документ получается больше 50 страниц: уберите лишнее или увеличьте страницу"
+            }
+            "too_many_pixels" => "Страница слишком велика для такого разрешения: уменьшите dpi",
             "requires_a4" => {
                 "Раскладка «2 на лист A4» — только для страницы A4 в книжной ориентации"
             }

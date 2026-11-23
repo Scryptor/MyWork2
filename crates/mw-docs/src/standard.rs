@@ -162,7 +162,7 @@ fn act(
                 columns: vec![firm, code],
                 gap_mm: 6.0,
             }),
-            both(BlockBody::Separator),
+            both(BlockBody::Separator {}),
             text(title, Some(TITLE_PT), true, Align::Center),
             both(BlockBody::Fields { rows }),
             text(terms, Some(TERMS_PT), false, Align::Left),
@@ -264,7 +264,7 @@ fn calibration() -> Template {
         page: label_page(0.0),
         layout: Layout::OnePerPage,
         font_size_pt: LEGAL_PT,
-        blocks: vec![both(BlockBody::CalibrationMarks)],
+        blocks: vec![both(BlockBody::CalibrationMarks {})],
     }
 }
 
