@@ -80,13 +80,13 @@ fn expand(word: &str) -> Option<String> {
     Some(lines.join("\n"))
 }
 
-/// Заменяет метки целыми словами: слово — самая длинная подряд идущая цепочка букв, цифр и `_`,
+/// Заменяет метки целыми словами: слово — самая длинная подряд идущая цепочка латинских букв, цифр и `_` (кириллица слову не принадлежит: в MyWork 2 метки заменялись и рядом с русским текстом),
 /// поэтому `XNUMZAKAZPRINT` и `NUMZAKAZPRINT1` остаются как есть, а `PRICEFULLPRINT` не путается
 /// с более короткими метками. Вызывается после `plain_text`: Word рвёт метку тегами, а там они
 /// уже склеены. Фигурные скобки в старом тексте не экранируются: у записи полей нет экранирования,
 /// непохожее на поле остаётся буквами.
 fn map_markers(text: &str) -> String {
-    let is_word = |c: char| c.is_alphanumeric() || c == '_';
+    let is_word = |c: char| c.is_ascii_alphanumeric() || c == '_';
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
     while let Some(start) = rest.find(is_word) {
@@ -157,5 +157,13 @@ mod tests {
             let f = expand("FIOPRINT").unwrap();
             format!("XFIOPRINT FIOPRINT_ {f}")
         });
+    }
+
+    #[test]
+    fn markers_glued_to_cyrillic_are_replaced() {
+        let n = expand("NUMZAKAZPRINT").unwrap();
+        assert_eq!(map_markers("ЗаказNUMZAKAZPRINT"), format!("Заказ{n}"));
+        let p = expand("PREDOPLATAPRINT").unwrap();
+        assert_eq!(map_markers("PREDOPLATAPRINTруб."), format!("{p}руб."));
     }
 }
