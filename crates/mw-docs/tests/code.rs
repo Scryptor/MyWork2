@@ -158,6 +158,54 @@ fn empty_code_prints_nothing() {
 }
 
 #[test]
+fn consecutive_code_blocks_are_separate_rows() {
+    let out = rendered(
+        &template(Layout::OnePerPage, vec![code("AAA"), code("BBB")]),
+        &data(&[]),
+    )
+    .text();
+    let rows: Vec<&str> = out.lines().map(str::trim).collect();
+    assert_eq!(rows, ["AAA", "BBB"], "text was {out:?}");
+    // Inline code is placed like a text block: every block is a row of its own.
+    let png = |blocks| {
+        rendered(&template(Layout::OnePerPage, blocks), &data(&[]))
+            .png_pages(72)
+            .expect("png")
+    };
+    assert!(
+        png(vec![code("AAA"), code("BBB"), text("CCC"), code("DDD")])
+            == png(vec![text("AAA"), text("BBB"), text("CCC"), text("DDD")])
+    );
+}
+
+#[test]
+fn code_of_a_block_is_spaced_like_the_block() {
+    let png = |blocks| {
+        rendered(&template(Layout::OnePerPage, blocks), &data(&[]))
+            .png_pages(72)
+            .expect("png")
+    };
+    let as_code = |word: &str| {
+        code(&format!(
+            "#block(width: 100%, align(left, text(\"{word}\")))"
+        ))
+    };
+    let plain = png(vec![text("А"), text("Б"), text("В")]);
+    assert!(
+        plain == png(vec![as_code("А"), text("Б"), text("В")]),
+        "first"
+    );
+    assert!(
+        plain == png(vec![text("А"), as_code("Б"), text("В")]),
+        "middle"
+    );
+    assert!(
+        plain == png(vec![text("А"), as_code("Б"), as_code("В")]),
+        "two in a row"
+    );
+}
+
+#[test]
 fn syntax_error_points_at_the_block_line() {
     let d = diagnostics(&template(
         Layout::OnePerPage,
@@ -173,6 +221,13 @@ fn unknown_variable_has_line_and_column() {
     assert_eq!(d.len(), 1, "{d:?}");
     assert_eq!(d[0].place, place(vec![0], 1, 6), "{d:?}");
     assert!(d[0].message.contains("unknown variable: nope"), "{d:?}");
+}
+
+#[test]
+fn column_counts_characters() {
+    let d = diagnostics(&template(Layout::OnePerPage, vec![code("яя #nope")]));
+    assert_eq!(d.len(), 1, "{d:?}");
+    assert_eq!(d[0].place, place(vec![0], 1, 5), "{d:?}");
 }
 
 #[test]

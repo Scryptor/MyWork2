@@ -335,10 +335,12 @@ impl Generator {
                 }
             }
             BlockBody::CalibrationMarks {} => self.calibration_marks(out),
-            // The code is a source of its own: its errors stay in it and point at its lines.
+            // The code is a source of its own: its errors stay in it and point at its lines. Like every
+            // block it is a row of its own: the paragraph break ends inline content (next to a block it
+            // adds no space).
             BlockBody::TypstCode { code: source } => {
                 let file = CodeFile::new(path, copy, source);
-                let _ = write!(out, "include {}", typst_str(file.path()));
+                let _ = write!(out, "include {}; parbreak()", typst_str(file.path()));
                 code.push(file);
             }
         }

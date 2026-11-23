@@ -80,28 +80,33 @@ impl CodeSources {
             .iter()
             .filter_map(|f| Some((file_id(&f.path)?, f.block.as_slice())))
             .collect();
-        let mut out: Vec<CodeDiagnostic> = Vec::new();
-        for error in errors {
-            if error.severity != Severity::Error {
-                continue;
-            }
-            let diagnostic = CodeDiagnostic {
+        let all = errors
+            .into_iter()
+            .filter(|error| error.severity == Severity::Error)
+            .map(|error| CodeDiagnostic {
                 place: place(world, &blocks, &error),
                 message: error.message.to_string(),
                 hints: error.hints.iter().map(|hint| hint.v.to_string()).collect(),
-            };
-            if !out
-                .iter()
-                .any(|d| d.place == diagnostic.place && d.message == diagnostic.message)
-            {
-                out.push(diagnostic);
-            }
-            if out.len() == MAX_DIAGNOSTICS {
-                break;
-            }
-        }
-        out
+            });
+        distinct(all)
     }
+}
+
+/// The first of the diagnostics with each place and message, at most [`MAX_DIAGNOSTICS`] of them.
+fn distinct(diagnostics: impl IntoIterator<Item = CodeDiagnostic>) -> Vec<CodeDiagnostic> {
+    let mut out: Vec<CodeDiagnostic> = Vec::new();
+    for diagnostic in diagnostics {
+        if !out
+            .iter()
+            .any(|d| d.place == diagnostic.place && d.message == diagnostic.message)
+        {
+            out.push(diagnostic);
+        }
+        if out.len() == MAX_DIAGNOSTICS {
+            break;
+        }
+    }
+    out
 }
 
 /// Where in the author's code `error` is: its own place if it is in a code file, otherwise the first
@@ -162,5 +167,46 @@ mod tests {
             .expect("the code ends the file");
         assert_eq!(header.lines().count(), CODE_HEADER_LINES as usize);
         assert!(header.ends_with('\n'));
+    }
+
+    fn diagnostic(line: u32, message: &str, hint: &str) -> CodeDiagnostic {
+        CodeDiagnostic {
+            place: Some(CodePlace {
+                block: vec![0],
+                line,
+                column: 1,
+            }),
+            message: message.to_owned(),
+            hints: vec![hint.to_owned()],
+        }
+    }
+
+    #[test]
+    fn a_place_and_message_are_given_once() {
+        let got = distinct([
+            diagnostic(1, "a", "first"),
+            diagnostic(1, "a", "second"),
+            diagnostic(2, "a", ""),
+            diagnostic(1, "b", ""),
+        ]);
+        let got: Vec<(u32, &str, &str)> = got
+            .iter()
+            .map(|d| {
+                let line = d.place.as_ref().map_or(0, |p| p.line);
+                (line, d.message.as_str(), d.hints[0].as_str())
+            })
+            .collect();
+        assert_eq!(got, [(1, "a", "first"), (2, "a", ""), (1, "b", "")]);
+    }
+
+    #[test]
+    fn at_most_twenty_first_diagnostics() {
+        let got = distinct((1..=30).map(|line| diagnostic(line, "a", "")));
+        assert_eq!(got.len(), MAX_DIAGNOSTICS);
+        let lines: Vec<u32> = got
+            .iter()
+            .filter_map(|d| d.place.as_ref().map(|p| p.line))
+            .collect();
+        assert_eq!(lines, (1..=20).collect::<Vec<_>>());
     }
 }
