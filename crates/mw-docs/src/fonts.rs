@@ -96,13 +96,22 @@ impl FontSet {
                 continue;
             }
             if loaded.as_ref().is_none_or(|(p, _)| p != path) {
-                loaded = Some((path.clone(), std::fs::read(path).ok()));
+                let data = match std::fs::read(path) {
+                    Ok(data) => Some(data),
+                    Err(error) => {
+                        tracing::warn!(path = %path.display(), %error, "файл шрифта не прочитан, пропущен");
+                        None
+                    }
+                };
+                loaded = Some((path.clone(), data));
             }
-            let Some(info) = loaded
-                .as_ref()
-                .and_then(|(_, data)| data.as_deref())
-                .and_then(|data| FontInfo::new(data, face.index))
-            else {
+            let Some(data) = loaded.as_ref().and_then(|(_, data)| data.as_deref()) else {
+                continue;
+            };
+            let Some(info) = FontInfo::new(data, face.index) else {
+                if face.index == 0 {
+                    tracing::warn!(path = %path.display(), "файл шрифта повреждён, пропущен");
+                }
                 continue;
             };
             infos.push(info);
