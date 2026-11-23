@@ -100,6 +100,8 @@ pub fn export_typescript(dir: &Path) -> Result<(), ts_rs::ExportError> {
     DocumentPages::export_all(&cfg)?;
     mw_domain::documents::DocumentKind::export_all(&cfg)?;
     crate::TemplatePreview::export_all(&cfg)?;
+    crate::BlockCodeRequest::export_all(&cfg)?;
+    crate::BlockCode::export_all(&cfg)?;
     mw_core::DocumentTemplate::export_all(&cfg)?;
     mw_core::DocumentTemplateInfo::export_all(&cfg)?;
     mw_core::LegacyTemplate::export_all(&cfg)?;

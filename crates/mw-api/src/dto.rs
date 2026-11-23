@@ -671,3 +671,20 @@ pub struct DocumentPages {
     /// Страницы: PNG в base64.
     pub pages: Vec<String>,
 }
+
+/// Запрос кода блока: шаблон (возможно, несохранённый) и путь к блоку.
+#[derive(Debug, Clone, Deserialize, TS, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BlockCodeRequest {
+    /// Шаблон, в котором лежит блок; не сохраняется.
+    pub template: Template,
+    /// Путь к блоку: `[i]`, внутри колонок `[i, колонка, j]`.
+    pub path: Vec<usize>,
+}
+
+/// Typst-код, который печатает то же, что блок.
+#[derive(Debug, Clone, Serialize, TS, ToSchema)]
+pub struct BlockCode {
+    /// Код для блока «Свой Typst-код».
+    pub code: String,
+}

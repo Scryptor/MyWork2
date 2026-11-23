@@ -1558,6 +1558,62 @@
         ]
       }
     },
+    "/api/v1/document-templates/{kind}/block-code": {
+      "post": {
+        "tags": [
+          "Документы"
+        ],
+        "summary": "Typst-код, который печатает то же, что блок шаблона (право «настройки»). Блок, который в код не\nпревратить, или путь мимо блока — 422 по полю `path`.",
+        "operationId": "block_code",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "description": "Вид документа",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/DocumentKind"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BlockCodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlockCode"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/document-templates/{kind}/file": {
       "get": {
         "tags": [
@@ -5580,6 +5636,42 @@
         ],
         "description": "Text in `Text`, `FieldRow::value` and `Signatures` may contain substitutions such as `{заказ.номер}`\n(список — в модуле `fields` крейта `mw-docs`); an unknown one is printed as written."
       },
+      "BlockCode": {
+        "type": "object",
+        "description": "Typst-код, который печатает то же, что блок.",
+        "required": [
+          "code"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "Код для блока «Свой Typst-код»."
+          }
+        }
+      },
+      "BlockCodeRequest": {
+        "type": "object",
+        "description": "Запрос кода блока: шаблон (возможно, несохранённый) и путь к блоку.",
+        "required": [
+          "template",
+          "path"
+        ],
+        "properties": {
+          "path": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Путь к блоку: `[i]`, внутри колонок `[i, колонка, j]`."
+          },
+          "template": {
+            "$ref": "#/components/schemas/Template",
+            "description": "Шаблон, в котором лежит блок; не сохраняется."
+          }
+        },
+        "additionalProperties": false
+      },
       "CaptionPatch": {
         "type": "object",
         "description": "Правка подписи вложения.",
@@ -6157,10 +6249,15 @@
         "type": "object",
         "description": "Поле подстановки для меню «вставить поле».",
         "required": [
+          "key",
           "placeholder",
           "label"
         ],
         "properties": {
+          "key": {
+            "type": "string",
+            "description": "Ключ в данных документа (`order.number`): им пользуется `v(\"…\")` в своём Typst-коде."
+          },
           "label": {
             "type": "string",
             "description": "Название для человека."

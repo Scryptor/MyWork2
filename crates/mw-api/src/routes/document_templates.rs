@@ -12,7 +12,7 @@ use mw_domain::documents::DocumentKind;
 use super::documents::{DEFAULT_PNG_DPI, file_base, png_response, render_options};
 use super::headers::{Disposition, no_store, with_disposition};
 use crate::auth::CurrentActor;
-use crate::dto::{DocumentPages, TemplatePreview};
+use crate::dto::{BlockCode, BlockCodeRequest, DocumentPages, TemplatePreview};
 use crate::error::ApiError;
 use crate::extract::{Json, Path};
 use crate::state::AppState;
@@ -134,6 +134,30 @@ pub(super) async fn preview_template(
         return Err(mw_core::CoreError::Internal("Превью вернуло не PNG".into()).into());
     };
     Ok(no_store(png_response(&pages, file.page_size_mm, dpi)))
+}
+
+/// Typst-код, который печатает то же, что блок шаблона (право «настройки»). Блок, который в код не
+/// превратить, или путь мимо блока — 422 по полю `path`.
+#[utoipa::path(
+    post,
+    path = "/api/v1/document-templates/{kind}/block-code",
+    tag = "Документы",
+    security(("bearer" = [])),
+    params(("kind" = DocumentKind, Path, description = "Вид документа")),
+    request_body = BlockCodeRequest,
+    responses((status = 200, body = BlockCode))
+)]
+pub(super) async fn block_code(
+    State(state): State<AppState>,
+    CurrentActor(actor): CurrentActor,
+    Path(kind): Path<DocumentKind>,
+    Json(body): Json<BlockCodeRequest>,
+) -> Result<Json<BlockCode>, ApiError> {
+    let code = state
+        .core
+        .document_block_code(&actor, kind, body.template, body.path)
+        .await?;
+    Ok(Json(BlockCode { code }))
 }
 
 /// Шаблон как файл `.mwtemplate` (достаточно войти).

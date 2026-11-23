@@ -5,6 +5,10 @@
  */
 export type DocumentField = { 
 /**
+ * Ключ в данных документа (`order.number`): им пользуется `v("…")` в своём Typst-коде.
+ */
+key: string, 
+/**
  * Имя в тексте шаблона, без скобок.
  */
 placeholder: string, 

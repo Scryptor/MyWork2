@@ -62,6 +62,8 @@ pub struct TemplateSave {
 /// Поле подстановки для меню «вставить поле».
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, ts_rs::TS, utoipa::ToSchema)]
 pub struct DocumentField {
+    /// Ключ в данных документа (`order.number`): им пользуется `v("…")` в своём Typst-коде.
+    pub key: String,
     /// Имя в тексте шаблона, без скобок.
     pub placeholder: String,
     /// Название для человека.
@@ -251,11 +253,34 @@ impl Core {
         TemplateFile::from_value(file, kind).map_err(CoreError::Validation)
     }
 
+    /// Typst-код, который печатает то же, что блок шаблона по `path` (право «настройки»). Шаблон
+    /// может быть несохранённым черновиком. Блок, который в код не превратить, или путь мимо блока —
+    /// `path`/`code_unavailable`. Ничего не рендерит и не читает из базы.
+    pub async fn document_block_code(
+        &self,
+        actor: &Actor,
+        kind: DocumentKind,
+        template: Template,
+        path: Vec<usize>,
+    ) -> Result<String, CoreError> {
+        actor.require(Permission::SettingsManage)?;
+        ensure_editable(kind)?;
+        if template.kind != kind {
+            return Err(CoreError::Validation(vec![FieldError::new(
+                "kind", "mismatch",
+            )]));
+        }
+        template.validate().map_err(CoreError::Validation)?;
+        mw_docs::block_code(&template, &path)
+            .ok_or_else(|| CoreError::Validation(vec![FieldError::new("path", "code_unavailable")]))
+    }
+
     /// Поля подстановки в порядке меню.
     pub fn document_fields(&self) -> Vec<DocumentField> {
         mw_docs::fields::fields()
             .iter()
             .map(|f| DocumentField {
+                key: f.key.to_owned(),
                 placeholder: f.placeholder.to_owned(),
                 label: f.label.to_owned(),
             })

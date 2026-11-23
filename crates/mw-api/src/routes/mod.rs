@@ -114,6 +114,7 @@ pub(crate) fn api_routes() -> OpenApiRouter<AppState> {
         ))
         .routes(routes!(document_templates::legacy_template))
         .routes(routes!(document_templates::preview_template))
+        .routes(routes!(document_templates::block_code))
         .routes(routes!(
             document_templates::export_template_file,
             document_templates::import_template_file

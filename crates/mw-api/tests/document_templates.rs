@@ -485,3 +485,52 @@ async fn preview_renders_the_draft_not_the_standard() {
         assert!((width(&changed) - 148.0).abs() < 0.01, "{}", t.label);
     }
 }
+
+#[tokio::test]
+async fn block_code_over_http() {
+    for t in apis(Listen::Network).await {
+        let token = t.admin_token().await;
+        let r = t.get(&format!("{BASE}/intake_act"), Some(&token)).await;
+        let template = r.body["template"].clone();
+        let at = template["blocks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .position(|b| {
+                b["body"]["type"] == "text" && b["body"]["text"].as_str().unwrap().contains('{')
+            })
+            .unwrap();
+        let url = format!("{BASE}/intake_act/block-code");
+        let send = |token: String, body: Value| {
+            let (t, url) = (&t, url.clone());
+            async move { t.send(Method::POST, &url, Some(&token), Some(body)).await }
+        };
+        let r = send(token.clone(), json!({"template": template, "path": [at]})).await;
+        assert_eq!(r.status, 200, "{}: {}", t.label, r.body);
+        assert!(
+            r.body["code"].as_str().unwrap().contains("v(\""),
+            "{}",
+            t.label
+        );
+
+        let r = send(
+            token.clone(),
+            json!({"template": template, "path": [at], "surprise": 1}),
+        )
+        .await;
+        assert_eq!(r.status, 400, "{}: {}", t.label, r.body);
+
+        let r = send(token.clone(), json!({"template": template, "path": [999]})).await;
+        assert_eq!(r.status, 422, "{}: {}", t.label, r.body);
+        assert_eq!(r.body["fields"][0]["field"], "path", "{}", t.label);
+        assert_eq!(
+            r.body["fields"][0]["code"], "code_unavailable",
+            "{}",
+            t.label
+        );
+
+        let plain = t.token_with("plain", &[Permission::OrdersCreate]).await;
+        let r = send(plain, json!({"template": template, "path": [at]})).await;
+        assert_eq!(r.status, 403, "{}: {}", t.label, r.body);
+    }
+}

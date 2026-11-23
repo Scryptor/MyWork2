@@ -186,7 +186,7 @@ fn documented_operations_match_the_api_map() {
             }
         }
     }
-    assert_eq!(ops.len(), 90, "{ops:#?}");
+    assert_eq!(ops.len(), 91, "{ops:#?}");
     for expected in [
         "GET /api/v1/server-info",
         "GET /api/v1/openapi.json",
@@ -232,6 +232,7 @@ fn documented_operations_match_the_api_map() {
         "GET /api/v1/document-templates/{kind}",
         "PUT /api/v1/document-templates/{kind}",
         "POST /api/v1/document-templates/{kind}/preview",
+        "POST /api/v1/document-templates/{kind}/block-code",
         "GET /api/v1/document-templates/{kind}/legacy",
         "GET /api/v1/document-templates/{kind}/file",
         "POST /api/v1/document-templates/{kind}/file",

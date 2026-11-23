@@ -471,6 +471,108 @@ async fn fields_are_listed() {
         let fields = t.core.document_fields();
         assert_eq!(fields.len(), 33, "{}", t.label);
         assert_eq!(fields[0].placeholder, "заказ.номер");
+        assert_eq!(fields[0].key, "order.number");
         assert_eq!(fields[0].label, "Номер заказа");
+    }
+}
+
+fn first_block(template: &Template, wanted: impl Fn(&BlockBody) -> bool) -> usize {
+    template
+        .blocks
+        .iter()
+        .position(|b| wanted(&b.body))
+        .expect("в стандартном шаблоне есть такой блок")
+}
+
+#[tokio::test]
+async fn block_code_of_a_text_block() -> Result<(), CoreError> {
+    for t in cores().await {
+        let kind = DocumentKind::IntakeAct;
+        let template = standard_template(kind);
+        let at = first_block(
+            &template,
+            |b| matches!(b, BlockBody::Text { text, .. } if text.contains('{')),
+        );
+        let code = t
+            .core
+            .document_block_code(&admin(), kind, template, vec![at])
+            .await?;
+        assert!(code.contains("v(\""), "{}: {code}", t.label);
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn block_code_refuses_a_barcode() {
+    for t in cores().await {
+        let kind = DocumentKind::Sticker;
+        let template = standard_template(kind);
+        let at = first_block(&template, |b| matches!(b, BlockBody::Barcode { .. }));
+        assert_validation(
+            t.core
+                .document_block_code(&admin(), kind, template.clone(), vec![at])
+                .await,
+            &[("path", "code_unavailable")],
+        );
+        assert_validation(
+            t.core
+                .document_block_code(&admin(), kind, template, vec![999])
+                .await,
+            &[("path", "code_unavailable")],
+        );
+    }
+}
+
+#[tokio::test]
+async fn block_code_checks_in_order() {
+    for t in cores().await {
+        let kind = DocumentKind::IntakeAct;
+        assert_validation(
+            t.core
+                .document_block_code(
+                    &admin(),
+                    DocumentKind::Calibration,
+                    standard_template(DocumentKind::Calibration),
+                    vec![0],
+                )
+                .await,
+            &[("kind", "not_editable")],
+        );
+        assert_validation(
+            t.core
+                .document_block_code(
+                    &admin(),
+                    kind,
+                    standard_template(DocumentKind::IssueAct),
+                    vec![0],
+                )
+                .await,
+            &[("kind", "mismatch")],
+        );
+        let mut bad = standard_template(kind);
+        bad.page.size = PageSize::A5;
+        bad.layout = Layout::TwoPerA4;
+        assert_validation(
+            t.core
+                .document_block_code(&admin(), kind, bad, vec![0])
+                .await,
+            &[("layout", "requires_a4")],
+        );
+    }
+}
+
+#[tokio::test]
+async fn block_code_needs_settings_manage() {
+    for t in cores().await {
+        let kind = DocumentKind::IntakeAct;
+        let r = t
+            .core
+            .document_block_code(&actor_with(&[]), kind, standard_template(kind), vec![0])
+            .await;
+        assert!(
+            matches!(r, Err(CoreError::Forbidden(Permission::SettingsManage))),
+            "{}: {r:?}",
+            t.label
+        );
     }
 }

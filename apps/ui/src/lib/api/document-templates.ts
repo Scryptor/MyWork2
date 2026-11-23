@@ -1,3 +1,5 @@
+import type { BlockCode } from '$api/BlockCode';
+import type { BlockCodeRequest } from '$api/BlockCodeRequest';
 import type { DocumentField } from '$api/DocumentField';
 import type { DocumentKind } from '$api/DocumentKind';
 import type { DocumentPages } from '$api/DocumentPages';
@@ -7,6 +9,7 @@ import type { LegacyTemplate } from '$api/LegacyTemplate';
 import type { Template } from '$api/Template';
 import type { TemplatePreview } from '$api/TemplatePreview';
 import type { TemplateSave } from '$api/TemplateSave';
+import type { BlockPath } from '#lib/templates/ops.js';
 import { ApiError, request, requestFile } from './client.js';
 
 const base = (kind: DocumentKind) => `/document-templates/${kind}`;
@@ -33,6 +36,16 @@ export const previewTemplate = (
 	body: TemplatePreview,
 	signal?: AbortSignal
 ): Promise<DocumentPages> => request('POST', `${base(kind)}/preview`, { body, signal });
+
+/** The Typst code that prints what the block at `path` prints; the template may be unsaved. */
+export const blockCode = (
+	kind: DocumentKind,
+	template: Template,
+	path: BlockPath
+): Promise<BlockCode> => {
+	const body: BlockCodeRequest = { template, path: [...path] };
+	return request('POST', `${base(kind)}/block-code`, { body });
+};
 
 /** The template as a file to save, with the name the server gave it. */
 export async function exportTemplateFile(
