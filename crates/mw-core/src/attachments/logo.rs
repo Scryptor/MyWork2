@@ -309,6 +309,8 @@ mod tests {
     #![allow(clippy::unwrap_used)]
     use std::sync::Arc;
 
+    use image::ImageEncoder;
+
     use chrono::{TimeZone, Utc};
 
     use super::*;
@@ -319,6 +321,38 @@ mod tests {
         let mut out = Cursor::new(Vec::new());
         img.write_to(&mut out, ImageFormat::Png).unwrap();
         out.into_inner()
+    }
+
+    /// Настоящий PNG 13000x13000 из нулей: сжимается до малого размера (далеко от 5 МиБ), но
+    /// шире предела разбора, поэтому отказ даёт только `Limits`, а не размер и не битый файл.
+    #[test]
+    fn oversized_image_is_rejected_by_decode_limits() {
+        let side = MAX_DECODE_SIDE + 1000;
+        let zeros = vec![0u8; side as usize * side as usize];
+        let mut bytes = Vec::new();
+        image::codecs::png::PngEncoder::new_with_quality(
+            &mut bytes,
+            image::codecs::png::CompressionType::Fast,
+            image::codecs::png::FilterType::NoFilter,
+        )
+        .write_image(&zeros, side, side, image::ExtendedColorType::L8)
+        .unwrap();
+        drop(zeros);
+        assert!(bytes.len() < MAX_LOGO_BYTES, "{}", bytes.len());
+        // Тот же файл без пределов читается целиком: значит, отказывают именно пределы.
+        let unlimited = ImageReader::with_format(Cursor::new(&bytes), ImageFormat::Png)
+            .decode()
+            .unwrap();
+        assert_eq!(unlimited.width(), side);
+        drop(unlimited);
+        let err = process(&bytes).err().unwrap();
+        assert!(
+            matches!(
+                &err,
+                CoreError::Validation(f) if *f == vec![FieldError::new("logo", "unsupported")]
+            ),
+            "{err:?}"
+        );
     }
 
     #[tokio::test]
