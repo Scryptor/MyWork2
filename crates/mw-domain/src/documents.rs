@@ -28,6 +28,32 @@ impl DocumentKind {
     pub fn for_order(self) -> bool {
         !matches!(self, Self::BlankIntakeAct | Self::Calibration)
     }
+
+    /// Шаблон можно настраивать: все виды, кроме калибровки.
+    pub fn editable(self) -> bool {
+        self != Self::Calibration
+    }
+
+    /// Позиция в [`Self::ALL`], начиная с 1.
+    pub fn ordinal(self) -> i64 {
+        Self::ALL
+            .iter()
+            .position(|k| *k == self)
+            .map_or(0, |p| p as i64 + 1)
+    }
+
+    /// Название для человека.
+    pub fn label_ru(self) -> &'static str {
+        match self {
+            Self::IntakeAct => "Акт приёма",
+            Self::IssueAct => "Акт выдачи",
+            Self::WarrantyIntakeAct => "Акт приёма по гарантии",
+            Self::WarrantyIssueAct => "Акт выдачи после гарантии",
+            Self::BlankIntakeAct => "Пустой акт приёма",
+            Self::Sticker => "Наклейка",
+            Self::Calibration => "Пробная наклейка",
+        }
+    }
 }
 
 #[cfg(test)]
@@ -48,6 +74,21 @@ mod tests {
             DocumentKind::WarrantyIssueAct
         );
         assert!("act".parse::<DocumentKind>().is_err());
+    }
+
+    #[test]
+    fn editable_ordinal_and_labels() {
+        let editable: Vec<_> = DocumentKind::ALL
+            .into_iter()
+            .filter(|k| !k.editable())
+            .collect();
+        assert_eq!(editable, [DocumentKind::Calibration]);
+        let ordinals: Vec<_> = DocumentKind::ALL
+            .into_iter()
+            .map(DocumentKind::ordinal)
+            .collect();
+        assert_eq!(ordinals, [1, 2, 3, 4, 5, 6, 7]);
+        assert_eq!(DocumentKind::Sticker.label_ru(), "Наклейка");
     }
 
     #[test]

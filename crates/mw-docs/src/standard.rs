@@ -281,3 +281,15 @@ fn margins(mm: f32) -> Margins {
         left: mm,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn standard_templates_are_valid() {
+        for kind in DocumentKind::ALL {
+            assert_eq!(standard_template(kind).validate(), Ok(()), "{kind:?}");
+        }
+    }
+}

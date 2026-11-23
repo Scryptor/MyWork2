@@ -2,7 +2,8 @@ use serde::{Deserialize, Serialize};
 
 /// Ошибка валидации поля: имя поля и машинный код (`required`, `invalid`, `too_short`,
 /// `duplicate`, `out_of_range`, `estimate_range`, `deleted`, `last_admin`, `last_issued_status`,
-/// `comma`, `changes_term`, `stale`, `closed`).
+/// `comma`, `changes_term`, `stale`, `closed`, `too_many`, `too_long`, `too_large`, `requires_a4`,
+/// `not_allowed`, `nested_columns`, `fill_in_columns`, `unsupported`, `mismatch`, `not_editable`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
 pub struct FieldError {
     /// Имя поля запроса.
@@ -63,6 +64,18 @@ impl FieldError {
             }
             "not_empty" => "База не пуста",
             "replace_unsupported" => "Замена возможна только для базы SQLite",
+            "too_many" => "Слишком много элементов",
+            "too_long" => "Слишком длинный текст",
+            "too_large" => "Поля страницы не оставляют места для содержимого",
+            "requires_a4" => {
+                "Раскладка «2 на лист A4» — только для страницы A4 в книжной ориентации"
+            }
+            "not_allowed" => "Не подходит для этого документа",
+            "nested_columns" => "Колонки нельзя вкладывать в колонки",
+            "fill_in_columns" => "Растягивать штрихкод на высоту нельзя внутри колонок",
+            "unsupported" => "Файл сделан в более новой версии программы",
+            "mismatch" => "Шаблон другого документа",
+            "not_editable" => "Этот документ не настраивается",
             _ => "Недопустимое значение",
         }
     }

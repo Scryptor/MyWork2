@@ -207,6 +207,16 @@ fn field_error_messages_are_russian() {
         "deleted",
         "last_admin",
         "last_issued_status",
+        "too_many",
+        "too_long",
+        "too_large",
+        "requires_a4",
+        "not_allowed",
+        "nested_columns",
+        "fill_in_columns",
+        "unsupported",
+        "mismatch",
+        "not_editable",
     ] {
         assert!(
             FieldError::new("x", code)
