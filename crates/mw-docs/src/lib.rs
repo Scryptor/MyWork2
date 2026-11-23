@@ -15,7 +15,7 @@ mod standard;
 mod typst_gen;
 mod world;
 
-pub use barcode::{module_mm, upc_a_svg};
+pub use barcode::{Symbology, code128_svg, module_mm, symbology, upc_a_svg};
 pub use fonts::font_covers;
 pub use render::{DocsError, Rendered};
 pub use standard::{sample_data, standard_template};

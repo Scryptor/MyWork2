@@ -5,9 +5,11 @@ mod common;
 use common::*;
 use mw_core::documents::{DocumentBytes, DocumentOutput, DocumentRequest, plain_text};
 use mw_core::{ClientRef, CoreError, NewClient, NewOrder, OrderPatch, SettingsPatch};
+use mw_db::entity::order;
 use mw_docs::{RenderOptions, font_covers};
 use mw_domain::documents::DocumentKind;
 use mw_domain::money::{DOC_CURRENCY_REPLACEMENTS, Money, format_money_doc};
+use sea_orm::{ActiveModelTrait, Set};
 
 /// Между разрядами — узкий неразрывный пробел, перед знаком валюты — неразрывный, как в интерфейсе.
 fn sum(text: &str) -> String {
@@ -834,4 +836,47 @@ async fn export_document_checks_label_offset_and_dpi_bounds() {
             .await
             .unwrap_or_else(|e| panic!("{}: {e}", t.label));
     }
+}
+
+/// Заказ из MyWork 2 с кодом не в UPC-A: наклейка с Code 128 строится, сканер находит заказ.
+#[tokio::test]
+async fn legacy_barcode_is_printed_and_found() -> Result<(), CoreError> {
+    for t in cores().await {
+        let order = t.core.create_order(&admin(), sample_new_order()).await?;
+        // Как у импортированных заказов: значение пишется в обход создания заказа.
+        order::ActiveModel {
+            id: Set(order.id),
+            barcode: Set("A-1053".to_owned()),
+            ..Default::default()
+        }
+        .update(t.core.db())
+        .await
+        .unwrap();
+
+        let sticker = text(&t, request(DocumentKind::Sticker, Some(order.id))).await;
+        assert_eq!(
+            sticker.matches("A-1053").count(),
+            1,
+            "{}: {sticker:?}",
+            t.label
+        );
+        let exported = t
+            .core
+            .export_document(
+                &admin(),
+                request(DocumentKind::Sticker, Some(order.id)),
+                DocumentOutput::Pdf,
+            )
+            .await?;
+        assert_eq!(exported.page_count, 1, "{}", t.label);
+
+        let found = t.core.find_orders_by_barcode(&admin(), "A-1053\n").await?;
+        assert_eq!(
+            found.iter().map(|o| o.id).collect::<Vec<_>>(),
+            vec![order.id],
+            "{}",
+            t.label
+        );
+    }
+    Ok(())
 }

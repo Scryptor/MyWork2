@@ -10,10 +10,9 @@ mod text;
 use std::collections::BTreeMap;
 use std::fmt::Write;
 
-use mw_domain::barcode::is_valid_upc_a;
 use serde_json::{Map, Value};
 
-use crate::barcode::upc_a_svg;
+use crate::barcode::{Shape, barcode_svg};
 use crate::fields::fields;
 use crate::model::Template;
 use crate::render::{DocsError, Rendered, compile};
@@ -27,7 +26,8 @@ use text::typst_str;
 pub struct DocumentData {
     /// By field key (`order.number`, see [`crate::fields`]); a missing key is an empty value.
     pub values: BTreeMap<String, String>,
-    /// UPC-A digits; `None` or an invalid code prints no barcode.
+    /// The order's barcode: UPC-A digits or, for old orders, up to 40 printable ASCII characters
+    /// (printed as Code 128). `None` or a value that cannot be encoded prints no barcode.
     pub barcode: Option<String>,
     /// A form to fill in by hand: empty values become lines to write on.
     pub blank: bool,
@@ -49,13 +49,18 @@ pub fn render(
     data: &DocumentData,
     opts: &RenderOptions,
 ) -> Result<Rendered, DocsError> {
-    // `barcode` in `data.json` is set exactly when `barcode.svg` exists.
-    let barcode = data
+    // `barcode` in `data.json` is set exactly when `barcode.svg` exists. Its width in modules depends on
+    // the value, so it goes to the generator as a number; the value itself never enters the markup.
+    let coded = data
         .barcode
         .as_deref()
-        .filter(|code| is_valid_upc_a(code))
-        .zip(Generator::new(template, opts).svg)
-        .and_then(|(code, (module, bars))| upc_a_svg(code, module, bars).map(|svg| (code, svg)));
+        .and_then(|code| Shape::of(code).map(|shape| (code, shape)));
+    let shape = coded.map_or(Shape::UPC_A, |(_, shape)| shape);
+    let barcode = coded
+        .zip(Generator::new(template, opts, shape).svg)
+        .and_then(|((code, _), (module, bars))| {
+            barcode_svg(code, module, bars).map(|svg| (code, svg))
+        });
     let mut files = vec![(
         "data.json".to_owned(),
         data_json(data, barcode.as_ref().map(|(code, _)| *code)),
@@ -63,7 +68,7 @@ pub fn render(
     if let Some((_, svg)) = barcode {
         files.push(("barcode.svg".to_owned(), svg.into_bytes()));
     }
-    compile(to_typst(template, opts), files)
+    compile(typst_source(template, opts, shape), files)
 }
 
 fn data_json(data: &DocumentData, barcode: Option<&str>) -> Vec<u8> {
@@ -125,9 +130,14 @@ const PRELUDE: &str = r#"#set par(leading: 0.5em, spacing: 0.8em)
 })
 "#;
 
-/// Typst source of `template`. It never contains document data, so it is the same for every order.
+/// Typst source of `template`. It never contains document data, so it is the same for every order of
+/// one barcode width; this one takes a UPC-A barcode.
 pub fn to_typst(template: &Template, opts: &RenderOptions) -> String {
-    let generator = Generator::new(template, opts);
+    typst_source(template, opts, Shape::UPC_A)
+}
+
+fn typst_source(template: &Template, opts: &RenderOptions, shape: Shape) -> String {
+    let generator = Generator::new(template, opts, shape);
     let page = &generator.page;
     let mut out = String::new();
     let _ = writeln!(

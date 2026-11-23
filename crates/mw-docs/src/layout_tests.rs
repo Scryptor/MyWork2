@@ -606,3 +606,47 @@ fn two_per_a4_overflow_still_splits_with_user_template() {
         "{pages:?}"
     );
 }
+
+fn sticker_with(barcode: &str) -> (Template, DocumentData) {
+    let template = standard_template(DocumentKind::Sticker);
+    let data = DocumentData {
+        barcode: Some(barcode.to_owned()),
+        ..sample_data(DocumentKind::Sticker)
+    };
+    (template, data)
+}
+
+#[test]
+fn sticker_prints_code128_for_legacy_value() {
+    let (template, data) = sticker_with("A-1053");
+    let label = (40.0, 30.0);
+    let doc = render(&template, &data, &sticker_options(Some(label), Some(203))).expect("renders");
+    let crops = crops(&doc);
+    assert_eq!(crops.len(), 1, "{crops:?}");
+    // Start, six characters, check and stop: 9 symbols of 11 modules, the stop one 2 wider, and two
+    // quiet zones of 10.
+    let modules = f64::from(11 * 9 + 2 + 20);
+    let width = crops[0].image_width;
+    let dots = width / modules / (25.4 / 203.0);
+    assert!((dots - dots.round()).abs() < 0.01, "{dots} dots per module");
+    let margins = template.page.margins_mm;
+    assert!(
+        width <= f64::from(label.0 - margins.left - margins.right) + EPS_MM,
+        "{width} mm does not fit the sticker"
+    );
+    // The digits under the bars are the value itself.
+    assert!(page_texts(&doc).concat().contains("A-1053"));
+}
+
+#[test]
+fn unencodable_value_prints_without_barcode() {
+    let (template, data) = sticker_with("Заказ 5");
+    let doc = render(
+        &template,
+        &data,
+        &sticker_options(Some((40.0, 30.0)), Some(203)),
+    )
+    .expect("renders");
+    assert!(crops(&doc).is_empty());
+    assert!(!page_texts(&doc).concat().contains("Заказ 5"));
+}

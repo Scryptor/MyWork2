@@ -390,7 +390,7 @@ fn landscape_and_custom_page_sizes() {
 }
 
 #[test]
-fn barcode_is_printed_only_for_a_valid_code() {
+fn barcode_is_printed_only_for_an_encodable_value() {
     let t = template(
         Layout::OnePerPage,
         vec![
@@ -428,10 +428,18 @@ fn barcode_is_printed_only_for_a_valid_code() {
     );
     assert!(with_code.text().contains("Слева"));
 
-    for code in [None, Some("200000012343"), Some("abc")] {
+    // A value that is not a valid UPC-A is printed as Code 128 when it can be (see `symbology`).
+    for code in ["200000012343", "abc"] {
+        d.barcode = Some(code.to_owned());
+        let doc = rendered(&t, &d);
+        assert!(doc.text().contains(code), "{:?}", doc.text());
+        assert!(doc.text().contains("Конец"));
+    }
+    for code in [None, Some("Заказ"), Some("")] {
         d.barcode = code.map(str::to_owned);
         let doc = rendered(&t, &d);
         assert!(!doc.text().contains("2000000"), "{:?}", doc.text());
+        assert!(!doc.text().contains("Заказ"), "{:?}", doc.text());
         assert!(doc.text().contains("Конец"));
     }
 }

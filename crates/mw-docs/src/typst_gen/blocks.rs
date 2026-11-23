@@ -2,7 +2,7 @@
 
 use std::fmt::Write;
 
-use crate::barcode::{fit_module_mm, stretch_module_mm, upc_a_size_mm};
+use crate::barcode::{Shape, fit_module_mm, stretch_module_mm};
 use crate::model::{Align, Block, BlockBody, CopyFilter, FieldRow, Layout, Template};
 
 use super::RenderOptions;
@@ -23,12 +23,14 @@ pub(super) struct Generator {
     /// Width and height of the page area inside the margins.
     pub(super) area_mm: (f64, f64),
     opts: RenderOptions,
+    /// The barcode printed: its width in modules and guard bars.
+    shape: Shape,
     /// Module and bar height of `barcode.svg` (see [`Self::barcode_svg`]).
     pub(super) svg: Option<(f64, f64)>,
 }
 
 impl Generator {
-    pub(super) fn new(template: &Template, opts: &RenderOptions) -> Self {
+    pub(super) fn new(template: &Template, opts: &RenderOptions, shape: Shape) -> Self {
         let page = Page::new(template, opts);
         let mut generator = Self {
             page,
@@ -37,6 +39,7 @@ impl Generator {
                 page.height - page.top - page.bottom,
             ),
             opts: *opts,
+            shape,
             svg: None,
         };
         generator.svg = generator.barcode_svg(template);
@@ -97,9 +100,9 @@ impl Generator {
     /// The barcode module in a column `width_mm` wide.
     fn module_mm(&self, width_mm: f64, stretch: bool) -> f64 {
         if stretch {
-            stretch_module_mm(width_mm, self.opts.dpi)
+            stretch_module_mm(width_mm, self.shape.modules, self.opts.dpi)
         } else {
-            fit_module_mm(width_mm, self.opts.dpi)
+            fit_module_mm(width_mm, self.shape.modules, self.opts.dpi)
         }
     }
 
@@ -183,10 +186,10 @@ impl Generator {
                 stretch,
             } => {
                 let module = self.module_mm(width_mm, *stretch);
-                let (w, h) = upc_a_size_mm(module, f64::from(*height_mm));
+                let (w, h) = self.shape.size_mm(module, f64::from(*height_mm));
                 // The whole image at this block's module: its natural size, scaled.
                 let image_h = self.svg.map_or(h, |(svg_module, bars)| {
-                    upc_a_size_mm(svg_module, bars).1 * module / svg_module
+                    self.shape.size_mm(svg_module, bars).1 * module / svg_module
                 });
                 let under_bars = if *digits { ", digits" } else { "" };
                 let digits = if *digits {
