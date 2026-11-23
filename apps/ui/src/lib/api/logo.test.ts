@@ -67,6 +67,24 @@ describe('logo API', () => {
 		expect(revoked).toEqual([url]);
 	});
 
+	it('releaseLogoUrl of an address revokes it only while it is the current one', async () => {
+		stubFetch(() => new Response('png'));
+		const first = await logoUrl();
+		const second = await logoUrl();
+		// The first went when the second was made: letting it go again touches nothing.
+		releaseLogoUrl(first!);
+		expect(revoked).toEqual([first]);
+		releaseLogoUrl(second!);
+		releaseLogoUrl(second!);
+		expect(revoked).toEqual([first, second]);
+		// The slot is empty: the next address is not revoked by a release of an older one.
+		const third = await logoUrl();
+		releaseLogoUrl(second!);
+		expect(revoked).toEqual([first, second]);
+		releaseLogoUrl();
+		expect(revoked).toEqual([first, second, third]);
+	});
+
 	it('uploads the file as raw bytes with PUT', async () => {
 		const fn = stubFetch(() => new Response(JSON.stringify({ width: 1, height: 1, size: 3 })));
 		const info = await uploadLogo(new Blob(['abc'], { type: 'image/png' }));

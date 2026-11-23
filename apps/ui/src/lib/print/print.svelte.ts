@@ -468,9 +468,12 @@ export async function printBatch(
 	}
 }
 
-/** The notices of a finished batch: where it went, and the numbers of those that did not print. */
+/**
+ * The notices of a finished batch: where it went and how many, after failures and «Остановить» too (the
+ * user knows what is in the printer's tray), and the numbers of those that did not print.
+ */
 export function showBatchResult(r: BatchPrintResult): void {
-	if (r.printer !== null && r.sent > 0 && r.failed.length === 0)
+	if (r.printer !== null && r.sent > 0)
 		toast.show({ message: ru.print.batchSent(r.printer, r.sent), tone: 'success' });
 	if (r.failed.length > 0) {
 		const shown = r.failed.slice(0, FAILED_SHOWN).map((f) => f.number);

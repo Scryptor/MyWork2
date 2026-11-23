@@ -90,15 +90,18 @@ async function addText(page: Page, text: string) {
 	await field.fill(text);
 }
 
-test.describe('the editor', () => {
-	test.afterEach(async ({ request }, info) => {
-		const { kind } = documentOf(info);
-		const current = await fetchTemplate(request, kind);
-		const response = await request.put(`/api/v1/document-templates/${kind}`, {
-			data: { template: current.standard, version: current.version }
-		});
-		expect(response.ok()).toBe(true);
+/** The standard template of this browser's document, put back after every test. */
+async function restoreStandard(request: APIRequestContext, info: TestInfo) {
+	const { kind } = documentOf(info);
+	const current = await fetchTemplate(request, kind);
+	const response = await request.put(`/api/v1/document-templates/${kind}`, {
+		data: { template: current.standard, version: current.version }
 	});
+	expect(response.ok()).toBe(true);
+}
+
+test.describe('the editor', () => {
+	test.afterEach(({ request }, info) => restoreStandard(request, info));
 
 	test('opens_from_documents_settings', async ({ page }, info) => {
 		const { kind, name } = documentOf(info);
@@ -428,6 +431,101 @@ test.describe('the editor', () => {
 		await expect(reset).toBeDisabled();
 		await expect(item(page, `Текст · ${mark}`)).toHaveCount(0);
 		await expect.poll(async () => (await fetchTemplate(request, kind)).custom).toBe(false);
+	});
+});
+
+// Own Typst code (plan 7.3): the «Typst-код» block is built by the render process of the server; its
+// errors are shown at their lines over the preview and under the code, and code that runs too long is
+// stopped in five seconds.
+test.describe('own Typst code', () => {
+	test.afterEach(({ request }, info) => restoreStandard(request, info));
+
+	/** The code of a new «Typst-код» block. */
+	const DEFAULT_CODE =
+		'// Свой Typst-код: v("ключ") — значение поля, copy — экземпляр\n#v("order.number")\n';
+	/** Code that never ends in time (the one of the render process's own tests). */
+	const ENDLESS = '#for i in range(100000) { for j in range(100000) {} }';
+
+	const preview = (page: Page) => page.getByRole('region', { name: 'Превью' });
+	const failure = (page: Page) => preview(page).getByRole('alert');
+	const pageImage = (page: Page) => preview(page).getByRole('img', { name: /^Страница 1 из \d+$/ });
+	const code = (page: Page) => props(page).getByRole('textbox', { name: 'Typst-код', exact: true });
+	/** The answer to a preview of a model with own code in it. */
+	const codePreview = (page: Page) =>
+		page.waitForResponse(
+			(r) => r.url().includes('/preview') && (r.request().postData() ?? '').includes('"typst_code"')
+		);
+
+	test('a Typst code block previews and shows its error at the line', async ({ page }, info) => {
+		await openEditor(page, info);
+		const drawn = codePreview(page);
+		await addBlock(page, 'Typst-код');
+		await expect(code(page)).toHaveValue(DEFAULT_CODE);
+		expect((await drawn).status()).toBe(200);
+		await expect(pageImage(page)).toBeVisible();
+		await expect(failure(page)).toHaveCount(0);
+
+		await code(page).fill('x\n#nope');
+		await expect(failure(page)).toContainText('Шаблон не построен');
+		await expect(failure(page)).toContainText('Typst-код · x · строка 2, знак 2: ');
+		await expect(props(page).getByText(/^Строка 2, знак 2: /)).toBeVisible();
+		await expect(code(page)).toHaveAttribute('aria-invalid', 'true');
+
+		await code(page).fill('#v("order.number")');
+		await expect(failure(page)).toHaveCount(0);
+		await expect(props(page).getByText(/^Строка \d+, знак \d+: /)).toHaveCount(0);
+		await expect(code(page)).not.toHaveAttribute('aria-invalid', 'true');
+		await expect(pageImage(page)).toBeVisible();
+	});
+
+	test('a block turns into Typst code and back with undo', async ({ page }, info) => {
+		await openEditor(page, info);
+		const menu = blocks(page)
+			.getByRole('button', { name: /^Действия: Текст · / })
+			.first();
+		const label = (await menu.getAttribute('aria-label'))!.replace(/^Действия: /, '');
+		await menu.click();
+		await page.getByRole('menuitem', { name: 'Свой Typst-код', exact: true }).click();
+		await expect(
+			props(page).getByRole('heading', { name: 'Typst-код', exact: true })
+		).toBeVisible();
+		await expect(code(page)).toHaveValue(/v\("/);
+		await expect(item(page, label)).toHaveCount(0);
+
+		// Out of the field: the key is the editor's, not the field's own undo.
+		await page.getByRole('heading', { name: 'Редактор шаблонов' }).click();
+		await page.keyboard.press('ControlOrMeta+z');
+		await expect(props(page).getByRole('heading', { name: 'Текст', exact: true })).toBeVisible();
+		await expect(item(page, label)).toBeVisible();
+	});
+
+	test('endless code stops in five seconds', async ({ page }, info) => {
+		test.setTimeout(60_000);
+		await openEditor(page, info);
+		await addBlock(page, 'Typst-код');
+		await code(page).fill(ENDLESS);
+		await expect(failure(page)).toContainText('дольше 5 секунд', { timeout: 20_000 });
+
+		// The stopped process is replaced: the next code is built.
+		await code(page).fill('#v("order.number")');
+		await expect(failure(page)).toHaveCount(0, { timeout: 20_000 });
+		await expect(pageImage(page)).toBeVisible();
+	});
+
+	test('the code block is saved', async ({ page, request }, info) => {
+		const { kind } = documentOf(info);
+		const mark = uniq('Код');
+		const typed = `// Своя строка\n#text[${mark}]\n`;
+		await openEditor(page, info);
+		await addBlock(page, 'Typst-код');
+		await code(page).fill(typed);
+		await expect
+			.poll(async () => allBlocks((await fetchTemplate(request, kind)).template))
+			.toContainEqual(expect.objectContaining({ body: { type: 'typst_code', code: typed } }));
+
+		await page.reload();
+		await item(page, `Typst-код · #text[${mark}]`).click();
+		await expect(code(page)).toHaveValue(typed);
 	});
 });
 

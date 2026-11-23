@@ -17,9 +17,13 @@ export async function getLogoInfo(): Promise<FirmLogo | null> {
 /** The one address that is alive: the picture is shown by one screen at a time. */
 let current: string | null = null;
 
-/** Lets the address go (the screen is left, the logo is replaced or removed). */
-export function releaseLogoUrl(): void {
-	if (current !== null) URL.revokeObjectURL(current);
+/**
+ * Lets the address go (the screen is left, the logo is replaced or removed). With `url`: only that one,
+ * and only while it is the current one — an address made since (for another screen) stays alive.
+ */
+export function releaseLogoUrl(url?: string): void {
+	if (current === null || (url !== undefined && url !== current)) return;
+	URL.revokeObjectURL(current);
 	current = null;
 }
 
@@ -49,4 +53,4 @@ export const uploadLogo = (file: Blob) => upload<FirmLogo>(PATH, file, undefined
 /** Removes the logo. Needs `settings_manage`. */
 export const removeLogo = () => request<void>('DELETE', PATH);
 
-onSessionReset(releaseLogoUrl);
+onSessionReset(() => releaseLogoUrl());

@@ -624,16 +624,46 @@ describe('printing a batch of orders', () => {
 		expect((await printBatch('intake_act', ORDERS, {})).sent).toBe(3);
 	});
 
-	it('the notices: all sent, or the numbers of the failed (five, then «и ещё N»)', () => {
-		showBatchResult({ sent: 12, failed: [], stopped: false, printer: 'Акты HP' });
+	it('the notices: how many were sent, and the numbers of the failed (five, then «и ещё N»)', () => {
+		// At most three notices are on the screen at once: each batch is looked at by itself.
+		const shown = (r: Parameters<typeof showBatchResult>[0]) => {
+			toast.clear();
+			showBatchResult(r);
+			return toasts();
+		};
 		const failed = Array.from({ length: 7 }, (_, i) => ({ number: `№ ${i + 1}`, text: '' }));
-		showBatchResult({ sent: 3, failed: failed.slice(0, 2), stopped: false, printer: 'Акты HP' });
-		showBatchResult({ sent: 0, failed, stopped: false, printer: 'Акты HP' });
-		showBatchResult({ sent: 0, failed: [], stopped: false, printer: null });
-		expect(toasts()).toEqual([
-			['Отправлено на «Акты HP»: 12', 'success', undefined],
-			['Не напечатаны: № 1, № 2', 'danger', undefined],
+		expect(shown({ sent: 12, failed: [], stopped: false, printer: 'Акты HP' })).toEqual([
+			['Отправлено на «Акты HP»: 12', 'success', undefined]
+		]);
+		expect(
+			shown({ sent: 3, failed: failed.slice(0, 2), stopped: false, printer: 'Акты HP' })
+		).toEqual([
+			['Отправлено на «Акты HP»: 3', 'success', undefined],
+			['Не напечатаны: № 1, № 2', 'danger', undefined]
+		]);
+		expect(shown({ sent: 0, failed, stopped: false, printer: 'Акты HP' })).toEqual([
 			['Не напечатаны: № 1, № 2, № 3, № 4, № 5 и ещё 2', 'danger', undefined]
+		]);
+		expect(shown({ sent: 0, failed: [], stopped: false, printer: null })).toEqual([]);
+	});
+
+	it('a batch stopped after a failure tells both: how many went to the printer, and which did not', async () => {
+		platform.printPdf
+			.mockResolvedValueOnce(undefined)
+			.mockRejectedValueOnce(new Error('Бумага закончилась'))
+			.mockResolvedValueOnce(undefined);
+		let done = 0;
+		const r = await printBatch('intake_act', [...ORDERS, { id: 14, number: '№ 14' }], {
+			onprogress: () => {
+				if (++done === 3) stopBatch();
+			}
+		});
+		expect(r).toMatchObject({ sent: 2, stopped: true, printer: 'Акты HP' });
+		expect(sentIds()).toEqual([11, 12, 13]);
+		showBatchResult(r);
+		expect(toasts()).toEqual([
+			['Отправлено на «Акты HP»: 2', 'success', undefined],
+			['Не напечатаны: № 12', 'danger', undefined]
 		]);
 	});
 

@@ -21,13 +21,17 @@
 	let error = $state<string | undefined>();
 	let confirming = $state(false);
 	let input = $state<HTMLInputElement | null>(null);
+	/** False once the screen is gone: an address that comes after it is let go at once. */
 	let alive = true;
 
 	async function load() {
 		try {
 			const next = await getLogoInfo();
 			const address = next === null ? null : await logoUrl();
-			if (!alive) return;
+			if (!alive) {
+				if (address !== null) releaseLogoUrl(address);
+				return;
+			}
 			info = next;
 			url = address;
 			// The logo went between the two requests.
@@ -42,7 +46,8 @@
 	});
 	onDestroy(() => {
 		alive = false;
-		releaseLogoUrl();
+		// Its own address only: one made since for another screen stays.
+		if (url !== null) releaseLogoUrl(url);
 	});
 
 	async function choose(event: Event) {
