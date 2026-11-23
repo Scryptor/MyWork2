@@ -1,0 +1,307 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Block } from '$api/Block';
+import type { DocumentTemplate } from '$api/DocumentTemplate';
+import type { Template } from '$api/Template';
+import { ApiError } from '#lib/api/client.js';
+import {
+	blockLabel,
+	createTemplateEditor,
+	templateErrors,
+	type TemplateEditorApi
+} from './editor.svelte.js';
+import { insertBlock, replaceBlock } from './ops.js';
+
+const text = (s: string): Block => ({
+	copies: 'both',
+	body: { type: 'text', text: s, size_pt: null, bold: false, align: 'left', one_line: false }
+});
+
+const STANDARD: Template = {
+	kind: 'warranty_intake_act',
+	page: { size: 'a4', landscape: false, margins_mm: { top: 10, right: 10, bottom: 10, left: 10 } },
+	layout: 'two_per_a4',
+	font_size_pt: 9,
+	blocks: [text('Акт приёма по гарантии'), { copies: 'both', body: { type: 'separator' } }]
+};
+
+const conflict = () =>
+	new ApiError(409, 'conflict', 'Запись изменена', {
+		code: 'conflict',
+		message: 'Запись изменена',
+		fields: [],
+		current_version: 0,
+		permission: null,
+		retry_after_secs: null
+	});
+
+/**
+ * A server of one template, as mw-server keeps it: a write checks the version, a model equal to the
+ * standard one makes the template standard, a write that changes nothing makes no version.
+ */
+function fakeServer(template: Template = STANDARD) {
+	let current: DocumentTemplate = {
+		id: 3,
+		kind: 'warranty_intake_act',
+		template,
+		standard: STANDARD,
+		custom: JSON.stringify(template) !== JSON.stringify(STANDARD),
+		version: 0,
+		updated_at: null
+	};
+	let gate: Promise<void> = Promise.resolve();
+	let open = () => {};
+	const api = {
+		getTemplate: vi.fn(async () => current),
+		saveTemplate: vi.fn(async (_kind: string, t: Template, version: number) => {
+			await gate;
+			await Promise.resolve();
+			if (JSON.stringify(t) === JSON.stringify(current.template)) return current;
+			if (version !== current.version) throw conflict();
+			current = {
+				...current,
+				template: structuredClone(t),
+				custom: JSON.stringify(t) !== JSON.stringify(STANDARD),
+				version: current.version + 1
+			};
+			return current;
+		})
+	} satisfies TemplateEditorApi;
+	return {
+		api,
+		get current() {
+			return current;
+		},
+		/** Someone at another computer saves the template. */
+		elsewhere(t: Template) {
+			current = { ...current, template: t, custom: true, version: current.version + 1 };
+		},
+		hold() {
+			gate = new Promise((r) => (open = r));
+		},
+		release() {
+			open();
+			gate = Promise.resolve();
+		}
+	};
+}
+
+const settle = async () => {
+	for (let i = 0; i < 20; i++) await Promise.resolve();
+};
+
+const withText = (t: Template, s: string) => insertBlock(t, [t.blocks.length], text(s));
+
+beforeEach(() => vi.useFakeTimers());
+afterEach(() => vi.useRealTimers());
+
+describe('createTemplateEditor', () => {
+	it('an edit can be undone; the undo brings the model back and saves it', async () => {
+		const server = fakeServer();
+		const ed = createTemplateEditor(server.current, { api: server.api });
+		expect([ed.canUndo, ed.canRedo, ed.isStandard]).toEqual([false, false, true]);
+
+		const edited = withText(ed.template, 'Своя строка');
+		ed.edit(edited);
+		expect(ed.canUndo).toBe(true);
+		expect(ed.template).toEqual(edited);
+		expect(ed.isStandard).toBe(false);
+		await settle();
+		expect(server.api.saveTemplate).toHaveBeenLastCalledWith('warranty_intake_act', edited, 0);
+		expect(server.current.custom).toBe(true);
+
+		ed.undo();
+		expect(ed.template).toEqual(STANDARD);
+		expect([ed.canUndo, ed.canRedo]).toEqual([false, true]);
+		await settle();
+		expect(server.api.saveTemplate).toHaveBeenLastCalledWith('warranty_intake_act', STANDARD, 1);
+		expect(server.current.custom).toBe(false);
+
+		ed.redo();
+		expect(ed.template).toEqual(edited);
+		await settle();
+		expect(server.current.template).toEqual(edited);
+		ed.dispose();
+	});
+
+	it('«Сбросить к стандартному» is an edit: the template is standard, and it can be undone', async () => {
+		const own = withText(STANDARD, 'Своя строка');
+		const server = fakeServer(own);
+		const ed = createTemplateEditor(server.current, { api: server.api });
+		expect(ed.isStandard).toBe(false);
+
+		ed.resetToStandard();
+		expect(ed.isStandard).toBe(true);
+		expect(ed.template).toEqual(STANDARD);
+		await settle();
+		expect(server.current.custom).toBe(false);
+
+		ed.undo();
+		expect(ed.isStandard).toBe(false);
+		expect(ed.template).toEqual(own);
+		await settle();
+		expect(server.current.template).toEqual(own);
+		ed.dispose();
+	});
+
+	it('an edit undone before it is written sends nothing', async () => {
+		const server = fakeServer();
+		const ed = createTemplateEditor(server.current, { api: server.api, delayMs: 600 });
+		// Typing waits for the pause; undone within it, nothing is left to send.
+		ed.edit(replaceBlock(ed.template, [0], text('Акт приёма по гарантии №')), 'blocks.0.text');
+		ed.undo();
+		expect(ed.template).toEqual(STANDARD);
+		expect(ed.status.saveState).toBe('idle');
+		vi.advanceTimersByTime(1000);
+		await settle();
+		expect(await ed.flush()).toBe(true);
+		expect(server.api.saveTemplate).not.toHaveBeenCalled();
+		ed.dispose();
+	});
+
+	it('an edit equal to the model makes no step and no write', async () => {
+		const server = fakeServer();
+		const ed = createTemplateEditor(server.current, { api: server.api });
+		// An operation on a path that is not there gives an equal copy.
+		ed.edit(replaceBlock(ed.template, [9], text('нет такого')));
+		expect(ed.canUndo).toBe(false);
+		await settle();
+		expect(server.api.saveTemplate).not.toHaveBeenCalled();
+		ed.dispose();
+	});
+
+	it('text typed in one field within a second is one step to undo', async () => {
+		const server = fakeServer();
+		const ed = createTemplateEditor(server.current, { api: server.api });
+		ed.edit(replaceBlock(ed.template, [0], text('А')), 'blocks.0.text');
+		vi.advanceTimersByTime(300);
+		ed.edit(replaceBlock(ed.template, [0], text('Ак')), 'blocks.0.text');
+		ed.undo();
+		expect(ed.template).toEqual(STANDARD);
+		expect(ed.canUndo).toBe(false);
+		ed.dispose();
+	});
+
+	it('an undo while the edit is on its way is saved once the answer comes', async () => {
+		const server = fakeServer();
+		const ed = createTemplateEditor(server.current, { api: server.api });
+		server.hold();
+		ed.edit(withText(ed.template, 'Своя строка'));
+		await settle();
+		expect(server.api.saveTemplate).toHaveBeenCalledTimes(1);
+		// Back to what the server had before the write: the write still lands, so the undo must follow.
+		ed.undo();
+		server.release();
+		await settle();
+		await ed.flush();
+		expect(server.current.template).toEqual(STANDARD);
+		expect(ed.template).toEqual(STANDARD);
+		ed.dispose();
+	});
+
+	it('a value the server keeps in its own form is not sent again and again', async () => {
+		const server = fakeServer();
+		// The server keeps sizes as f32: 9.123456789 comes back a little different.
+		const save = server.api.saveTemplate.getMockImplementation()!;
+		server.api.saveTemplate.mockImplementation(async (kind, t, version) =>
+			save(kind, { ...t, font_size_pt: Math.fround(t.font_size_pt) }, version)
+		);
+		const ed = createTemplateEditor(server.current, { api: server.api });
+		ed.edit({ ...ed.template, font_size_pt: 9.123456789 });
+		await settle();
+		await settle();
+		expect(server.api.saveTemplate).toHaveBeenCalledTimes(1);
+		expect(server.current.version).toBe(1);
+		ed.dispose();
+	});
+
+	it('a template changed elsewhere: «Взять новое» shows theirs, and undo brings own back', async () => {
+		const server = fakeServer();
+		const ed = createTemplateEditor(server.current, { api: server.api });
+		const theirs = withText(STANDARD, 'Чужая строка');
+		server.elsewhere(theirs);
+		const mine = withText(ed.template, 'Своя строка');
+		ed.edit(mine);
+		await settle();
+		expect(ed.status.saveState).toBe('conflict');
+		expect(ed.conflict?.theirs).toEqual(theirs);
+		expect(ed.template).toEqual(mine);
+
+		ed.takeTheirs();
+		expect(ed.conflict).toBeNull();
+		expect(ed.template).toEqual(theirs);
+		await settle();
+		expect(server.current.template).toEqual(theirs);
+
+		ed.undo();
+		expect(ed.template).toEqual(mine);
+		await settle();
+		await ed.flush();
+		expect(server.current.template).toEqual(mine);
+		ed.dispose();
+	});
+
+	it('«Оставить моё» writes own model over the newer version', async () => {
+		const server = fakeServer();
+		const ed = createTemplateEditor(server.current, { api: server.api });
+		server.elsewhere(withText(STANDARD, 'Чужая строка'));
+		const mine = withText(ed.template, 'Своя строка');
+		ed.edit(mine);
+		await settle();
+		expect(ed.status.saveState).toBe('conflict');
+		ed.keepMine();
+		await settle();
+		await ed.flush();
+		expect(server.current.template).toEqual(mine);
+		expect(ed.template).toEqual(mine);
+		ed.dispose();
+	});
+
+	it('the selection falls back to «Страница» when its block is gone', () => {
+		const server = fakeServer();
+		const ed = createTemplateEditor(server.current, { api: server.api });
+		expect(ed.selected).toBe('page');
+		ed.edit(withText(ed.template, 'Своя строка'));
+		ed.select([2]);
+		expect(ed.selected).toEqual([2]);
+		ed.undo();
+		expect(ed.selected).toBe('page');
+		ed.dispose();
+	});
+});
+
+describe('blockLabel', () => {
+	it('names the type and the start of the text', () => {
+		expect(blockLabel(text('Акт приёма № {заказ.номер}'))).toBe(
+			'Текст · Акт приёма № {заказ.номер}'
+		);
+		expect(
+			blockLabel(text('Очень длинный текст договора, который не поместится в строку списка'))
+		).toBe('Текст · Очень длинный текст договора, который…');
+		expect(blockLabel(text('  \n  '))).toBe('Текст');
+		expect(blockLabel({ copies: 'both', body: { type: 'separator' } })).toBe('Разделитель');
+		expect(blockLabel({ copies: 'both', body: { type: 'spacer', mm: 4 } })).toBe('Отступ · 4 мм');
+	});
+});
+
+describe('templateErrors', () => {
+	it('lists the mistakes of a refused model with what each is about', () => {
+		const e = new ApiError(422, 'validation', 'Проверьте введённые данные', {
+			code: 'validation',
+			message: 'Проверьте введённые данные',
+			fields: [
+				{ field: 'blocks.0.text', code: 'too_long', message: 'Слишком длинный текст' },
+				{ field: 'page.margins_mm', code: 'too_large', message: 'Поля велики' },
+				{ field: 'blocks', code: 'too_many', message: 'Слишком много элементов' }
+			],
+			current_version: null,
+			permission: null,
+			retry_after_secs: null
+		});
+		expect(templateErrors(e, STANDARD)).toEqual([
+			'Текст · Акт приёма по гарантии: Слишком длинный текст',
+			'Страница: Поля велики',
+			'Слишком много элементов'
+		]);
+		expect(templateErrors(new ApiError(0, 'network', 'Нет связи', null), STANDARD)).toEqual([]);
+	});
+});

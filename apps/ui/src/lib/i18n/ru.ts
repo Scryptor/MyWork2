@@ -1,4 +1,8 @@
+import type { Align } from '$api/Align';
+import type { BlockBody } from '$api/BlockBody';
+import type { CopyFilter } from '$api/CopyFilter';
 import type { DocumentKind } from '$api/DocumentKind';
+import type { Layout } from '$api/Layout';
 import type { Permission } from '$api/Permission';
 import type { WarningCode } from '$api/WarningCode';
 
@@ -84,7 +88,7 @@ const permissionTexts: Record<Permission, { label: string; hint: string | string
 	settings_manage: {
 		label: 'Настройки',
 		hint: [
-			'Менять «Общие», «Заказы», «Справочники», «Статусы» и «Точки», номер следующего заказа, пересчитывать поиск, видеть, сколько заказов у значения, статуса и точки, и сведения в «О программе».',
+			'Менять «Общие», «Заказы», «Документы и реквизиты», «Справочники», «Статусы» и «Точки», номер следующего заказа и шаблоны документов, пересчитывать поиск, видеть, сколько заказов у значения, статуса и точки, и сведения в «О программе».',
 			'Без права эти разделы только читаются. Импорт из MyWork 2 требует и «Пользователи и права». «Внешний вид» меняет любой.'
 		]
 	},
@@ -1791,6 +1795,7 @@ export const ru = {
 		clearSelection: 'Снять выделение',
 		empty: 'Нет записей'
 	},
+	/** The template editor (plan 7.1) and its way in from «Документы и реквизиты». */
 	templates: {
 		/** Starting texts of a block added in the template editor. */
 		defaults: {
@@ -1798,6 +1803,98 @@ export const ru = {
 			fieldLabel: 'Название',
 			signatureLeft: 'Подпись сервиса',
 			signatureRight: 'Подпись клиента'
-		}
+		},
+		title: 'Редактор шаблонов',
+		editButton: 'Изменить',
+		editOf: (name: string) => `Изменить шаблон: ${name}`,
+		/** The route without `settings_manage`: the name of the right as «Роли» show it. */
+		noRight: (right: string) => `Изменять шаблоны может пользователь с правом «${right}»`,
+		notFound: 'Такого шаблона нет',
+		sampleOrder: 'Заказ для примера',
+		/** The first item of «Заказ для примера»: the sample order with the firm's details. */
+		sample: 'Пример',
+		sampleHint: 'образец заказа',
+		undo: 'Отменить',
+		redo: 'Повторить',
+		reset: 'Сбросить к стандартному',
+		standard: 'Стандартный шаблон',
+		custom: 'Свой шаблон',
+		/** The parts of the editor on a narrow screen. */
+		panes: 'Часть редактора',
+		blocks: 'Блоки',
+		properties: 'Свойства',
+		preview: 'Превью',
+		page: 'Страница',
+		column: (n: number) => `Колонка ${n}`,
+		emptyColumn: 'Пусто',
+		addBlock: 'Добавить блок',
+		blockActions: (label: string) => `Действия: ${label}`,
+		duplicate: 'Дублировать',
+		remove: 'Удалить',
+		toColumn: (n: number) => `В колонку ${n}`,
+		/** More than one block of columns: which one, by its place in the list. */
+		toColumnOf: (n: number, block: number) => `В колонку ${n} блока ${block}`,
+		outOfColumns: 'Вынести из колонок',
+		blockTypes: {
+			text: 'Текст',
+			fields: 'Поля',
+			barcode: 'Штрихкод',
+			signatures: 'Подписи',
+			separator: 'Разделитель',
+			spacer: 'Отступ',
+			columns: 'Колонки',
+			copy_label: 'Подпись экземпляра',
+			calibration_marks: 'Метки калибровки'
+		} satisfies Record<BlockBody['type'], string>,
+		mm: (n: number) => `${String(n).replace('.', ',')} мм`,
+		previewFailed: 'Шаблон не построен',
+		previewLoading: 'Превью строится…',
+		/** A block the next task gives its fields to. */
+		noProperties: 'Свойства этого блока — в следующей задаче',
+		/** Why a save is refused: the server's mistakes are listed over the preview. */
+		invalid: 'в шаблоне ошибка, она показана над превью',
+		conflictTitle: 'Шаблон изменили на другом компьютере',
+		conflictText:
+			'Здесь показан ваш шаблон. Оставьте его или возьмите тот, что сохранили там: это можно отменить.',
+		disputeText:
+			'Шаблон изменили на другом компьютере, и выбор не сделан. Если перейти, ваши правки шаблона пропадут.',
+		unsaved: (reason: string) => `Шаблон не сохранён: ${reason}`,
+		size: 'Размер',
+		customSize: 'Свой',
+		width: 'Ширина, мм',
+		height: 'Высота, мм',
+		landscape: 'Альбомная',
+		margins: 'Поля, мм',
+		top: 'Сверху',
+		right: 'Справа',
+		bottom: 'Снизу',
+		left: 'Слева',
+		layout: 'Раскладка',
+		layouts: {
+			one_per_page: 'Один экземпляр',
+			sheet_per_copy: '1 на лист',
+			two_per_a4: '2 на лист A4'
+		} satisfies Record<Layout, string>,
+		twoPerA4Page: 'Лист A4 в книжной ориентации: так печатается «2 на лист A4»',
+		/** A sticker: the page is the label of «Настройки → Печать» on this computer. */
+		labelPage: (size: string) =>
+			`Наклейка печатается в размере из «Настройки → Печать»: сейчас ${size}`,
+		fontSize: 'Размер шрифта, пт',
+		text: 'Текст',
+		textSize: 'Размер, пт',
+		textSizeHint: (pt: string) => `Пусто — как у шаблона, ${pt} пт`,
+		bold: 'Жирный',
+		align: 'Выравнивание',
+		aligns: { left: 'Слева', center: 'По центру', right: 'Справа' } satisfies Record<Align, string>,
+		oneLine: 'В одну строку',
+		oneLineHint: 'Не переносится: что не поместилось, обрезается',
+		copies: 'Экземпляры',
+		copyFilters: {
+			both: 'Во всех экземплярах',
+			service: 'Только в экземпляре сервиса',
+			client: 'Только в экземпляре клиента'
+		} satisfies Record<CopyFilter, string>,
+		range: (min: number, max: number) => `От ${min} до ${max}`,
+		notNumber: 'Введите число'
 	}
 } as const;

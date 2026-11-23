@@ -30,6 +30,10 @@ describe('Button', () => {
 		render(Button, { href: '/x', children: label });
 		expect(screen.getByRole('link')).toHaveAttribute('href', '/x');
 	});
+	it('a link keeps its name for assistive technology', () => {
+		render(Button, { href: '/x', 'aria-label': 'Изменить шаблон: Акт приёма', children: label });
+		expect(screen.getByRole('link', { name: 'Изменить шаблон: Акт приёма' })).toBeInTheDocument();
+	});
 });
 
 describe('IconButton', () => {

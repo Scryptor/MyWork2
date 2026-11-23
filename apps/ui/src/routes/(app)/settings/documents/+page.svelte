@@ -1,8 +1,10 @@
 <!-- «Документы и реквизиты» (spec 6.8, plan 6): the firm's phone, details and legal details and the terms
      of the acts, as they are printed; the server's settings, saved as they are typed. Below, every document
-     with its «Образец»: the preview on a sample order and these settings. -->
+     with its «Образец»: the preview on a sample order and these settings; with the right to change the
+     settings, «Изменить» opens the editor of its template (all but the calibration label). -->
 <script lang="ts">
 	import { onDestroy } from 'svelte';
+	import { resolve } from '$app/paths';
 	import type { DocumentKind } from '$api/DocumentKind';
 	import { updateSettings } from '#lib/api/catalogs.js';
 	import { app } from '#lib/app/context.svelte.js';
@@ -104,11 +106,21 @@
 			{#each DOCUMENTS as kind (kind)}
 				<li>
 					<span>{documentName(kind)}</span>
-					<Button
-						size="sm"
-						aria-label={ru.print.sampleOf(documentName(kind))}
-						onclick={() => void sample(kind)}>{ru.print.sampleButton}</Button
-					>
+					<span class="buttons">
+						<Button
+							size="sm"
+							aria-label={ru.print.sampleOf(documentName(kind))}
+							onclick={() => void sample(kind)}>{ru.print.sampleButton}</Button
+						>
+						{#if !locked && kind !== 'calibration'}
+							<Button
+								size="sm"
+								href={resolve(`templates/${kind}`)}
+								aria-label={ru.templates.editOf(documentName(kind))}
+								>{ru.templates.editButton}</Button
+							>
+						{/if}
+					</span>
 				</li>
 			{/each}
 		</ul>
@@ -153,5 +165,11 @@
 	}
 	.documents li:first-child {
 		border-top: 0;
+	}
+	.buttons {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: flex-end;
+		gap: var(--space-2);
 	}
 </style>

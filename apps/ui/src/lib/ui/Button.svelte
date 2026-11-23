@@ -57,8 +57,15 @@
 {/snippet}
 
 {#if href && !disabled}
-	<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- callers pass an already resolved href -->
-	<a class="btn {variant} {size} {className}" {href} onclick={handle}>{@render content()}</a>
+	<!-- A link keeps the name given for assistive technology («Изменить шаблон: …» on «Изменить»). -->
+	<!-- eslint-disable svelte/no-navigation-without-resolve -- callers pass an already resolved href -->
+	<a
+		class="btn {variant} {size} {className}"
+		{href}
+		aria-label={rest['aria-label']}
+		onclick={handle}>{@render content()}</a
+	>
+	<!-- eslint-enable svelte/no-navigation-without-resolve -->
 {:else}
 	<button
 		{...rest}
