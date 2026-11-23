@@ -20,12 +20,13 @@ fn request(kind: DocumentKind, order_id: Option<i64>) -> DocumentRequest {
         order_id,
         sample: false,
         options: RenderOptions::default(),
+        draft: None,
     }
 }
 
 async fn text(t: &TestCore, req: DocumentRequest) -> String {
     t.core
-        .render_document(&admin(), req)
+        .render_document(&admin(), req.clone())
         .await
         .unwrap_or_else(|e| panic!("{}: {req:?}: {e}", t.label))
         .text()
@@ -365,7 +366,7 @@ async fn order_documents_need_an_order_or_the_sample() -> Result<(), CoreError> 
             sample: true,
             ..request(DocumentKind::IssueAct, None)
         };
-        let out = text(&t, sample).await;
+        let out = text(&t, sample.clone()).await;
         assert_twice(
             t.label,
             &out,
@@ -560,7 +561,7 @@ async fn sample_prints_the_firms_own_details_where_they_are_set() -> Result<(), 
         ..request(DocumentKind::IntakeAct, None)
     };
     for t in cores().await {
-        let out = text(&t, sample).await;
+        let out = text(&t, sample.clone()).await;
         assert_twice(
             t.label,
             &out,
@@ -580,7 +581,7 @@ async fn sample_prints_the_firms_own_details_where_they_are_set() -> Result<(), 
                 },
             )
             .await?;
-        let out = text(&t, sample).await;
+        let out = text(&t, sample.clone()).await;
         assert_twice(
             t.label,
             &out,
@@ -670,10 +671,10 @@ async fn export_document_fails_as_render_document_does() {
             request(DocumentKind::IssueAct, None),
             request(DocumentKind::IssueAct, Some(999_999)),
         ] {
-            let rendered = t.core.render_document(&admin(), req).await.err();
+            let rendered = t.core.render_document(&admin(), req.clone()).await.err();
             let exported = t
                 .core
-                .export_document(&admin(), req, DocumentOutput::Pdf)
+                .export_document(&admin(), req.clone(), DocumentOutput::Pdf)
                 .await
                 .err();
             assert!(rendered.is_some(), "{}: {req:?}", t.label);
@@ -781,7 +782,7 @@ async fn export_document_checks_label_offset_and_dpi_bounds() {
     for t in cores().await {
         for (req, output, expected) in &cases {
             assert_validation(
-                t.core.export_document(&admin(), *req, *output).await,
+                t.core.export_document(&admin(), req.clone(), *output).await,
                 expected,
             );
         }

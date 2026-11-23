@@ -10,6 +10,7 @@ mod clock;
 mod core;
 mod dictionaries;
 mod dictionaries_rewrite;
+mod document_templates;
 pub mod documents;
 mod error;
 mod gate;
@@ -43,6 +44,7 @@ pub use core::Core;
 pub use dictionaries::{
     DictionaryItem, DictionaryItemPatch, DictionaryMerge, DictionaryRename, RewriteResult,
 };
+pub use document_templates::{DocumentField, DocumentTemplate, DocumentTemplateInfo, TemplateSave};
 pub use error::CoreError;
 pub use import::{
     DatabaseKind, ImportBundle, ImportMode, ImportSummary, ImportTarget, ImportedClient,

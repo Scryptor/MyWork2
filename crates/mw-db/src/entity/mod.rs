@@ -5,6 +5,7 @@ pub mod audit_log;
 pub mod client;
 pub mod client_phone;
 pub mod dictionary_item;
+pub mod document_template;
 pub mod legacy_import;
 pub mod legacy_row;
 pub mod order;

@@ -16,6 +16,7 @@ mod m20261120_000003_order_master_user;
 mod m20261120_000004_masters_to_users;
 
 mod m20261121_000001_order_comments;
+mod m20261123_000001_document_templates;
 
 pub struct Migrator;
 
@@ -35,6 +36,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261120_000003_order_master_user::Migration),
             Box::new(m20261120_000004_masters_to_users::Migration),
             Box::new(m20261121_000001_order_comments::Migration),
+            Box::new(m20261123_000001_document_templates::Migration),
         ]
     }
 }

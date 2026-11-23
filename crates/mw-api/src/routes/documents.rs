@@ -108,6 +108,7 @@ async fn respond(
             offset_mm: (q.offset_x_mm.unwrap_or(0.0), q.offset_y_mm.unwrap_or(0.0)),
             dpi: q.printer_dpi,
         },
+        draft: None,
     };
     let file = state.core.export_document(actor, request, output).await?;
     let mut response = match file.bytes {

@@ -8,9 +8,11 @@ use std::collections::BTreeMap;
 
 use chrono::{Datelike, NaiveDate};
 use mw_db::entity::service_point;
-use mw_docs::{DocsError, DocumentData, RenderOptions, Rendered, sample_data, standard_template};
+use mw_docs::{DocsError, DocumentData, RenderOptions, Rendered, sample_data};
+use mw_domain::document_template::Template;
 use mw_domain::documents::DocumentKind;
 use mw_domain::money::{Money, doc_text, format_money_doc};
+use mw_domain::permission::Permission;
 use mw_domain::phone::format_phone;
 use mw_domain::validation::FieldError;
 use sea_orm::EntityTrait;
@@ -56,7 +58,7 @@ fn check_options(options: &RenderOptions) -> Result<(), CoreError> {
 }
 
 /// Что напечатать.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DocumentRequest {
     pub kind: DocumentKind,
     /// Заказ, из которого печатается документ ([`DocumentKind::for_order`]); у пустого акта приёма
@@ -67,6 +69,9 @@ pub struct DocumentRequest {
     pub sample: bool,
     /// Размер наклейки, смещение и DPI принтера — как пришли.
     pub options: RenderOptions,
+    /// Несохранённый шаблон для предпросмотра в редакторе; нужен `SettingsManage`. Без него — сохранённый
+    /// шаблон предприятия, а при его отсутствии стандартный.
+    pub draft: Option<Template>,
 }
 
 /// В каком виде выгрузить документ.
@@ -163,9 +168,9 @@ impl Core {
         finish: impl FnOnce(Rendered) -> Result<R, DocsError> + Send + 'static,
     ) -> Result<R, CoreError> {
         check_options(&req.options)?;
+        let template = self.template_to_render(actor, &req).await?;
         let data = self.document_data(actor, &req).await?;
-        let template = standard_template(req.kind);
-        let options = req.options;
+        let (options, kind) = (req.options, req.kind);
         self.render_gate
             .run(move || mw_docs::render(&template, &data, &options).and_then(finish))
             .await?
@@ -173,11 +178,34 @@ impl Core {
                 DocsError::Dpi(_) => {
                     CoreError::Validation(vec![FieldError::new("dpi", "out_of_range")])
                 }
-                e => CoreError::Internal(format!(
-                    "документ «{}» не построен: {e}",
-                    req.kind.as_str()
-                )),
+                e => CoreError::Internal(format!("документ «{}» не построен: {e}", kind.as_str())),
             })
+    }
+
+    /// Модель для рендера: черновик, иначе сохранённая, иначе стандартная (калибровка — всегда
+    /// стандартная). Черновик проверяется до рендера.
+    async fn template_to_render(
+        &self,
+        actor: &Actor,
+        req: &DocumentRequest,
+    ) -> Result<Template, CoreError> {
+        let Some(draft) = &req.draft else {
+            return self.template_for_print(req.kind).await;
+        };
+        actor.require(Permission::SettingsManage)?;
+        if !req.kind.editable() {
+            return Err(CoreError::Validation(vec![FieldError::new(
+                "kind",
+                "not_editable",
+            )]));
+        }
+        if draft.kind != req.kind {
+            return Err(CoreError::Validation(vec![FieldError::new(
+                "kind", "mismatch",
+            )]));
+        }
+        draft.validate().map_err(CoreError::Validation)?;
+        Ok(draft.clone())
     }
 
     /// Значения полей документа; знаки валют, которых нет в шрифте, в них — словами ([`doc_text`]).
@@ -658,6 +686,7 @@ mod tests {
             order_id,
             sample: false,
             options: RenderOptions::default(),
+            draft: None,
         }
     }
 
