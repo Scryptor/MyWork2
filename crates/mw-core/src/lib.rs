@@ -27,7 +27,7 @@ mod statuses;
 mod usage;
 
 pub use actor::Actor;
-pub use attachments::{Attachment, AttachmentFile, AttachmentKind, AttachmentVariant};
+pub use attachments::{Attachment, AttachmentFile, AttachmentKind, AttachmentVariant, FirmLogo};
 pub use audit::{AuditEntry, AuditFilter};
 pub use auth::{
     LAST_SEEN_THROTTLE_SECS, MAX_CONCURRENT_PASSWORD_HASHES, MIN_PASSWORD_CHARS, MasterUser,

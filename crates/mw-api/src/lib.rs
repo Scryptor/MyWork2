@@ -76,7 +76,8 @@ HTTP API учёта сервисного центра MyWork 3.
 **Тело запроса.** Каждый изменяющий запрос (POST, PUT, PATCH, DELETE) должен нести \
 `Content-Type: application/json`, даже без тела (выход, выдача, удаление), иначе ответ 415. Исключение — загрузка вложений \
 (`POST /orders/{id}/attachments`, `POST /intake-drafts/{key}/attachments`): тело — байты файла, \
-`Content-Type: application/octet-stream`, не больше 25 МБ.
+`Content-Type: application/octet-stream`, не больше 25 МБ; и загрузка логотипа (`PUT /settings/logo`): \
+тело — байты картинки, `Content-Type: application/octet-stream`, не больше 5 МБ.
 
 **Ошибки.** Любая ошибка — JSON `ErrorBody` с полями `code`, `message` (по-русски), `fields`, \
 `current_version`, `permission`, `retry_after_secs`. Коды: `bad_request` (400, 405, 413 — тело больше 1 МиБ (файла — больше 25 МБ), 415), \

@@ -14,6 +14,7 @@ mod clients;
 mod document_templates;
 mod documents;
 mod legacy_import;
+mod logo;
 mod meta;
 mod orders;
 mod setup;
@@ -33,6 +34,13 @@ pub(crate) fn api_routes() -> OpenApiRouter<AppState> {
                 ))
                 .layer(DefaultBodyLimit::max(attachments::UPLOAD_BODY_LIMIT)),
         )
+        .merge(
+            OpenApiRouter::new()
+                .routes(routes!(logo::put_logo))
+                .layer(DefaultBodyLimit::max(logo::LOGO_BODY_LIMIT)),
+        )
+        .routes(routes!(logo::get_logo, logo::delete_logo))
+        .routes(routes!(logo::get_logo_info))
         .routes(routes!(attachments::discard_draft))
         .routes(routes!(attachments::attachment_file))
         .routes(routes!(attachments::attachment_thumb))

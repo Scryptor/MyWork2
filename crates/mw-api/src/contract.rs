@@ -45,6 +45,7 @@ pub fn export_typescript(dir: &Path) -> Result<(), ts_rs::ExportError> {
     AttachmentNameQuery::export_all(&cfg)?;
     CaptionPatch::export_all(&cfg)?;
     mw_core::Attachment::export_all(&cfg)?;
+    mw_core::FirmLogo::export_all(&cfg)?;
     VersionParam::export_all(&cfg)?;
     ClientPage::export_all(&cfg)?;
     OrderListQuery::export_all(&cfg)?;

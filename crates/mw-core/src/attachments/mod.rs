@@ -1,6 +1,7 @@
 //! Вложения заказов: фото и файлы. Файлы лежат на диске, в базе — только описание.
 
 mod drafts;
+mod logo;
 mod photo;
 mod store;
 
@@ -16,6 +17,7 @@ use serde::{Deserialize, Serialize};
 
 pub use drafts::MAX_DRAFT_ATTACHMENTS;
 pub(crate) use drafts::valid_key;
+pub use logo::FirmLogo;
 pub use photo::{MAX_ATTACHMENT_BYTES, PhotoError, ProcessedPhoto, process_photo};
 pub use store::resolve;
 
@@ -42,6 +44,10 @@ impl AttachmentKind {
         }
     }
 }
+
+/// Код вида строки с логотипом фирмы. Только внутри ядра: в `AttachmentKind` его нет, потому что
+/// логотип — не вложение заказа и обычным вложениям недоступен.
+pub(crate) const LOGO_KIND: &str = "logo";
 
 /// Какой файл отдать.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -164,6 +170,7 @@ impl Core {
         let m = attachment::Entity::find_by_id(id)
             .one(&self.db)
             .await?
+            .filter(|m| m.kind != LOGO_KIND)
             .ok_or_else(not_found)?;
         let main = store::resolve(data_dir, &m.path)
             .filter(|p| p.exists())
@@ -250,6 +257,7 @@ impl Core {
         let current = attachment::Entity::find_by_id(id)
             .one(&tx)
             .await?
+            .filter(|m| m.kind != LOGO_KIND)
             .ok_or(CoreError::NotFound { entity: ENTITY, id })?;
         require_edit(actor, &current)?;
         if current.caption == caption {
@@ -295,6 +303,7 @@ impl Core {
         let current = attachment::Entity::find_by_id(id)
             .one(&tx)
             .await?
+            .filter(|m| m.kind != LOGO_KIND)
             .ok_or(CoreError::NotFound { entity: ENTITY, id })?;
         require_edit(actor, &current)?;
         attachment::Entity::delete_by_id(id).exec(&tx).await?;

@@ -47,6 +47,9 @@ impl FieldError {
         if let Some(m) = self.message {
             return m;
         }
+        if self.field == "logo" && self.code == "unsupported" {
+            return "Логотип — картинка PNG, JPEG или WebP";
+        }
         match self.code.as_str() {
             "required" => "Заполните поле",
             "too_short" => "Слишком короткое значение",
@@ -102,6 +105,18 @@ mod tests {
         assert_eq!(
             FieldError::new("mode", "replace_unsupported").message_ru(),
             "Замена возможна только для базы SQLite"
+        );
+    }
+
+    #[test]
+    fn logo_unsupported_has_its_own_message() {
+        assert_eq!(
+            FieldError::new("logo", "unsupported").message_ru(),
+            "Логотип — картинка PNG, JPEG или WebP"
+        );
+        assert_ne!(
+            FieldError::new("logo", "unsupported").message_ru(),
+            FieldError::new("file", "unsupported").message_ru()
         );
     }
 

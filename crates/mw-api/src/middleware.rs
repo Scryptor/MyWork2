@@ -78,7 +78,8 @@ pub(crate) async fn require_local_host(req: Request, next: Next) -> Response {
 /// Маршруты загрузки вложений (`POST /orders/{id}/attachments`,
 /// `POST /intake-drafts/{key}/attachments`): только они принимают `application/octet-stream`.
 fn is_upload_route(req: &Request) -> bool {
-    if req.method() != Method::POST {
+    let logo = req.method() == Method::PUT && req.uri().path() == "/api/v1/settings/logo";
+    if req.method() != Method::POST && !logo {
         return false;
     }
     let octet = req
@@ -93,6 +94,9 @@ fn is_upload_route(req: &Request) -> bool {
         });
     if !octet {
         return false;
+    }
+    if logo {
+        return true;
     }
     let path = req.uri().path();
     ["/api/v1/orders/", "/api/v1/intake-drafts/"]
