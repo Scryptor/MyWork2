@@ -6,7 +6,10 @@ use std::io::Cursor;
 
 use chrono::Duration;
 use common::*;
+use mw_core::documents::{DocumentBytes, DocumentOutput, DocumentRequest};
 use mw_core::{AttachmentVariant, Core, CoreError};
+use mw_docs::RenderOptions;
+use mw_domain::documents::DocumentKind;
 use mw_domain::permission::Permission;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
@@ -270,5 +273,55 @@ async fn logo_needs_data_dir() {
         let r = t.core.set_firm_logo(&admin(), png_rgba(8, 8)).await;
         assert!(matches!(r, Err(CoreError::Unavailable(_))), "{}", t.label);
         assert!(t.core.firm_logo_file(&admin()).await.is_err());
+    }
+}
+
+/// Повреждённый на диске файл логотипа не ломает печать: документ выходит без логотипа.
+#[tokio::test]
+async fn broken_logo_file_prints_without_logo() {
+    for t in cores().await {
+        let (core, _dir) = with_dir(&t);
+        let order = core
+            .create_order(&admin(), sample_new_order())
+            .await
+            .unwrap();
+        let actor = admin();
+        let export = |output| {
+            let req = DocumentRequest {
+                kind: DocumentKind::IntakeAct,
+                order_id: Some(order.id),
+                sample: false,
+                options: RenderOptions::default(),
+                draft: None,
+            };
+            core.export_document(&actor, req, output)
+        };
+        let pages = || async {
+            match export(DocumentOutput::Png { dpi: 72 }).await.unwrap().bytes {
+                DocumentBytes::Png(pages) => pages,
+                other => panic!("{}: {other:?}", t.label),
+            }
+        };
+        let without_logo = pages().await;
+        core.set_firm_logo(&admin(), png_rgba(64, 32))
+            .await
+            .unwrap();
+        // Подмена повреждения: подпись PNG на месте, дальше мусор.
+        let id = logo_rows(&core).await[0];
+        let file = core
+            .data_dir_path()
+            .unwrap()
+            .join(format!("attachments/logo/{id}.png"));
+        assert!(file.exists(), "{}: {}", t.label, file.display());
+        std::fs::write(&file, b"\x89PNG\r\n\x1a\nnot a picture at all").unwrap();
+
+        let act = export(DocumentOutput::Pdf).await;
+        assert!(act.is_ok(), "{}: {act:?}", t.label);
+        assert_eq!(
+            pages().await,
+            without_logo,
+            "{}: лист не как без логотипа",
+            t.label
+        );
     }
 }

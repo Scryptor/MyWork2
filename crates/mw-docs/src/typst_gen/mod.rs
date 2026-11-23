@@ -12,6 +12,7 @@ use std::collections::BTreeMap;
 use std::fmt::Write;
 use std::sync::Arc;
 
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::barcode::{Shape, barcode_svg};
@@ -28,8 +29,9 @@ use text::typst_str;
 pub(crate) use code::CodeSources;
 pub use code::block_code;
 
-/// The values of one document.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+/// The values of one document. In JSON without the logo: a [`crate::Job`] carries it once for all
+/// its documents.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DocumentData {
     /// By field key (`order.number`, see [`crate::fields`]); a missing key is an empty value.
     pub values: BTreeMap<String, String>,
@@ -37,12 +39,13 @@ pub struct DocumentData {
     /// (printed as Code 128). `None` or a value that cannot be encoded prints no barcode.
     pub barcode: Option<String>,
     /// The firm's logo, a PNG. `None` prints nothing in the Logo blocks.
+    #[serde(skip)]
     pub logo: Option<Arc<[u8]>>,
     /// A form to fill in by hand: empty values become lines to write on.
     pub blank: bool,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 pub struct RenderOptions {
     /// Label (width, height) in mm; replaces the template's page size (stickers, calibration).
     pub label_mm: Option<(f32, f32)>,
@@ -68,6 +71,17 @@ pub fn render_with_fonts(
     opts: &RenderOptions,
     fonts: &FontSet,
 ) -> Result<Rendered, DocsError> {
+    render_with_logo(template, data, data.logo.as_deref(), opts, fonts)
+}
+
+/// Like [`render_with_fonts`] with `logo` in place of `data.logo`.
+pub(crate) fn render_with_logo(
+    template: &Template,
+    data: &DocumentData,
+    logo: Option<&[u8]>,
+    opts: &RenderOptions,
+    fonts: &FontSet,
+) -> Result<Rendered, DocsError> {
     // `barcode` in `data.json` is set exactly when `barcode.svg` exists. Its width in modules depends on
     // the value, so it goes to the generator as a number; the value itself never enters the markup.
     let coded = data
@@ -82,10 +96,7 @@ pub fn render_with_fonts(
         });
     // Likewise `logo` in `data.json` is set exactly when `logo.png` exists. The author's code may
     // show it too.
-    let logo = data
-        .logo
-        .as_deref()
-        .filter(|_| has_logo_block(&template.blocks) || template.has_code());
+    let logo = logo.filter(|_| has_logo_block(&template.blocks) || template.has_code());
     let mut files = vec![(
         "data.json".to_owned(),
         data_json(

@@ -5,10 +5,14 @@
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
+use std::time::Duration;
 
 use chrono::{Datelike, NaiveDate};
 use mw_db::entity::service_point;
-use mw_docs::{DocsError, DocumentData, RenderOptions, Rendered, sample_data};
+use mw_docs::{
+    DocsError, DocumentData, Job, JobBytes, JobLimits, JobOutput, JobResult, RenderOptions,
+    sample_data,
+};
 use mw_domain::document_template::Template;
 use mw_domain::documents::DocumentKind;
 use mw_domain::money::{Money, doc_text, format_money_doc};
@@ -40,6 +44,19 @@ const MAX_BATCH_PAGES: usize = 200;
 const MAX_BATCH_ORDERS: usize = 100;
 /// Пикселей на одну страницу растра: A4 при 600 dpi (около 35 млн) проходит, 420 × 420 мм — нет.
 const MAX_RASTER_PIXELS: f64 = 36_000_000.0;
+/// Сколько может строиться одно задание рендера (документ или пачка): меньше 30 с
+/// `REQUEST_TIMEOUT` сервера, чтобы ответом был понятный отказ, а не обрыв по времени.
+pub const RENDER_BUDGET: Duration = Duration::from_secs(25);
+
+/// Пределы задания рендера ядра; `max_total_pages` — страниц во всём задании.
+fn job_limits(max_total_pages: usize) -> JobLimits {
+    JobLimits {
+        max_pages: MAX_PAGES,
+        max_total_pages,
+        max_raster_pixels: MAX_RASTER_PIXELS,
+        budget: RENDER_BUDGET,
+    }
+}
 
 /// Ошибка рендера как ошибка ядра.
 fn docs_error(e: DocsError, kind: DocumentKind) -> CoreError {
@@ -51,6 +68,7 @@ fn docs_error(e: DocsError, kind: DocumentKind) -> CoreError {
         DocsError::TooManyPixels => {
             CoreError::Validation(vec![FieldError::new("dpi", "too_many_pixels")])
         }
+        DocsError::TooSlow => CoreError::Validation(vec![FieldError::new("documents", "too_slow")]),
         e => CoreError::Internal(format!("документ «{}» не построен: {e}", kind.as_str())),
     }
 }
@@ -117,6 +135,15 @@ pub enum DocumentOutput {
     },
 }
 
+impl From<DocumentOutput> for JobOutput {
+    fn from(output: DocumentOutput) -> Self {
+        match output {
+            DocumentOutput::Pdf => Self::Pdf,
+            DocumentOutput::Png { dpi } => Self::Png { dpi },
+        }
+    }
+}
+
 /// Готовый документ: PDF или PNG по странице.
 #[derive(Clone, PartialEq, Eq)]
 pub enum DocumentBytes {
@@ -146,11 +173,25 @@ pub struct DocumentFile {
     pub bytes: DocumentBytes,
 }
 
+impl From<JobResult> for DocumentFile {
+    fn from(result: JobResult) -> Self {
+        Self {
+            page_size_mm: result.page_size_mm,
+            page_count: result.page_count,
+            bytes: match result.bytes {
+                JobBytes::Pdf(pdf) => DocumentBytes::Pdf(pdf),
+                JobBytes::Png(pages) => DocumentBytes::Png(pages),
+            },
+        }
+    }
+}
+
 impl Core {
     /// Документ в PDF или PNG. API документов зовёт только этот метод: рендер и выгрузка в байты
-    /// идут одним заданием под ограничителем рендера (растр A4 тяжелее самой компиляции). Данные и
-    /// проверки — те же, что у `Core::render_document` (он только для тестов). Неверный `dpi` у
-    /// PNG — ошибка проверки поля `dpi`.
+    /// идут одним заданием ([`mw_docs::run_job`]) под ограничителем рендера (растр A4 тяжелее самой
+    /// компиляции). Данные и проверки — те же, что у `Core::render_document` (он только для
+    /// тестов). Неверный `dpi` у PNG — ошибка проверки поля `dpi`; дольше [`RENDER_BUDGET`] —
+    /// `documents`/`too_slow`.
     pub async fn export_document(
         &self,
         actor: &Actor,
@@ -165,25 +206,16 @@ impl Core {
                 "out_of_range",
             )]));
         }
-        self.rendered(actor, req, move |doc| {
-            let bytes = match output {
-                DocumentOutput::Pdf => DocumentBytes::Pdf(doc.pdf()?),
-                DocumentOutput::Png { dpi } => {
-                    let (w, h) = doc.page_size_mm();
-                    let px = |mm: f64| mm / 25.4 * f64::from(dpi);
-                    if px(w) * px(h) > MAX_RASTER_PIXELS {
-                        return Err(DocsError::TooManyPixels);
-                    }
-                    DocumentBytes::Png(doc.png_pages(dpi)?)
-                }
-            };
-            Ok(DocumentFile {
-                page_size_mm: doc.page_size_mm(),
-                page_count: doc.page_count(),
-                bytes,
-            })
-        })
-        .await
+        let (template, mut data) = self.prepared(actor, &req).await?;
+        let job = Job {
+            template,
+            options: req.options,
+            logo: data.logo.take(),
+            docs: vec![data],
+            output: output.into(),
+            limits: job_limits(MAX_PAGES),
+        };
+        self.render_job(job, req.kind).await
     }
 
     /// Документы нескольких заказов одним PDF, по заказу подряд. Вид должен печататься из заказа
@@ -191,7 +223,7 @@ impl Core {
     /// `order_ids`/`too_many`). Данные каждого заказа собираются как у документа одного заказа
     /// (нет заказа — `NotFound` с его номером); шаблон и логотип читаются один раз. Вся пачка —
     /// одно задание под ограничителем рендера; больше 50 страниц у заказа или больше 200 во всей
-    /// пачке — `template`/`too_many_pages`.
+    /// пачке — `template`/`too_many_pages`, дольше [`RENDER_BUDGET`] — `documents`/`too_slow`.
     pub async fn export_documents(
         &self,
         actor: &Actor,
@@ -226,7 +258,7 @@ impl Core {
         }
         check_options(&options)?;
         let template = self.template_for_print(kind).await?;
-        let mut datas = Vec::with_capacity(ids.len());
+        let mut docs = Vec::with_capacity(ids.len());
         for id in ids {
             let one = DocumentRequest {
                 kind,
@@ -235,33 +267,17 @@ impl Core {
                 options,
                 draft: None,
             };
-            datas.push(self.document_values(actor, &one).await?);
+            docs.push(self.document_values(actor, &one).await?);
         }
-        let logo = self.firm_logo_png().await;
-        for data in &mut datas {
-            data.logo.clone_from(&logo);
-        }
-        self.render_gate
-            .run(move || {
-                let mut docs = Vec::with_capacity(datas.len());
-                let mut total = 0;
-                for data in &datas {
-                    let doc = mw_docs::render(&template, data, &options)?;
-                    total += doc.page_count();
-                    if doc.page_count() > MAX_PAGES || total > MAX_BATCH_PAGES {
-                        return Err(DocsError::TooManyPages(total));
-                    }
-                    docs.push(doc);
-                }
-                let merged = mw_docs::merge(docs);
-                Ok(DocumentFile {
-                    page_size_mm: merged.page_size_mm(),
-                    page_count: merged.page_count(),
-                    bytes: DocumentBytes::Pdf(merged.pdf()?),
-                })
-            })
-            .await?
-            .map_err(|e| docs_error(e, kind))
+        let job = Job {
+            template,
+            options,
+            logo: self.firm_logo_png().await,
+            docs,
+            output: JobOutput::Pdf,
+            limits: job_limits(MAX_BATCH_PAGES),
+        };
+        self.render_job(job, kind).await
     }
 
     /// Строит документ. Из заказа — с теми же правами, что и просмотр заказа (`get_order`): нужен
@@ -274,31 +290,39 @@ impl Core {
         &self,
         actor: &Actor,
         req: DocumentRequest,
-    ) -> Result<Rendered, CoreError> {
-        self.rendered(actor, req, Ok).await
-    }
-
-    /// Данные документа, затем рендер и `finish` одним заданием под ограничителем рендера.
-    async fn rendered<R: Send + 'static>(
-        &self,
-        actor: &Actor,
-        req: DocumentRequest,
-        finish: impl FnOnce(Rendered) -> Result<R, DocsError> + Send + 'static,
-    ) -> Result<R, CoreError> {
-        check_options(&req.options)?;
-        let template = self.template_to_render(actor, &req).await?;
-        let data = self.document_data(actor, &req).await?;
+    ) -> Result<mw_docs::Rendered, CoreError> {
+        let (template, data) = self.prepared(actor, &req).await?;
         let (options, kind) = (req.options, req.kind);
         self.render_gate
             .run(move || {
-                mw_docs::render(&template, &data, &options).and_then(|doc| {
-                    if doc.page_count() > MAX_PAGES {
-                        return Err(DocsError::TooManyPages(doc.page_count()));
-                    }
-                    finish(doc)
-                })
+                let doc = mw_docs::render(&template, &data, &options)?;
+                if doc.page_count() > MAX_PAGES {
+                    return Err(DocsError::TooManyPages(doc.page_count()));
+                }
+                Ok(doc)
             })
             .await?
+            .map_err(|e| docs_error(e, kind))
+    }
+
+    /// Модель и данные документа после проверки размера наклейки, смещения и DPI принтера.
+    async fn prepared(
+        &self,
+        actor: &Actor,
+        req: &DocumentRequest,
+    ) -> Result<(Template, DocumentData), CoreError> {
+        check_options(&req.options)?;
+        let template = self.template_to_render(actor, req).await?;
+        let data = self.document_data(actor, req).await?;
+        Ok((template, data))
+    }
+
+    /// Задание рендера под ограничителем; его ошибка — ошибка ядра.
+    async fn render_job(&self, job: Job, kind: DocumentKind) -> Result<DocumentFile, CoreError> {
+        self.render_gate
+            .run(move || mw_docs::run_job(&job, &mut |_| {}))
+            .await?
+            .map(DocumentFile::from)
             .map_err(|e| docs_error(e, kind))
     }
 
@@ -335,7 +359,8 @@ impl Core {
         req: &DocumentRequest,
     ) -> Result<DocumentData, CoreError> {
         let mut data = self.document_values(actor, req).await?;
-        // Логотип фирмы — для блоков «Логотип» любого вида документа, в том числе образца и черновика.
+        // Логотип фирмы — для блоков «Логотип» любого вида документа, в том числе образца и черновика;
+        // битый файл печатается как отсутствующий логотип.
         data.logo = self.firm_logo_png().await;
         Ok(data)
     }
@@ -1069,6 +1094,16 @@ mod tests {
             assert_eq!(data.barcode, expected.barcode, "{label}");
             assert!(!data.blank, "{label}");
         }
+    }
+
+    /// Задание дольше бюджета — ошибка проверки, а не внутренняя.
+    #[test]
+    fn too_slow_is_a_validation_error() {
+        let e = docs_error(DocsError::TooSlow, DocumentKind::IntakeAct);
+        assert!(
+            matches!(&e, CoreError::Validation(f) if *f == vec![FieldError::new("documents", "too_slow")]),
+            "{e:?}"
+        );
     }
 
     #[test]

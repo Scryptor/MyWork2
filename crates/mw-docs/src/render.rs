@@ -33,6 +33,9 @@ pub enum DocsError {
     /// The caller refused a raster larger than it allows.
     #[error("raster page is too large")]
     TooManyPixels,
+    /// The documents of a job took longer to compile than its time budget.
+    #[error("rendering took longer than its budget")]
+    TooSlow,
 }
 
 fn code_messages(diagnostics: &[CodeDiagnostic]) -> String {

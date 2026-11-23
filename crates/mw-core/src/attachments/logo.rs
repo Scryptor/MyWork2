@@ -60,6 +60,22 @@ fn unsupported() -> CoreError {
     CoreError::Validation(vec![FieldError::new("logo", "unsupported")])
 }
 
+/// Пределы разбора картинки: и при загрузке, и при проверке сохранённого файла.
+fn decode_limits() -> Limits {
+    let mut limits = Limits::default();
+    limits.max_image_width = Some(MAX_DECODE_SIDE);
+    limits.max_image_height = Some(MAX_DECODE_SIDE);
+    limits.max_alloc = Some(MAX_DECODE_ALLOC);
+    limits
+}
+
+/// Сохранённый файл логотипа разбирается как PNG целиком: битый файл не должен ломать документ.
+fn check_png(bytes: &[u8]) -> Result<(), image::ImageError> {
+    let mut reader = ImageReader::with_format(Cursor::new(bytes), ImageFormat::Png);
+    reader.limits(decode_limits());
+    reader.decode().map(drop)
+}
+
 /// Приводит загрузку к PNG: формат — по содержимому (PNG, JPEG, WebP), поворот по EXIF,
 /// длинная сторона не больше 1200 px, 8 бит на канал, прозрачность сохраняется, метаданных нет.
 fn process(bytes: &[u8]) -> Result<ProcessedLogo, CoreError> {
@@ -77,11 +93,7 @@ fn process(bytes: &[u8]) -> Result<ProcessedLogo, CoreError> {
         return Err(unsupported());
     }
     let mut reader = ImageReader::with_format(Cursor::new(bytes), format);
-    let mut limits = Limits::default();
-    limits.max_image_width = Some(MAX_DECODE_SIDE);
-    limits.max_image_height = Some(MAX_DECODE_SIDE);
-    limits.max_alloc = Some(MAX_DECODE_ALLOC);
-    reader.limits(limits);
+    reader.limits(decode_limits());
     let mut decoder = reader.into_decoder().map_err(|_| unsupported())?;
     let orientation = decoder.orientation().ok();
     let mut img = DynamicImage::from_decoder(decoder).map_err(|_| unsupported())?;
@@ -138,7 +150,8 @@ impl Core {
             }))
     }
 
-    /// Байты PNG для печати документов; `None` — логотипа нет, файла нет или папка данных не задана.
+    /// Байты PNG для печати документов; `None` — логотипа нет, файла нет, он не разбирается как PNG
+    /// или папка данных не задана. Файл разбирается целиком при каждом чтении.
     pub(crate) async fn firm_logo_png(&self) -> Option<Arc<[u8]>> {
         let data_dir = self.data_dir.as_deref()?;
         let m = match self.logo_row().await {
@@ -149,10 +162,22 @@ impl Core {
             }
         };
         let path = store::resolve(data_dir, &m.path)?;
-        match tokio::fs::read(&path).await {
-            Ok(bytes) => Some(Arc::from(bytes)),
+        let bytes = match tokio::fs::read(&path).await {
+            Ok(bytes) => bytes,
             Err(e) => {
                 tracing::warn!(error = %e, "файл логотипа не прочитан");
+                return None;
+            }
+        };
+        let checked = tokio::task::spawn_blocking(move || check_png(&bytes).map(|()| bytes)).await;
+        match checked {
+            Ok(Ok(bytes)) => Some(Arc::from(bytes)),
+            Ok(Err(e)) => {
+                tracing::warn!(error = %e, "файл логотипа повреждён, документ печатается без него");
+                None
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "файл логотипа не проверен");
                 None
             }
         }

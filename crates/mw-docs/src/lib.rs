@@ -3,11 +3,13 @@
 //!
 //! A [`model::Template`] becomes Typst source ([`to_typst`]); [`render`] compiles it with the document
 //! data, which the source reads from a JSON file and never contains. The result is a [`Rendered`]
-//! document that turns into PDF or PNG pages.
+//! document that turns into PDF or PNG pages. A [`Job`] ([`run_job`]) does all of it for one or many
+//! documents of one template, within limits of pages, pixels and time.
 
 mod barcode;
 pub mod fields;
 mod fonts;
+mod job;
 #[cfg(test)]
 mod layout_tests;
 pub mod model;
@@ -18,6 +20,7 @@ mod world;
 
 pub use barcode::{Symbology, code128_svg, module_mm, symbology, upc_a_svg};
 pub use fonts::{FontSet, FontSources, configure_fonts, font_covers, warm_fonts};
+pub use job::{Job, JobBytes, JobLimits, JobOutput, JobResult, run_job, run_job_with_fonts};
 pub use render::{DocsError, Rendered, merge};
 pub use standard::{sample_data, standard_template};
 pub use typst_gen::{DocumentData, RenderOptions, block_code, render, render_with_fonts, to_typst};
