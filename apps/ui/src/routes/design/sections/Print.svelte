@@ -2,6 +2,7 @@
 	import type { DocumentKind } from '$api/DocumentKind';
 	import type { DocumentPages } from '$api/DocumentPages';
 	import { demoPage } from '#lib/demo/pages.js';
+	import BulkPrintMenu from '#lib/print/BulkPrintMenu.svelte';
 	import DocumentPreview from '#lib/print/DocumentPreview.svelte';
 	import PrintMenu from '#lib/print/PrintMenu.svelte';
 	import { documentName, isLabel, type PreviewRequest } from '#lib/print/print.svelte.js';
@@ -42,6 +43,27 @@
 		onpreview={preview}
 	/>
 	<span class="muted">Напечатано: {picked || '—'}</span>
+</div>
+
+<p class="muted">
+	«Печать ▾» панели выбора в списке заказов: документ каждого выбранного заказа на принтер (в
+	программе) или одним PDF. Слева направо: обычное, идёт печать, выбрано больше 100.
+</p>
+<div class="row">
+	<BulkPrintMenu
+		count={12}
+		onprint={(kind) => (picked = `пачка: ${documentName(kind)}`)}
+		onsave={() => (picked = 'PDF пачки сохранён')}
+		onstop={() => {}}
+	/>
+	<BulkPrintMenu
+		count={12}
+		progress={{ done: 3, total: 12 }}
+		onprint={() => {}}
+		onsave={() => {}}
+		onstop={() => (picked = 'остановлено')}
+	/>
+	<BulkPrintMenu count={101} onprint={() => {}} onsave={() => {}} onstop={() => {}} />
 </div>
 
 <DocumentPreview

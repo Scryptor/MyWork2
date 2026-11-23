@@ -392,6 +392,22 @@ export interface BatchPrintResult {
 	printer: string | null;
 }
 
+/**
+ * The batch being printed: how far it is, kept here (not in the list of orders) so the list shows it again
+ * and can stop it after the user has left it and come back. Null while none runs.
+ */
+class RunningBatch {
+	progress = $state.raw<{ done: number; total: number } | null>(null);
+	stopper: AbortController | null = null;
+}
+
+export const batch = new RunningBatch();
+
+/** Stops the batch running after the order being sent; nothing when none runs. */
+export function stopBatch(): void {
+	batch.stopper?.abort();
+}
+
 let batchRunning = false;
 
 /**
@@ -408,6 +424,10 @@ export async function printBatch(
 	const result: BatchPrintResult = { sent: 0, failed: [], stopped: false, printer: null };
 	if (batchRunning) return result;
 	batchRunning = true;
+	const stopper = new AbortController();
+	const stopped = () => stopper.signal.aborted || opts.signal?.aborted === true;
+	batch.stopper = stopper;
+	batch.progress = { done: 0, total: orders.length };
 	try {
 		let printer: string;
 		try {
@@ -425,12 +445,13 @@ export async function printBatch(
 			} catch (e) {
 				result.failed.push({ number: order.number, text: failureText(e) });
 			}
+			batch.progress = { done: i + 1, total: orders.length };
 			try {
 				opts.onprogress?.(i + 1, orders.length);
 			} catch {
 				// A broken screen does not stop the sheets.
 			}
-			if (opts.signal?.aborted && i + 1 < orders.length) {
+			if (stopped() && i + 1 < orders.length) {
 				result.stopped = true;
 				break;
 			}
@@ -438,6 +459,8 @@ export async function printBatch(
 		return result;
 	} finally {
 		batchRunning = false;
+		batch.progress = null;
+		batch.stopper = null;
 	}
 }
 

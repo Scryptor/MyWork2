@@ -35,7 +35,9 @@ import {
 	preview,
 	printDocument,
 	printDocuments,
+	batch,
 	printBatch,
+	stopBatch,
 	printShortcut,
 	printTarget,
 	savePdf,
@@ -589,6 +591,24 @@ describe('printing a batch of orders', () => {
 		expect((await first).sent).toBe(3);
 		expect(sentIds()).toEqual([11, 12, 13]);
 		// Once it is over the next one runs.
+		expect((await printBatch('intake_act', ORDERS, {})).sent).toBe(3);
+	});
+
+	it('the running batch is in module state: its progress shows, stopBatch stops after the current order', async () => {
+		expect(batch.progress).toBeNull();
+		const seen: ({ done: number; total: number } | null)[] = [];
+		const r = await printBatch('intake_act', ORDERS, {
+			onprogress: () => {
+				seen.push(batch.progress);
+				stopBatch();
+			}
+		});
+		expect(seen).toEqual([{ done: 1, total: 3 }]);
+		expect(r).toMatchObject({ sent: 1, stopped: true });
+		expect(sentIds()).toEqual([11]);
+		expect(batch.progress).toBeNull();
+		// Nothing running: stopping does nothing, and the next batch is not affected.
+		stopBatch();
 		expect((await printBatch('intake_act', ORDERS, {})).sent).toBe(3);
 	});
 

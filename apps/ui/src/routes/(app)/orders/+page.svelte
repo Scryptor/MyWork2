@@ -67,7 +67,13 @@
 	import DataTable from '#lib/ui/table/DataTable.svelte';
 	import type { DocumentKind } from '$api/DocumentKind';
 	import BulkPrintMenu from '#lib/print/BulkPrintMenu.svelte';
-	import { printBatch, savePdfBatch, showBatchResult } from '#lib/print/print.svelte.js';
+	import {
+		batch,
+		printBatch,
+		savePdfBatch,
+		showBatchResult,
+		stopBatch
+	} from '#lib/print/print.svelte.js';
 	import SelectionBar from '#lib/ui/table/SelectionBar.svelte';
 	import type { RowId } from '#lib/ui/table/types.js';
 	import TextInput from '#lib/ui/TextInput.svelte';
@@ -254,28 +260,17 @@
 	}
 	// «Печать ▾» of the selection: a batch to the printer (one at a time, «Остановить» ends it after the
 	// order being sent) or one PDF.
-	let printProgress = $state<{ done: number; total: number } | null>(null);
-	let stopPrint: AbortController | null = null;
+	const printProgress = $derived(batch.progress);
 	const selectedOrders = () => list.rows.filter((r) => selected.has(r.id));
 	async function printSelected(kind: DocumentKind) {
 		const orders = selectedOrders();
 		if (printProgress || bulkBusy || orders.length === 0) return;
-		stopPrint = new AbortController();
-		printProgress = { done: 0, total: orders.length };
-		try {
-			const r = await printBatch(
+		showBatchResult(
+			await printBatch(
 				kind,
-				orders.map((o) => ({ id: o.id, number: ru.order.title(o.id) })),
-				{
-					signal: stopPrint.signal,
-					onprogress: (done, total) => (printProgress = { done, total })
-				}
-			);
-			showBatchResult(r);
-		} finally {
-			printProgress = null;
-			stopPrint = null;
-		}
+				orders.map((o) => ({ id: o.id, number: ru.order.title(o.id) }))
+			)
+		);
 	}
 	async function savePdfSelected(kind: DocumentKind) {
 		const orders = selectedOrders();
@@ -579,7 +574,7 @@
 						busy={bulkBusy}
 						onprint={(kind) => void printSelected(kind)}
 						onsave={(kind) => void savePdfSelected(kind)}
-						onstop={() => stopPrint?.abort()}
+						onstop={stopBatch}
 					/>
 				</SelectionBar>
 			</div>
