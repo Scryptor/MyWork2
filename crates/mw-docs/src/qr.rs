@@ -2,13 +2,20 @@
 
 use std::fmt::Write;
 
-use qrcode::{Color, EcLevel, QrCode};
+use qrcode::bits::Bits;
+use qrcode::{Color, EcLevel, QrCode, Version};
 
-/// SVG of `text` (its UTF-8 bytes) as a QR code of error correction level M: one unit per module
-/// (`viewBox="0 0 n n"`, `n` the side of the symbol in modules), no quiet zone, one `<path>` of the
-/// runs of dark modules row by row. `None` when the text does not fit a QR code.
+/// SVG of `text` as a QR code of error correction level M: one unit per module (`viewBox="0 0 n n"`,
+/// `n` the side of the symbol in modules), no quiet zone, one `<path>` of the runs of dark modules
+/// row by row. `None` when the text does not fit a QR code.
+///
+/// The UTF-8 bytes of the text are one byte-mode segment, without an ECI designator, in the smallest
+/// version that holds them. Not the automatic choice of modes: it takes byte pairs that look like
+/// Shift-JIS for Kanji, and a Cyrillic letter followed by another often does (the second byte of
+/// А–П and с–я is 0x81–0x9F, the next letter starts with 0xD0 or 0xD1); phones read such a segment
+/// as Japanese characters.
 pub(crate) fn qr_svg(text: &str) -> Option<String> {
-    let code = QrCode::with_error_correction_level(text.as_bytes(), EcLevel::M).ok()?;
+    let code = (1..=40).find_map(|version| byte_mode(text.as_bytes(), version))?;
     let n = code.width();
     let mut path = String::new();
     for (y, row) in code.to_colors().chunks(n).enumerate() {
@@ -25,6 +32,14 @@ pub(crate) fn qr_svg(text: &str) -> Option<String> {
         "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 {n} {n}\" \
          shape-rendering=\"crispEdges\"><path d=\"{path}\"/></svg>"
     ))
+}
+
+/// `data` as one byte-mode segment in a symbol of `version`; `None` when it does not fit.
+fn byte_mode(data: &[u8], version: i16) -> Option<QrCode> {
+    let mut bits = Bits::new(Version::Normal(version));
+    bits.push_byte_data(data).ok()?;
+    bits.push_terminator(EcLevel::M).ok()?;
+    QrCode::with_bits(bits, EcLevel::M).ok()
 }
 
 #[cfg(test)]
@@ -84,18 +99,57 @@ mod tests {
             .collect()
     }
 
+    /// Cyrillic whose UTF-8 bytes look like Shift-JIS pairs (capitals А–П, small с–я).
+    const KANJI_LOOKALIKES: [&str; 3] = [
+        "https://example.com/o/ИВАНОВ",
+        "https://example.com/?q=стыдсчёттуфхцчшщъыьэюя",
+        "https://example.com/?q=ДЕВАЙС ПОДМЕНА",
+    ];
+
+    /// `text` as one byte-mode segment in a symbol of `version` (level M), built here on its own;
+    /// `None` when it does not fit.
+    fn byte_symbol(text: &str, version: i16) -> Option<QrCode> {
+        let mut bits = Bits::new(Version::Normal(version));
+        bits.push_byte_data(text.as_bytes()).ok()?;
+        bits.push_terminator(EcLevel::M).ok()?;
+        QrCode::with_bits(bits, EcLevel::M).ok()
+    }
+
+    fn dark(code: &QrCode) -> Vec<bool> {
+        code.to_colors().iter().map(|c| *c == Color::Dark).collect()
+    }
+
     #[test]
     fn svg_draws_the_modules_of_the_symbol() {
         let svg = qr_svg(TELEGRAM).expect("fits");
-        let code =
-            QrCode::with_error_correction_level(TELEGRAM.as_bytes(), EcLevel::M).expect("fits");
-        let n = code.width();
+        let (n, modules_drawn) = modules(&svg);
         assert_eq!((n - 21) % 4, 0, "{n}");
         assert!(svg.contains(&format!("viewBox=\"0 0 {n} {n}\"")), "{svg}");
         assert!(svg.contains("shape-rendering=\"crispEdges\""));
         assert_eq!(svg.matches("<path").count(), 1);
-        let expected: Vec<bool> = code.to_colors().iter().map(|c| *c == Color::Dark).collect();
-        assert_eq!(modules(&svg), (n, expected));
+        let version = i16::try_from((n - 17) / 4).expect("version");
+        let code = byte_symbol(TELEGRAM, version).expect("fits");
+        assert_eq!(code.width(), n);
+        assert_eq!(modules_drawn, dark(&code));
+    }
+
+    /// Every text is one byte-mode segment in the smallest symbol that holds it: no Kanji segment,
+    /// which phones would read as Shift-JIS, and no other mode either.
+    #[test]
+    fn every_text_is_one_byte_segment() {
+        let digits = "https://example.com/o/12345678901234567890";
+        let other: Vec<&str> = [TELEGRAM, digits]
+            .into_iter()
+            .chain(KANJI_LOOKALIKES)
+            .filter(|text| {
+                let (n, modules_drawn) = modules(&qr_svg(text).expect("fits"));
+                let version = i16::try_from((n - 17) / 4).expect("version");
+                let smallest = version == 1 || byte_symbol(text, version - 1).is_none();
+                byte_symbol(text, version).map(|code| dark(&code)) != Some(modules_drawn)
+                    || !smallest
+            })
+            .collect();
+        assert!(other.is_empty(), "not one byte segment: {other:?}");
     }
 
     #[test]
@@ -104,7 +158,10 @@ mod tests {
             TELEGRAM,
             "https://t.me/сервис_пример",
             "https://yandex.ru/maps/?text=Энск",
-        ] {
+        ]
+        .into_iter()
+        .chain(KANJI_LOOKALIKES)
+        {
             assert_eq!(decode(&qr_svg(text).expect("fits")), [text]);
         }
     }
