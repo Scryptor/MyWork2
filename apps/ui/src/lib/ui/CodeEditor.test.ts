@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
 import CodeEditorHarness from './CodeEditorHarness.test-helper.svelte';
 
-const gutterLines = (c: HTMLElement) => [...c.querySelectorAll('.gutter > span')];
+const gutterLines = (c: HTMLElement) => [...c.querySelectorAll('.gutter span')];
 
 describe('CodeEditor', () => {
 	it('numbers the lines and follows new ones', async () => {
@@ -46,5 +46,15 @@ describe('CodeEditor', () => {
 		expect(box).toHaveAttribute('wrap', 'off');
 		expect(box).toHaveAttribute('autocapitalize', 'off');
 		expect(box).toHaveAttribute('autocomplete', 'off');
+	});
+
+	it('moves the numbers with the scroll of the field', async () => {
+		const { container } = render(CodeEditorHarness, { value: 'a\nb\nc' });
+		const box = screen.getByRole('textbox', { name: 'Код' });
+		const numbers = container.querySelector<HTMLElement>('.numbers')!;
+		expect(numbers.style.transform).toBe('translateY(0px)');
+		box.scrollTop = 37;
+		await fireEvent.scroll(box);
+		expect(numbers.style.transform).toBe('translateY(-37px)');
 	});
 });

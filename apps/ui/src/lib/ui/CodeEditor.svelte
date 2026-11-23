@@ -31,7 +31,7 @@
 	const fid = $derived(id ?? uid);
 	const errorsId = $derived(`${fid}-errors`);
 	let el = $state<HTMLTextAreaElement | null>(null);
-	let gutter = $state<HTMLElement | null>(null);
+	let scrollTop = $state(0);
 	$effect(() => {
 		ref = el;
 	});
@@ -40,17 +40,19 @@
 	const failed = $derived(new Set(errors.map((e) => e.line)));
 
 	function sync() {
-		if (gutter && el) gutter.scrollTop = el.scrollTop;
+		if (el) scrollTop = el.scrollTop;
 	}
 </script>
 
 <Field {label} {hint} id={fid}>
 	{#snippet children(f)}
 		<div class="editor" class:invalid={errors.length > 0} style:--rows={rows}>
-			<div class="gutter" aria-hidden="true" bind:this={gutter}>
-				{#each numbers as n (n)}
-					<span data-error={failed.has(n) ? '' : undefined}>{n}</span>
-				{/each}
+			<div class="gutter" aria-hidden="true">
+				<div class="numbers" style:transform="translateY({-scrollTop}px)">
+					{#each numbers as n (n)}
+						<span data-error={failed.has(n) ? '' : undefined}>{n}</span>
+					{/each}
+				</div>
 			</div>
 			<textarea
 				id={f.id}
@@ -120,6 +122,9 @@
 		color: var(--text-3);
 		text-align: right;
 		user-select: none;
+	}
+	.numbers {
+		will-change: transform;
 	}
 	.gutter span {
 		display: block;
