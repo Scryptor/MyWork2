@@ -110,12 +110,15 @@ jobs:
         working-directory: apps/desktop/src-tauri
     steps:
       - uses: actions/checkout@v5
+      # A slow mirror can make `timeout` kill apt in the middle of dpkg; the next attempt first finishes what
+      # dpkg left half-configured, otherwise apt refuses to run at all ("dpkg was interrupted").
       - name: Install WebKitGTK and the other Tauri libraries (up to three attempts of 5 minutes)
         if: runner.os == 'Linux'
         shell: bash
-        timeout-minutes: 16
+        timeout-minutes: 32
         run: >-
           for i in 1 2 3; do
+          sudo dpkg --configure -a;
           timeout 300 sudo apt-get update &&
           timeout 300 sudo apt-get install -y libwebkit2gtk-4.1-dev libsoup-3.0-dev librsvg2-dev libayatana-appindicator3-dev
           && exit 0; echo "retry $i"; done; exit 1
