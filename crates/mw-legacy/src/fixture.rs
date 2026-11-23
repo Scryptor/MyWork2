@@ -864,6 +864,9 @@ async fn write_access(
     Ok(())
 }
 
+/// Синтетический акт приёма, каким его сохраняет Word: `<o:p>`, метка, разбитая тегами.
+const INTAKE_TEMPLATE: &str = "<html><body><p>Акт N <b>NUMZAKAZ</b><b>PRINT</b><o:p></o:p></p>\r\n<p>Клиент: FIOPRINT</p>\r\n<p>PRICEFULLPRINT</p>\r\n<p>Гарантия на чистку — 14 дней</p></body></html>";
+
 fn cp1251(text: &str) -> Vec<u8> {
     encoding_rs::WINDOWS_1251.encode(text).0.into_owned()
 }
@@ -942,6 +945,7 @@ pub async fn write_fixture(dir: &Path, options: &FixtureOptions) -> std::io::Res
     }
     put(dir, "settings/Stock/brands.txt", &cp1251("SAMSUNG"))?;
     put(dir, "Shablon_Priem.htm", &cp1251("<html>Акт</html>"))?;
+    put(dir, "Shablon_Act_Priema.htm", &cp1251(INTAKE_TEMPLATE))?;
     if options.version >= FixtureVersion::V29 {
         put(dir, "settings/Stock/Photos/abc123.jpg", b"stock-photo")?;
     }

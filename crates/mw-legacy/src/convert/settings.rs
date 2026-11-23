@@ -423,7 +423,13 @@ mod tests {
             (None, None)
         );
         assert_eq!(rows.iter().filter(|r| r.source == "Config.ini").count(), 16);
-        assert_eq!(rows.iter().filter(|r| r.source == "file").count(), 14);
+        assert_eq!(rows.iter().filter(|r| r.source == "file").count(), 15);
+        let template = rows
+            .iter()
+            .find(|r| r.source == "file" && r.source_key == "Shablon_Act_Priema.htm")
+            .expect("акт приёма сохранён в legacy_rows");
+        let text = template.raw["text"].as_str().unwrap();
+        assert!(text.contains("Гарантия на чистку — 14 дней") && text.contains("<o:p>"));
         assert!(!format!("{rows:?}").contains(FIXTURE_SMS_TOKEN));
         assert!(!format!("{:?}", w.list()).contains(FIXTURE_SMS_TOKEN));
         assert_eq!(

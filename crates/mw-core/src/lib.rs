@@ -15,6 +15,7 @@ pub mod documents;
 mod error;
 mod gate;
 mod import;
+mod legacy_templates;
 mod orders;
 mod page;
 mod patch;
@@ -51,6 +52,7 @@ pub use import::{
     ImportedHistory, ImportedLegacyRow, ImportedOrder, ImportedSettings, ImportedUser,
     LegacyImportMode, LegacyImportRecord, LegacyTarget,
 };
+pub use legacy_templates::LegacyTemplate;
 pub use orders::{
     ClientRef, IssuedFilter, NewOrder, NewOrderComment, NewWarrantyCase, Order, OrderComment,
     OrderFilter, OrderListItem, OrderPatch, OrderSort, OrderSortField, OrderSummary,

@@ -4,7 +4,9 @@ use axum::extract::State;
 use axum::http::{HeaderValue, header};
 use axum::response::{IntoResponse, Response};
 use mw_core::documents::{DocumentBytes, DocumentOutput, DocumentRequest};
-use mw_core::{DocumentField, DocumentTemplate, DocumentTemplateInfo, TemplateSave};
+use mw_core::{
+    DocumentField, DocumentTemplate, DocumentTemplateInfo, LegacyTemplate, TemplateSave,
+};
 use mw_domain::document_template::{Template, TemplateFile};
 use mw_domain::documents::DocumentKind;
 
@@ -45,6 +47,29 @@ pub(super) async fn get_template(
     Path(kind): Path<DocumentKind>,
 ) -> Result<Json<DocumentTemplate>, ApiError> {
     Ok(Json(state.core.get_document_template(&actor, kind).await?))
+}
+
+/// Текст старого шаблона акта MyWork 2 с метками, заменёнными полями (достаточно войти). 404 —
+/// у вида нет старого файла или импорта не было.
+#[utoipa::path(
+    get,
+    path = "/api/v1/document-templates/{kind}/legacy",
+    tag = "Документы",
+    security(("bearer" = [])),
+    params(("kind" = DocumentKind, Path, description = "Вид документа")),
+    responses((status = 200, body = LegacyTemplate))
+)]
+pub(super) async fn legacy_template(
+    State(state): State<AppState>,
+    CurrentActor(actor): CurrentActor,
+    Path(kind): Path<DocumentKind>,
+) -> Result<Json<LegacyTemplate>, ApiError> {
+    state
+        .core
+        .legacy_document_template(&actor, kind)
+        .await?
+        .map(Json)
+        .ok_or_else(ApiError::no_legacy_template)
 }
 
 /// Сохраняет шаблон по номеру правки (право «настройки»). Модель, равная стандартной, сбрасывает

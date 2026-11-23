@@ -7,6 +7,7 @@ import {
 	duplicateBlock,
 	flatten,
 	insertBlock,
+	insertTextBlock,
 	intoColumnTargets,
 	moveBlock,
 	placeForNew,
@@ -268,5 +269,31 @@ describe('intoColumnTargets', () => {
 	it('the moves it offers are the moves canMove allows', () => {
 		const t = tpl([text('a'), columns([], []), text('b'), columns([text('y')], [])]);
 		for (const target of intoColumnTargets(t, [0])) expect(canMove(t, [0], target.to)).toBe(true);
+	});
+
+	it('insertTextBlock puts a text block with the starting style after the chosen block', () => {
+		const { template, at } = pure(base(), (t) =>
+			insertTextBlock(t, [0], 'Старый акт\n{заказ.номер}')
+		);
+		expect(at).toEqual([1]);
+		expect(tops(template)).toEqual(['a', 'Старый акт\n{заказ.номер}', 'columns', 'b']);
+		expect(template.blocks[1]).toEqual({
+			copies: 'both',
+			body: {
+				type: 'text',
+				text: 'Старый акт\n{заказ.номер}',
+				size_pt: null,
+				bold: false,
+				align: 'left',
+				one_line: false
+			}
+		});
+	});
+
+	it('insertTextBlock without a chosen block goes to the end; in a column, after the block', () => {
+		expect(tops(insertTextBlock(base(), 'page', 'T').template)).toEqual(['a', 'columns', 'b', 'T']);
+		const inColumn = insertTextBlock(base(), [1, 0, 0], 'T');
+		expect(inColumn.at).toEqual([1, 0, 1]);
+		expect(col(inColumn.template, 1, 0)).toEqual(['x', 'T', 'y']);
 	});
 });

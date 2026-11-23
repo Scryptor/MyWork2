@@ -232,7 +232,7 @@ impl Core {
                 kind,
                 order_id: Some(id),
                 sample: false,
-                options: options.clone(),
+                options,
                 draft: None,
             };
             datas.push(self.document_values(actor, &one).await?);

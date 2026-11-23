@@ -100,6 +100,15 @@ impl ApiError {
         )
     }
 
+    /// У вида нет старого шаблона MyWork 2.
+    pub(crate) fn no_legacy_template() -> Self {
+        Self::new(
+            StatusCode::NOT_FOUND,
+            ErrorCode::NotFound,
+            "Старого шаблона MyWork 2 для этого вида нет",
+        )
+    }
+
     pub(crate) fn path_not_found() -> Self {
         Self::new(
             StatusCode::NOT_FOUND,

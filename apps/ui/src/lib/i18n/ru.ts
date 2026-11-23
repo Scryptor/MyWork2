@@ -1958,6 +1958,12 @@ export const ru = {
 		notTemplateFile: 'Это не файл шаблона MyWork',
 		newerFile: 'Файл сделан в более новой версии программы',
 		misfitFile: 'Шаблон из файла не подходит этому документу',
-		fileLoaded: 'Шаблон загружен из файла'
+		fileLoaded: 'Шаблон загружен из файла',
+		legacyMenu: 'Шаблон из MyWork 2…',
+		legacyTitle: 'Шаблон из MyWork 2',
+		legacyHint:
+			'Текст старого акта: метки заменены полями. Его можно вставить в шаблон текстовым блоком и поправить.',
+		legacyInsert: 'Вставить текстом',
+		legacyInserted: 'Текст из MyWork 2 добавлен блоком «Текст»'
 	}
 } as const;

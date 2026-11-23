@@ -1659,6 +1659,52 @@
         ]
       }
     },
+    "/api/v1/document-templates/{kind}/legacy": {
+      "get": {
+        "tags": [
+          "Документы"
+        ],
+        "summary": "Текст старого шаблона акта MyWork 2 с метками, заменёнными полями (достаточно войти). 404 —\nу вида нет старого файла или импорта не было.",
+        "operationId": "legacy_template",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "description": "Вид документа",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/DocumentKind"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyTemplate"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/document-templates/{kind}/preview": {
       "post": {
         "tags": [
@@ -6657,6 +6703,24 @@
           }
         },
         "additionalProperties": false
+      },
+      "LegacyTemplate": {
+        "type": "object",
+        "description": "Текст старого шаблона акта, переведённый в текст блока «Текст».",
+        "required": [
+          "file",
+          "text"
+        ],
+        "properties": {
+          "file": {
+            "type": "string",
+            "description": "Имя файла в старой папке."
+          },
+          "text": {
+            "type": "string",
+            "description": "Текст с полями в фигурных скобках; строки разделены переводами строк."
+          }
+        }
       },
       "LoginRequest": {
         "type": "object",

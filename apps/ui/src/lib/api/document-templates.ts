@@ -3,10 +3,11 @@ import type { DocumentKind } from '$api/DocumentKind';
 import type { DocumentPages } from '$api/DocumentPages';
 import type { DocumentTemplate } from '$api/DocumentTemplate';
 import type { DocumentTemplateInfo } from '$api/DocumentTemplateInfo';
+import type { LegacyTemplate } from '$api/LegacyTemplate';
 import type { Template } from '$api/Template';
 import type { TemplatePreview } from '$api/TemplatePreview';
 import type { TemplateSave } from '$api/TemplateSave';
-import { request, requestFile } from './client.js';
+import { ApiError, request, requestFile } from './client.js';
 
 const base = (kind: DocumentKind) => `/document-templates/${kind}`;
 
@@ -46,3 +47,13 @@ export const importTemplateFile = (kind: DocumentKind, file: unknown): Promise<T
 	request('POST', `${base(kind)}/file`, { body: file });
 
 export const documentFields = (): Promise<DocumentField[]> => request('GET', '/document-fields');
+
+/** The text of the old MyWork 2 act of the kind, or null when the import left none (a 404). */
+export async function legacyTemplate(kind: DocumentKind): Promise<LegacyTemplate | null> {
+	try {
+		return await request<LegacyTemplate>('GET', `${base(kind)}/legacy`);
+	} catch (e) {
+		if (e instanceof ApiError && e.status === 404) return null;
+		throw e;
+	}
+}

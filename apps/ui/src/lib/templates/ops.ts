@@ -1,5 +1,6 @@
 import type { Block } from '$api/Block';
 import type { Template } from '$api/Template';
+import { newBlock } from './defaults.js';
 
 /** `[i]` is a top-level block, `[i, c, j]` block `j` of column `c` of the columns block `i`. */
 export type BlockPath = readonly number[];
@@ -143,4 +144,19 @@ export function intoColumnTargets(
 			return canMove(t, path, to) ? [{ column: c, block: i, to }] : [];
 		});
 	});
+}
+
+/**
+ * The text of an old MyWork 2 act as one «Текст» block with the starting style, put where a new text
+ * block goes (after the chosen block, or at the end). `at` is its place, to choose it afterwards.
+ */
+export function insertTextBlock(
+	t: Template,
+	sel: Choice,
+	text: string
+): { template: Template; at: BlockPath } {
+	const block = newBlock('text');
+	if (block.body.type === 'text') block.body.text = text;
+	const at = placeForNew(t, sel, 'text');
+	return { template: insertBlock(t, at, block), at };
 }

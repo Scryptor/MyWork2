@@ -9,7 +9,7 @@ import {
 	templateErrors,
 	type TemplateEditorApi
 } from './editor.svelte.js';
-import { insertBlock, replaceBlock } from './ops.js';
+import { insertBlock, insertTextBlock, replaceBlock } from './ops.js';
 
 const text = (s: string): Block => ({
 	copies: 'both',
@@ -95,6 +95,18 @@ beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
 describe('createTemplateEditor', () => {
+	it('the text of an old act goes in as one step: one undo takes it out', async () => {
+		const server = fakeServer();
+		const ed = createTemplateEditor(server.current, { api: server.api });
+		const { template } = insertTextBlock(ed.template, ed.selected, 'Старый акт');
+		ed.edit(template);
+		expect(ed.template.blocks.at(-1)).toEqual(text('Старый акт'));
+		ed.undo();
+		expect(ed.template).toEqual(STANDARD);
+		expect(ed.canUndo).toBe(false);
+		ed.dispose();
+	});
+
 	it('an edit can be undone; the undo brings the model back and saves it', async () => {
 		const server = fakeServer();
 		const ed = createTemplateEditor(server.current, { api: server.api });

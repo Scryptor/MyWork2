@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use mw_docs::{Rendered, compile_for_tests, merge};
 
 fn label(text: &str) -> Rendered {

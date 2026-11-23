@@ -5,16 +5,19 @@
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import Download from '@lucide/svelte/icons/download';
 	import FileIcon from '@lucide/svelte/icons/file';
+	import History from '@lucide/svelte/icons/history';
 	import Upload from '@lucide/svelte/icons/upload';
 	import { errorMessage } from '#lib/api/client.js';
-	import { exportTemplateFile } from '#lib/api/document-templates.js';
+	import { exportTemplateFile, legacyTemplate } from '#lib/api/document-templates.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import { downloadBlob } from '#lib/platform/download.js';
 	import Button from '#lib/ui/Button.svelte';
 	import DropdownMenu, { type MenuItem } from '#lib/ui/DropdownMenu.svelte';
 	import { toast } from '#lib/ui/toast/toast.svelte.js';
 	import type { TemplateEditor } from './editor.svelte.js';
+	import LegacyTemplateDialog from './LegacyTemplateDialog.svelte';
 	import { readTemplateFile } from './file.js';
+	import { insertTextBlock } from './ops.js';
 
 	let {
 		editor,
@@ -65,10 +68,42 @@
 		}
 	}
 
-	const items: MenuItem[] = [
+	// The text of the old act of this kind, asked once when the editor opens for it; the item is there
+	// only when the import left a text.
+	let legacy = $state.raw<string | null>(null);
+	let legacyOpen = $state(false);
+	$effect(() => {
+		const kind = editor.kind;
+		let current = true;
+		legacy = null;
+		legacyTemplate(kind).then(
+			(found) => {
+				if (current) legacy = found?.text ?? null;
+			},
+			() => {
+				// Without the answer there is no item: the rest of the menu works as it is.
+			}
+		);
+		return () => {
+			current = false;
+		};
+	});
+
+	/** One step of the history: after the chosen block, or at the end. */
+	function insertLegacy(text: string) {
+		const { template, at } = insertTextBlock(editor.template, editor.selected, text);
+		editor.edit(template);
+		editor.select(at);
+		toast.show({ message: t.legacyInserted, tone: 'success' });
+	}
+
+	const items = $derived<MenuItem[]>([
 		{ label: t.saveFile, icon: Download, onselect: () => void save() },
-		{ label: t.loadFile, icon: Upload, onselect: () => input?.click() }
-	];
+		{ label: t.loadFile, icon: Upload, onselect: () => input?.click() },
+		...(legacy === null
+			? []
+			: [{ label: t.legacyMenu, icon: History, onselect: () => (legacyOpen = true) }])
+	]);
 </script>
 
 <DropdownMenu {items} label={t.file}>
@@ -85,3 +120,6 @@
 	aria-hidden="true"
 	onchange={load}
 />
+{#if legacy !== null}
+	<LegacyTemplateDialog bind:open={legacyOpen} text={legacy} oninsert={insertLegacy} />
+{/if}

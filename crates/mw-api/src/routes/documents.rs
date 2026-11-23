@@ -157,7 +157,7 @@ async fn respond(
         draft: None,
     };
     let file = state.core.export_document(actor, request, output).await?;
-    let mut response = match file.bytes {
+    let response = match file.bytes {
         DocumentBytes::Pdf(pdf) => {
             let name = file_name(kind, order_id.filter(|_| kind.for_order()));
             pdf_response(pdf, &name)

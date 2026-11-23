@@ -223,3 +223,60 @@ async fn printing_uses_saved_template() {
         );
     }
 }
+
+#[tokio::test]
+async fn legacy_template_text_is_served_or_404() {
+    use mw_db::entity::{legacy_import, legacy_row};
+    use sea_orm::{ActiveModelTrait, ActiveValue::NotSet, Set};
+
+    for t in apis(Listen::Network).await {
+        let token = t.admin_token().await;
+        // Импорта нет: 404 и у вида с файлом.
+        let r = t
+            .get(&format!("{BASE}/intake_act/legacy"), Some(&token))
+            .await;
+        assert_eq!(r.status, 404, "{}: {}", t.label, r.body);
+
+        let import = legacy_import::ActiveModel {
+            id: NotSet,
+            imported_at: Set(chrono::NaiveDate::from_ymd_opt(2026, 11, 1)
+                .unwrap()
+                .and_hms_opt(10, 0, 0)
+                .unwrap()),
+            source_path: Set("fixture".to_owned()),
+            mode: Set("into_empty".to_owned()),
+            report: Set("{}".to_owned()),
+        }
+        .insert(t.core.db())
+        .await
+        .unwrap();
+        legacy_row::ActiveModel {
+            id: NotSet,
+            import_id: Set(import.id),
+            source: Set("file".to_owned()),
+            source_key: Set("Shablon_Act_Priema.htm".to_owned()),
+            target_table: Set(None),
+            target_id: Set(None),
+            raw: Set(
+                json!({"encoding": "windows-1251", "text": "<p>FIOPRINT<o:p></o:p></p>"})
+                    .to_string(),
+            ),
+        }
+        .insert(t.core.db())
+        .await
+        .unwrap();
+
+        let r = t
+            .get(&format!("{BASE}/intake_act/legacy"), Some(&token))
+            .await;
+        assert_eq!(r.status, 200, "{}: {}", t.label, r.body);
+        assert_eq!(r.body["file"], "Shablon_Act_Priema.htm", "{}", t.label);
+        assert_eq!(r.body["text"], "{клиент.фио}", "{}", t.label);
+        for kind in ["sticker", "issue_act"] {
+            let r = t.get(&format!("{BASE}/{kind}/legacy"), Some(&token)).await;
+            assert_eq!(r.status, 404, "{} {kind}: {}", t.label, r.body);
+        }
+        let r = t.get(&format!("{BASE}/intake_act/legacy"), None).await;
+        assert_eq!(r.status, 401, "{}", t.label);
+    }
+}
