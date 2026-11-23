@@ -128,6 +128,33 @@ test.describe('the editor', () => {
 		await expect(item(page, `Текст · ${mark}`)).toBeVisible();
 	});
 
+	test('leaving_right_after_typing_saves_the_template_first', async ({ page, request }, info) => {
+		const { kind } = documentOf(info);
+		const mark = uniq('Строка');
+		await openEditor(page, info);
+		// A slow server: leaving must wait for the answer.
+		await page.route(`**/api/v1/document-templates/${kind}`, async (route) => {
+			if (route.request().method() === 'PUT') await new Promise((r) => setTimeout(r, 700));
+			await route.continue();
+		});
+		await addText(page, mark);
+		await page.getByRole('link', { name: 'Документы и реквизиты' }).first().click();
+		await expect(page).toHaveURL(/\/settings\/documents$/);
+		expect(textsOf((await fetchTemplate(request, kind)).template)).toContain(mark);
+	});
+
+	test('a_failed_save_keeps_the_user_in_the_editor', async ({ page }, info) => {
+		const { kind } = documentOf(info);
+		await openEditor(page, info);
+		await page.route(`**/api/v1/document-templates/${kind}`, (route) =>
+			route.request().method() === 'PUT' ? route.abort('internetdisconnected') : route.continue()
+		);
+		await addText(page, uniq('Строка'));
+		await page.getByRole('link', { name: 'Документы и реквизиты' }).first().click();
+		await expect(page.getByText(/Шаблон не сохранён/).first()).toBeVisible();
+		await expect(page).toHaveURL(new RegExp(`/templates/${kind}$`));
+	});
+
 	test('undo_hotkey_undoes_template_edit', async ({ page, request }, info) => {
 		const { kind } = documentOf(info);
 		const mark = uniq('Строка');

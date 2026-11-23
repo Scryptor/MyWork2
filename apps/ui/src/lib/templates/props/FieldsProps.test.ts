@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
+import { tick } from 'svelte';
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { Block } from '$api/Block';
 import type { FieldRow } from '$api/FieldRow';
@@ -64,5 +65,55 @@ describe('FieldsProps', () => {
 		expect(
 			screen.getAllByRole('group').filter((g) => g.getAttribute('aria-label')?.startsWith('Строка'))
 		).toHaveLength(1);
+	});
+
+	/** The titles of the rows on screen, in order. */
+	const titles = () =>
+		screen.getAllByRole('textbox', { name: 'Название' }).map((e) => (e as HTMLInputElement).value);
+	const setRows = (editor: ReturnType<typeof setup>['editor'], list: FieldRow[]) => {
+		const t = editor.template;
+		editor.edit({ ...t, blocks: [fields(list)] });
+	};
+
+	it('rows changed from outside (an edit, an undo, a redo) show on screen, whatever the length', async () => {
+		const { editor } = setup([row('А'), row('Б')]);
+		expect(titles()).toEqual(['А', 'Б']);
+		setRows(editor, [row('А'), row('Б'), row('В')]);
+		await tick();
+		expect(titles()).toEqual(['А', 'Б', 'В']);
+		// The same length with other rows, as «Взять новое» brings them.
+		setRows(editor, [row('Г'), row('Д'), row('Е')]);
+		await tick();
+		expect(titles()).toEqual(['Г', 'Д', 'Е']);
+		editor.undo();
+		await tick();
+		expect(titles()).toEqual(['А', 'Б', 'В']);
+		editor.undo();
+		await tick();
+		expect(titles()).toEqual(['А', 'Б']);
+		editor.redo();
+		await tick();
+		expect(titles()).toEqual(['А', 'Б', 'В']);
+	});
+
+	it('the rows are not made again once they are on screen (no temporary keys)', async () => {
+		setup([row('А'), row('Б')]);
+		const first = screen
+			.getAllByRole('group')
+			.filter((g) => g.getAttribute('aria-label')?.startsWith('Строка'));
+		expect(first).toHaveLength(2);
+		await tick();
+		await tick();
+		expect(first.every((g) => g.isConnected)).toBe(true);
+	});
+
+	it('after the list was changed from outside the rows can still be moved with the arrows', async () => {
+		const { editor, rows } = setup([row('А'), row('Б')]);
+		setRows(editor, [row('А'), row('Б'), row('В')]);
+		await tick();
+		screen.getByRole('button', { name: 'Переместить „В“' }).focus();
+		await userEvent.keyboard('{ArrowUp}');
+		await new Promise((r) => setTimeout(r, 500));
+		expect(rows().map((r) => r.label)).toEqual(['А', 'В', 'Б']);
 	});
 });

@@ -19,13 +19,18 @@ function nav(to: string | null, o: Partial<LeaveNavigation> = {}) {
 	} as LeaveNavigation & { cancel: ReturnType<typeof vi.fn> };
 }
 
-function setup(saved: (ed: Ed) => Promise<boolean>, ed: Ed | null = { unsaved: true }) {
+function setup(
+	saved: (ed: Ed) => Promise<boolean>,
+	ed: Ed | null = { unsaved: true },
+	skip?: (nav: LeaveNavigation, ed: Ed) => boolean
+) {
 	const go = vi.fn();
 	const goBack = vi.fn();
 	const guard = createLeaveGuard<Ed>({
 		editor: () => ed,
 		unsaved: (e) => e.unsaved,
 		saved,
+		skip,
 		goto: go,
 		go: goBack
 	});
@@ -118,5 +123,25 @@ describe('createLeaveGuard', () => {
 		await Promise.resolve();
 		await Promise.resolve();
 		expect(go).not.toHaveBeenCalled();
+	});
+
+	it('a way out the screen says keeps it as it is: not held, not saved', () => {
+		const saved = vi.fn(async () => true);
+		const skip = vi.fn((n: LeaveNavigation) => n.to?.url.pathname === '/same');
+		const { guard, go } = setup(saved, { unsaved: true }, skip);
+		const stay = nav('/same');
+		guard(stay);
+		expect(stay.cancel).not.toHaveBeenCalled();
+		expect(saved).not.toHaveBeenCalled();
+		expect(go).not.toHaveBeenCalled();
+		// Any other way is still held.
+		const away = nav('/other');
+		guard(away);
+		expect(away.cancel).toHaveBeenCalled();
+		expect(saved).toHaveBeenCalledTimes(1);
+		// Without unsaved changes the predicate is not even asked.
+		const calls = skip.mock.calls.length;
+		setup(saved, { unsaved: false }, skip).guard(nav('/same'));
+		expect(skip.mock.calls.length).toBe(calls);
 	});
 });

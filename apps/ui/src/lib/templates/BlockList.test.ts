@@ -122,3 +122,29 @@ describe('BlockList: moving a block with the arrows', () => {
 		editor.dispose();
 	});
 });
+
+describe('BlockList: the rows follow a template changed from outside', () => {
+	it('an edit, an undo and a redo of the template (another length, then the same) show in the rows', async () => {
+		const { editor } = setup([text('Первый'), text('Второй')]);
+		const t = editor.template;
+		// A block added from outside (the file menu, «Взять новое»): the rows follow.
+		editor.edit({ ...t, blocks: [...t.blocks, text('Третий')] });
+		await vi.advanceTimersByTimeAsync(0);
+		expect(shown()).toEqual(['Первый', 'Второй', 'Третий']);
+		// The same length, another order: the rows show the new order, their handles are those blocks.
+		const now = editor.template;
+		editor.edit({ ...now, blocks: [now.blocks[2]!, now.blocks[0]!, now.blocks[1]!] });
+		await vi.advanceTimersByTimeAsync(0);
+		expect(shown()).toEqual(['Третий', 'Первый', 'Второй']);
+		editor.undo();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(shown()).toEqual(['Первый', 'Второй', 'Третий']);
+		editor.undo();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(shown()).toEqual(['Первый', 'Второй']);
+		editor.redo();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(shown()).toEqual(['Первый', 'Второй', 'Третий']);
+		editor.dispose();
+	});
+});

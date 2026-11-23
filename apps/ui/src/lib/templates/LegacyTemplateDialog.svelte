@@ -19,7 +19,18 @@
 </script>
 
 <Dialog bind:open title={t.legacyTitle} description={t.legacyHint} size="lg">
-	<pre class="text" tabindex="0" aria-label={t.legacyTitle}>{text}</pre>
+	<!-- A read-only multi-line text that scrolls: a textbox role makes its focus (for the arrow keys) legal; it is
+	     a div with `white-space: pre-wrap`, because a `pre` may not take an interactive role. -->
+	<div
+		class="text"
+		role="textbox"
+		aria-readonly="true"
+		aria-multiline="true"
+		tabindex="0"
+		aria-label={t.legacyTitle}
+	>
+		{text}
+	</div>
 	{#snippet footer()}
 		<Button onclick={() => (open = false)}>{ru.common.close}</Button>
 		<Button

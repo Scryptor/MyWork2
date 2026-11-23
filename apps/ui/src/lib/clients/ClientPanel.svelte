@@ -7,16 +7,15 @@
 	import Phone from '@lucide/svelte/icons/phone';
 	import Plus from '@lucide/svelte/icons/plus';
 	import { untrack } from 'svelte';
-	import { beforeNavigate, goto } from '$app/navigation';
 	import type { Client } from '$api/Client';
 	import type { ClientListItem } from '$api/ClientListItem';
 	import { listDictionary } from '#lib/api/catalogs.js';
 	import { ApiError, errorMessage } from '#lib/api/client.js';
 	import { getClient, similarClients } from '#lib/api/clients.js';
 	import { app } from '#lib/app/context.svelte.js';
-	import { isSignIn } from '#lib/app/login.js';
 	import { countLabel, dialNumber, displayName } from '#lib/format/index.js';
 	import { ru } from '#lib/i18n/ru.js';
+	import { leaveGuard } from '#lib/navigation/leave-guard.svelte.js';
 	import { intake } from '#lib/intake/intake.svelte.js';
 	import { orderPanel, type PanelOptions } from '#lib/orders/panel.svelte.js';
 	import SaveIndicator from '#lib/orders/SaveIndicator.svelte';
@@ -187,35 +186,19 @@
 	// waits for the save too and then goes on, as the order card does. Closing or reloading the tab with
 	// unsaved changes gets the browser's own question. The sign-in page is not held: without a session
 	// nothing can be saved. The list's own changes (filter, sort) keep this client open: nothing to wait.
-	let resume: (() => void) | null = null;
-	beforeNavigate((nav) => {
-		const ed = editor;
-		if (!ed?.unsaved || (nav.to && isSignIn(nav.to.url))) return;
-		const to = nav.to?.url;
-		if (
-			to &&
-			!nav.willUnload &&
-			to.pathname === nav.from?.url.pathname &&
-			openClientId(to.searchParams) === ed.client.id
-		) {
-			return;
+	leaveGuard<ClientEditor>({
+		editor: () => editor,
+		unsaved: (ed) => ed.unsaved,
+		saved,
+		skip: (nav, ed) => {
+			const to = nav.to?.url;
+			return (
+				!!to &&
+				!nav.willUnload &&
+				to.pathname === nav.from?.url.pathname &&
+				openClientId(to.searchParams) === ed.client.id
+			);
 		}
-		nav.cancel();
-		if (nav.willUnload || !nav.to) return;
-		const { url } = nav.to;
-		const delta = nav.type === 'popstate' ? nav.delta : 0;
-		const waiting = resume !== null;
-		resume =
-			delta !== 0
-				? () => history.go(delta)
-				: // eslint-disable-next-line svelte/no-navigation-without-resolve -- where SvelteKit was going
-					() => void goto(url);
-		if (waiting) return;
-		void saved(ed).then((ok) => {
-			const go = resume;
-			resume = null;
-			if (ok && editor === ed) go?.();
-		});
 	});
 	// The screen goes: what is typed is still sent, a failure is told.
 	$effect(

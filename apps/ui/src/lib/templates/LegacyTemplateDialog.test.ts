@@ -8,7 +8,7 @@ const TEXT = 'Акт № {заказ.номер}\nКлиент: {клиент.ф
 describe('LegacyTemplateDialog', () => {
 	it('shows the text with its line breaks', () => {
 		render(LegacyTemplateDialog, { open: true, text: TEXT, oninsert: vi.fn() });
-		const shown = screen.getByLabelText('Шаблон из MyWork 2', { selector: 'pre' });
+		const shown = screen.getByRole('textbox', { name: 'Шаблон из MyWork 2' });
 		expect(shown.textContent).toBe(TEXT);
 	});
 

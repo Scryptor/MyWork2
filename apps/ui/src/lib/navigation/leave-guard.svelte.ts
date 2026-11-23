@@ -12,6 +12,7 @@ export interface LeaveNavigation {
 	readonly type: string;
 	readonly delta?: number;
 	readonly to: { readonly url: URL } | null;
+	readonly from?: { readonly url: URL } | null;
 }
 
 export interface LeaveGuardOptions<E> {
@@ -20,6 +21,8 @@ export interface LeaveGuardOptions<E> {
 	unsaved: (editor: E) => boolean;
 	/** Saves what is typed (and tells why not); false: stay. */
 	saved: (editor: E) => Promise<boolean>;
+	/** A way out that keeps the screen as it is (a change of the list's own filter): nothing to wait for. */
+	skip?: (nav: LeaveNavigation, editor: E) => boolean;
 	/** Where SvelteKit was going; `goto` by default. */
 	goto?: (url: URL) => void;
 	/** The browser's «Назад» by its delta; `history.go` by default. */
@@ -35,6 +38,7 @@ export function createLeaveGuard<E>(o: LeaveGuardOptions<E>): (nav: LeaveNavigat
 	return (nav) => {
 		const ed = o.editor();
 		if (ed === null || !o.unsaved(ed) || (nav.to && isSignIn(nav.to.url))) return;
+		if (o.skip?.(nav, ed)) return;
 		nav.cancel();
 		if (nav.willUnload || !nav.to) return;
 		const { url } = nav.to;
