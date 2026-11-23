@@ -168,6 +168,15 @@ test.describe('the editor', () => {
 			.getByRole('group', { name: 'Строка 2' })
 			.getByRole('textbox', { name: 'Название' })
 			.fill(row);
+		const second = p.getByRole('group', { name: 'Строка 2' });
+		// The insert button is named after its row, and every row has «Жирная».
+		await expect(
+			p.getByRole('button', { name: `Вставить поле: ${row}`, exact: true })
+		).toBeVisible();
+		await expect(
+			p.getByRole('button', { name: 'Вставить поле: Название', exact: true })
+		).toBeVisible();
+		await expect(second.getByRole('switch', { name: 'Жирная' })).toBeVisible();
 		await addBlock(page, 'Штрихкод');
 		await number('Высота, мм').fill('20');
 		await addBlock(page, 'Подписи');

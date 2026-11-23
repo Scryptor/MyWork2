@@ -1902,6 +1902,7 @@ export const ru = {
 		rowLabel: 'Название',
 		rowValue: 'Значение',
 		hideIfEmpty: 'Скрывать, если пусто',
+		rowBold: 'Жирная',
 		addRow: 'Добавить строку',
 		removeRow: 'Удалить строку',
 		barcodeHeight: 'Высота, мм',

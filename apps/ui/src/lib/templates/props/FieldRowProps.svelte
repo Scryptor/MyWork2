@@ -39,6 +39,7 @@
 		bind:value={() => row.value, (v) => onchange({ value: v }, 'value')}
 	/>
 	<InsertField
+		name={row.label || t.fieldRow(number)}
 		target={valueField}
 		value={row.value}
 		onchange={(v) => onchange({ value: v }, 'value')}
@@ -47,7 +48,7 @@
 		label={t.hideIfEmpty}
 		bind:checked={() => row.hide_if_empty, (v) => onchange({ hide_if_empty: v })}
 	/>
-	<Switch label={t.bold} bind:checked={() => row.bold, (v) => onchange({ bold: v })} />
+	<Switch label={t.rowBold} bind:checked={() => row.bold, (v) => onchange({ bold: v })} />
 	<div>
 		<IconButton label={t.removeRow} icon={Trash2} variant="ghost" onclick={onremove} />
 	</div>
