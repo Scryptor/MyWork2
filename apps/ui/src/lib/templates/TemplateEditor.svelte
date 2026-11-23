@@ -8,7 +8,6 @@
 	import Redo2 from '@lucide/svelte/icons/redo-2';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import Undo2 from '@lucide/svelte/icons/undo-2';
-	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import type { DocumentKind } from '$api/DocumentKind';
@@ -28,7 +27,9 @@
 	import Select from '#lib/ui/Select.svelte';
 	import BlockList from './BlockList.svelte';
 	import type { TemplateEditor } from './editor.svelte.js';
+	import { createOrderSearch } from './order-search.svelte.js';
 	import Properties from './Properties.svelte';
+	import TemplateFileMenu from './TemplateFileMenu.svelte';
 	import TemplatePreview from './TemplatePreview.svelte';
 
 	let { editor }: { editor: TemplateEditor } = $props();
@@ -62,52 +63,17 @@
 	// «Заказ для примера»: «Пример» (the sample order), or an order found by its number, client or device.
 	/** The blank act has no order: its preview is the blank form. */
 	const withOrder = $derived(kind !== 'blank_intake_act');
-	const SEARCH_MS = 200;
-	let orderId = $state<number | null>(null);
-	let orderText = $state<string>(t.sample);
-	let found = $state.raw<{ value: string; hint?: string }[]>([]);
-	/** Every label offered so far and its order; `t.sample` is the sample. */
-	let known = $state.raw(new Map<string, number | null>([[t.sample, null]]));
-	const shownLabel = $derived([...known].find(([, id]) => id === orderId)?.[0] ?? t.sample);
-	const orderItems = $derived([{ value: t.sample, hint: t.sampleHint }, ...found]);
-	let timer: ReturnType<typeof setTimeout> | undefined;
-	let token = 0;
-
-	function search(query: string) {
-		clearTimeout(timer);
-		const mine = ++token;
-		if (query.trim() === '' || known.has(query)) return;
-		timer = setTimeout(() => {
-			listOrders({ query, limit: 20 }).then(
-				(page) => {
-					if (mine !== token) return;
-					const items = page.items.map((o) => ({
-						id: o.id,
-						value: `${ru.order.title(o.id)} · ${deviceOf(o)}`,
-						hint: o.client_name || undefined
-					}));
-					found = items.map(({ value, hint }) => ({ value, hint }));
-					known = new Map([...known, ...items.map((i) => [i.value, i.id] as const)]);
-				},
-				() => {
-					// No suggestions without an answer.
-				}
-			);
-		}, SEARCH_MS);
-	}
-	$effect(() => {
-		const q = orderText;
-		untrack(() => search(q));
-		return () => clearTimeout(timer);
+	const orders = createOrderSearch({
+		sample: t.sample,
+		sampleHint: t.sampleHint,
+		find: async (query) =>
+			(await listOrders({ query, limit: 20 })).items.map((o) => ({
+				id: o.id,
+				label: `${ru.order.title(o.id)} · ${deviceOf(o)}`,
+				hint: o.client_name || undefined
+			}))
 	});
-	function pickOrder(label: string) {
-		const id = known.get(label);
-		if (id !== undefined) orderId = id;
-	}
-	/** Left with a search that picked nothing: the field shows the order chosen. */
-	function leaveOrder() {
-		if (!known.has(orderText)) orderText = shownLabel;
-	}
+	$effect(() => () => orders.dispose());
 
 	// The template's undo and redo, outside the fields: in a field the browser undoes what is typed.
 	$effect(() => {
@@ -118,6 +84,9 @@
 		];
 		return () => offs.forEach((off) => off());
 	});
+
+	/** The texts of a file the document does not take; null: nothing to show. */
+	let misfit = $state.raw<string[] | null>(null);
 
 	type Pane = 'blocks' | 'properties' | 'preview';
 	let pane = $state<Pane>('blocks');
@@ -148,11 +117,11 @@
 				<div class="pick">
 					<Combobox
 						label={t.sampleOrder}
-						items={orderItems}
+						items={orders.items}
 						filter={false}
-						bind:value={orderText}
-						onselect={pickOrder}
-						onblur={leaveOrder}
+						bind:value={() => orders.text, orders.setText}
+						onselect={orders.pick}
+						onblur={orders.leave}
 					/>
 				</div>
 			{/if}
@@ -171,6 +140,7 @@
 					disabled={!editor.canRedo}
 					onclick={() => editor.redo()}
 				/>
+				<TemplateFileMenu {editor} onmisfit={(m) => (misfit = m)} />
 				<Button
 					icon={RotateCcw}
 					disabled={editor.isStandard}
@@ -178,6 +148,16 @@
 				>
 			</div>
 		</div>
+		{#if misfit}
+			<Callout tone="warning" title={t.misfitFile}>
+				<ul class="misfit">
+					{#each misfit as message, i (i)}<li>{message}</li>{/each}
+				</ul>
+				{#snippet actions()}
+					<Button size="sm" onclick={() => (misfit = null)}>{ru.common.close}</Button>
+				{/snippet}
+			</Callout>
+		{/if}
 		{#if editor.conflict}
 			<Callout tone="warning" title={t.conflictTitle}>
 				{t.conflictText}
@@ -197,7 +177,11 @@
 			<BlockList {editor} />
 		</section>
 		<section class="pane preview" class:shown={pane === 'preview'} aria-label={t.preview}>
-			<TemplatePreview {kind} template={editor.template} orderId={withOrder ? orderId : null} />
+			<TemplatePreview
+				{kind}
+				template={editor.template}
+				orderId={withOrder ? orders.orderId : null}
+			/>
 		</section>
 		<section class="pane props" class:shown={pane === 'properties'} aria-label={t.properties}>
 			<Properties {editor} />
@@ -244,6 +228,10 @@
 		flex-wrap: wrap;
 		align-items: flex-end;
 		gap: var(--space-3);
+	}
+	.misfit {
+		margin: 0;
+		padding-inline-start: var(--space-4);
 	}
 	.pick {
 		width: 16rem;

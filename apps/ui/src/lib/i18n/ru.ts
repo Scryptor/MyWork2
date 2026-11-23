@@ -1849,8 +1849,6 @@ export const ru = {
 		mm: (n: number) => `${String(n).replace('.', ',')} мм`,
 		previewFailed: 'Шаблон не построен',
 		previewLoading: 'Превью строится…',
-		/** A block the next task gives its fields to. */
-		noProperties: 'Свойства этого блока — в следующей задаче',
 		/** Why a save is refused: the server's mistakes are listed over the preview. */
 		invalid: 'в шаблоне ошибка, она показана над превью',
 		conflictTitle: 'Шаблон изменили на другом компьютере',
@@ -1895,6 +1893,36 @@ export const ru = {
 			client: 'Только в экземпляре клиента'
 		} satisfies Record<CopyFilter, string>,
 		range: (min: number, max: number) => `От ${min} до ${max}`,
-		notNumber: 'Введите число'
+		notNumber: 'Введите число',
+		insertField: 'Вставить поле',
+		/** The button when several fields of a block have it: which one. */
+		insertFieldTo: (field: string) => `Вставить поле: ${field}`,
+		insertFieldSearch: 'Поле',
+		fieldRow: (n: number) => `Строка ${n}`,
+		rowLabel: 'Название',
+		rowValue: 'Значение',
+		hideIfEmpty: 'Скрывать, если пусто',
+		addRow: 'Добавить строку',
+		removeRow: 'Удалить строку',
+		barcodeHeight: 'Высота, мм',
+		barcodeDigits: 'Цифры под штрихкодом',
+		barcodeStretch: 'Растянуть по ширине',
+		barcodeFill: 'Растянуть по высоте',
+		barcodeFillHint: 'До конца свободного места на листе; в одном экземпляре',
+		barcodeFillInColumn: 'В колонке недоступно',
+		signatureLeft: 'Слева',
+		signatureRight: 'Справа',
+		spacerMm: 'Отступ, мм',
+		columnCount: 'Колонок',
+		columnGap: 'Промежуток, мм',
+		columnsShrinkHint: 'Лишние колонки удаляются вместе с блоками; это можно отменить',
+		file: 'Файл',
+		saveFile: 'Сохранить в файл…',
+		loadFile: 'Загрузить из файла…',
+		fileSaved: (name: string) => `Файл сохранён: ${name}`,
+		notTemplateFile: 'Это не файл шаблона MyWork',
+		newerFile: 'Файл сделан в более новой версии программы',
+		misfitFile: 'Шаблон из файла не подходит этому документу',
+		fileLoaded: 'Шаблон загружен из файла'
 	}
 } as const;

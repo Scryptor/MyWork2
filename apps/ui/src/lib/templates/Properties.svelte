@@ -4,8 +4,14 @@
 	import { ru } from '#lib/i18n/ru.js';
 	import type { TemplateEditor } from './editor.svelte.js';
 	import { blockAt } from './ops.js';
+	import BarcodeProps from './props/BarcodeProps.svelte';
+	import ColumnsProps from './props/ColumnsProps.svelte';
+	import CopyLabelProps from './props/CopyLabelProps.svelte';
 	import CopiesField from './props/CopiesField.svelte';
+	import FieldsProps from './props/FieldsProps.svelte';
 	import PageProps from './props/PageProps.svelte';
+	import SignaturesProps from './props/SignaturesProps.svelte';
+	import SpacerProps from './props/SpacerProps.svelte';
 	import TextProps from './props/TextProps.svelte';
 
 	let { editor }: { editor: TemplateEditor } = $props();
@@ -25,8 +31,18 @@
 			<h2 class="title">{t.blockTypes[block.body.type]}</h2>
 			{#if block.body.type === 'text'}
 				<TextProps {editor} path={selected} />
-			{:else}
-				<p class="note">{t.noProperties}</p>
+			{:else if block.body.type === 'fields'}
+				<FieldsProps {editor} path={selected} />
+			{:else if block.body.type === 'barcode'}
+				<BarcodeProps {editor} path={selected} />
+			{:else if block.body.type === 'signatures'}
+				<SignaturesProps {editor} path={selected} />
+			{:else if block.body.type === 'spacer'}
+				<SpacerProps {editor} path={selected} />
+			{:else if block.body.type === 'columns'}
+				<ColumnsProps {editor} path={selected} />
+			{:else if block.body.type === 'copy_label'}
+				<CopyLabelProps {editor} path={selected} />
 			{/if}
 			<CopiesField {editor} path={selected} />
 		{/if}
@@ -43,10 +59,5 @@
 		margin: 0;
 		font-size: var(--text-lg);
 		font-weight: 600;
-	}
-	.note {
-		margin: 0;
-		color: var(--text-3);
-		font-size: var(--text-sm);
 	}
 </style>

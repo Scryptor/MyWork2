@@ -9,6 +9,7 @@
 	import Switch from '#lib/ui/Switch.svelte';
 	import Textarea from '#lib/ui/Textarea.svelte';
 	import type { TemplateEditor } from '../editor.svelte.js';
+	import InsertField from '../InsertField.svelte';
 	import { blockAt, replaceBlock, type BlockPath } from '../ops.js';
 	import NumberField from './NumberField.svelte';
 
@@ -23,6 +24,7 @@
 	const block = $derived(blockAt(editor.template, path));
 	const body = $derived(block?.body.type === 'text' ? block.body : null);
 	const key = $derived(path.join('.'));
+	let field = $state<HTMLTextAreaElement | null>(null);
 
 	/** A change of the text block; typed fields pass their key, so their keys make one step. */
 	function set(patch: Partial<Omit<TextBody, 'type'>>, field?: string) {
@@ -39,10 +41,12 @@
 	<div class="props">
 		<Textarea
 			label={t.text}
+			bind:ref={field}
 			minRows={3}
 			maxRows={14}
 			bind:value={() => body.text, (v) => set({ text: v }, 'text')}
 		/>
+		<InsertField target={field} value={body.text} onchange={(v) => set({ text: v }, 'text')} />
 		<NumberField
 			label={t.textSize}
 			hint={t.textSizeHint(formatMm(editor.template.font_size_pt))}

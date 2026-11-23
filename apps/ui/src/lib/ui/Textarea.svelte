@@ -3,6 +3,7 @@
 
 	let {
 		value = $bindable(''),
+		ref = $bindable(null),
 		minRows = 2,
 		maxRows = 12,
 		placeholder,
@@ -16,6 +17,8 @@
 		id
 	}: {
 		value: string;
+		/** The element itself, for a caret or a focus the caller moves. */
+		ref?: HTMLTextAreaElement | null;
 		minRows?: number;
 		maxRows?: number;
 		placeholder?: string;
@@ -33,6 +36,9 @@
 	const uid = $props.id();
 	const fid = $derived(id ?? uid);
 	let el = $state<HTMLTextAreaElement | null>(null);
+	$effect(() => {
+		ref = el;
+	});
 
 	function resize() {
 		if (!el) return;

@@ -106,7 +106,9 @@
 
 	const active = $derived.by(() => {
 		if (page.url.pathname === CLIENTS) return 'clients';
-		if (page.url.pathname.startsWith(SETTINGS)) return 'settings';
+		// The template editor is opened from «Документы и реквизиты»: it belongs to «Настройки» too.
+		if (page.url.pathname.startsWith(SETTINGS) || page.route.id?.startsWith('/(app)/templates/'))
+			return 'settings';
 		// The full card of an order belongs to «Заказы».
 		if (page.url.pathname.startsWith(`${ORDERS}/`)) return 'orders';
 		if (page.url.pathname !== ORDERS) return '';
