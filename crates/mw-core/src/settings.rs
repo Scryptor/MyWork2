@@ -448,10 +448,14 @@ pub(crate) fn validate(
     }
 }
 
-/// Ссылка: начинается с `http://` или `https://` (любой регистр), без пробельных и управляющих знаков.
+/// Ссылка: `http://` или `https://` (любой регистр) и после них хоть что-то, без пробельных и
+/// управляющих знаков.
 fn is_http_link(v: &str) -> bool {
     let lower = v.to_lowercase();
-    (lower.starts_with("http://") || lower.starts_with("https://"))
+    let rest = lower
+        .strip_prefix("http://")
+        .or_else(|| lower.strip_prefix("https://"));
+    rest.is_some_and(|rest| !rest.is_empty())
         && !v.chars().any(|c| c.is_whitespace() || c.is_control())
 }
 

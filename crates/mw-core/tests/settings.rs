@@ -385,6 +385,8 @@ async fn firm_links_are_validated_trimmed_and_audited() -> Result<(), CoreError>
             "@servis",
             "https://t.me/a b",
             "ftp://example.com",
+            "https://",
+            "HTTP://",
         ] {
             assert_validation(
                 t.core
@@ -393,7 +395,18 @@ async fn firm_links_are_validated_trimmed_and_audited() -> Result<(), CoreError>
                 &[("firm_google_maps", "not_a_link")],
             );
         }
-        let long = format!("https://example.com/{}", "a".repeat(500));
+        // 500 знаков (не байт) — можно, 501 — уже длинно.
+        let base = "https://example.com/";
+        let longest = format!("{base}{}", "я".repeat(500 - base.len()));
+        let s = t
+            .core
+            .update_settings(
+                &admin(),
+                one(&|p| p.firm_yandex_maps = Some(longest.clone())),
+            )
+            .await?;
+        assert_eq!(s.firm_yandex_maps, longest, "{}", t.label);
+        let long = format!("{longest}я");
         assert_validation(
             t.core
                 .update_settings(&admin(), one(&|p| p.firm_yandex_maps = Some(long.clone())))
