@@ -353,6 +353,19 @@ describe('createTemplateEditor', () => {
 });
 
 describe('blockLabel', () => {
+	it('tells QR codes apart by the firm link or the start of their own', () => {
+		const qr = (link: string): Block => ({
+			copies: 'both',
+			body: { type: 'qr', link, size_mm: 20, caption: '', align: 'center' }
+		});
+		expect(blockLabel(qr('{фирма.телеграм}'))).toBe('QR-код · Telegram фирмы');
+		expect(blockLabel(qr(' {Фирма.Яндекс_Карты} '))).toBe('QR-код · Яндекс Карты фирмы');
+		expect(blockLabel(qr('https://example.com/o/{заказ.номер}'))).toBe(
+			'QR-код · https://example.com/o/{заказ.номер}'
+		);
+		expect(blockLabel(qr(''))).toBe('QR-код');
+	});
+
 	it('names the type and the start of the text', () => {
 		expect(blockLabel(text('Акт приёма № {заказ.номер}'))).toBe(
 			'Текст · Акт приёма № {заказ.номер}'

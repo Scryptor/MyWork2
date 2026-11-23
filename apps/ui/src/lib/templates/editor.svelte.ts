@@ -20,6 +20,7 @@ import { sameValue } from '#lib/orders/merge.js';
 import { toast } from '#lib/ui/toast/toast.svelte.js';
 import { createHistory } from './history.svelte.js';
 import { blockAt, type BlockPath } from './ops.js';
+import { qrPreset } from './qr.js';
 
 const t = ru.templates;
 
@@ -282,6 +283,10 @@ export function blockLabel(block: Block): string {
 			b.code.split('\n').find((l) => l.trim() !== '' && !l.trim().startsWith('//')) ?? ''
 		);
 	else if (b.type === 'columns') detail = String(b.columns.length);
+	else if (b.type === 'qr') {
+		const preset = qrPreset(b.link);
+		detail = preset === null ? start(b.link) : t.qrPresets[preset];
+	}
 	return detail ? `${type} · ${detail}` : type;
 }
 

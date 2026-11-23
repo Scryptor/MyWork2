@@ -108,6 +108,7 @@ test.describe('the editor', () => {
 		const link = `https://example.com/${uniq('qr')}`;
 		await openEditor(page, info);
 		await addBlock(page, 'QR-код');
+		await expect(item(page, 'QR-код · Telegram фирмы')).toBeVisible();
 		const preview = page.getByRole('region', { name: 'Превью' });
 		await expect(preview.getByRole('img', { name: /^Страница 1 из \d+$/ })).toBeVisible();
 		await expect(page.getByText('Шаблон не построен')).toHaveCount(0);
@@ -120,7 +121,7 @@ test.describe('the editor', () => {
 			.toContain(link);
 
 		await page.reload();
-		await item(page, 'QR-код').click();
+		await item(page, `QR-код · ${link}`).click();
 		await expect(props(page).getByRole('textbox', { name: 'Ссылка' })).toHaveValue(link);
 	});
 
