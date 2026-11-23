@@ -24,9 +24,13 @@
 		canMove,
 		duplicateBlock,
 		insertBlock,
+		intoColumnTargets,
 		moveBlock,
+		placeForNew,
 		removeBlock,
 		reorder,
+		selectionAfterDuplicate,
+		selectionAfterRemove,
 		type BlockPath,
 		type Container
 	} from './ops.js';
@@ -61,27 +65,15 @@
 	const same = (a: Selection, b: BlockPath) =>
 		a !== 'page' && a.length === b.length && a.every((n, k) => n === b[k]);
 
-	/** The chosen block after the block at `at` is gone: its neighbours after it move up. */
-	function afterRemove(sel: Selection, at: BlockPath): Selection {
-		if (sel === 'page') return sel;
-		const depth = at.length - 1;
-		const container = (p: BlockPath) => p.slice(0, depth).join('.');
-		// The block itself, or a block of the columns that went with it.
-		if (at.every((n, k) => sel[k] === n)) return 'page';
-		if (sel.length <= depth || container(sel) !== container(at) || sel[depth]! < at[depth]!)
-			return sel;
-		return sel.map((n, k) => (k === depth ? n - 1 : n));
-	}
-
 	function remove(path: BlockPath) {
-		const sel = afterRemove(selected, path);
+		const sel = selectionAfterRemove(selected, path);
 		editor.edit(removeBlock(template, path));
 		editor.select(sel);
 	}
 
 	function duplicate(path: BlockPath) {
 		editor.edit(duplicateBlock(template, path));
-		editor.select(path.map((n, k) => (k === path.length - 1 ? n + 1 : n)));
+		editor.select(selectionAfterDuplicate(path));
 	}
 
 	function move(from: BlockPath, to: BlockPath) {
@@ -112,16 +104,8 @@
 		}
 	}
 
-	/** Where a new block goes: after the chosen one, in its column unless it is columns itself. */
-	function placeFor(type: BlockBody['type']): BlockPath {
-		if (selected === 'page') return [template.blocks.length];
-		if (selected.length === 3 && type !== 'columns')
-			return [selected[0]!, selected[1]!, selected[2]! + 1];
-		return [selected[0]! + 1];
-	}
-
 	function add(type: BlockBody['type']) {
-		const at = placeFor(type);
+		const at = placeForNew(template, selected, type);
 		editor.edit(insertBlock(template, at, newBlock(type)));
 		editor.select(at);
 	}
@@ -132,17 +116,11 @@
 
 	/** «В колонку N» of a top-level block: the end of every column it may go into. */
 	function intoColumns(path: BlockPath): MenuItem[] {
-		if (path.length !== 1) return [];
-		const from = path[0]!;
-		return columnBlocks.flatMap(({ i, body }) =>
-			body.columns.flatMap((column, c): MenuItem[] => {
-				// The place counts in the template without the block moved.
-				const to = [i > from ? i - 1 : i, c, column.length];
-				if (!canMove(template, path, to)) return [];
-				const label = columnBlocks.length > 1 ? t.toColumnOf(c + 1, i + 1) : t.toColumn(c + 1);
-				return [{ label, icon: ArrowRightToLine, onselect: () => move(path, to) }];
-			})
-		);
+		return intoColumnTargets(template, path).map(({ column, block, to }) => {
+			const label =
+				columnBlocks.length > 1 ? t.toColumnOf(column + 1, block + 1) : t.toColumn(column + 1);
+			return { label, icon: ArrowRightToLine, onselect: () => move(path, to) };
+		});
 	}
 
 	function menuOf(e: Entry): MenuItem[] {

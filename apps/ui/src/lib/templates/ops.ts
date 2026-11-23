@@ -99,3 +99,48 @@ export function flatten(
 	});
 	return out;
 }
+
+/** What is chosen in the list of blocks: the page or a block. */
+export type Choice = BlockPath | 'page';
+
+/** The chosen item after the block at `at` is gone: the neighbours after it move up. */
+export function selectionAfterRemove(sel: Choice, at: BlockPath): Choice {
+	if (sel === 'page') return sel;
+	const depth = at.length - 1;
+	const container = (p: BlockPath) => p.slice(0, depth).join('.');
+	// The block itself, or a block of the columns that went with it.
+	if (at.every((n, k) => sel[k] === n)) return 'page';
+	if (sel.length <= depth || container(sel) !== container(at) || sel[depth]! < at[depth]!)
+		return sel;
+	return sel.map((n, k) => (k === depth ? n - 1 : n));
+}
+
+/** The copy made by `duplicateBlock` is the one chosen. */
+export const selectionAfterDuplicate = (path: BlockPath): BlockPath =>
+	path.map((n, k) => (k === path.length - 1 ? n + 1 : n));
+
+/** Where a new block goes: after the chosen one, in its column unless it is columns itself. */
+export function placeForNew(t: Template, sel: Choice, type: Block['body']['type']): BlockPath {
+	if (sel === 'page') return [t.blocks.length];
+	if (sel.length === 3 && type !== 'columns') return [sel[0]!, sel[1]!, sel[2]! + 1];
+	return [sel[0]! + 1];
+}
+
+/**
+ * «В колонку N» of a top-level block: the end of every column it may go into. `block` is the place of
+ * the columns block in the template; `to` counts in the template without the block moved.
+ */
+export function intoColumnTargets(
+	t: Template,
+	path: BlockPath
+): { column: number; block: number; to: BlockPath }[] {
+	if (path.length !== 1) return [];
+	const from = path[0]!;
+	return t.blocks.flatMap((b, i) => {
+		if (b.body.type !== 'columns') return [];
+		return b.body.columns.flatMap((column, c) => {
+			const to = [i > from ? i - 1 : i, c, column.length];
+			return canMove(t, path, to) ? [{ column: c, block: i, to }] : [];
+		});
+	});
+}

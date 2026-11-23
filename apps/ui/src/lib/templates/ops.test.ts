@@ -7,7 +7,11 @@ import {
 	duplicateBlock,
 	flatten,
 	insertBlock,
+	intoColumnTargets,
 	moveBlock,
+	placeForNew,
+	selectionAfterDuplicate,
+	selectionAfterRemove,
 	removeBlock,
 	reorder,
 	replaceBlock
@@ -194,5 +198,75 @@ describe('ops', () => {
 		expect(f[3]!.block).toBe(
 			t.blocks[1]!.body.type === 'columns' ? t.blocks[1]!.body.columns[0]![1] : null
 		);
+	});
+});
+
+describe('selectionAfterRemove', () => {
+	it('the page stays the page', () => {
+		expect(selectionAfterRemove('page', [1])).toBe('page');
+	});
+	it('the block removed leaves the page', () => {
+		expect(selectionAfterRemove([2], [2])).toBe('page');
+	});
+	it('a block of the columns removed with them leaves the page', () => {
+		expect(selectionAfterRemove([2, 0, 1], [2])).toBe('page');
+	});
+	it('later blocks of the same list move up', () => {
+		expect(selectionAfterRemove([3], [1])).toEqual([2]);
+		expect(selectionAfterRemove([1, 1, 2], [1, 1, 0])).toEqual([1, 1, 1]);
+	});
+	it('earlier blocks and other lists stay', () => {
+		expect(selectionAfterRemove([0], [1])).toEqual([0]);
+		expect(selectionAfterRemove([1, 1, 2], [1, 0, 0])).toEqual([1, 1, 2]);
+	});
+	it('a top block removed before columns moves their blocks up', () => {
+		expect(selectionAfterRemove([2, 0, 1], [0])).toEqual([1, 0, 1]);
+	});
+});
+
+describe('selectionAfterDuplicate', () => {
+	it('the copy is the next one in the list', () => {
+		expect(selectionAfterDuplicate([1])).toEqual([2]);
+		expect(selectionAfterDuplicate([1, 0, 3])).toEqual([1, 0, 4]);
+	});
+});
+
+describe('placeForNew', () => {
+	const t = tpl([text('a'), columns([text('x')], []), text('b')]);
+	it('the end of the page without a choice', () => {
+		expect(placeForNew(t, 'page', 'text')).toEqual([3]);
+	});
+	it('after the chosen top block', () => {
+		expect(placeForNew(t, [0], 'text')).toEqual([1]);
+	});
+	it('after the chosen block of a column, in that column', () => {
+		expect(placeForNew(t, [1, 0, 0], 'text')).toEqual([1, 0, 1]);
+	});
+	it('columns never go into a column: after the block of columns', () => {
+		expect(placeForNew(t, [1, 0, 0], 'columns')).toEqual([2]);
+	});
+});
+
+describe('intoColumnTargets', () => {
+	it('the end of every column; the index counts the template without the block moved', () => {
+		const t = tpl([text('a'), columns([text('x')], []), text('b')]);
+		expect(intoColumnTargets(t, [0])).toEqual([
+			{ column: 0, block: 1, to: [0, 0, 1] },
+			{ column: 1, block: 1, to: [0, 1, 0] }
+		]);
+		expect(intoColumnTargets(t, [2])).toEqual([
+			{ column: 0, block: 1, to: [1, 0, 1] },
+			{ column: 1, block: 1, to: [1, 1, 0] }
+		]);
+	});
+	it('nothing for a block of a column, for columns, for a filled barcode', () => {
+		const t = tpl([columns([text('x')], []), columns([], []), fillBarcode]);
+		expect(intoColumnTargets(t, [0, 0, 0])).toEqual([]);
+		expect(intoColumnTargets(t, [0])).toEqual([]);
+		expect(intoColumnTargets(t, [2])).toEqual([]);
+	});
+	it('the moves it offers are the moves canMove allows', () => {
+		const t = tpl([text('a'), columns([], []), text('b'), columns([text('y')], [])]);
+		for (const target of intoColumnTargets(t, [0])) expect(canMove(t, [0], target.to)).toBe(true);
 	});
 });
