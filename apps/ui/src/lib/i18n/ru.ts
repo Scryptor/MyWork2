@@ -1982,6 +1982,17 @@ export const ru = {
 		logoHeight: 'Высота, мм',
 		logoMissing: 'Логотип не загружен — блок не печатается.',
 		logoMissingLink: 'Документы и реквизиты',
+		qrLink: 'Ссылка',
+		qrPresets: {
+			telegram: 'Telegram фирмы',
+			google_maps: 'Google Карты фирмы',
+			yandex_maps: 'Яндекс Карты фирмы',
+			custom: 'Своя ссылка'
+		},
+		qrLinkHint: 'Можно вставить поле, например {заказ.номер}',
+		qrSize: 'Размер, мм',
+		qrCaption: 'Подпись под кодом',
+		qrMissing: 'Ссылка не заполнена — код не печатается.',
 		barcodeHeight: 'Высота, мм',
 		barcodeDigits: 'Цифры под штрихкодом',
 		barcodeStretch: 'Растянуть по ширине',

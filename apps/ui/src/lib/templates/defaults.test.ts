@@ -8,6 +8,7 @@ describe('newBlock', () => {
 			'fields',
 			'barcode',
 			'logo',
+			'qr',
 			'signatures',
 			'separator',
 			'spacer',
@@ -41,6 +42,13 @@ describe('newBlock', () => {
 				stretch: false
 			},
 			logo: { type: 'logo', width_mm: 40, height_mm: 15, align: 'left' },
+			qr: {
+				type: 'qr',
+				link: '{фирма.телеграм}',
+				size_mm: 20,
+				caption: 'Мы в Telegram',
+				align: 'center'
+			},
 			signatures: { type: 'signatures', left: 'Подпись сервиса', right: 'Подпись клиента' },
 			separator: { type: 'separator' },
 			spacer: { type: 'spacer', mm: 4 },

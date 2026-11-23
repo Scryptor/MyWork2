@@ -1,6 +1,7 @@
 import type { Block } from '$api/Block';
 import type { Template } from '$api/Template';
 import { newBlock } from './defaults.js';
+import { qrPreset } from './qr.js';
 
 /** `[i]` is a top-level block, `[i, c, j]` block `j` of column `c` of the columns block `i`. */
 export type BlockPath = readonly number[];
@@ -79,6 +80,9 @@ export function convertible(block: Block): boolean {
 		case 'typst_code':
 		case 'calibration_marks':
 			return false;
+		// The code of a firm-link block is a ready recipe; a link of its own the code cannot reproduce.
+		case 'qr':
+			return qrPreset(b.link) !== null;
 		case 'columns':
 			return b.columns.every((column) =>
 				column.every((inner) => inner.body.type === 'typst_code' || convertible(inner))

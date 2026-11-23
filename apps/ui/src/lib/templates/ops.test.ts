@@ -330,6 +330,17 @@ describe('convertible', () => {
 		expect(convertible(columns([code], [text('y')]))).toBe(true);
 	});
 
+	it('a QR code of a firm link turns into code, one with a link of its own does not', () => {
+		const qr = (link: string): Block => ({
+			copies: 'both',
+			body: { type: 'qr', link, size_mm: 20, caption: '', align: 'center' }
+		});
+		expect(convertible(qr('{фирма.телеграм}'))).toBe(true);
+		expect(convertible(qr('https://example.com'))).toBe(false);
+		expect(convertible(columns([qr('{фирма.гугл_карты}')], []))).toBe(true);
+		expect(convertible(columns([qr('https://example.com')], []))).toBe(false);
+	});
+
 	it('a barcode, a code block, calibration marks and columns with a barcode do not', () => {
 		expect(convertible(barcode)).toBe(false);
 		expect(convertible(fillBarcode)).toBe(false);

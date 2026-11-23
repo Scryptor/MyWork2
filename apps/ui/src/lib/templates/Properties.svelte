@@ -11,6 +11,7 @@
 	import FieldsProps from './props/FieldsProps.svelte';
 	import LogoProps from './props/LogoProps.svelte';
 	import PageProps from './props/PageProps.svelte';
+	import QrProps from './props/QrProps.svelte';
 	import SignaturesProps from './props/SignaturesProps.svelte';
 	import SpacerProps from './props/SpacerProps.svelte';
 	import TextProps from './props/TextProps.svelte';
@@ -39,6 +40,8 @@
 				<BarcodeProps {editor} path={selected} />
 			{:else if block.body.type === 'logo'}
 				<LogoProps {editor} path={selected} />
+			{:else if block.body.type === 'qr'}
+				<QrProps {editor} path={selected} />
 			{:else if block.body.type === 'signatures'}
 				<SignaturesProps {editor} path={selected} />
 			{:else if block.body.type === 'spacer'}

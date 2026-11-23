@@ -103,6 +103,27 @@ async function restoreStandard(request: APIRequestContext, info: TestInfo) {
 test.describe('the editor', () => {
 	test.afterEach(({ request }, info) => restoreStandard(request, info));
 
+	test('qr block is added, previewed and saved', async ({ page, request }, info) => {
+		const { kind } = documentOf(info);
+		const link = `https://example.com/${uniq('qr')}`;
+		await openEditor(page, info);
+		await addBlock(page, 'QR-код');
+		const preview = page.getByRole('region', { name: 'Превью' });
+		await expect(preview.getByRole('img', { name: /^Страница 1 из \d+$/ })).toBeVisible();
+		await expect(page.getByText('Шаблон не построен')).toHaveCount(0);
+
+		await props(page).getByRole('combobox', { name: 'Ссылка' }).click();
+		await page.getByRole('option', { name: 'Своя ссылка' }).click();
+		await props(page).getByRole('textbox', { name: 'Ссылка' }).fill(link);
+		await expect
+			.poll(async () => JSON.stringify((await fetchTemplate(request, kind)).template))
+			.toContain(link);
+
+		await page.reload();
+		await item(page, 'QR-код').click();
+		await expect(props(page).getByRole('textbox', { name: 'Ссылка' })).toHaveValue(link);
+	});
+
 	test('opens_from_documents_settings', async ({ page }, info) => {
 		const { kind, name } = documentOf(info);
 		await page.goto('/settings/documents');
