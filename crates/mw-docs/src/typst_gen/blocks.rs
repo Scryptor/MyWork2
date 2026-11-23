@@ -6,6 +6,7 @@ use crate::barcode::{Shape, fit_module_mm, stretch_module_mm};
 use crate::model::{Align, Block, BlockBody, CopyFilter, FieldRow, Layout, Template};
 
 use super::RenderOptions;
+use super::code::CodeFile;
 use super::page::{CopyRole, Page, decimal, mm, pt};
 use super::text::{Piece, TextMode, literal_expr, pieces, text_expr, typst_str};
 
@@ -113,26 +114,44 @@ impl Generator {
         }
     }
 
-    /// A full-width block with `blocks` one under another: one Typst code expression. `width_mm` is
-    /// the width of the column the blocks are in.
-    pub(super) fn flow(&self, blocks: &[Block], copy: CopyRole, width_mm: f64) -> String {
+    /// A full-width block with `blocks` one under another: one Typst code expression. `path` is
+    /// where `blocks` are in the template (`[]`, or `[i, column]` for a column), `width_mm` the width
+    /// of the column they are in. The code blocks go to `code`.
+    pub(super) fn flow(
+        &self,
+        blocks: &[Block],
+        path: &[usize],
+        copy: CopyRole,
+        width_mm: f64,
+        code: &mut Vec<CodeFile>,
+    ) -> String {
         let mut out = String::from("block(width: 100%, {\n");
-        for block in blocks {
+        for (i, block) in blocks.iter().enumerate() {
             let shown = match block.copies {
                 CopyFilter::Both => true,
                 CopyFilter::Service => copy == CopyRole::Service,
                 CopyFilter::Client => copy == CopyRole::Client,
             };
             if shown {
-                self.block(&mut out, &block.body, copy, width_mm);
+                let path = [path, &[i]].concat();
+                self.block(&mut out, &block.body, &path, copy, width_mm, code);
             }
         }
         out.push_str("})");
         out
     }
 
-    /// Appends one code expression and a line break (Typst joins the lines of a code block).
-    fn block(&self, out: &mut String, body: &BlockBody, copy: CopyRole, width_mm: f64) {
+    /// Appends one code expression and a line break (Typst joins the lines of a code block). `path` is
+    /// the path of the block in the template.
+    fn block(
+        &self,
+        out: &mut String,
+        body: &BlockBody,
+        path: &[usize],
+        copy: CopyRole,
+        width_mm: f64,
+        code: &mut Vec<CodeFile>,
+    ) {
         match body {
             BlockBody::Text {
                 text,
@@ -293,9 +312,9 @@ impl Generator {
                         mm(f64::from(*gap_mm))
                     );
                     let width = column_width(width_mm, columns.len(), *gap_mm);
-                    for column in columns {
+                    for (c, column) in columns.iter().enumerate() {
                         out.push_str(",\n");
-                        out.push_str(&self.flow(column, copy, width));
+                        out.push_str(&self.flow(column, &[path, &[c]].concat(), copy, width, code));
                     }
                     out.push(')');
                 }
@@ -316,8 +335,12 @@ impl Generator {
                 }
             }
             BlockBody::CalibrationMarks {} => self.calibration_marks(out),
-            // Task 2 of plan 7.3 replaces this branch: the code is rendered by the worker process.
-            BlockBody::TypstCode { .. } => out.push_str("none"),
+            // The code is a source of its own: its errors stay in it and point at its lines.
+            BlockBody::TypstCode { code: source } => {
+                let file = CodeFile::new(path, copy, source);
+                let _ = write!(out, "include {}", typst_str(file.path()));
+                code.push(file);
+            }
         }
         out.push('\n');
     }

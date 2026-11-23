@@ -6,6 +6,7 @@ use crate::model::{Layout, Template};
 
 use super::RenderOptions;
 use super::blocks::Generator;
+use super::code::CodeFile;
 
 /// Space between the two copies of [`Layout::TwoPerA4`]; the cut line runs in its middle.
 const CUT_GAP_MM: f64 = 8.0;
@@ -56,23 +57,40 @@ pub(super) enum CopyRole {
     Client,
 }
 
-/// The blocks of `template` on the page: one copy, or two with the cut line between them.
-pub(super) fn body(generator: &Generator, template: &Template, out: &mut String) {
+impl CopyRole {
+    /// The value of `copy` in the author's code.
+    pub(super) fn name(self) -> &'static str {
+        match self {
+            Self::Single => "single",
+            Self::Service => "service",
+            Self::Client => "client",
+        }
+    }
+}
+
+/// The blocks of `template` on the page: one copy, or two with the cut line between them. The code
+/// blocks go to `code`.
+pub(super) fn body(
+    generator: &Generator,
+    template: &Template,
+    out: &mut String,
+    code: &mut Vec<CodeFile>,
+) {
     let page = &generator.page;
     let width = generator.area_mm.0;
     match template.layout {
         Layout::OnePerPage => {
             out.push('#');
-            out.push_str(&generator.flow(&template.blocks, CopyRole::Single, width));
+            out.push_str(&generator.flow(&template.blocks, &[], CopyRole::Single, width, code));
             out.push('\n');
         }
         Layout::SheetPerCopy => {
-            copies(generator, template, out);
+            copies(generator, template, out, code);
             out.push_str("#copy-service\n#pagebreak()\n#copy-client\n");
         }
         Layout::TwoPerA4 => {
             let half = (generator.area_mm.1 - CUT_GAP_MM) / 2.0;
-            copies(generator, template, out);
+            copies(generator, template, out, code);
             let _ = writeln!(
                 out,
                 "#context {{
@@ -99,7 +117,7 @@ pub(super) fn body(generator: &Generator, template: &Template, out: &mut String)
 }
 
 /// Defines `copy-service` and `copy-client`: the blocks of the template for each copy.
-fn copies(generator: &Generator, template: &Template, out: &mut String) {
+fn copies(generator: &Generator, template: &Template, out: &mut String, code: &mut Vec<CodeFile>) {
     let width = generator.area_mm.0;
     for (name, role) in [
         ("copy-service", CopyRole::Service),
@@ -108,7 +126,7 @@ fn copies(generator: &Generator, template: &Template, out: &mut String) {
         let _ = writeln!(
             out,
             "#let {name} = {}",
-            generator.flow(&template.blocks, role, width)
+            generator.flow(&template.blocks, &[], role, width, code)
         );
     }
 }

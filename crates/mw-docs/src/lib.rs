@@ -28,7 +28,7 @@ pub fn compile_for_tests(
     source: String,
     files: Vec<(String, Vec<u8>)>,
 ) -> Result<Rendered, DocsError> {
-    render::compile(source, files, fonts::shared())
+    render::compile(source, None, files, fonts::shared())
 }
 
 /// Test hook: like [`compile_for_tests`] on the given set of fonts. Only with the `testing` feature.
@@ -38,5 +38,5 @@ pub fn compile_with_fonts_for_tests(
     files: Vec<(String, Vec<u8>)>,
     fonts: &FontSet,
 ) -> Result<Rendered, DocsError> {
-    render::compile(source, files, fonts)
+    render::compile(source, None, files, fonts)
 }

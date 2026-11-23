@@ -7,6 +7,8 @@ use typst_pdf::PdfOptions;
 use typst_render::RenderOptions;
 
 use crate::fonts::FontSet;
+use crate::model::CodeDiagnostic;
+use crate::typst_gen::CodeSources;
 use crate::world::DocsWorld;
 
 #[derive(Debug, thiserror::Error)]
@@ -14,6 +16,9 @@ pub enum DocsError {
     /// Typst rejected the source; one line per error.
     #[error("document does not compile: {}", .0.join("; "))]
     Compile(Vec<String>),
+    /// The author's own Typst code does not compile: every error of a template with code blocks.
+    #[error("own Typst code does not compile: {}", code_messages(.0))]
+    Code(Vec<CodeDiagnostic>),
     #[error("cannot produce PDF: {}", .0.join("; "))]
     Pdf(Vec<String>),
     #[error("cannot produce PNG: {0}")]
@@ -28,6 +33,11 @@ pub enum DocsError {
     /// The caller refused a raster larger than it allows.
     #[error("raster page is too large")]
     TooManyPixels,
+}
+
+fn code_messages(diagnostics: &[CodeDiagnostic]) -> String {
+    let messages: Vec<&str> = diagnostics.iter().map(|d| d.message.as_str()).collect();
+    messages.join("; ")
 }
 
 /// A compiled document.
@@ -55,17 +65,22 @@ fn messages(errors: impl IntoIterator<Item = SourceDiagnostic>) -> Vec<String> {
         .collect()
 }
 
+/// Compiles `main` with the virtual `files` (name, bytes). `code` are the sources of a template with
+/// the author's code: its errors, all of them, become [`DocsError::Code`].
 pub(crate) fn compile(
-    source: String,
+    main: String,
+    code: Option<CodeSources>,
     files: Vec<(String, Vec<u8>)>,
     fonts: &FontSet,
 ) -> Result<Rendered, DocsError> {
-    let world = DocsWorld::new(source, files, fonts)?;
+    let sources = code.as_ref().map(CodeSources::sources).unwrap_or_default();
+    let world = DocsWorld::new(main, sources, files, fonts)?;
     let output = typst::compile::<PagedDocument>(&world).output;
     evict_cache();
-    match output {
-        Ok(doc) => Ok(Rendered { doc }),
-        Err(errors) => Err(DocsError::Compile(messages(errors))),
+    match (output, code) {
+        (Ok(doc), _) => Ok(Rendered { doc }),
+        (Err(errors), Some(code)) => Err(DocsError::Code(code.diagnostics(&world, errors))),
+        (Err(errors), None) => Err(DocsError::Compile(messages(errors))),
     }
 }
 
