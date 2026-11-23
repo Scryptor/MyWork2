@@ -20,6 +20,7 @@ path = "src/main.rs"
 mw-api = { path = "../mw-api" }
 mw-core = { path = "../mw-core" }
 mw-db = { path = "../mw-db" }
+mw-docs = { path = "../mw-docs" }
 mw-domain = { path = "../mw-domain" }
 mw-legacy = { path = "../mw-legacy" }
 axum = { workspace = true }

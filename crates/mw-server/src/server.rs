@@ -81,7 +81,16 @@ impl Server {
             validate_ui_dir(dir)?;
         }
         let db = connect_and_migrate(config).await?;
-        Server::start_with_db(config, db).await
+        // Запасные шрифты нужны только настоящему серверу и программе (оба стартуют здесь); тесты на
+        // `start_with_db` остаются на встроенных шрифтах.
+        mw_docs::configure_fonts(mw_docs::FontSources {
+            dirs: vec![config.data_dir.join("fonts")],
+            system: true,
+        });
+        let server = Server::start_with_db(config, db).await?;
+        // Книга шрифтов собирается в фоне, чтобы первый документ не ждал её.
+        tokio::task::spawn_blocking(mw_docs::warm_fonts);
+        Ok(server)
     }
 
     /// То же на уже подключённой базе (тесты, десктоп).

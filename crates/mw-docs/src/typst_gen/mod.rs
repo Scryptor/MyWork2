@@ -14,6 +14,7 @@ use serde_json::{Map, Value};
 
 use crate::barcode::{Shape, barcode_svg};
 use crate::fields::fields;
+use crate::fonts::{FontSet, shared};
 use crate::model::Template;
 use crate::render::{DocsError, Rendered, compile};
 
@@ -43,11 +44,21 @@ pub struct RenderOptions {
     pub dpi: Option<u32>,
 }
 
-/// Compiles `template` with `data`.
+/// Compiles `template` with `data` on the shared set of fonts.
 pub fn render(
     template: &Template,
     data: &DocumentData,
     opts: &RenderOptions,
+) -> Result<Rendered, DocsError> {
+    render_with_fonts(template, data, opts, shared())
+}
+
+/// Compiles `template` with `data` on the given set of fonts.
+pub fn render_with_fonts(
+    template: &Template,
+    data: &DocumentData,
+    opts: &RenderOptions,
+    fonts: &FontSet,
 ) -> Result<Rendered, DocsError> {
     // `barcode` in `data.json` is set exactly when `barcode.svg` exists. Its width in modules depends on
     // the value, so it goes to the generator as a number; the value itself never enters the markup.
@@ -68,7 +79,7 @@ pub fn render(
     if let Some((_, svg)) = barcode {
         files.push(("barcode.svg".to_owned(), svg.into_bytes()));
     }
-    compile(typst_source(template, opts, shape), files)
+    compile(typst_source(template, opts, shape), files, fonts)
 }
 
 fn data_json(data: &DocumentData, barcode: Option<&str>) -> Vec<u8> {

@@ -21,6 +21,10 @@ comemo = { workspace = true }
 mw-domain = { path = "../mw-domain" }
 serde = { workspace = true }
 serde_json = { workspace = true }
+fontdb = { version = "0.23", default-features = false, features = ["std", "fs"] }
+tracing = { workspace = true }
 
 [dev-dependencies]
 mw-docs = { path = ".", features = ["testing"] }
+tempfile = { workspace = true }
+typst-assets = { version = "0.15.1", features = ["fonts"] }

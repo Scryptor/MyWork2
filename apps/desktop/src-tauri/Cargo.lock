@@ -3801,10 +3801,12 @@ name = "mw-docs"
 version = "0.1.0"
 dependencies = [
  "comemo",
+ "fontdb",
  "mw-domain",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
+ "tracing",
  "typst",
  "typst-layout",
  "typst-pdf",
@@ -3857,6 +3859,7 @@ dependencies = [
  "mw-api",
  "mw-core",
  "mw-db",
+ "mw-docs",
  "mw-domain",
  "mw-legacy",
  "rpassword",

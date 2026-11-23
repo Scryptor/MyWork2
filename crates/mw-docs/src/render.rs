@@ -6,6 +6,7 @@ use typst_layout::PagedDocument;
 use typst_pdf::PdfOptions;
 use typst_render::RenderOptions;
 
+use crate::fonts::FontSet;
 use crate::world::DocsWorld;
 
 #[derive(Debug, thiserror::Error)]
@@ -57,8 +58,9 @@ fn messages(errors: impl IntoIterator<Item = SourceDiagnostic>) -> Vec<String> {
 pub(crate) fn compile(
     source: String,
     files: Vec<(String, Vec<u8>)>,
+    fonts: &FontSet,
 ) -> Result<Rendered, DocsError> {
-    let world = DocsWorld::new(source, files)?;
+    let world = DocsWorld::new(source, files, fonts)?;
     let output = typst::compile::<PagedDocument>(&world).output;
     evict_cache();
     match output {
@@ -72,6 +74,28 @@ impl Rendered {
     #[cfg(test)]
     pub(crate) fn document(&self) -> &PagedDocument {
         &self.doc
+    }
+
+    /// Families of the fonts the text of the document is set in. Only with the `testing` feature.
+    #[cfg(feature = "testing")]
+    pub fn font_families(&self) -> std::collections::BTreeSet<String> {
+        fn walk(frame: &typst::layout::Frame, out: &mut std::collections::BTreeSet<String>) {
+            use typst::layout::FrameItem;
+            for (_, item) in frame.items() {
+                match item {
+                    FrameItem::Text(text) => {
+                        out.insert(text.font.info().family.clone());
+                    }
+                    FrameItem::Group(group) => walk(&group.frame, out),
+                    _ => {}
+                }
+            }
+        }
+        let mut out = std::collections::BTreeSet::new();
+        for page in self.doc.pages() {
+            walk(&page.frame, &mut out);
+        }
+        out
     }
 
     pub fn page_count(&self) -> usize {
