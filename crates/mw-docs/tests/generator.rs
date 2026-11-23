@@ -44,6 +44,7 @@ fn row(label: &str, value: &str, hide_if_empty: bool) -> FieldRow {
         label: label.to_owned(),
         value: value.to_owned(),
         hide_if_empty,
+        bold: false,
     }
 }
 
@@ -405,6 +406,7 @@ fn barcode_is_printed_only_for_a_valid_code() {
                                 digits: true,
                                 align: Align::Right,
                                 fill: false,
+                                stretch: false,
                             },
                         )],
                     ],
@@ -495,9 +497,11 @@ fn one_line_text_never_wraps() {
     // Wrapped, five such texts would not fit a 40×30 label.
     assert_eq!(doc.page_count(), 1, "{:?}", doc.text());
     let out = doc.text();
-    assert!(out.contains(&format!("{long} Вторая строка")), "{out:?}");
+    // What does not fit is cut off with an ellipsis, not at the edge of the label.
+    assert!(!out.contains("Вторая строка"), "{out:?}");
     assert!(out.contains("Адрес: Не указан"), "{out:?}");
-    assert_eq!(out.matches(long).count(), 4, "{out:?}");
+    assert_eq!(out.matches('…').count(), 4, "{out:?}");
+    assert_eq!(out.matches(long).count(), 0, "{out:?}");
     assert!(!out.contains("строка\nОчень"), "{out:?}");
 }
 
@@ -574,6 +578,7 @@ fn model_additions_have_defaults() {
                 digits: true,
                 align: Align::Center,
                 fill: false,
+                stretch: false,
             },
             BlockBody::CalibrationMarks,
         ]
@@ -593,6 +598,7 @@ fn barcode_fills_the_free_height_only_in_a_single_copy() {
                         digits: true,
                         align: Align::Center,
                         fill,
+                        stretch: false,
                     },
                 ),
                 text("{заказ.номер}"),

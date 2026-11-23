@@ -66,18 +66,13 @@ pub(super) fn body(generator: &Generator, template: &Template, out: &mut String)
             out.push_str(&generator.flow(&template.blocks, CopyRole::Single, width));
             out.push('\n');
         }
+        Layout::SheetPerCopy => {
+            copies(generator, template, out);
+            out.push_str("#copy-service\n#pagebreak()\n#copy-client\n");
+        }
         Layout::TwoPerA4 => {
             let half = (generator.area_mm.1 - CUT_GAP_MM) / 2.0;
-            let _ = writeln!(
-                out,
-                "#let copy-service = {}",
-                generator.flow(&template.blocks, CopyRole::Service, width)
-            );
-            let _ = writeln!(
-                out,
-                "#let copy-client = {}",
-                generator.flow(&template.blocks, CopyRole::Client, width)
-            );
+            copies(generator, template, out);
             let _ = writeln!(
                 out,
                 "#context {{
@@ -100,6 +95,21 @@ pub(super) fn body(generator: &Generator, template: &Template, out: &mut String)
                 client = mm(half + CUT_GAP_MM),
             );
         }
+    }
+}
+
+/// Defines `copy-service` and `copy-client`: the blocks of the template for each copy.
+fn copies(generator: &Generator, template: &Template, out: &mut String) {
+    let width = generator.area_mm.0;
+    for (name, role) in [
+        ("copy-service", CopyRole::Service),
+        ("copy-client", CopyRole::Client),
+    ] {
+        let _ = writeln!(
+            out,
+            "#let {name} = {}",
+            generator.flow(&template.blocks, role, width)
+        );
     }
 }
 

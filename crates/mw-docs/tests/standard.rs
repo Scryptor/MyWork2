@@ -227,10 +227,21 @@ fn sticker_fits_58x40_and_40x30_labels() {
             "№ 1234 · 22 ноября 2026",
             CLIENT,
             "+7 900 000-00-00",
-            "Смартфон Samsung Galaxy A52",
             BARCODE,
         ] {
             assert_eq!(out.matches(line).count(), 1, "{line}: {out:?}");
+        }
+        // The device line is in one row: whole on the wide label, cut with an ellipsis on the narrow one.
+        if width > 50.0 {
+            assert_eq!(
+                out.matches("Смартфон Samsung Galaxy A52").count(),
+                1,
+                "{out:?}"
+            );
+        } else {
+            assert!(out.contains("Смартфон Samsung"), "{out:?}");
+            assert!(out.trim_end().ends_with('…'), "{out:?}");
+            assert!(!out.contains("A52"), "{out:?}");
         }
     }
 }

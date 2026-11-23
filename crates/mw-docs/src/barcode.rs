@@ -53,6 +53,20 @@ pub(crate) fn fit_module_mm(available_mm: f64, dpi: Option<u32>) -> f64 {
     }
 }
 
+/// Like [`fit_module_mm`], but the module also grows: the widest that fits `available_mm` (with DPI a
+/// whole number of dots), never narrower than [`fit_module_mm`] gives.
+pub(crate) fn stretch_module_mm(available_mm: f64, dpi: Option<u32>) -> f64 {
+    let fitted = fit_module_mm(available_mm, dpi);
+    let widest = available_mm / (BAR_MODULES + 2 * QUIET_ZONE_MODULES) as f64;
+    match dpi {
+        Some(dpi) if dpi > 0 => {
+            let dot = 25.4 / f64::from(dpi);
+            fitted.max((widest / dot + 1e-9).floor() * dot)
+        }
+        _ => fitted.max(widest),
+    }
+}
+
 /// The 95 modules of a UPC-A code (`true` = bar): guard 101, six left digits, guard 01010,
 /// six right digits, guard 101. `None` unless `code` is a valid UPC-A.
 fn modules(code: &str) -> Option<[bool; BAR_MODULES]> {

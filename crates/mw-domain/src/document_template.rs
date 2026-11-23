@@ -28,7 +28,7 @@ pub struct PageSetup {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS, ToSchema)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum PageSize {
     A4,
     A5,
@@ -67,6 +67,9 @@ pub enum Layout {
     /// The service copy in the upper half of the sheet, the client copy in the lower half, a dashed cut
     /// line between them. When a copy does not fit into its half, each copy gets its own sheet.
     TwoPerA4,
+    /// Every copy on its own sheet of the template's page size: the service copy on the first, the
+    /// client copy on the next. Not for stickers and calibration.
+    SheetPerCopy,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, ToSchema)]
@@ -130,6 +133,10 @@ pub enum BlockBody {
         /// [`Layout::TwoPerA4`], where each copy is measured to fit its half.
         #[serde(default)]
         fill: bool,
+        /// The module grows until the code fills the width of the column (with DPI by whole printer
+        /// dots); never below the nominal 0.33 mm, except on a narrow label, where it shrinks as usual.
+        #[serde(default)]
+        stretch: bool,
     },
     /// Two signature lines side by side, each after its caption.
     Signatures { left: String, right: String },
@@ -163,6 +170,9 @@ pub struct FieldRow {
     /// Skip the row when every substitution in `value` is empty (a value without substitutions: when it
     /// is blank). A blank form keeps the row.
     pub hide_if_empty: bool,
+    /// Print the row bold: both the label and the value.
+    #[serde(default)]
+    pub bold: bool,
 }
 
 pub const TEMPLATE_FILE_FORMAT: &str = "mwtemplate";
@@ -217,6 +227,11 @@ impl Template {
                 if self.page.size != PageSize::A4 || self.page.landscape {
                     errors.push(FieldError::new("layout", "requires_a4"));
                 }
+                if matches!(self.kind, DocumentKind::Sticker | DocumentKind::Calibration) {
+                    errors.push(FieldError::new("layout", "not_allowed"));
+                }
+            }
+            Layout::SheetPerCopy => {
                 if matches!(self.kind, DocumentKind::Sticker | DocumentKind::Calibration) {
                     errors.push(FieldError::new("layout", "not_allowed"));
                 }
@@ -388,6 +403,12 @@ impl TemplateFile {
         if object.get("format").and_then(|v| v.as_str()) != Some(TEMPLATE_FILE_FORMAT) {
             return Err(invalid("format"));
         }
+        if object
+            .keys()
+            .any(|k| !matches!(k.as_str(), "format" | "format_version" | "template"))
+        {
+            return Err(invalid("file"));
+        }
         let version = object.get("format_version").and_then(|v| v.as_u64());
         if !version.is_some_and(|v| (1..=u64::from(TEMPLATE_FILE_VERSION)).contains(&v)) {
             return Err(vec![FieldError::new("format_version", "unsupported")]);
@@ -475,6 +496,7 @@ mod tests {
                 digits: true,
                 align: Align::Left,
                 fill,
+                stretch: false,
             },
         }
     }
@@ -629,5 +651,98 @@ mod tests {
         );
         let parsed = TemplateFile::parse(&file("mwtemplate", 1, &t), kind).unwrap();
         assert_eq!(parsed.kind, DocumentKind::IssueAct);
+    }
+
+    #[test]
+    fn sheet_per_copy_is_not_for_stickers() {
+        let mut t = base(DocumentKind::Sticker);
+        t.layout = Layout::SheetPerCopy;
+        assert_eq!(errs(&t), [pair("layout", "not_allowed")]);
+        t.kind = DocumentKind::Calibration;
+        assert_eq!(errs(&t), [pair("layout", "not_allowed")]);
+        let mut t = base(DocumentKind::IntakeAct);
+        t.layout = Layout::SheetPerCopy;
+        t.page.size = PageSize::A5;
+        assert_eq!(t.validate(), Ok(()));
+    }
+
+    #[test]
+    fn old_json_without_new_fields_still_reads() {
+        let row: FieldRow =
+            serde_json::from_str(r#"{"label":"a","value":"b","hide_if_empty":true}"#).unwrap();
+        assert!(!row.bold);
+        let body: BlockBody = serde_json::from_str(
+            r#"{"type":"barcode","height_mm":10.0,"digits":true,"align":"left"}"#,
+        )
+        .unwrap();
+        assert!(matches!(
+            body,
+            BlockBody::Barcode {
+                stretch: false,
+                fill: false,
+                ..
+            }
+        ));
+        assert_eq!(
+            serde_json::to_value(Layout::SheetPerCopy).unwrap(),
+            "sheet_per_copy"
+        );
+    }
+
+    #[test]
+    fn file_rejects_unknown_top_level_keys() {
+        let t = base(DocumentKind::IntakeAct);
+        let mut value: serde_json::Value =
+            serde_json::from_str(&file("mwtemplate", 1, &t)).unwrap();
+        value["extra"] = 1.into();
+        let e = TemplateFile::from_value(value, DocumentKind::IntakeAct).unwrap_err();
+        assert_eq!(
+            e.into_iter().map(|e| (e.field, e.code)).collect::<Vec<_>>(),
+            [pair("file", "invalid")]
+        );
+    }
+
+    #[test]
+    fn custom_page_size_rejects_unknown_fields() {
+        let ok: PageSize =
+            serde_json::from_str(r#"{"custom":{"width_mm":50.0,"height_mm":30.0}}"#).unwrap();
+        assert_eq!(
+            ok,
+            PageSize::Custom {
+                width_mm: 50.0,
+                height_mm: 30.0
+            }
+        );
+        assert!(
+            serde_json::from_str::<PageSize>(
+                r#"{"custom":{"width_mm":50.0,"height_mm":30.0,"x":1}}"#
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn text_limit_counts_chars_not_bytes() {
+        let mut t = base(DocumentKind::IntakeAct);
+        t.blocks = vec![text("ж".repeat(10_000), None)];
+        assert_eq!(t.validate(), Ok(()));
+    }
+
+    #[test]
+    fn content_area_is_checked_after_landscape_swap() {
+        let mut t = base(DocumentKind::Sticker);
+        t.page.size = PageSize::Custom {
+            width_mm: 100.0,
+            height_mm: 20.0,
+        };
+        t.page.margins_mm = Margins {
+            top: 4.0,
+            right: 40.0,
+            bottom: 4.0,
+            left: 40.0,
+        };
+        assert_eq!(t.validate(), Ok(()));
+        t.page.landscape = true;
+        assert_eq!(errs(&t), [pair("page.margins_mm", "too_large")]);
     }
 }

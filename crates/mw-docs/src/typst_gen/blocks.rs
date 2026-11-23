@@ -2,7 +2,7 @@
 
 use std::fmt::Write;
 
-use crate::barcode::{fit_module_mm, upc_a_size_mm};
+use crate::barcode::{fit_module_mm, stretch_module_mm, upc_a_size_mm};
 use crate::model::{Align, Block, BlockBody, CopyFilter, FieldRow, Layout, Template};
 
 use super::RenderOptions;
@@ -70,7 +70,10 @@ impl Generator {
         for block in blocks {
             match &block.body {
                 BlockBody::Barcode {
-                    height_mm, fill, ..
+                    height_mm,
+                    fill,
+                    stretch,
+                    ..
                 } => {
                     let height = f64::from(*height_mm);
                     let bars = if *fill && template.layout == Layout::OnePerPage {
@@ -78,7 +81,7 @@ impl Generator {
                     } else {
                         height
                     };
-                    found.push((fit_module_mm(width_mm, self.opts.dpi), bars));
+                    found.push((self.module_mm(width_mm, *stretch), bars));
                 }
                 BlockBody::Columns { columns, gap_mm } => {
                     let width = column_width(width_mm, columns.len(), *gap_mm);
@@ -88,6 +91,15 @@ impl Generator {
                 }
                 _ => {}
             }
+        }
+    }
+
+    /// The barcode module in a column `width_mm` wide.
+    fn module_mm(&self, width_mm: f64, stretch: bool) -> f64 {
+        if stretch {
+            stretch_module_mm(width_mm, self.opts.dpi)
+        } else {
+            fit_module_mm(width_mm, self.opts.dpi)
         }
     }
 
@@ -168,8 +180,9 @@ impl Generator {
                 digits,
                 align,
                 fill,
+                stretch,
             } => {
-                let module = fit_module_mm(width_mm, self.opts.dpi);
+                let module = self.module_mm(width_mm, *stretch);
                 let (w, h) = upc_a_size_mm(module, f64::from(*height_mm));
                 // The whole image at this block's module: its natural size, scaled.
                 let image_h = self.svg.map_or(h, |(svg_module, bars)| {
@@ -316,11 +329,15 @@ fn column_width(width_mm: f64, count: usize, gap_mm: f32) -> f64 {
 /// Appends a row to the `cells` of a fields table, under the row's `hide_if_empty` condition.
 fn field_row(out: &mut String, row: &FieldRow) {
     let value = pieces(&row.value, true);
-    let cells = format!(
-        "cells += ({}, {})",
+    let (label, value_expr) = (
         literal_expr(&row.label),
-        text_expr(&row.value, TextMode::Wrap)
+        text_expr(&row.value, TextMode::Wrap),
     );
+    let cells = if row.bold {
+        format!("cells += (text(weight: \"bold\", {label}), text(weight: \"bold\", {value_expr}))")
+    } else {
+        format!("cells += ({label}, {value_expr})")
+    };
     let keys: Vec<String> = value
         .iter()
         .filter_map(|p| match p {

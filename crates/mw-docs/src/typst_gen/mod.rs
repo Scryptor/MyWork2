@@ -90,8 +90,9 @@ fn data_json(data: &DocumentData, barcode: Option<&str>) -> Vec<u8> {
 /// the order and the client fields (the firm's own fields stay empty), otherwise the field's empty
 /// text. The line runs to the end of the text line; `line: short-line` — a short one, for centred
 /// text. `v1(key)`: the same in one line, with a short line. `one-line(where, body)`: `body` without
-/// wrapping, cut off at the right edge when too long (the outset keeps accents and descenders inside
-/// the clip).
+/// wrapping; a string that is too long is cut to the longest start (by grapheme clusters, found by
+/// bisection) that fits together with «…» (U+2026); other content is cut off at the right edge (the
+/// outset keeps accents and descenders inside the clip).
 const PRELUDE: &str = r#"#set par(leading: 0.5em, spacing: 0.8em)
 #set block(spacing: 0.8em)
 #let vspace = v
@@ -111,7 +112,16 @@ const PRELUDE: &str = r#"#set par(leading: 0.5em, spacing: 0.8em)
 }
 #let one-line(where, body) = layout(size => {
   let width = measure(body).width
-  block(width: 100%, clip: true, outset: (top: 0.3em, bottom: 0.3em), if width <= size.width { align(where, body) } else { box(width: width + 1pt, body) })
+  let line(content) = block(width: 100%, clip: true, outset: (top: 0.3em, bottom: 0.3em), content)
+  if width <= size.width { line(align(where, body)) } else if type(body) == str {
+    let clusters = body.clusters()
+    let (fit, over) = (0, clusters.len())
+    while fit < over {
+      let mid = calc.div-euclid(fit + over + 1, 2)
+      if measure(clusters.slice(0, mid).join(default: "") + "…").width <= size.width { fit = mid } else { over = mid - 1 }
+    }
+    line(align(where, clusters.slice(0, fit).join(default: "").trim(at: end) + "…"))
+  } else { line(box(width: width + 1pt, body)) }
 })
 "#;
 

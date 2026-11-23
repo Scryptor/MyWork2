@@ -113,6 +113,7 @@ fn row(label: &str, value: &str) -> FieldRow {
         label: label.to_owned(),
         value: value.to_owned(),
         hide_if_empty: false,
+        bold: false,
     }
 }
 
@@ -141,6 +142,7 @@ fn act(
             digits: true,
             align: Align::Right,
             fill: false,
+            stretch: false,
         }),
         both(BlockBody::CopyLabel {
             align: Align::Right,
@@ -212,7 +214,10 @@ fn issue_rows() -> Vec<FieldRow> {
         row("Стоимость", "{заказ.стоимость}"),
         optional_row("Скидка", "{заказ.скидка}"),
         optional_row("Предоплата", "{заказ.предоплата}"),
-        row("К оплате", "{заказ.к_оплате}"),
+        FieldRow {
+            bold: true,
+            ..row("К оплате", "{заказ.к_оплате}")
+        },
     ]
 }
 
@@ -239,6 +244,7 @@ fn sticker() -> Template {
                 digits: true,
                 align: Align::Center,
                 fill: true,
+                stretch: false,
             }),
             line(
                 "№ {заказ.номер} · {заказ.дата_приёма}",

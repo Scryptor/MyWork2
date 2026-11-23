@@ -6,7 +6,7 @@ use typst::layout::{Frame, FrameItem, Point};
 use typst::visualize::ImageKind;
 
 use crate::model::{
-    Align, Block, BlockBody, CopyFilter, Layout, Margins, PageSetup, PageSize, Template,
+    Align, Block, BlockBody, CopyFilter, FieldRow, Layout, Margins, PageSetup, PageSize, Template,
 };
 use crate::{DocumentData, RenderOptions, Rendered, render, sample_data, standard_template};
 
@@ -180,7 +180,7 @@ fn every_standard_barcode_crop_is_covered_and_the_image_is_never_taller_than_the
                 let crops = crops(&doc);
                 let expected = match (data.barcode.is_some(), template.layout) {
                     (false, _) => 0,
-                    (true, Layout::TwoPerA4) => 2,
+                    (true, Layout::TwoPerA4 | Layout::SheetPerCopy) => 2,
                     (true, Layout::OnePerPage) => 1,
                 };
                 assert_eq!(crops.len(), expected, "{what}: {crops:?}");
@@ -214,6 +214,7 @@ fn barcode(height_mm: f32) -> Block {
         digits: false,
         align: Align::Left,
         fill: false,
+        stretch: false,
     })
 }
 
@@ -319,4 +320,289 @@ fn calibration_offset_moves_the_content_right_and_down() {
             "{still:?} → {moved:?}"
         );
     }
+}
+
+/// The text of every page, one string per page.
+fn page_texts(doc: &Rendered) -> Vec<String> {
+    fn collect(frame: &Frame, out: &mut String) {
+        for (_, item) in frame.items() {
+            match item {
+                FrameItem::Text(text) => out.push_str(&text.text),
+                FrameItem::Group(group) => collect(&group.frame, out),
+                _ => {}
+            }
+        }
+    }
+    doc.document()
+        .pages()
+        .iter()
+        .map(|page| {
+            let mut out = String::new();
+            collect(&page.frame, &mut out);
+            out
+        })
+        .collect()
+}
+
+fn template_of(
+    kind: DocumentKind,
+    page: PageSetup,
+    layout: Layout,
+    blocks: Vec<Block>,
+) -> Template {
+    Template {
+        kind,
+        page,
+        layout,
+        font_size_pt: 10.0,
+        blocks,
+    }
+}
+
+fn page_of(size: PageSize, margin: f32) -> PageSetup {
+    PageSetup {
+        size,
+        landscape: false,
+        margins_mm: Margins {
+            top: margin,
+            right: margin,
+            bottom: margin,
+            left: margin,
+        },
+    }
+}
+
+fn plain_text(text: &str) -> Block {
+    block(BlockBody::Text {
+        text: text.to_owned(),
+        size_pt: None,
+        bold: false,
+        align: Align::Left,
+        one_line: false,
+    })
+}
+
+fn rows_template(rows: Vec<FieldRow>) -> Template {
+    template_of(
+        DocumentKind::IntakeAct,
+        page_of(PageSize::A5, 10.0),
+        Layout::OnePerPage,
+        vec![block(BlockBody::Fields { rows })],
+    )
+}
+
+fn row(label: &str, bold: bool) -> FieldRow {
+    FieldRow {
+        label: label.to_owned(),
+        value: "Значение".to_owned(),
+        hide_if_empty: false,
+        bold,
+    }
+}
+
+#[test]
+fn bold_row_is_bold() {
+    let opts = sticker_options(None, None);
+    let bold_markers = |rows| {
+        crate::to_typst(&rows_template(rows), &opts)
+            .matches("weight: \"bold\"")
+            .count()
+    };
+    assert_eq!(
+        bold_markers(vec![row("Первая", false), row("Вторая", false)]),
+        0
+    );
+    // The label and the value of the one bold row, and nothing else.
+    assert_eq!(
+        bold_markers(vec![row("Первая", false), row("Вторая", true)]),
+        2
+    );
+    let source = crate::to_typst(
+        &rows_template(vec![row("Первая", false), row("Вторая", true)]),
+        &opts,
+    );
+    let first = source.find("\"Первая\"").expect("first row");
+    let second = source.find("\"Вторая\"").expect("second row");
+    let bold = source.find("weight: \"bold\"").expect("bold");
+    assert!(first < second && second > bold && bold > first, "{source}");
+    render(
+        &rows_template(vec![row("Вторая", true)]),
+        &DocumentData::default(),
+        &opts,
+    )
+    .expect("renders");
+}
+
+fn stretched(stretch: bool) -> Template {
+    template_of(
+        DocumentKind::Sticker,
+        page_of(
+            PageSize::Custom {
+                width_mm: 100.0,
+                height_mm: 40.0,
+            },
+            2.0,
+        ),
+        Layout::OnePerPage,
+        vec![block(BlockBody::Barcode {
+            height_mm: 10.0,
+            digits: false,
+            align: Align::Left,
+            fill: false,
+            stretch,
+        })],
+    )
+}
+
+#[test]
+fn stretched_barcode_fills_the_column() {
+    let data = DocumentData {
+        barcode: Some(BARCODE.to_owned()),
+        ..DocumentData::default()
+    };
+    let dot = 25.4 / 203.0;
+    let column = 96.0;
+    let one = |stretch| {
+        let doc = render(
+            &stretched(stretch),
+            &data,
+            &sticker_options(None, Some(203)),
+        )
+        .expect("renders");
+        let mut crops = crops(&doc);
+        assert_eq!(crops.len(), 1);
+        crops.remove(0)
+    };
+    let plain = one(false);
+    assert!((plain.module() - 3.0 * dot).abs() < EPS_MM, "{plain:?}");
+    let wide = one(true);
+    let dots = wide.module() / dot;
+    assert!((dots - dots.round()).abs() < 0.01, "{dots} dots: {wide:?}");
+    // The widest whole-dot module that fits: one dot more would not.
+    assert!(wide.image_width <= column + EPS_MM, "{wide:?}");
+    assert!(wide.image_width + SYMBOL_MODULES * dot > column, "{wide:?}");
+    assert!(wide.image_width > plain.image_width, "{wide:?}");
+    assert_covered(&wide, "stretched");
+    // Without DPI the module is continuous.
+    let doc = render(&stretched(true), &data, &sticker_options(None, None)).expect("renders");
+    let free = &crops(&doc)[0];
+    assert!((free.image_width - column).abs() < EPS_MM, "{free:?}");
+}
+
+#[test]
+fn sheet_per_copy_puts_each_copy_on_its_page() {
+    let t = template_of(
+        DocumentKind::IntakeAct,
+        page_of(PageSize::A5, 10.0),
+        Layout::SheetPerCopy,
+        vec![
+            block(BlockBody::CopyLabel {
+                align: Align::Right,
+            }),
+            plain_text("Текст"),
+        ],
+    );
+    let doc = render(&t, &DocumentData::default(), &sticker_options(None, None)).expect("renders");
+    assert_eq!(doc.page_count(), 2);
+    let (w, h) = doc.page_size_mm();
+    assert!(
+        (w - 148.0).abs() < 0.01 && (h - 210.0).abs() < 0.01,
+        "{w}×{h}"
+    );
+    let pages = page_texts(&doc);
+    assert!(
+        pages[0].contains("Экземпляр сервиса") && !pages[0].contains("клиента"),
+        "{pages:?}"
+    );
+    assert!(
+        pages[1].contains("Экземпляр клиента") && !pages[1].contains("сервиса"),
+        "{pages:?}"
+    );
+}
+
+#[test]
+fn one_line_ends_with_ellipsis() {
+    let t = template_of(
+        DocumentKind::Sticker,
+        page_of(
+            PageSize::Custom {
+                width_mm: 40.0,
+                height_mm: 30.0,
+            },
+            1.5,
+        ),
+        Layout::OnePerPage,
+        vec![block(BlockBody::Text {
+            text: "{заказ.устройство}".to_owned(),
+            size_pt: None,
+            bold: false,
+            align: Align::Left,
+            one_line: true,
+        })],
+    );
+    let device = format!("Начало {}КОНЕЦ", "я".repeat(193));
+    let data = DocumentData {
+        values: [("order.device".to_owned(), device.clone())].into(),
+        ..DocumentData::default()
+    };
+    let doc = render(&t, &data, &sticker_options(None, Some(203))).expect("renders");
+    let text = page_texts(&doc).concat();
+    assert!(text.starts_with("Начало"), "{text:?}");
+    assert!(text.ends_with('…'), "{text:?}");
+    assert!(!text.contains("КОНЕЦ"), "{text:?}");
+    // A text that fits is not touched.
+    let short = DocumentData {
+        values: [("order.device".to_owned(), "Ноутбук".to_owned())].into(),
+        ..DocumentData::default()
+    };
+    let text = page_texts(&render(&t, &short, &sticker_options(None, Some(203))).expect("renders"))
+        .concat();
+    assert_eq!(text, "Ноутбук");
+}
+
+#[test]
+fn issue_act_to_pay_is_bold() {
+    for kind in [DocumentKind::IssueAct, DocumentKind::WarrantyIssueAct] {
+        let template = standard_template(kind);
+        let rows: Vec<FieldRow> = template
+            .blocks
+            .iter()
+            .filter_map(|b| match &b.body {
+                BlockBody::Fields { rows } => Some(rows.clone()),
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        let to_pay: Vec<_> = rows.iter().filter(|r| r.label == "К оплате").collect();
+        assert_eq!(to_pay.len(), 1, "{kind:?}");
+        assert!(to_pay[0].bold, "{kind:?}");
+        assert_eq!(rows.iter().filter(|r| r.bold).count(), 1, "{kind:?}");
+    }
+}
+
+#[test]
+fn two_per_a4_overflow_still_splits_with_user_template() {
+    let long = "слово ".repeat(1000);
+    let t = template_of(
+        DocumentKind::IntakeAct,
+        page_of(PageSize::A4, 10.0),
+        Layout::TwoPerA4,
+        vec![
+            block(BlockBody::CopyLabel {
+                align: Align::Right,
+            }),
+            plain_text(long.trim_end()),
+        ],
+    );
+    let doc = render(&t, &DocumentData::default(), &sticker_options(None, None)).expect("renders");
+    assert_eq!(doc.page_count(), 2);
+    let pages = page_texts(&doc);
+    assert!(
+        pages[0].contains("Экземпляр сервиса") && !pages[0].contains("клиента"),
+        "{pages:?}"
+    );
+    assert!(
+        pages[1].contains("Экземпляр клиента") && !pages[1].contains("сервиса"),
+        "{pages:?}"
+    );
 }
