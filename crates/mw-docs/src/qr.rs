@@ -5,6 +5,10 @@ use std::fmt::Write;
 use qrcode::bits::Bits;
 use qrcode::{Color, EcLevel, QrCode, Version};
 
+/// The most bytes a symbol holds as one byte-mode segment at level M: the capacity of version 40.
+/// A longer text fits no version, and is not tried on all 40.
+const MAX_BYTES: usize = 2331;
+
 /// SVG of `text` as a QR code of error correction level M: one unit per module (`viewBox="0 0 n n"`,
 /// `n` the side of the symbol in modules), no quiet zone, one `<path>` of the runs of dark modules
 /// row by row. `None` when the text does not fit a QR code.
@@ -15,6 +19,9 @@ use qrcode::{Color, EcLevel, QrCode, Version};
 /// А–П and с–я is 0x81–0x9F, the next letter starts with 0xD0 or 0xD1); phones read such a segment
 /// as Japanese characters.
 pub(crate) fn qr_svg(text: &str) -> Option<String> {
+    if text.len() > MAX_BYTES {
+        return None;
+    }
     let code = (1..=40).find_map(|version| byte_mode(text.as_bytes(), version))?;
     let n = code.width();
     let mut path = String::new();
@@ -169,6 +176,20 @@ mod tests {
     #[test]
     fn text_too_long_for_a_symbol_has_none() {
         assert!(qr_svg(&"a".repeat(3000)).is_none());
+    }
+
+    /// [`MAX_BYTES`] is what the largest symbol holds: a byte more fits no version.
+    #[test]
+    fn largest_symbol_holds_max_bytes() {
+        let fits = "a".repeat(MAX_BYTES);
+        assert!(byte_symbol(&fits, 40).is_some());
+        assert!(byte_symbol(&format!("{fits}a"), 40).is_none());
+        let (n, _) = modules(&qr_svg(&fits).expect("fits"));
+        assert_eq!(n, 177);
+        assert!(qr_svg(&format!("{fits}a")).is_none());
+        // Bytes, not characters: a Cyrillic letter is two.
+        assert!(qr_svg(&"я".repeat(MAX_BYTES / 2)).is_some());
+        assert!(qr_svg(&"я".repeat(MAX_BYTES / 2 + 1)).is_none());
     }
 
     #[test]
