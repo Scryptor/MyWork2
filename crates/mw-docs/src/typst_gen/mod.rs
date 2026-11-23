@@ -1,0 +1,151 @@
+//! Template → Typst source.
+//!
+//! User data never becomes markup. [`to_typst`] sees only the template and the options; the values are read
+//! inside the document from `data.json`, and template text goes in as escaped Typst string literals.
+
+mod blocks;
+mod page;
+mod text;
+
+use std::collections::BTreeMap;
+use std::fmt::Write;
+
+use mw_domain::barcode::is_valid_upc_a;
+use serde_json::{Map, Value};
+
+use crate::barcode::upc_a_svg;
+use crate::fields::fields;
+use crate::model::Template;
+use crate::render::{DocsError, Rendered, compile};
+
+use blocks::Generator;
+use page::{body, mm, pt};
+use text::typst_str;
+
+/// The values of one document.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DocumentData {
+    /// By field key (`order.number`, see [`crate::fields`]); a missing key is an empty value.
+    pub values: BTreeMap<String, String>,
+    /// UPC-A digits; `None` or an invalid code prints no barcode.
+    pub barcode: Option<String>,
+    /// A form to fill in by hand: empty values become lines to write on.
+    pub blank: bool,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct RenderOptions {
+    /// Label (width, height) in mm; replaces the template's page size (stickers, calibration).
+    pub label_mm: Option<(f32, f32)>,
+    /// Shift of the page content in mm: x to the right, y down.
+    pub offset_mm: (f32, f32),
+    /// Printer resolution: the barcode module becomes a whole number of printer dots. `None` — 0.33 mm.
+    pub dpi: Option<u32>,
+}
+
+/// Compiles `template` with `data`.
+pub fn render(
+    template: &Template,
+    data: &DocumentData,
+    opts: &RenderOptions,
+) -> Result<Rendered, DocsError> {
+    // `barcode` in `data.json` is set exactly when `barcode.svg` exists.
+    let barcode = data
+        .barcode
+        .as_deref()
+        .filter(|code| is_valid_upc_a(code))
+        .zip(Generator::new(template, opts).svg)
+        .and_then(|(code, (module, bars))| upc_a_svg(code, module, bars).map(|svg| (code, svg)));
+    let mut files = vec![(
+        "data.json".to_owned(),
+        data_json(data, barcode.as_ref().map(|(code, _)| *code)),
+    )];
+    if let Some((_, svg)) = barcode {
+        files.push(("barcode.svg".to_owned(), svg.into_bytes()));
+    }
+    compile(to_typst(template, opts), files)
+}
+
+fn data_json(data: &DocumentData, barcode: Option<&str>) -> Vec<u8> {
+    let values: Map<String, Value> = data
+        .values
+        .iter()
+        .map(|(key, value)| {
+            let value = value.replace("\r\n", "\n").replace('\r', "\n");
+            (key.clone(), Value::String(value))
+        })
+        .collect();
+    let mut root = Map::new();
+    root.insert("values".to_owned(), Value::Object(values));
+    root.insert(
+        "barcode".to_owned(),
+        barcode.map_or(Value::Null, |code| Value::String(code.to_owned())),
+    );
+    root.insert("blank".to_owned(), Value::Bool(data.blank));
+    Value::Object(root).to_string().into_bytes()
+}
+
+/// Helpers every document starts with (after `empties`, which `v` captures).
+/// `v(key)`: a non-empty value with its line breaks; empty — in a blank form a line to write on for
+/// the order and the client fields (the firm's own fields stay empty), otherwise the field's empty
+/// text. The line runs to the end of the text line; `line: short-line` — a short one, for centred
+/// text. `v1(key)`: the same in one line, with a short line. `one-line(where, body)`: `body` without
+/// wrapping, cut off at the right edge when too long (the outset keeps accents and descenders inside
+/// the clip).
+const PRELUDE: &str = r#"#set par(leading: 0.5em, spacing: 0.8em)
+#set block(spacing: 0.8em)
+#let vspace = v
+#let data = json("data.json")
+#let fill-line = box(width: 1fr, height: 0.7em, stroke: (bottom: 0.5pt))
+#let short-line = box(width: 3.5cm, height: 0.7em, stroke: (bottom: 0.5pt))
+#let raw-value(key) = data.values.at(key, default: "")
+#let filled(key) = raw-value(key).trim() != ""
+#let write-in(key) = data.blank and (key.starts-with("order.") or key.starts-with("client."))
+#let v(key, line: fill-line) = {
+  let s = raw-value(key)
+  if s.trim() != "" { s.split("\n").join(linebreak()) } else if write-in(key) { line } else if not data.blank { empties.at(key, default: "") }
+}
+#let v1(key) = {
+  let s = raw-value(key)
+  if s.trim() != "" { s.split("\n").join(" ") } else if write-in(key) { short-line } else if not data.blank { empties.at(key, default: "") }
+}
+#let one-line(where, body) = layout(size => {
+  let width = measure(body).width
+  block(width: 100%, clip: true, outset: (top: 0.3em, bottom: 0.3em), if width <= size.width { align(where, body) } else { box(width: width + 1pt, body) })
+})
+"#;
+
+/// Typst source of `template`. It never contains document data, so it is the same for every order.
+pub fn to_typst(template: &Template, opts: &RenderOptions) -> String {
+    let generator = Generator::new(template, opts);
+    let page = &generator.page;
+    let mut out = String::new();
+    let _ = writeln!(
+        out,
+        "#set page(width: {}, height: {}, margin: (top: {}, right: {}, bottom: {}, left: {}))",
+        mm(page.width),
+        mm(page.height),
+        mm(page.top),
+        mm(page.right),
+        mm(page.bottom),
+        mm(page.left)
+    );
+    let _ = writeln!(
+        out,
+        "#set text(font: \"Libertinus Serif\", size: {}, lang: \"ru\")",
+        pt(f64::from(template.font_size_pt))
+    );
+    let empties: Vec<String> = fields()
+        .iter()
+        .filter(|f| !f.empty.is_empty())
+        .map(|f| format!("{}: {}", typst_str(f.key), typst_str(f.empty)))
+        .collect();
+    if empties.is_empty() {
+        out.push_str("#let empties = (:)\n");
+    } else {
+        let _ = writeln!(out, "#let empties = ({},)", empties.join(", "));
+    }
+    out.push_str(PRELUDE);
+    body(&generator, template, &mut out);
+    out
+}
