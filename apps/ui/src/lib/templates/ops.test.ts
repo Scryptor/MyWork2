@@ -4,6 +4,7 @@ import type { Template } from '$api/Template';
 import {
 	blockAt,
 	canMove,
+	convertible,
 	duplicateBlock,
 	flatten,
 	insertBlock,
@@ -303,5 +304,38 @@ describe('intoColumnTargets', () => {
 		const inColumn = insertTextBlock(base(), [1, 0, 0], 'T');
 		expect(inColumn.at).toEqual([1, 0, 1]);
 		expect(col(inColumn.template, 1, 0)).toEqual(['x', 'T', 'y']);
+	});
+});
+
+describe('convertible', () => {
+	const barcode: Block = {
+		copies: 'both',
+		body: {
+			type: 'barcode',
+			height_mm: 12,
+			digits: true,
+			align: 'center',
+			fill: false,
+			stretch: false
+		}
+	};
+	const code: Block = { copies: 'both', body: { type: 'typst_code', code: '#v("order.number")' } };
+
+	it('a text, fields, a logo, columns without a barcode turn into code', () => {
+		expect(convertible(text('a'))).toBe(true);
+		expect(convertible({ copies: 'service', body: { type: 'separator' } })).toBe(true);
+		expect(convertible(columns([text('x')], [text('y')]))).toBe(true);
+		expect(convertible(columns([], []))).toBe(true);
+		// A code block in a column is written in place; one the server cannot is its answer to tell.
+		expect(convertible(columns([code], [text('y')]))).toBe(true);
+	});
+
+	it('a barcode, a code block, calibration marks and columns with a barcode do not', () => {
+		expect(convertible(barcode)).toBe(false);
+		expect(convertible(fillBarcode)).toBe(false);
+		expect(convertible(code)).toBe(false);
+		expect(convertible({ copies: 'both', body: { type: 'calibration_marks' } })).toBe(false);
+		expect(convertible(columns([text('x')], [barcode]))).toBe(false);
+		expect(convertible(columns([barcode], []))).toBe(false);
 	});
 });

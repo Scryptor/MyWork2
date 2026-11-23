@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BLOCK_TYPES, newBlock } from './defaults.js';
+import { BLOCK_TYPES, CODE_MAX, newBlock } from './defaults.js';
 
 describe('newBlock', () => {
 	it('the menu has the types in this order and no calibration marks', () => {
@@ -12,7 +12,8 @@ describe('newBlock', () => {
 			'separator',
 			'spacer',
 			'columns',
-			'copy_label'
+			'copy_label',
+			'typst_code'
 		]);
 		expect(BLOCK_TYPES).not.toContain('calibration_marks');
 	});
@@ -44,11 +45,24 @@ describe('newBlock', () => {
 			separator: { type: 'separator' },
 			spacer: { type: 'spacer', mm: 4 },
 			columns: { type: 'columns', columns: [[], []], gap_mm: 6 },
-			copy_label: { type: 'copy_label', align: 'right' }
+			copy_label: { type: 'copy_label', align: 'right' },
+			typst_code: {
+				type: 'typst_code',
+				code: '// Свой Typst-код: v("ключ") — значение поля, copy — экземпляр\n#v("order.number")\n'
+			}
 		} as const;
 		for (const type of BLOCK_TYPES) {
 			expect(newBlock(type)).toEqual({ copies: 'both', body: bodies[type] });
 		}
+	});
+
+	it('a code block starts with a comment on what the code sees and one field', () => {
+		expect(newBlock('typst_code').body).toEqual({
+			type: 'typst_code',
+			code: '// Свой Typst-код: v("ключ") — значение поля, copy — экземпляр\n#v("order.number")\n'
+		});
+		// As `MAX_CODE_CHARS` of the model.
+		expect(CODE_MAX).toBe(20_000);
 	});
 
 	it('every call gives a fresh object', () => {

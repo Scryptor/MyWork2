@@ -1,11 +1,19 @@
-import { render, screen } from '@testing-library/svelte';
+import { render, screen, waitFor } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Block } from '$api/Block';
 import type { DocumentTemplate } from '$api/DocumentTemplate';
 import type { Template } from '$api/Template';
+import { ApiError } from '#lib/api/client.js';
+import { toast } from '#lib/ui/toast/toast.svelte.js';
 import BlockList from './BlockListHarness.test-helper.svelte';
 import { createTemplateEditor, type TemplateEditorApi } from './editor.svelte.js';
+
+const blockCode = vi.hoisted(() => vi.fn());
+vi.mock('#lib/api/document-templates.js', async (original) => ({
+	...(await original<typeof import('#lib/api/document-templates.js')>()),
+	blockCode
+}));
 
 // The list of blocks moved with the arrows of a handle: the row moves at once, the template after a
 // pause. The rows keep their keys while they move, so the focus stays with the block it was on and the
@@ -16,7 +24,11 @@ beforeAll(() => {
 	Element.prototype.releasePointerCapture ??= () => {};
 	Element.prototype.scrollIntoView ??= () => {};
 });
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+	vi.useRealTimers();
+	toast.clear();
+	blockCode.mockReset();
+});
 
 const text = (s: string): Block => ({
 	copies: 'both',
@@ -145,6 +157,134 @@ describe('BlockList: the rows follow a template changed from outside', () => {
 		editor.redo();
 		await vi.advanceTimersByTimeAsync(0);
 		expect(shown()).toEqual(['Первый', 'Второй', 'Третий']);
+		editor.dispose();
+	});
+});
+
+describe('BlockList: «Свой Typst-код»', () => {
+	const barcode: Block = {
+		copies: 'both',
+		body: {
+			type: 'barcode',
+			height_mm: 12,
+			digits: true,
+			align: 'center',
+			fill: false,
+			stretch: false
+		}
+	};
+
+	/**
+	 * The menu of a block, opened from the keyboard: the one its button controls (jsdom does not finish
+	 * the closing of the one before).
+	 */
+	async function openMenu(label: string) {
+		const button = screen.getByRole('button', { name: `Действия: ${label}` });
+		button.focus();
+		await userEvent.keyboard('{Enter}');
+		return waitFor(() => {
+			const menu = document.getElementById(button.getAttribute('aria-controls') ?? '');
+			expect(menu).toHaveAttribute('role', 'menu');
+			return menu!;
+		});
+	}
+	const itemsOf = (menu: HTMLElement) =>
+		[...menu.querySelectorAll<HTMLElement>('[role="menuitem"]')].map((i) => i.textContent?.trim());
+	/** Chosen from the keyboard, as a click would. */
+	async function choose(menu: HTMLElement, label: string) {
+		const item = [...menu.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+			(i) => i.textContent?.trim() === label
+		)!;
+		item.focus();
+		await userEvent.keyboard('{Enter}');
+	}
+
+	it('a text block offers it, a barcode does not', async () => {
+		const editor = editorOf([text('Шапка'), barcode]);
+		render(BlockList, { editor });
+		expect(itemsOf(await openMenu('Текст · Шапка'))).toContain('Свой Typst-код');
+		await userEvent.keyboard('{Escape}');
+		const menu = await openMenu('Штрихкод');
+		expect(itemsOf(menu)).toContain('Дублировать');
+		expect(itemsOf(menu)).not.toContain('Свой Typst-код');
+		editor.dispose();
+	});
+
+	it('choosing it makes the block a code block of the code the server gave; one undo brings it back', async () => {
+		blockCode.mockResolvedValue({ code: '#{ "x" }' });
+		const footer: Block = { ...text('Подвал'), copies: 'client' };
+		const editor = editorOf([text('Шапка'), footer]);
+		editor.select([1]);
+		const before = editor.template;
+		render(BlockList, { editor });
+		await choose(await openMenu('Текст · Подвал'), 'Свой Typst-код');
+		await waitFor(() =>
+			expect(editor.template.blocks[1]).toEqual({
+				copies: 'client',
+				body: { type: 'typst_code', code: '#{ "x" }' }
+			})
+		);
+		expect(blockCode).toHaveBeenCalledWith('warranty_intake_act', before, [1]);
+		expect(editor.template.blocks[0]).toEqual(text('Шапка'));
+		expect(editor.selected).toEqual([1]);
+		editor.undo();
+		expect(editor.template.blocks[1]).toEqual(footer);
+		expect(editor.canUndo).toBe(false);
+		editor.dispose();
+	});
+
+	it('a block changed while the code was on its way is not replaced by the code of what it was', async () => {
+		let answer: (v: { code: string }) => void = () => {};
+		blockCode.mockReturnValue(new Promise((r) => (answer = r)));
+		const editor = editorOf([text('Шапка'), text('Подвал')]);
+		render(BlockList, { editor });
+		await choose(await openMenu('Текст · Подвал'), 'Свой Typst-код');
+		await waitFor(() => expect(blockCode).toHaveBeenCalled());
+		// Another block changed meanwhile: the code still goes in, over the template as it is now.
+		const now = editor.template;
+		editor.edit({ ...now, blocks: [text('Новая шапка'), now.blocks[1]!] });
+		answer({ code: '#{ "x" }' });
+		await waitFor(() => expect(editor.template.blocks[1]!.body.type).toBe('typst_code'));
+		expect(editor.template.blocks[0]).toEqual(text('Новая шапка'));
+
+		// The block itself changed: its code is no more what it prints.
+		blockCode.mockReturnValue(new Promise((r) => (answer = r)));
+		await choose(await openMenu('Текст · Новая шапка'), 'Свой Typst-код');
+		await waitFor(() => expect(blockCode).toHaveBeenCalledTimes(2));
+		const later = editor.template;
+		editor.edit({ ...later, blocks: [text('Шапка 2'), later.blocks[1]!] });
+		answer({ code: '#{ "y" }' });
+		await new Promise((r) => setTimeout(r, 0));
+		expect(editor.template.blocks[0]).toEqual(text('Шапка 2'));
+		editor.dispose();
+	});
+
+	it('a block the server does not turn into code stays as it is, the reason is told', async () => {
+		blockCode.mockRejectedValue(
+			new ApiError(422, 'validation', 'Проверьте введённые данные', {
+				code: 'validation',
+				message: 'Проверьте введённые данные',
+				fields: [
+					{
+						field: 'path',
+						code: 'code_unavailable',
+						message: 'Этот блок нельзя превратить в Typst-код'
+					}
+				],
+				current_version: null,
+				permission: null,
+				retry_after_secs: null,
+				diagnostics: []
+			})
+		);
+		const editor = editorOf([text('Шапка')]);
+		render(BlockList, { editor });
+		await choose(await openMenu('Текст · Шапка'), 'Свой Typst-код');
+		await waitFor(() =>
+			expect(toast.items.map((t) => t.message)).toContain('Этот блок нельзя превратить в Typst-код')
+		);
+		expect(editor.template.blocks).toEqual([text('Шапка')]);
+		expect(editor.canUndo).toBe(false);
 		editor.dispose();
 	});
 });

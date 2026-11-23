@@ -2,8 +2,10 @@
      sample, built a moment after the last edit — one request at a time, always of the newest model. A
      sticker is drawn on the label of «Печать» with its offset and printer's resolution, an act at the
      resolution of acts: as it is printed. A model the server does not take keeps the pages drawn before,
-     dimmed, under the list of its mistakes. The pages are `blob:` addresses, freed when they go. -->
+     dimmed, under the list of its mistakes; the errors of own Typst code go to `ondiagnostics` too, for
+     the lines of the code editor. The pages are `blob:` addresses, freed when they go. -->
 <script lang="ts">
+	import type { CodeDiagnostic } from '$api/CodeDiagnostic';
 	import type { DocumentKind } from '$api/DocumentKind';
 	import type { DocumentPages } from '$api/DocumentPages';
 	import type { Template } from '$api/Template';
@@ -22,12 +24,18 @@
 	let {
 		kind,
 		template,
-		orderId
+		orderId,
+		ondiagnostics
 	}: {
 		kind: DocumentKind;
 		template: Template;
 		/** The order whose data is shown; null: the sample. */
 		orderId: number | null;
+		/**
+		 * The errors of own code of the newest answer: those of a refused model, none after any other
+		 * answer, so no mark stays on code it may no longer fit.
+		 */
+		ondiagnostics?: (diagnostics: readonly CodeDiagnostic[]) => void;
 	} = $props();
 
 	const t = ru.templates;
@@ -62,8 +70,14 @@
 		(input: { body: TemplatePreview }, signal) => previewTemplate(kind, input.body, signal),
 		{
 			delayMs: 400,
-			onresult: show,
+			onresult: (doc) => {
+				ondiagnostics?.([]);
+				show(doc);
+			},
 			onerror: (e) => {
+				ondiagnostics?.(
+					e instanceof ApiError && e.code === 'validation' ? (e.body?.diagnostics ?? []) : []
+				);
 				loaded = true;
 				failure =
 					e instanceof ApiError && e.code === 'validation'

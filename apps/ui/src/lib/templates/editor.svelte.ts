@@ -2,8 +2,10 @@
 // saved by itself over the shared record editor — one queue of writes, the version, the conflict. The
 // history is the truth of the screen: every step, an undo too, goes to the server as the whole model.
 import type { Block } from '$api/Block';
+import type { CodeDiagnostic } from '$api/CodeDiagnostic';
 import type { DocumentKind } from '$api/DocumentKind';
 import type { DocumentTemplate } from '$api/DocumentTemplate';
+import type { ErrorField } from '$api/ErrorField';
 import type { Template } from '$api/Template';
 import { ApiError } from '#lib/api/client.js';
 import { getTemplate, saveTemplate } from '#lib/api/document-templates.js';
@@ -58,6 +60,11 @@ export interface TemplateEditor {
 	readonly canRedo: boolean;
 	/** = `edit(standard)`: an ordinary step, it can be undone. */
 	resetToStandard(): void;
+	/**
+	 * The errors of own Typst code in the newest preview, set by the preview: those of a refused model
+	 * (a 422), none after any other answer. Replaced as a whole, never changed in place.
+	 */
+	diagnostics: readonly CodeDiagnostic[];
 	/** For the save indicator; «Отбросить мои правки» there shows the saved template again. */
 	readonly status: SaveStatus;
 	/** Own model and the one saved elsewhere meanwhile; null without a conflict. */
@@ -90,6 +97,7 @@ export function createTemplateEditor(
 	const kind = initial.kind;
 	const history = createHistory<Template>(initial.template, { limit: 100, mergeMs: 1000 });
 	let chosen = $state.raw<Selection>('page');
+	let diagnostics = $state.raw<readonly CodeDiagnostic[]>([]);
 
 	/** The answer to the last write of this editor; every other record that arrives was read from the server. */
 	let ownAnswer: DocumentTemplate | null = null;
@@ -203,6 +211,12 @@ export function createTemplateEditor(
 		resetToStandard() {
 			edit(ed.record.standard);
 		},
+		get diagnostics() {
+			return diagnostics;
+		},
+		set diagnostics(d) {
+			diagnostics = d;
+		},
 		status,
 		get conflict() {
 			return ed.conflicts.get('template') ?? null;
@@ -278,11 +292,38 @@ function pathOf(field: string): BlockPath | null {
 	return m[2] === undefined ? [Number(m[1])] : [Number(m[1]), Number(m[2]), Number(m[3])];
 }
 
-/** The mistakes of a model the server did not take (a 422), each with what it is about. */
+/** What Typst says of an error of own code, with its hints: «message — hint — hint». */
+export const diagnosticText = (d: CodeDiagnostic): string => [d.message, ...d.hints].join(' — ');
+
+/** An error of own code over the preview: «Typst-код · … · строка 2, знак 5: message — hint». */
+function codeErrorLine(d: CodeDiagnostic, template: Template): string {
+	if (d.place === null) return diagnosticText(d);
+	const block = blockAt(template, d.place.block);
+	return t.codeError(
+		block ? blockLabel(block) : t.blockTypes.typst_code,
+		d.place.line,
+		d.place.column,
+		diagnosticText(d)
+	);
+}
+
+/**
+ * The mistakes of a model the server did not take (a 422), each with what it is about. The errors of
+ * own code come first, each with its line; the fields that only mark their blocks are not repeated.
+ */
 export function templateErrors(e: unknown, template: Template): string[] {
 	if (!(e instanceof ApiError) || e.code !== 'validation') return [];
-	const fields = e.body?.fields ?? [];
-	if (fields.length === 0) return [e.message];
+	const diagnostics = e.body?.diagnostics ?? [];
+	const fields = (e.body?.fields ?? []).filter(
+		(f) => diagnostics.length === 0 || f.code !== 'typst_error'
+	);
+	const code = diagnostics.map((d) => codeErrorLine(d, template));
+	if (code.length === 0 && fields.length === 0) return [e.message];
+	return [...code, ...fieldErrors(e, fields, template)];
+}
+
+/** The field errors of a refused model, each with the block or the setting it is about. */
+function fieldErrors(e: ApiError, fields: readonly ErrorField[], template: Template): string[] {
 	return fields.map((f) => {
 		const message = f.message || e.message;
 		const path = pathOf(f.field);

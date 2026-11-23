@@ -405,4 +405,43 @@ describe('templateErrors', () => {
 		]);
 		expect(templateErrors(new ApiError(0, 'network', 'Нет связи', null), STANDARD)).toEqual([]);
 	});
+
+	it('a code error is a line per diagnostic: the block, the line and the column, then the hints', () => {
+		const template: Template = {
+			...STANDARD,
+			blocks: [
+				text('Акт'),
+				{ copies: 'both', body: { type: 'typst_code', code: '#v("order.number")\n#foo' } }
+			]
+		};
+		const e = new ApiError(422, 'validation', 'Ошибка в своём Typst-коде', {
+			code: 'validation',
+			message: 'Ошибка в своём Typst-коде',
+			fields: [
+				{ field: 'blocks.1.code', code: 'typst_error', message: 'Ошибка в своём Typst-коде' },
+				{ field: 'template', code: 'typst_error', message: 'Ошибка в своём Typst-коде' },
+				{ field: 'blocks.0.text', code: 'too_long', message: 'Слишком длинный текст' }
+			],
+			current_version: null,
+			permission: null,
+			retry_after_secs: null,
+			diagnostics: [
+				{
+					place: { block: [1], line: 2, column: 3 },
+					message: 'unknown variable: foo',
+					hints: ['check the spelling', 'or define it']
+				},
+				{ place: null, message: 'maximum function call depth exceeded', hints: [] },
+				// A block that is gone meanwhile: its type is what is left to name it.
+				{ place: { block: [7], line: 1, column: 1 }, message: 'expected expression', hints: [] }
+			]
+		});
+		expect(templateErrors(e, template)).toEqual([
+			'Typst-код · #v("order.number") · строка 2, знак 3: unknown variable: foo — check the spelling — or define it',
+			'maximum function call depth exceeded',
+			'Typst-код · строка 1, знак 1: expected expression',
+			// The fields of the code errors repeat the lines above; the others stay.
+			'Текст · Акт: Слишком длинный текст'
+		]);
+	});
 });

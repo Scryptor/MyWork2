@@ -1838,7 +1838,8 @@ export const ru = {
 			text: 'Текст',
 			fieldLabel: 'Название',
 			signatureLeft: 'Подпись сервиса',
-			signatureRight: 'Подпись клиента'
+			signatureRight: 'Подпись клиента',
+			code: '// Свой Typst-код: v("ключ") — значение поля, copy — экземпляр\n#v("order.number")\n'
 		},
 		title: 'Редактор шаблонов',
 		editButton: 'Изменить',
@@ -1871,6 +1872,8 @@ export const ru = {
 		/** More than one block of columns: which one, by its place in the list. */
 		toColumnOf: (n: number, block: number) => `В колонку ${n} блока ${block}`,
 		outOfColumns: 'Вынести из колонок',
+		/** The block menu: the block becomes a «Typst-код» block that prints the same. */
+		toCode: 'Свой Typst-код',
 		blockTypes: {
 			text: 'Текст',
 			fields: 'Поля',
@@ -1886,6 +1889,9 @@ export const ru = {
 		} satisfies Record<BlockBody['type'], string>,
 		mmUnit: 'мм',
 		previewFailed: 'Шаблон не построен',
+		/** An error of own Typst code over the preview: the block, where in its code, what is wrong. */
+		codeError: (block: string, line: number, column: number, message: string) =>
+			`${block} · строка ${line}, знак ${column}: ${message}`,
 		previewLoading: 'Превью строится…',
 		/** Why a save is refused: the server's mistakes are listed over the preview. */
 		invalid: 'в шаблоне ошибка, она показана над превью',
@@ -1940,6 +1946,9 @@ export const ru = {
 		/** The button when several fields of a block have it: which one. */
 		insertFieldTo: (field: string) => `Вставить поле: ${field}`,
 		insertFieldSearch: 'Поле',
+		code: 'Typst-код',
+		codeHelp:
+			'Код Typst на месте блока. Доступны: v("order.number") и v1(…) — значения полей, data.values — все значения, copy — "service", "client" или "single", vspace(…) — отступ, image("logo.png"), когда есть data.logo. Штрихкод — блоком «Штрихкод». Предел — 5 секунд на документ.',
 		fieldRow: (n: number) => `Строка ${n}`,
 		rowLabel: 'Название',
 		rowValue: 'Значение',

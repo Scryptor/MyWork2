@@ -1,8 +1,9 @@
 <!-- The template editor (plan 7.1, spec 5.1 and section 7 of the interface): on top the document and the
      order for the example, «Отменить», «Повторить», «Сбросить к стандартному» and the save state; below
-     three columns — the blocks, the live preview, the properties of the chosen item. Medium screens put the
-     properties under the blocks; narrow ones show one part at a time. Ctrl/⌘Z outside the fields undoes a
-     step of the template (newer than the toasts' own Ctrl/⌘Z, so it wins while the editor is open). -->
+     three columns — the blocks, the live preview, the properties of the chosen item (as wide as the preview
+     while a «Typst-код» block is chosen). Medium screens put the properties under the blocks; narrow ones
+     show one part at a time. Ctrl/⌘Z outside the fields undoes a step of the template (newer than the
+     toasts' own Ctrl/⌘Z, so it wins while the editor is open). -->
 <script lang="ts">
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import Redo2 from '@lucide/svelte/icons/redo-2';
@@ -28,6 +29,7 @@
 	import BlockList from './BlockList.svelte';
 	import type { TemplateEditor } from './editor.svelte.js';
 	import { createOrderSearch } from './order-search.svelte.js';
+	import { blockAt } from './ops.js';
 	import Properties from './Properties.svelte';
 	import TemplateFileMenu from './TemplateFileMenu.svelte';
 	import TemplatePreview from './TemplatePreview.svelte';
@@ -88,6 +90,12 @@
 	/** The texts of a file the document does not take; null: nothing to show. */
 	let misfit = $state.raw<string[] | null>(null);
 
+	/** A code block is chosen: on a wide screen its code takes half of what the blocks leave. */
+	const coding = $derived.by(() => {
+		const s = editor.selected;
+		return s !== 'page' && blockAt(editor.template, s)?.body.type === 'typst_code';
+	});
+
 	type Pane = 'blocks' | 'properties' | 'preview';
 	let pane = $state<Pane>('blocks');
 	const PANES: { value: Pane; label: string }[] = [
@@ -97,7 +105,7 @@
 	];
 </script>
 
-<div class="editor">
+<div class="editor" class:coding>
 	<header class="head">
 		<div class="title">
 			<Button variant="ghost" size="sm" icon={ArrowLeft} href={resolve('settings/documents')}
@@ -181,6 +189,7 @@
 				{kind}
 				template={editor.template}
 				orderId={withOrder ? orders.orderId : null}
+				ondiagnostics={(d) => (editor.diagnostics = d)}
 			/>
 		</section>
 		<section class="pane props" class:shown={pane === 'properties'} aria-label={t.properties}>
@@ -266,6 +275,11 @@
 	}
 	.props {
 		grid-area: props;
+	}
+	/* Wide with a code block chosen: the code as wide as the preview. */
+	:global([data-width='lg']) .coding .body,
+	:global([data-width='xl']) .coding .body {
+		grid-template-columns: 16.25rem minmax(0, 1fr) minmax(0, 1fr);
 	}
 	/* Medium: the properties under the blocks, the preview beside them. */
 	:global([data-width='md']) .body {

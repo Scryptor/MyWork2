@@ -12,8 +12,12 @@ export const BLOCK_TYPES = [
 	'separator',
 	'spacer',
 	'columns',
-	'copy_label'
+	'copy_label',
+	'typst_code'
 ] as const satisfies readonly BlockBody['type'][];
+
+/** The longest code of a «Typst-код» block, as `MAX_CODE_CHARS` of the model. */
+export const CODE_MAX = 20_000;
 
 function body(type: (typeof BLOCK_TYPES)[number]): BlockBody {
 	const d = ru.templates.defaults;
@@ -39,6 +43,8 @@ function body(type: (typeof BLOCK_TYPES)[number]): BlockBody {
 			return { type, columns: [[], []], gap_mm: 6 };
 		case 'copy_label':
 			return { type, align: 'right' };
+		case 'typst_code':
+			return { type, code: d.code };
 	}
 }
 

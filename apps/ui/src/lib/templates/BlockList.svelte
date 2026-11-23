@@ -1,27 +1,35 @@
 <!-- The list of blocks of the editor (plan 7.1): «Страница» first, then the blocks in reading order; the
      blocks of a column under it, «Колонка 1», «Колонка 2»…. A block is dragged within its own list (the
-     page or its column); its menu duplicates, deletes and moves it into a column or out of the columns.
+     page or its column); its menu duplicates, deletes and moves it into a column or out of the columns,
+     and turns it into own Typst code that prints the same (plan 7.3).
      «Добавить блок» puts the new block after the chosen one and chooses it. -->
 <script lang="ts">
 	import ArrowLeftFromLine from '@lucide/svelte/icons/arrow-left-from-line';
 	import ArrowRightToLine from '@lucide/svelte/icons/arrow-right-to-line';
+	import Code from '@lucide/svelte/icons/code';
 	import Copy from '@lucide/svelte/icons/copy';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import FileText from '@lucide/svelte/icons/file-text';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import type { Block } from '$api/Block';
+	import { ApiError, errorMessage } from '#lib/api/client.js';
+	import { blockCode } from '#lib/api/document-templates.js';
 	import { ru } from '#lib/i18n/ru.js';
+	import { sameValue } from '#lib/orders/merge.js';
 	import { untrack } from 'svelte';
 	import Button from '#lib/ui/Button.svelte';
 	import DropdownMenu, { type MenuItem } from '#lib/ui/DropdownMenu.svelte';
 	import IconButton from '#lib/ui/IconButton.svelte';
 	import SortableList from '#lib/ui/SortableList.svelte';
+	import { toast } from '#lib/ui/toast/toast.svelte.js';
 	import { BLOCK_TYPES, newBlock } from './defaults.js';
 	import { blockLabel, type Selection, type TemplateEditor } from './editor.svelte.js';
 	import { createBlockKeys } from './keys.js';
 	import {
+		blockAt,
 		canMove,
+		convertible,
 		duplicateBlock,
 		insertBlock,
 		intoColumnTargets,
@@ -29,6 +37,7 @@
 		placeForNew,
 		removeBlock,
 		reorder,
+		replaceBlock,
 		selectionAfterDuplicate,
 		selectionAfterRemove,
 		type BlockPath,
@@ -111,6 +120,30 @@
 		}
 	}
 
+	/**
+	 * «Свой Typst-код»: the block becomes a code block that prints the same, with the code the server
+	 * writes for it and its own «Экземпляры»; one step to undo, and the block is the one chosen, its code
+	 * shown. A block changed while the code was on its way keeps the change: the code is of what it was.
+	 */
+	async function toCode(path: BlockPath) {
+		const asked = blockAt(template, path);
+		if (!asked) return;
+		let code: string;
+		try {
+			({ code } = await blockCode(editor.kind, template, path));
+		} catch (e) {
+			// The server's reason for this block (`path`/`code_unavailable`), not «Проверьте введённые данные».
+			const why = e instanceof ApiError ? e.body?.fields[0]?.message : undefined;
+			toast.show({ message: why || errorMessage(e), tone: 'danger' });
+			return;
+		}
+		const now = editor.template;
+		const block = blockAt(now, path);
+		if (!block || !sameValue(block, asked)) return;
+		editor.edit(replaceBlock(now, path, { ...block, body: { type: 'typst_code', code } }));
+		editor.select(path);
+	}
+
 	function add(type: (typeof BLOCK_TYPES)[number]) {
 		const at = placeForNew(template, selected, type);
 		editor.edit(insertBlock(template, at, newBlock(type)));
@@ -142,6 +175,9 @@
 				icon: ArrowLeftFromLine,
 				onselect: () => move(e.path, to)
 			});
+		}
+		if (convertible(e.block)) {
+			out.push({ label: t.toCode, icon: Code, onselect: () => void toCode(e.path) });
 		}
 		out.push(
 			{ separator: true },

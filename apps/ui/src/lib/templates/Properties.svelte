@@ -14,6 +14,7 @@
 	import SignaturesProps from './props/SignaturesProps.svelte';
 	import SpacerProps from './props/SpacerProps.svelte';
 	import TextProps from './props/TextProps.svelte';
+	import TypstCodeProps from './props/TypstCodeProps.svelte';
 
 	let { editor }: { editor: TemplateEditor } = $props();
 
@@ -46,6 +47,8 @@
 				<ColumnsProps {editor} path={selected} />
 			{:else if block.body.type === 'copy_label'}
 				<CopyLabelProps {editor} path={selected} />
+			{:else if block.body.type === 'typst_code'}
+				<TypstCodeProps {editor} path={selected} />
 			{/if}
 			<CopiesField {editor} path={selected} />
 		{/if}

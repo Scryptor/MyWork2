@@ -67,6 +67,27 @@ export function canMove(t: Template, from: BlockPath, to: BlockPath): boolean {
 	return true;
 }
 
+/**
+ * Whether «Свой Typst-код» is offered for the block. A barcode is not: its module is counted in the
+ * printer's dots by the barcode blocks, so it stays a block, and columns with one stay columns. A code
+ * block in a column is written in place; one the server cannot write so it refuses (a 422).
+ */
+export function convertible(block: Block): boolean {
+	const b = block.body;
+	switch (b.type) {
+		case 'barcode':
+		case 'typst_code':
+		case 'calibration_marks':
+			return false;
+		case 'columns':
+			return b.columns.every((column) =>
+				column.every((inner) => inner.body.type === 'typst_code' || convertible(inner))
+			);
+		default:
+			return true;
+	}
+}
+
 /** `to` is the place in the resulting template. */
 export function moveBlock(t: Template, from: BlockPath, to: BlockPath): Template {
 	if (!canMove(t, from, to)) return t;
