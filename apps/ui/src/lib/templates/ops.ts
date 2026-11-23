@@ -73,14 +73,19 @@ export function moveBlock(t: Template, from: BlockPath, to: BlockPath): Template
 	return insertBlock(removeBlock(t, from), to, blockAt(t, from)!);
 }
 
+const isPermutation = (order: number[]) =>
+	order.every((i) => Number.isInteger(i) && i >= 0 && i < order.length) &&
+	new Set(order).size === order.length;
+
 /** `order` lists the previous indices in the new order, as `SortableList` reports it. */
 export function reorder(t: Template, container: Container, order: number[]): Template {
 	const next = structuredClone(t);
 	const list = container.length === 0 ? next.blocks : listOf(next, [...container, 0])?.list;
 	if (!list || order.length !== list.length) return t;
+	// Every previous index once: a repeated one would copy a block and lose another.
+	if (!isPermutation(order)) return t;
 	const old = [...list];
 	const moved = order.map((i) => old[i]);
-	if (moved.some((b) => b === undefined)) return t;
 	list.splice(0, list.length, ...(moved as Block[]));
 	return next;
 }

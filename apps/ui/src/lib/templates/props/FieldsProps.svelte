@@ -2,6 +2,7 @@
      «Жирная»; «Добавить строку» and «Удалить строку». The rows are dragged to a new order. -->
 <script lang="ts">
 	import Plus from '@lucide/svelte/icons/plus';
+	import { untrack } from 'svelte';
 	import type { BlockBody } from '$api/BlockBody';
 	import type { FieldRow } from '$api/FieldRow';
 	import { ru } from '#lib/i18n/ru.js';
@@ -12,7 +13,7 @@
 	import FieldRowProps from './FieldRowProps.svelte';
 
 	type Body = Extract<BlockBody, { type: 'fields' }>;
-	/** What the template allows (`Template::validate`). */
+	/** What the template allows: `MAX_ROWS` of `crates/mw-domain/src/document_template.rs`. */
 	const MAX_ROWS = 50;
 
 	let { editor, path }: { editor: TemplateEditor; path: BlockPath } = $props();
@@ -21,16 +22,18 @@
 	const block = $derived(blockAt(editor.template, path));
 	const body = $derived(block?.body.type === 'fields' ? block.body : null);
 	const key = $derived(path.join('.'));
+	const full = $derived((body?.rows.length ?? 0) >= MAX_ROWS);
 
 	// The rows keep their keys while they are added, removed and moved here; a list changed otherwise
-	// (an undo) gets new ones.
-	let ids: number[] = [];
+	// (an undo) gets new ones. The keys are state set by an explicit update, not by a `$derived`.
+	let ids = $state.raw<number[]>([]);
 	let nextId = 0;
-	const rows = $derived.by(() => {
-		const list = body?.rows ?? [];
-		if (ids.length !== list.length) ids = list.map(() => nextId++);
-		return list.map((row, i) => ({ row, i, id: ids[i]! }));
+	const fresh = (n: number) => Array.from({ length: n }, () => nextId++);
+	$effect.pre(() => {
+		const n = body?.rows.length ?? 0;
+		if (untrack(() => ids.length) !== n) ids = fresh(n);
 	});
+	const rows = $derived((body?.rows ?? []).map((row, i) => ({ row, i, id: ids[i] ?? -1 - i })));
 
 	function setRows(next: FieldRow[], field?: string) {
 		if (!block || !body) return;
@@ -50,7 +53,7 @@
 
 	function add() {
 		if (!body) return;
-		ids = [...ids, nextId++];
+		ids = [...ids, ...fresh(1)];
 		setRows([...body.rows, { label: '', value: '', hide_if_empty: false, bold: false }]);
 	}
 
@@ -78,8 +81,9 @@
 			row={item}
 			onreorder={reorder}
 		/>
-		<div>
-			<Button icon={Plus} disabled={body.rows.length >= MAX_ROWS} onclick={add}>{t.addRow}</Button>
+		<div class="add">
+			<Button icon={Plus} disabled={full} onclick={add}>{t.addRow}</Button>
+			{#if full}<span class="hint">{t.maxRows(MAX_ROWS)}</span>{/if}
 		</div>
 	</div>
 {/if}
@@ -98,5 +102,15 @@
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-3);
+	}
+	.add {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--space-2);
+	}
+	.hint {
+		color: var(--text-3);
+		font-size: var(--text-sm);
 	}
 </style>

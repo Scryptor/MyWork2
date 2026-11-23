@@ -13,6 +13,7 @@ import {
 	type SaveStatus
 } from '#lib/app/entity-editor.svelte.js';
 import { ru } from '#lib/i18n/ru.js';
+import { formatMm } from '#lib/print/settings.svelte.js';
 import { sameValue } from '#lib/orders/merge.js';
 import { toast } from '#lib/ui/toast/toast.svelte.js';
 import { createHistory } from './history.svelte.js';
@@ -90,11 +91,18 @@ export function createTemplateEditor(
 	const history = createHistory<Template>(initial.template, { limit: 100, mergeMs: 1000 });
 	let chosen = $state.raw<Selection>('page');
 
+	/** The answer to the last write of this editor; every other record that arrives was read from the server. */
+	let ownAnswer: DocumentTemplate | null = null;
+
 	const ed = createEntityEditor<DocumentTemplate, 'template'>({
 		initial,
 		fields: ['template'],
 		load: () => api.getTemplate(kind),
-		save: (patch, version) => api.saveTemplate(kind, patch.template!, version),
+		save: async (patch, version) => {
+			const r = await api.saveTemplate(kind, patch.template!, version);
+			ownAnswer = r;
+			return r;
+		},
 		emit: catchUp,
 		lostText,
 		delayMs: opts.delayMs
@@ -120,13 +128,17 @@ export function createTemplateEditor(
 	}
 
 	/**
-	 * An answer of the server. A write that was on its way when the model went back to the saved one
-	 * (an undo) has landed after all: the model shown goes again. An answer to a write still own (its
-	 * value as the server keeps it) changes nothing: the next edit goes over it.
+	 * An answer of the server. To a write of this editor: if the model went back to the saved one (an
+	 * undo) while the write was on its way, it has landed after all and the model shown goes again; an
+	 * answer to a write still own (its value as the server keeps it) changes nothing, the next edit goes
+	 * over it. A record read again after a conflict is taken as it is: what is shown follows it, nothing
+	 * is written over a version saved elsewhere.
 	 */
 	function catchUp(r: DocumentTemplate) {
 		if (ed.conflicts.size > 0 || owns()) return;
-		if (!sameValue(history.current, r.template)) ed.autosave.commit('template', history.current);
+		if (r !== ownAnswer) follow(r.template);
+		else if (!sameValue(history.current, r.template))
+			ed.autosave.commit('template', history.current);
 	}
 
 	/** The model becomes the saved one (taken from elsewhere, own changes dropped): a step to undo. */
@@ -250,7 +262,7 @@ export function blockLabel(block: Block): string {
 	if (b.type === 'text') detail = start(b.text);
 	else if (b.type === 'fields') detail = start(b.rows.map((r) => r.label).join(', '));
 	else if (b.type === 'signatures') detail = start([b.left, b.right].filter(Boolean).join(' / '));
-	else if (b.type === 'spacer') detail = t.mm(b.mm);
+	else if (b.type === 'spacer') detail = `${formatMm(b.mm)} ${t.mmUnit}`;
 	else if (b.type === 'columns') detail = String(b.columns.length);
 	return detail ? `${type} · ${detail}` : type;
 }

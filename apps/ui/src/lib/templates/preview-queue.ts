@@ -20,7 +20,14 @@ export function createPreviewQueue<I, O>(
 		const mine = seq;
 		const ctl = new AbortController();
 		running = ctl;
-		run(latest, ctl.signal).then(
+		// A `run` that throws at once is a failed run like any other: the queue is not left busy.
+		let started: Promise<O>;
+		try {
+			started = run(latest, ctl.signal);
+		} catch (e) {
+			started = Promise.reject(e);
+		}
+		started.then(
 			(o) => finish(ctl, mine, () => opts.onresult(o)),
 			(e) => finish(ctl, mine, () => opts.onerror(e))
 		);

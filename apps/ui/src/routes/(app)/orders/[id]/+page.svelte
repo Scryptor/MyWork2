@@ -7,7 +7,7 @@
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import { untrack } from 'svelte';
-	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
+	import { afterNavigate, goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import type { Client } from '$api/Client';
@@ -18,11 +18,11 @@
 	import { getOrder } from '#lib/api/orders.js';
 	import { serverClock } from '#lib/api/server-clock.svelte.js';
 	import { app } from '#lib/app/context.svelte.js';
-	import { isSignIn } from '#lib/app/login.js';
 	import { pushRecent } from '#lib/app/recent.js';
 	import { formatDate, formatRelative } from '#lib/format/date.js';
 	import { countLabel } from '#lib/format/plural.js';
 	import { ru } from '#lib/i18n/ru.js';
+	import { leaveGuard } from '#lib/navigation/leave-guard.svelte.js';
 	import { closeEditor, OrderActions, unsavedText } from '#lib/orders/actions.svelte.js';
 	import { createCardHistory } from '#lib/orders/card-history.svelte.js';
 	import { createOrderEditor, type OrderEditor } from '#lib/orders/editor.svelte.js';
@@ -232,29 +232,9 @@
 
 	// Any other way out (a link, Ctrl K, the browser's «Назад») waits for the save too and then goes on.
 	// Closing or reloading the tab with unsaved changes gets the browser's own question. The sign-in page
-	// (session expired, signed out, new password) is not held: without a session nothing can be saved,
-	// and leaving the card tells what was lost.
-	let resume: (() => void) | null = null;
-	beforeNavigate((nav) => {
-		const ed = editor;
-		if (!ed?.unsaved || (nav.to && isSignIn(nav.to.url))) return;
-		nav.cancel();
-		if (nav.willUnload || !nav.to) return;
-		const { url } = nav.to;
-		const delta = nav.type === 'popstate' ? nav.delta : 0;
-		const waiting = resume !== null;
-		resume =
-			delta !== 0
-				? () => history.go(delta)
-				: // eslint-disable-next-line svelte/no-navigation-without-resolve -- where SvelteKit was going
-					() => void goto(url);
-		if (waiting) return;
-		void saved(ed).then((ok) => {
-			const go = resume;
-			resume = null;
-			if (ok && editor === ed) go?.();
-		});
-	});
+	// is not held (`leaveGuard`): without a session nothing can be saved, and leaving the card tells what
+	// was lost.
+	leaveGuard<OrderEditor>({ editor: () => editor, unsaved: (ed) => ed.unsaved, saved });
 
 	// «Выдать» on Ctrl/⌘+Enter and the act on Ctrl/⌘P; the order panel over the card has its own.
 	$effect(() => orderActions.issueShortcut(() => orderPanel.id === null));

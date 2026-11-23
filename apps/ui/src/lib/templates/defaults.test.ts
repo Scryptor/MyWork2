@@ -54,4 +54,10 @@ describe('newBlock', () => {
 	it('every call gives a fresh object', () => {
 		expect(newBlock('columns')).not.toBe(newBlock('columns'));
 	});
+
+	it('does not make calibration marks: they belong to the calibration label only', () => {
+		// @ts-expect-error -- the type refuses it; the check at run time is for what the types miss
+		expect(() => newBlock('calibration_marks')).toThrow();
+		expect(BLOCK_TYPES).not.toContain('calibration_marks');
+	});
 });

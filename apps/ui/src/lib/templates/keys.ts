@@ -4,7 +4,7 @@
 // keys of a list whose length stayed (it changed blocks in their places). The keys are unique in the
 // whole list, the columns too: a handle is found by its key.
 import type { Template } from '$api/Template';
-import type { Container } from './ops.js';
+import type { BlockPath, Container } from './ops.js';
 
 export interface BlockKeys {
 	/** The keys of the top-level blocks, in their order. */
@@ -51,6 +51,35 @@ export function createBlockKeys() {
 		/** The keys of the list of `container`: the top level or a column. */
 		listOf(keys: BlockKeys, container: Container): number[] | undefined {
 			return container.length === 0 ? keys.top : keys.columns[container[0]]?.[container[1]];
+		},
+		/**
+		 * `after` is `before` with the block at `from` moved to `to` (`moveBlock`): the block keeps its key
+		 * wherever it goes, and the other rows keep theirs, in a list of the same length too.
+		 */
+		moved(before: Template, after: Template, from: BlockPath, to: BlockPath): void {
+			const keys = of(before);
+			const top = [...keys.top];
+			const columns = keys.columns.map((cols) => cols && cols.map((list) => [...list]));
+			const at = (list: unknown[], i: number) => Math.max(0, Math.min(i, list.length));
+			let key: number | undefined;
+			let own: number[][] | null = null;
+			if (from.length === 1) {
+				key = top.splice(from[0]!, 1)[0];
+				own = columns.splice(from[0]!, 1)[0] ?? null;
+			} else {
+				key = columns[from[0]!]?.[from[1]!]?.splice(from[2]!, 1)[0];
+			}
+			if (key === undefined) return;
+			if (to.length === 1) {
+				const i = at(top, to[0]!);
+				top.splice(i, 0, key);
+				columns.splice(i, 0, own);
+			} else {
+				const list = columns[to[0]!]?.[to[1]!];
+				if (list === undefined) return;
+				list.splice(at(list, to[2]!), 0, key);
+			}
+			known.set(after, { top, columns });
 		},
 		/** `after` is `before` with the list of `container` in `order` (its keys in the new order). */
 		reordered(before: Template, after: Template, container: Container, order: number[]): void {

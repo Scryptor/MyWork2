@@ -9,7 +9,7 @@
 	import type { Template } from '$api/Template';
 	import { ru } from '#lib/i18n/ru.js';
 	import { isLabel } from '#lib/print/print.svelte.js';
-	import { printSettings } from '#lib/print/settings.svelte.js';
+	import { formatMm, printSettings } from '#lib/print/settings.svelte.js';
 	import SegmentedControl from '#lib/ui/SegmentedControl.svelte';
 	import Select from '#lib/ui/Select.svelte';
 	import Switch from '#lib/ui/Switch.svelte';
@@ -72,6 +72,20 @@
 		edit({ ...template, layout, page: next });
 	}
 
+	/**
+	 * The least content area of a page, mm: `MIN_CONTENT_MM` of `crates/mw-domain/src/document_template.rs`
+	 * (the error `no_room`). The server checks it against the page of the template; a sticker is printed on
+	 * the label of this computer, which the server does not know, so the check is repeated here.
+	 */
+	const MIN_CONTENT_MM = 10;
+	const labelNoRoom = $derived.by(() => {
+		if (template.kind !== 'sticker') return null;
+		const [w, h] = printSettings.labelMm;
+		const { top, right, bottom, left } = page.margins_mm;
+		if (w - left - right >= MIN_CONTENT_MM && h - top - bottom >= MIN_CONTENT_MM) return null;
+		return t.labelNoRoom(formatMm(w), formatMm(h));
+	});
+
 	const MARGINS: (keyof Margins)[] = ['top', 'right', 'bottom', 'left'];
 </script>
 
@@ -126,6 +140,9 @@
 				/>
 			{/each}
 		</div>
+		{#if labelNoRoom}
+			<p class="warning" role="status">{labelNoRoom}</p>
+		{/if}
 	</fieldset>
 	<NumberField
 		label={t.fontSize}
@@ -155,6 +172,11 @@
 	.note {
 		margin: 0;
 		color: var(--text-3);
+		font-size: var(--text-sm);
+	}
+	.warning {
+		margin: 0;
+		color: var(--danger);
 		font-size: var(--text-sm);
 	}
 	.pair {

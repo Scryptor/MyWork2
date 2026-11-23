@@ -4,10 +4,9 @@
      about. -->
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { beforeNavigate, goto } from '$app/navigation';
 	import { app } from '#lib/app/context.svelte.js';
-	import { isSignIn } from '#lib/app/login.js';
 	import { ru } from '#lib/i18n/ru.js';
+	import { leaveGuard } from '#lib/navigation/leave-guard.svelte.js';
 	import { documentName } from '#lib/print/print.svelte.js';
 	import {
 		closeTemplateEditor,
@@ -65,27 +64,7 @@
 
 	// Any way out (a link, the document chosen above, the browser's «Назад») waits for the save, then goes
 	// on. Closing or reloading the tab gets the browser's own question; the sign-in page is not held.
-	let resume: (() => void) | null = null;
-	beforeNavigate((nav) => {
-		const ed = editor;
-		if (!ed?.unsaved || (nav.to && isSignIn(nav.to.url))) return;
-		nav.cancel();
-		if (nav.willUnload || !nav.to) return;
-		const { url } = nav.to;
-		const delta = nav.type === 'popstate' ? nav.delta : 0;
-		const waiting = resume !== null;
-		resume =
-			delta !== 0
-				? () => history.go(delta)
-				: // eslint-disable-next-line svelte/no-navigation-without-resolve -- where SvelteKit was going
-					() => void goto(url);
-		if (waiting) return;
-		void saved(ed).then((ok) => {
-			const go = resume;
-			resume = null;
-			if (ok && editor === ed) go?.();
-		});
-	});
+	leaveGuard<TemplateEditor>({ editor: () => editor, unsaved: (ed) => ed.unsaved, saved });
 </script>
 
 <svelte:head><title>{t.title} · {documentName(data.template.kind)}</title></svelte:head>

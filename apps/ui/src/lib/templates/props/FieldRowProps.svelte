@@ -6,6 +6,7 @@
 	import { ru } from '#lib/i18n/ru.js';
 	import IconButton from '#lib/ui/IconButton.svelte';
 	import Switch from '#lib/ui/Switch.svelte';
+	import Textarea from '#lib/ui/Textarea.svelte';
 	import TextInput from '#lib/ui/TextInput.svelte';
 	import InsertField from '../InsertField.svelte';
 
@@ -23,7 +24,7 @@
 	} = $props();
 
 	const t = ru.templates;
-	let valueField = $state<HTMLInputElement | null>(null);
+	let valueField = $state<HTMLTextAreaElement | null>(null);
 </script>
 
 <div class="row" role="group" aria-label={t.fieldRow(number)}>
@@ -32,8 +33,9 @@
 		maxlength={200}
 		bind:value={() => row.label, (v) => onchange({ label: v }, 'label')}
 	/>
-	<TextInput
+	<Textarea
 		label={t.rowValue}
+		minRows={1}
 		maxlength={2000}
 		bind:ref={valueField}
 		bind:value={() => row.value, (v) => onchange({ value: v }, 'value')}

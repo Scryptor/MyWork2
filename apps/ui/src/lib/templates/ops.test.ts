@@ -171,6 +171,14 @@ describe('ops', () => {
 		expect(moveBlock(t, [0], [1, 0, 0])).toBe(t);
 	});
 
+	it('reorder with repeated or missing indices changes nothing', () => {
+		const t = tpl([text('a'), text('b'), text('c')]);
+		expect(reorder(t, [], [0, 0, 1])).toBe(t);
+		expect(reorder(t, [], [0, 1, 3])).toBe(t);
+		expect(reorder(t, [], [0, 1, -1])).toBe(t);
+		expect(reorder(t, [], [0, 1, 1.5])).toBe(t);
+	});
+
 	it('reorder takes the previous indices in the new order', () => {
 		const t = tpl([text('a'), text('b'), text('c')]);
 		expect(tops(pure(t, (x) => reorder(x, [], [2, 0, 1])))).toEqual(['c', 'a', 'b']);

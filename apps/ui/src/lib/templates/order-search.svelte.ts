@@ -17,6 +17,8 @@ export interface OrderSearch {
 	/** «Пример» and what was found. */
 	readonly items: { value: string; hint?: string }[];
 	setText(text: string): void;
+	/** Every label offered so far, each once; the sample first. */
+	readonly offered: readonly string[];
 	/** An item chosen by its label. */
 	pick(label: string): void;
 	/** Left with a search that picked nothing: the field shows the order chosen again. */
@@ -56,7 +58,10 @@ export function createOrderSearch(o: {
 				(list) => {
 					if (mine !== token) return;
 					found = list;
-					known = [...known, ...list.map((c): [string, number] => [c.label, c.id])];
+					// Each label once: the same order found again is not collected again.
+					const added = list.filter((c) => !known.some(([l]) => l === c.label));
+					if (added.length > 0)
+						known = [...known, ...added.map((c): [string, number] => [c.label, c.id])];
 				},
 				() => {
 					// No suggestions without an answer.
@@ -77,6 +82,9 @@ export function createOrderSearch(o: {
 				{ value: o.sample, hint: o.sampleHint },
 				...found.map((c) => ({ value: c.label, hint: c.hint }))
 			];
+		},
+		get offered() {
+			return known.map(([label]) => label);
 		},
 		setText,
 		pick(label) {

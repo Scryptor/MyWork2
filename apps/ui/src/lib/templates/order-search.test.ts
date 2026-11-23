@@ -114,4 +114,15 @@ describe('createOrderSearch', () => {
 		await vi.advanceTimersByTimeAsync(500);
 		expect(find).not.toHaveBeenCalled();
 	});
+
+	it('the same order found again is not collected twice', async () => {
+		const s = setup(async () => [choice(7), choice(8)]);
+		s.setText('x');
+		await vi.advanceTimersByTimeAsync(250);
+		s.setText('xy');
+		await vi.advanceTimersByTimeAsync(250);
+		s.setText('xyz');
+		await vi.advanceTimersByTimeAsync(250);
+		expect(s.offered).toEqual([SAMPLE, '№ 7 · Тест', '№ 8 · Тест']);
+	});
 });

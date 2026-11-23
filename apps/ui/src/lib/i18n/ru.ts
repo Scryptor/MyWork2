@@ -1875,7 +1875,7 @@ export const ru = {
 			copy_label: 'Подпись экземпляра',
 			calibration_marks: 'Метки калибровки'
 		} satisfies Record<BlockBody['type'], string>,
-		mm: (n: number) => `${String(n).replace('.', ',')} мм`,
+		mmUnit: 'мм',
 		previewFailed: 'Шаблон не построен',
 		previewLoading: 'Превью строится…',
 		/** Why a save is refused: the server's mistakes are listed over the preview. */
@@ -1906,6 +1906,9 @@ export const ru = {
 		/** A sticker: the page is the label of «Настройки → Печать» on this computer. */
 		labelPage: (size: string) =>
 			`Наклейка печатается в размере из «Настройки → Печать»: сейчас ${size}`,
+		/** The margins of a sticker leave too little on the label of this computer (`w`, `h`: its size, mm). */
+		labelNoRoom: (w: string, h: string) =>
+			`На наклейке этого рабочего места (${w} × ${h} мм) поля не оставляют места для содержимого`,
 		fontSize: 'Размер шрифта, пт',
 		text: 'Текст',
 		textSize: 'Размер, пт',
@@ -1934,6 +1937,7 @@ export const ru = {
 		hideIfEmpty: 'Скрывать, если пусто',
 		rowBold: 'Жирная',
 		addRow: 'Добавить строку',
+		maxRows: (n: number) => `Не больше ${n} строк`,
 		removeRow: 'Удалить строку',
 		logoWidth: 'Ширина, мм',
 		logoHeight: 'Высота, мм',

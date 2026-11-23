@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Block } from '$api/Block';
 import type { Template } from '$api/Template';
 import { createBlockKeys } from './keys.js';
-import { insertBlock, reorder, replaceBlock } from './ops.js';
+import { insertBlock, moveBlock, reorder, replaceBlock } from './ops.js';
 
 const text = (s: string): Block => ({
 	copies: 'both',
@@ -53,5 +53,28 @@ describe('createBlockKeys', () => {
 		expect(keys.of(inColumn).columns[0]).toEqual([[col[1], col[0]], k.columns[1]![1]]);
 		// An undo shows the template before: its keys are the ones it had.
 		expect(keys.of(T)).toBe(k);
+	});
+
+	it('a move in a list of the same length takes the key along with the block', () => {
+		const keys = createBlockKeys();
+		const k = keys.of(T);
+		const moved = moveBlock(T, [0], [2]);
+		keys.moved(T, moved, [0], [2]);
+		expect(keys.of(moved).top).toEqual([k.top[1], k.top[2], k.top[0]]);
+		expect(keys.of(moved).columns).toEqual([k.columns[1], null, null]);
+	});
+
+	it('a block moved into a column and out again keeps its key, and so do the others', () => {
+		const keys = createBlockKeys();
+		const k = keys.of(T);
+		const into = moveBlock(T, [2], [1, 1, 1]);
+		keys.moved(T, into, [2], [1, 1, 1]);
+		const after = keys.of(into);
+		expect(after.top).toEqual([k.top[0], k.top[1]]);
+		expect(after.columns[1]).toEqual([k.columns[1]![0], [k.columns[1]![1]![0], k.top[2]]]);
+		const out = moveBlock(into, [1, 1, 1], [2]);
+		keys.moved(into, out, [1, 1, 1], [2]);
+		expect(keys.of(out).top).toEqual(k.top);
+		expect(keys.of(out).columns).toEqual(k.columns);
 	});
 });

@@ -34,7 +34,14 @@
 	async function save() {
 		try {
 			// The file is what the server has: the edits still waiting are sent first.
-			if (!(await editor.flush())) return;
+			if (!(await editor.flush())) {
+				toast.show({
+					message: ru.save.failed,
+					tone: 'danger',
+					action: { label: ru.common.retry, run: save }
+				});
+				return;
+			}
 			const { blob, filename } = await exportTemplateFile(editor.kind);
 			downloadBlob(filename, blob);
 			toast.show({ message: t.fileSaved(filename), tone: 'success' });

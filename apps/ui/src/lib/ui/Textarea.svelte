@@ -6,6 +6,7 @@
 		ref = $bindable(null),
 		minRows = 2,
 		maxRows = 12,
+		maxlength,
 		placeholder,
 		label,
 		hint,
@@ -21,6 +22,7 @@
 		ref?: HTMLTextAreaElement | null;
 		minRows?: number;
 		maxRows?: number;
+		maxlength?: number;
 		placeholder?: string;
 		label?: string;
 		hint?: string;
@@ -67,6 +69,7 @@
 				bind:value
 				rows={minRows}
 				{placeholder}
+				{maxlength}
 				{disabled}
 				aria-describedby={f.describedBy}
 				aria-invalid={f.invalid ? 'true' : undefined}

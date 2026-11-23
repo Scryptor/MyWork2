@@ -78,4 +78,19 @@ describe('createHistory', () => {
 		expect(h.current).toBe(5);
 		expect([h.canUndo, h.canRedo]).toEqual([false, false]);
 	});
+
+	it('a push exactly mergeMs after the last one still merges, one millisecond later it does not', () => {
+		const at = (gap: number) => {
+			const h = createHistory<number>(0, { mergeMs: 1000 });
+			h.push(1, 'k');
+			vi.advanceTimersByTime(10);
+			h.push(2, 'k');
+			vi.advanceTimersByTime(gap);
+			h.push(3, 'k');
+			return h;
+		};
+		// Merged: 0 → 3, one step; not merged: 0 → 2 → 3.
+		expect(at(1000).undo()).toBe(0);
+		expect(at(1001).undo()).toBe(2);
+	});
 });

@@ -101,4 +101,64 @@ describe('createPreviewQueue', () => {
 		vi.advanceTimersByTime(1000);
 		expect(calls).toHaveLength(0);
 	});
+
+	it('a run that throws at once does not keep the queue busy', async () => {
+		const results: string[] = [];
+		const errors: unknown[] = [];
+		let first = true;
+		const q = createPreviewQueue<number, string>(
+			(input) => {
+				if (first) {
+					first = false;
+					throw new Error('now');
+				}
+				return Promise.resolve(`r${input}`);
+			},
+			{ delayMs: 10, onresult: (o) => results.push(o), onerror: (e) => errors.push(e) }
+		);
+		q.request(1);
+		await vi.advanceTimersByTimeAsync(10);
+		expect(errors).toHaveLength(1);
+		q.request(2);
+		await vi.advanceTimersByTimeAsync(10);
+		expect(results).toEqual(['r2']);
+	});
+
+	it('every request starts the wait over', () => {
+		const { q, calls } = setup();
+		q.request(1);
+		vi.advanceTimersByTime(300);
+		q.request(2);
+		vi.advanceTimersByTime(300);
+		expect(calls).toHaveLength(0);
+		vi.advanceTimersByTime(100);
+		expect(calls.map((c) => c.input)).toEqual([2]);
+	});
+
+	it('the failure of a stale run is not told, the newer run goes on', async () => {
+		const fail: ((e: Error) => void)[] = [];
+		const inputs: number[] = [];
+		const errors: unknown[] = [];
+		const results: string[] = [];
+		const q = createPreviewQueue<number, string>(
+			(input) => {
+				inputs.push(input);
+				return new Promise((resolve, reject) => {
+					fail.push(reject);
+					if (input === 2) resolve('r2');
+				});
+			},
+			{ delayMs: 400, onresult: (o) => results.push(o), onerror: (e) => errors.push(e) }
+		);
+		q.request(1);
+		vi.advanceTimersByTime(400);
+		q.request(2);
+		vi.advanceTimersByTime(400);
+		expect(inputs).toEqual([1]);
+		fail[0]!(new Error('stale'));
+		await vi.advanceTimersByTimeAsync(0);
+		expect(errors).toEqual([]);
+		expect(inputs).toEqual([1, 2]);
+		expect(results).toEqual(['r2']);
+	});
 });

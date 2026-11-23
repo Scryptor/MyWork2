@@ -43,6 +43,10 @@ function body(type: (typeof BLOCK_TYPES)[number]): BlockBody {
 }
 
 /** A new block of the type with its starting values, printed in both copies. */
-export function newBlock(type: BlockBody['type']): Block {
-	return { copies: 'both', body: body(type as (typeof BLOCK_TYPES)[number]) };
+export function newBlock(type: (typeof BLOCK_TYPES)[number]): Block {
+	// Calibration marks are the calibration label's own: the types are checked at run time too.
+	if (!(BLOCK_TYPES as readonly string[]).includes(type)) {
+		throw new Error(`A block of the type ${type} is not made here`);
+	}
+	return { copies: 'both', body: body(type) };
 }

@@ -11,8 +11,8 @@
 	import Plus from '@lucide/svelte/icons/plus';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import type { Block } from '$api/Block';
-	import type { BlockBody } from '$api/BlockBody';
 	import { ru } from '#lib/i18n/ru.js';
+	import { untrack } from 'svelte';
 	import Button from '#lib/ui/Button.svelte';
 	import DropdownMenu, { type MenuItem } from '#lib/ui/DropdownMenu.svelte';
 	import IconButton from '#lib/ui/IconButton.svelte';
@@ -51,7 +51,12 @@
 	const selected = $derived(editor.selected);
 	// The rows follow their blocks: a handle moved with the arrows keeps the focus on its block.
 	const blockKeys = createBlockKeys();
-	const keys = $derived(blockKeys.of(template));
+	// The keys are set by an explicit update: `of` remembers the template it was asked for, which is a
+	// write that does not belong in a `$derived`.
+	let keys = $state.raw(blockKeys.of(untrack(() => editor.template)));
+	$effect.pre(() => {
+		keys = blockKeys.of(editor.template);
+	});
 	const tops = $derived<Entry[]>(
 		template.blocks.map((block, i) => ({ block, path: [i], index: i, key: keys.top[i]! }))
 	);
@@ -78,7 +83,9 @@
 
 	function move(from: BlockPath, to: BlockPath) {
 		if (!canMove(template, from, to)) return;
-		editor.edit(moveBlock(template, from, to));
+		const next = moveBlock(template, from, to);
+		blockKeys.moved(template, next, from, to);
+		editor.edit(next);
 		editor.select(to);
 	}
 
@@ -104,7 +111,7 @@
 		}
 	}
 
-	function add(type: BlockBody['type']) {
+	function add(type: (typeof BLOCK_TYPES)[number]) {
 		const at = placeForNew(template, selected, type);
 		editor.edit(insertBlock(template, at, newBlock(type)));
 		editor.select(at);

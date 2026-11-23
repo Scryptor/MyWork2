@@ -3,6 +3,7 @@ import type { Block } from '$api/Block';
 import type { DocumentTemplate } from '$api/DocumentTemplate';
 import type { Template } from '$api/Template';
 import { ApiError } from '#lib/api/client.js';
+import { ru } from '#lib/i18n/ru.js';
 import {
 	blockLabel,
 	createTemplateEditor,
@@ -293,6 +294,49 @@ describe('createTemplateEditor', () => {
 		ed.dispose();
 	});
 
+	it('an undo while the record is read again after a 409 does not write over the newer version', async () => {
+		const server = fakeServer();
+		const ed = createTemplateEditor(server.current, { api: server.api });
+		const theirs = withText(STANDARD, 'Чужая строка');
+		server.elsewhere(theirs);
+		// The re-reading after the conflict waits until the test lets it go.
+		let answer: (r: DocumentTemplate) => void = () => {};
+		server.api.getTemplate.mockImplementationOnce(
+			() => new Promise((resolve) => (answer = resolve))
+		);
+
+		ed.edit(withText(ed.template, 'Своя строка'));
+		await settle();
+		expect(server.api.saveTemplate).toHaveBeenCalledTimes(1);
+		// The own edit is taken back (the model is the saved one again) while the record is being read.
+		ed.undo();
+		expect(ed.template).toEqual(STANDARD);
+		answer(server.current);
+		await settle();
+		await settle();
+
+		// The record read is taken as it is: no write over the other computer's version.
+		expect(server.api.saveTemplate).toHaveBeenCalledTimes(1);
+		expect(server.current.template).toEqual(theirs);
+		expect(ed.template).toEqual(theirs);
+		ed.dispose();
+	});
+
+	it('an undo while a write is on its way: the write lands, then the model shown goes again', async () => {
+		const server = fakeServer();
+		const ed = createTemplateEditor(server.current, { api: server.api });
+		server.hold();
+		ed.edit(withText(ed.template, 'Своя строка'));
+		await settle();
+		ed.undo();
+		server.release();
+		await settle();
+		await settle();
+		expect(server.current.template).toEqual(STANDARD);
+		expect(ed.template).toEqual(STANDARD);
+		ed.dispose();
+	});
+
 	it('the selection falls back to «Страница» when its block is gone', () => {
 		const server = fakeServer();
 		const ed = createTemplateEditor(server.current, { api: server.api });
@@ -317,6 +361,11 @@ describe('blockLabel', () => {
 		expect(blockLabel(text('  \n  '))).toBe('Текст');
 		expect(blockLabel({ copies: 'both', body: { type: 'separator' } })).toBe('Разделитель');
 		expect(blockLabel({ copies: 'both', body: { type: 'spacer', mm: 4 } })).toBe('Отступ · 4 мм');
+		expect(blockLabel({ copies: 'both', body: { type: 'spacer', mm: 4.5 } })).toBe(
+			'Отступ · 4,5 мм'
+		);
+		// One way to write millimetres: `formatMm`, the texts add the unit themselves.
+		expect('mm' in ru.templates).toBe(false);
 	});
 });
 
