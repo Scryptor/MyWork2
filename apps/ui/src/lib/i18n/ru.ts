@@ -1790,5 +1790,14 @@ export const ru = {
 		selection: 'Выбранные строки',
 		clearSelection: 'Снять выделение',
 		empty: 'Нет записей'
+	},
+	templates: {
+		/** Starting texts of a block added in the template editor. */
+		defaults: {
+			text: 'Текст',
+			fieldLabel: 'Название',
+			signatureLeft: 'Подпись сервиса',
+			signatureRight: 'Подпись клиента'
+		}
 	}
 } as const;
