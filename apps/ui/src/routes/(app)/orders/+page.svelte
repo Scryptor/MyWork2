@@ -13,6 +13,7 @@
 	import type { MasterUser } from '$api/MasterUser';
 	import type { OrderListItem } from '$api/OrderListItem';
 	import type { Status } from '$api/Status';
+	import { errorMessage } from '#lib/api/client.js';
 	import { getClient } from '#lib/api/clients.js';
 	import { listMasters } from '#lib/api/masters.js';
 	import { serverClock } from '#lib/api/server-clock.svelte.js';
@@ -64,6 +65,9 @@
 	import ListCard from '#lib/ui/ListCard.svelte';
 	import StatusBadge from '#lib/ui/StatusBadge.svelte';
 	import DataTable from '#lib/ui/table/DataTable.svelte';
+	import type { DocumentKind } from '$api/DocumentKind';
+	import BulkPrintMenu from '#lib/print/BulkPrintMenu.svelte';
+	import { printBatch, savePdfBatch, showBatchResult } from '#lib/print/print.svelte.js';
 	import SelectionBar from '#lib/ui/table/SelectionBar.svelte';
 	import type { RowId } from '#lib/ui/table/types.js';
 	import TextInput from '#lib/ui/TextInput.svelte';
@@ -235,7 +239,7 @@
 	});
 	async function bulk(change: BulkChange) {
 		const items = list.rows.filter((r) => selected.has(r.id));
-		if (bulkBusy || items.length === 0) return;
+		if (bulkBusy || printProgress || items.length === 0) return;
 		bulkBusy = true;
 		try {
 			const r = await performBulk(items, change, {
@@ -244,6 +248,46 @@
 			});
 			// Nothing changed: the selection stays for another try.
 			if (r.done.length > 0) selected = new Set();
+		} finally {
+			bulkBusy = false;
+		}
+	}
+	// «Печать ▾» of the selection: a batch to the printer (one at a time, «Остановить» ends it after the
+	// order being sent) or one PDF.
+	let printProgress = $state<{ done: number; total: number } | null>(null);
+	let stopPrint: AbortController | null = null;
+	const selectedOrders = () => list.rows.filter((r) => selected.has(r.id));
+	async function printSelected(kind: DocumentKind) {
+		const orders = selectedOrders();
+		if (printProgress || bulkBusy || orders.length === 0) return;
+		stopPrint = new AbortController();
+		printProgress = { done: 0, total: orders.length };
+		try {
+			const r = await printBatch(
+				kind,
+				orders.map((o) => ({ id: o.id, number: ru.order.title(o.id) })),
+				{
+					signal: stopPrint.signal,
+					onprogress: (done, total) => (printProgress = { done, total })
+				}
+			);
+			showBatchResult(r);
+		} finally {
+			printProgress = null;
+			stopPrint = null;
+		}
+	}
+	async function savePdfSelected(kind: DocumentKind) {
+		const orders = selectedOrders();
+		if (printProgress || bulkBusy || orders.length === 0) return;
+		bulkBusy = true;
+		try {
+			await savePdfBatch(
+				kind,
+				orders.map((o) => o.id)
+			);
+		} catch (e) {
+			toast.show({ message: errorMessage(e), tone: 'danger' });
 		} finally {
 			bulkBusy = false;
 		}
@@ -509,7 +553,7 @@
 				sort={view.sort}
 				onsortchange={(sort) => change((v) => ({ ...v, sort }))}
 				selectable
-				selectionLocked={bulkBusy}
+				selectionLocked={bulkBusy || printProgress !== null}
 				bind:selected
 				bind:activeId
 				onopen={(o) => openOrder(o.id)}
@@ -518,20 +562,26 @@
 				{empty}
 			/>
 			<div class="selection">
-				<!-- «Печать ▾» comes with plan 6. Without the right to edit orders only the count is shown. -->
-				{#if canEdit}
-					<SelectionBar
-						count={selected.size}
-						locked={bulkBusy}
-						onclear={() => (selected = new Set())}
-					>
+				<!-- Printing is there without the right to edit orders; the other actions need it. -->
+				<SelectionBar
+					count={selected.size}
+					locked={bulkBusy || printProgress !== null}
+					onclear={() => (selected = new Set())}
+				>
+					{#if canEdit && !printProgress}
 						{@render bulkMenu(statusItems, ru.bulk.changeStatus, ru.bulk.status)}
 						{@render bulkMenu(masterItems, ru.bulk.changeMaster, ru.bulk.master)}
 						{@render bulkMenu(markItems, ru.bulk.changeMarks, ru.bulk.marks)}
-					</SelectionBar>
-				{:else}
-					<SelectionBar count={selected.size} onclear={() => (selected = new Set())} />
-				{/if}
+					{/if}
+					<BulkPrintMenu
+						count={selected.size}
+						progress={printProgress}
+						busy={bulkBusy}
+						onprint={(kind) => void printSelected(kind)}
+						onsave={(kind) => void savePdfSelected(kind)}
+						onstop={() => stopPrint?.abort()}
+					/>
+				</SelectionBar>
 			</div>
 		</div>
 	{/if}

@@ -1299,6 +1299,17 @@ export const ru = {
 		/** «Не удалось напечатать. Принтер «X» не найден»: the error's own text, as it is. */
 		failedWith: (text: string) => `Не удалось напечатать. ${text}`,
 		sent: (printer: string) => `Отправлено на ${printer}`,
+		/** A batch from the list of orders: «Печать ▾» of the selection bar. */
+		batchSent: (printer: string, count: number) => `Отправлено на «${printer}»: ${count}`,
+		/** `numbers`: the first of the failed («№ 15»); `more`: how many are not named. */
+		batchFailed: (numbers: string[], more: number) =>
+			`Не напечатаны: ${numbers.join(', ')}${more > 0 ? ` и ещё ${more}` : ''}`,
+		batchProgress: (done: number, total: number) => `Печать: ${done} из ${total}`,
+		batchStop: 'Остановить',
+		batchLimit: 'Не больше 100 заказов за раз',
+		/** The headings of the menu of the selection bar. */
+		batchPrintHeading: 'Печать',
+		batchSaveHeading: 'Сохранить PDF',
 		documents: {
 			intake_act: 'Акт приёма',
 			issue_act: 'Акт выдачи',

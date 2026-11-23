@@ -9,6 +9,7 @@ import type { DocumentKind } from '$api/DocumentKind';
 import type { DocumentPages } from '$api/DocumentPages';
 import { ApiError, errorMessage } from '#lib/api/client.js';
 import {
+	documentBatchPdf,
 	documentPages,
 	documentPdf,
 	type DocumentTarget,
@@ -132,6 +133,15 @@ export function menuDocuments(wasIssued: boolean): DocumentKind[] {
 	];
 }
 
+/** The documents of an order a batch can be made of (the menu of the selection bar). */
+export const BATCH_DOCUMENTS: readonly DocumentKind[] = [
+	'intake_act',
+	'issue_act',
+	'warranty_intake_act',
+	'warranty_issue_act',
+	'sticker'
+];
+
 /** A document for the preview, and the others of the same order it can switch to. */
 export interface PreviewRequest {
 	kind: DocumentKind;
@@ -193,6 +203,12 @@ export function previewPages(
 /** «Сохранить PDF»: the file under the name the server gave it; the desktop program keeps it in Downloads. */
 export async function savePdf(kind: DocumentKind, target: DocumentTarget): Promise<void> {
 	const { blob, filename } = await documentPdf(kind, target, documentOptions(kind));
+	downloadBlob(filename, blob);
+}
+
+/** «Сохранить PDF» of several orders: one file, a document of each; a failure (no such order) throws. */
+export async function savePdfBatch(kind: DocumentKind, orderIds: number[]): Promise<void> {
+	const { blob, filename } = await documentBatchPdf(kind, orderIds, documentOptions(kind));
 	downloadBlob(filename, blob);
 }
 
@@ -357,4 +373,83 @@ export function printShortcut(run: () => void, when: () => boolean = () => true)
 		},
 		{ allowInFields: true, allowWithOverlay: true, when }
 	);
+}
+
+/** The most orders of one batch: the server takes no more (`order_ids/too_many`). */
+export const BULK_PRINT_LIMIT = 100;
+
+/** How many numbers of the failed a notice names; the rest are «и ещё N». */
+const FAILED_SHOWN = 5;
+
+/**
+ * What a batch came to. `printer` is null when nothing was sent: no printer, or another batch was running
+ * (that call is dropped and tells nothing).
+ */
+export interface BatchPrintResult {
+	sent: number;
+	failed: { number: string; text: string }[];
+	stopped: boolean;
+	printer: string | null;
+}
+
+let batchRunning = false;
+
+/**
+ * The documents of several orders to the printer of their kind, one order after another (`send`). The
+ * printer is chosen once; a failure of one order is noted and the rest go on. `signal` stops it after the
+ * order being sent, never in the middle of one. One batch at a time: a second call is dropped (nothing
+ * sent). Without a printer one notice says so. Never throws. `number` is how the order is named in a notice.
+ */
+export async function printBatch(
+	kind: DocumentKind,
+	orders: { id: number; number: string }[],
+	opts: { onprogress?: (done: number, total: number) => void; signal?: AbortSignal } = {}
+): Promise<BatchPrintResult> {
+	const result: BatchPrintResult = { sent: 0, failed: [], stopped: false, printer: null };
+	if (batchRunning) return result;
+	batchRunning = true;
+	try {
+		let printer: string;
+		try {
+			printer = await printerName(printTarget(kind).printer);
+		} catch (e) {
+			if (noPrinter(e)) showNoPrinter(noPrinterText(e));
+			else toast.show({ message: failureText(e), tone: 'danger' });
+			return result;
+		}
+		result.printer = printer;
+		for (const [i, order] of orders.entries()) {
+			try {
+				await send(kind, { orderId: order.id }, printer);
+				result.sent++;
+			} catch (e) {
+				result.failed.push({ number: order.number, text: failureText(e) });
+			}
+			try {
+				opts.onprogress?.(i + 1, orders.length);
+			} catch {
+				// A broken screen does not stop the sheets.
+			}
+			if (opts.signal?.aborted && i + 1 < orders.length) {
+				result.stopped = true;
+				break;
+			}
+		}
+		return result;
+	} finally {
+		batchRunning = false;
+	}
+}
+
+/** The notices of a finished batch: where it went, and the numbers of those that did not print. */
+export function showBatchResult(r: BatchPrintResult): void {
+	if (r.printer !== null && r.sent > 0 && r.failed.length === 0)
+		toast.show({ message: ru.print.batchSent(r.printer, r.sent), tone: 'success' });
+	if (r.failed.length > 0) {
+		const shown = r.failed.slice(0, FAILED_SHOWN).map((f) => f.number);
+		toast.show({
+			message: ru.print.batchFailed(shown, r.failed.length - shown.length),
+			tone: 'danger'
+		});
+	}
 }

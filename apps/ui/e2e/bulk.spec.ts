@@ -170,9 +170,9 @@ test('the bulk menus are unavailable while a batch is running', async ({ page, r
 
 	await barOf(page).getByRole('button', { name: 'Мастер' }).click();
 	await page.getByRole('menuitem', { name: master }).click();
-	// While busy the buttons show a spinner instead of the text: the three menu triggers by their role.
+	// While busy the buttons show a spinner instead of the text: the four menu triggers (with «Печать») by their role.
 	const menus = barOf(page).locator('button[aria-haspopup="menu"]');
-	await expect(menus).toHaveCount(3);
+	await expect(menus).toHaveCount(4);
 	for (const menu of await menus.all()) await expect(menu).toBeDisabled();
 	release();
 	await expect(toastsOf(page)).toContainText(`Мастер «${master}» у 2 заказов`);

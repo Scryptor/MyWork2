@@ -1,3 +1,4 @@
+import type { DocumentBatch } from '$api/DocumentBatch';
 import type { DocumentFormat } from '$api/DocumentFormat';
 import type { DocumentKind } from '$api/DocumentKind';
 import type { DocumentPages } from '$api/DocumentPages';
@@ -68,3 +69,27 @@ export const documentPages = (
 		query: documentQuery('png', opts),
 		signal
 	});
+
+/** The body of a batch: the order numbers and the options the query of one document has (no format). */
+export function documentBatchBody(orderIds: number[], opts: PdfOptions): DocumentBatch {
+	const q = documentQuery('pdf', opts);
+	const body: DocumentBatch = { order_ids: orderIds };
+	if (q.printer_dpi !== undefined) body.printer_dpi = q.printer_dpi;
+	if (q.label_w_mm !== undefined) body.label_w_mm = q.label_w_mm;
+	if (q.label_h_mm !== undefined) body.label_h_mm = q.label_h_mm;
+	if (q.offset_x_mm !== undefined) body.offset_x_mm = q.offset_x_mm;
+	if (q.offset_y_mm !== undefined) body.offset_y_mm = q.offset_y_mm;
+	return body;
+}
+
+/** One PDF of a document for several orders, a page (a label) or a sheet each, and its server name. */
+export async function documentBatchPdf(
+	kind: DocumentKind,
+	orderIds: number[],
+	opts: PdfOptions = {}
+): Promise<DocumentPdf> {
+	const file = await requestFile(`/documents/${kind}/batch`, {
+		body: documentBatchBody(orderIds, opts)
+	});
+	return { blob: file.blob, filename: file.filename ?? UNNAMED_PDF };
+}

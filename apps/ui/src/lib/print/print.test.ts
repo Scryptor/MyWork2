@@ -15,7 +15,11 @@ const platform = vi.hoisted(() => ({
 	printPages: vi.fn()
 }));
 vi.mock('#lib/print/platform.js', () => platform);
-const documents = vi.hoisted(() => ({ documentPdf: vi.fn(), documentPages: vi.fn() }));
+const documents = vi.hoisted(() => ({
+	documentPdf: vi.fn(),
+	documentPages: vi.fn(),
+	documentBatchPdf: vi.fn()
+}));
 vi.mock('#lib/api/documents.js', () => documents);
 const navigation = vi.hoisted(() => ({ goto: vi.fn(async () => {}) }));
 vi.mock('$app/navigation', () => navigation);
@@ -31,9 +35,12 @@ import {
 	preview,
 	printDocument,
 	printDocuments,
+	printBatch,
 	printShortcut,
 	printTarget,
 	savePdf,
+	savePdfBatch,
+	showBatchResult,
 	shortcutKind
 } from './print.svelte.js';
 
@@ -518,5 +525,106 @@ describe('the sentence about acts under the printer resolution', () => {
 			expect(actDpiHelp(format)).toBe(
 				'Акты уходят на принтер в PDF; штрихкод выровнен по сетке 300 точек на дюйм. Эта настройка на них не влияет.'
 			);
+	});
+});
+
+describe('printing a batch of orders', () => {
+	const ORDERS = [
+		{ id: 11, number: '№ 11' },
+		{ id: 12, number: '№ 12' },
+		{ id: 13, number: '№ 13' }
+	];
+	const sentIds = () => documents.documentPdf.mock.calls.map((c) => c[1].orderId);
+
+	it('printBatch sends each order once, in order', async () => {
+		const progress: [number, number][] = [];
+		const r = await printBatch('sticker', ORDERS, { onprogress: (d, t) => progress.push([d, t]) });
+		expect(sentIds()).toEqual([11, 12, 13]);
+		expect(platform.printPdf).toHaveBeenCalledTimes(3);
+		expect(r).toEqual({ sent: 3, failed: [], stopped: false, printer: 'Акты HP' });
+		expect(progress).toEqual([
+			[1, 3],
+			[2, 3],
+			[3, 3]
+		]);
+	});
+
+	it('printBatch goes on after a failure', async () => {
+		platform.printPdf
+			.mockResolvedValueOnce(undefined)
+			.mockRejectedValueOnce(new Error('Бумага закончилась'))
+			.mockResolvedValueOnce(undefined);
+		const r = await printBatch('intake_act', ORDERS, {});
+		expect(r.sent).toBe(2);
+		expect(r.failed).toEqual([
+			{ number: '№ 12', text: 'Не удалось напечатать. Бумага закончилась' }
+		]);
+		expect(r.stopped).toBe(false);
+		expect(sentIds()).toEqual([11, 12, 13]);
+	});
+
+	it('printBatch stops after the current order', async () => {
+		const stop = new AbortController();
+		const r = await printBatch('intake_act', ORDERS, {
+			signal: stop.signal,
+			onprogress: () => stop.abort()
+		});
+		expect(r).toEqual({ sent: 1, failed: [], stopped: true, printer: 'Акты HP' });
+		expect(sentIds()).toEqual([11]);
+	});
+
+	it('printBatch without a printer tells it once', async () => {
+		platform.listPrinters.mockResolvedValue([]);
+		const r = await printBatch('intake_act', ORDERS, {});
+		expect(documents.documentPdf).not.toHaveBeenCalled();
+		expect(platform.printPdf).not.toHaveBeenCalled();
+		expect(r).toEqual({ sent: 0, failed: [], stopped: false, printer: null });
+		expect(toasts()).toEqual([['Принтеры не найдены', 'danger', 'Настройки печати']]);
+	});
+
+	it('a second printBatch while one runs is dropped', async () => {
+		const first = printBatch('intake_act', ORDERS, {});
+		const second = await printBatch('intake_act', ORDERS, {});
+		expect(second).toEqual({ sent: 0, failed: [], stopped: false, printer: null });
+		expect((await first).sent).toBe(3);
+		expect(sentIds()).toEqual([11, 12, 13]);
+		// Once it is over the next one runs.
+		expect((await printBatch('intake_act', ORDERS, {})).sent).toBe(3);
+	});
+
+	it('the notices: all sent, or the numbers of the failed (five, then «и ещё N»)', () => {
+		showBatchResult({ sent: 12, failed: [], stopped: false, printer: 'Акты HP' });
+		const failed = Array.from({ length: 7 }, (_, i) => ({ number: `№ ${i + 1}`, text: '' }));
+		showBatchResult({ sent: 3, failed: failed.slice(0, 2), stopped: false, printer: 'Акты HP' });
+		showBatchResult({ sent: 0, failed, stopped: false, printer: 'Акты HP' });
+		showBatchResult({ sent: 0, failed: [], stopped: false, printer: null });
+		expect(toasts()).toEqual([
+			['Отправлено на «Акты HP»: 12', 'success', undefined],
+			['Не напечатаны: № 1, № 2', 'danger', undefined],
+			['Не напечатаны: № 1, № 2, № 3, № 4, № 5 и ещё 2', 'danger', undefined]
+		]);
+	});
+
+	it('«Сохранить PDF» of a batch downloads the file under the name the server gave it', async () => {
+		documents.documentBatchPdf.mockResolvedValue({
+			blob: new Blob(['%PDF']),
+			filename: 'naklejka-3.pdf'
+		});
+		URL.createObjectURL = () => 'blob:pdf';
+		URL.revokeObjectURL = () => {};
+		const names: string[] = [];
+		const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+			this: HTMLAnchorElement
+		) {
+			names.push(this.download);
+		});
+		await savePdfBatch('sticker', [11, 12, 13]);
+		expect(documents.documentBatchPdf).toHaveBeenCalledWith(
+			'sticker',
+			[11, 12, 13],
+			documentOptions('sticker')
+		);
+		expect(names).toEqual(['naklejka-3.pdf']);
+		click.mockRestore();
 	});
 });

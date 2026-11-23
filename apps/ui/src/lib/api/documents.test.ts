@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { documentPages, documentPdf, documentQuery } from './documents.js';
+import { documentBatchPdf, documentPages, documentPdf, documentQuery } from './documents.js';
 
 // The documents of the server: an order's (`/orders/{id}/documents/{kind}`) or without an order
 // (`/documents/{kind}`: the blank act, the calibration label, the sample of the rest). The options of
@@ -175,5 +175,34 @@ describe('documentPages', () => {
 		);
 		await documentPages('issue_act', {});
 		expect(sent(fn)).toEqual({ path: '/api/v1/documents/issue_act', params: { format: 'png' } });
+	});
+});
+
+describe('documentBatchPdf', () => {
+	it('posts the orders and the options as JSON and returns the file with its name', async () => {
+		const fn = stubFetch(
+			() =>
+				new Response('%PDF', {
+					headers: { 'Content-Disposition': 'inline; filename="naklejka-2.pdf"' }
+				})
+		);
+		const file = await documentBatchPdf('sticker', [4, 5], {
+			printerDpi: 203,
+			labelMm: [58, 40],
+			offsetMm: [1, -1]
+		});
+		expect(fn).toHaveBeenCalledOnce();
+		const [url, init] = fn.mock.calls[0]!;
+		expect(new URL(url, 'http://127.0.0.1').pathname).toBe('/api/v1/documents/sticker/batch');
+		expect(init?.method).toBe('POST');
+		expect(JSON.parse(init?.body as string)).toEqual({
+			order_ids: [4, 5],
+			printer_dpi: 203,
+			label_w_mm: 58,
+			label_h_mm: 40,
+			offset_x_mm: 1,
+			offset_y_mm: -1
+		});
+		expect(file.filename).toBe('naklejka-2.pdf');
 	});
 });

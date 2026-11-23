@@ -213,13 +213,18 @@ export function fileNameOf(header: string | null): string | null {
 /** A binary response with the name the server gave it (`Content-Disposition`), fetched with the token. */
 export async function requestFile(
 	path: string,
-	opts: { query?: Query; signal?: AbortSignal } = {}
+	opts: { query?: Query; signal?: AbortSignal; body?: unknown } = {}
 ): Promise<{ blob: Blob; filename: string | null }> {
-	const response = await send('GET', path, opts.query, {
-		headers: authHeaders(),
+	// With a body the file is asked by POST, as JSON (a batch of documents).
+	const method: Method = opts.body === undefined ? 'GET' : 'POST';
+	const headers = authHeaders();
+	if (method === 'POST') headers.set('Content-Type', 'application/json');
+	const response = await send(method, path, opts.query, {
+		headers,
+		body: method === 'POST' ? JSON.stringify(opts.body) : undefined,
 		signal: opts.signal
 	});
-	if (!response.ok) return fail(response, 'GET', path);
+	if (!response.ok) return fail(response, method, path);
 	return {
 		blob: await response.blob(),
 		filename: fileNameOf(response.headers.get('Content-Disposition'))
