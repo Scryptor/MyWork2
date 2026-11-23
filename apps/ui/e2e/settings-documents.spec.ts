@@ -72,6 +72,31 @@ test('the details and the terms are saved as they are typed and are there after 
 	}
 });
 
+test('qr links are saved and checked', async ({ page, request }) => {
+	const before = await currentSettings(request);
+	const link = `https://t.me/example_${uniq()}`;
+	try {
+		await page.goto('/settings/documents');
+		await expect(page.getByRole('heading', { name: 'Ссылки для QR-кодов' })).toBeVisible();
+		await expect(page.getByRole('textbox', { name: 'Google Карты', exact: true })).toBeVisible();
+		await expect(page.getByRole('textbox', { name: 'Яндекс Карты', exact: true })).toBeVisible();
+		const telegram = page.getByRole('textbox', { name: 'Telegram', exact: true });
+		await telegram.fill('t.me/example');
+		await telegram.blur();
+		await expect(page.getByText('Нужна ссылка целиком, с https://')).toBeVisible();
+
+		await telegram.fill(link);
+		await telegram.blur();
+		await expect(page.getByText('Нужна ссылка целиком, с https://')).toHaveCount(0);
+		await expect.poll(async () => (await currentSettings(request)).firm_telegram).toBe(link);
+		await page.reload();
+		await expect(page.getByRole('textbox', { name: 'Telegram', exact: true })).toHaveValue(link);
+	} finally {
+		const restore = { firm_telegram: before.firm_telegram };
+		expect((await request.patch('/api/v1/settings', { data: restore })).ok()).toBe(true);
+	}
+});
+
 test('«Название сервиса» and the currency say where they are printed', async ({ page }) => {
 	await page.goto('/settings/general');
 	await page.getByRole('button', { name: 'Что такое «Название сервиса»' }).click();

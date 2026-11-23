@@ -112,6 +112,22 @@ describe('createSettingsEditor', () => {
 		expect(editor.pendingFields()).toEqual(['ready_stale_days']);
 	});
 
+	it('a link that is not a link, and a link that is too long, are said in words of the field', async () => {
+		make();
+		save.mockRejectedValueOnce(validation('firm_telegram', 'not_a_link'));
+		editor.edit('firm_telegram', 't.me/example');
+		await vi.advanceTimersByTimeAsync(700);
+		expect(editor.fieldError('firm_telegram')).toBe('Нужна ссылка целиком, с https://');
+		save.mockRejectedValueOnce(validation('firm_google_maps', 'too_long'));
+		editor.edit('firm_google_maps', 'https://' + 'a'.repeat(500));
+		await vi.advanceTimersByTimeAsync(700);
+		expect(editor.fieldError('firm_google_maps')).toBe('Не длиннее 500 знаков');
+		save.mockRejectedValueOnce(validation('firm_yandex_maps', 'too_long'));
+		editor.edit('firm_yandex_maps', 'https://' + 'a'.repeat(500));
+		await vi.advanceTimersByTimeAsync(700);
+		expect(editor.fieldError('firm_yandex_maps')).toBe('Не длиннее 500 знаков');
+	});
+
 	it('a typed time zone is sent as it is: the server decides if it exists', async () => {
 		make();
 		save.mockRejectedValueOnce(validation('timezone', 'invalid'));

@@ -44,6 +44,32 @@
 		{ field: 'firm_legal_details', label: t.firmLegal, help: help.firmLegal, rows: 3 }
 	];
 
+	type LinkField = Extract<
+		SettingsField,
+		'firm_telegram' | 'firm_google_maps' | 'firm_yandex_maps'
+	>;
+	/** The firm's links printed by the «QR-код» block. */
+	const LINKS: { field: LinkField; label: string; help: readonly string[]; example: string }[] = [
+		{
+			field: 'firm_telegram',
+			label: t.firmTelegram,
+			help: help.firmTelegram,
+			example: 'https://t.me/…'
+		},
+		{
+			field: 'firm_google_maps',
+			label: t.firmGoogleMaps,
+			help: help.firmGoogleMaps,
+			example: 'https://maps.google.com/…'
+		},
+		{
+			field: 'firm_yandex_maps',
+			label: t.firmYandexMaps,
+			help: help.firmYandexMaps,
+			example: 'https://yandex.ru/maps/…'
+		}
+	];
+
 	/** Every document, in the order of the work: the acts, the blank one, the labels. */
 	const DOCUMENTS: DocumentKind[] = [
 		'intake_act',
@@ -96,6 +122,25 @@
 			/>
 		{/each}
 		<SaveNote {editor} />
+	</div>
+</Card>
+
+<Card>
+	<div class="fields">
+		<h2 class="subtitle">{t.qrLinks}</h2>
+		<p class="note">{t.qrLinksNote}</p>
+		{#each LINKS as f (f.field)}
+			<TextInput
+				label={f.label}
+				help={f.help}
+				placeholder={f.example}
+				inputmode="url"
+				disabled={locked}
+				error={editor.fieldError(f.field)}
+				bind:value={() => editor.value(f.field, s[f.field]) ?? '', (v) => editor.edit(f.field, v)}
+				onblur={() => void editor.flush()}
+			/>
+		{/each}
 	</div>
 </Card>
 
