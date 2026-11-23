@@ -7,6 +7,7 @@ export const BLOCK_TYPES = [
 	'text',
 	'fields',
 	'barcode',
+	'logo',
 	'signatures',
 	'separator',
 	'spacer',
@@ -26,6 +27,8 @@ function body(type: (typeof BLOCK_TYPES)[number]): BlockBody {
 			};
 		case 'barcode':
 			return { type, height_mm: 12, digits: true, align: 'center', fill: false, stretch: false };
+		case 'logo':
+			return { type, width_mm: 40, height_mm: 15, align: 'left' };
 		case 'signatures':
 			return { type, left: d.signatureLeft, right: d.signatureRight };
 		case 'separator':

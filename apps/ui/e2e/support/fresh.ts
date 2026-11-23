@@ -17,3 +17,20 @@ export function freshOrigin(kind: FreshKind, browserName: string): string {
 	if (port === undefined) throw new Error(`no fresh server for ${browserName}`);
 	return `http://127.0.0.1:${port}`;
 }
+
+// Servers that are set up (no `--fresh`, no `--admin`: open mode) but belong to one spec each, for what is the
+// firm's own and one per base, and so cannot be shared by the two engines running at the same time.
+export const OWN_PORTS = {
+	/** `settings-logo.spec.ts`: the logo of the firm is uploaded and removed. */
+	logo: { chromium: 4179, webkit: 4180 }
+} as const;
+
+export type OwnKind = keyof typeof OWN_PORTS;
+
+/** The origin of the server of `kind` for this engine. */
+export function ownOrigin(kind: OwnKind, browserName: string): string {
+	const ports: Record<string, number> = OWN_PORTS[kind];
+	const port = ports[browserName];
+	if (port === undefined) throw new Error(`no own server for ${browserName}`);
+	return `http://127.0.0.1:${port}`;
+}

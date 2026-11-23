@@ -169,11 +169,16 @@ export async function request<T>(
 }
 
 /** Sends a file as raw bytes (`application/octet-stream`: the one non-JSON type the server takes). */
-export async function upload<T>(path: string, body: Blob, query?: Query): Promise<T> {
+export async function upload<T>(
+	path: string,
+	body: Blob,
+	query?: Query,
+	method: 'POST' | 'PUT' = 'POST'
+): Promise<T> {
 	const headers = authHeaders();
 	headers.set('Content-Type', 'application/octet-stream');
-	const response = await send('POST', path, query, { headers, body });
-	if (!response.ok) return fail(response, 'POST', path);
+	const response = await send(method, path, query, { headers, body });
+	if (!response.ok) return fail(response, method, path);
 	return (await readBody(response)) as T;
 }
 

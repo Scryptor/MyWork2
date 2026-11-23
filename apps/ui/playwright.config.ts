@@ -1,5 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
-import { FRESH_PORTS } from './e2e/support/fresh';
+import { FRESH_PORTS, OWN_PORTS } from './e2e/support/fresh';
 
 // Real mw-server instances serve the built UI and the API from one origin each:
 // 4173 runs without sign-in (open mode), 4174 has an administrator; both are set up already.
@@ -16,7 +16,12 @@ const server = (port: number, extra = '') => ({
 	stderr: 'pipe' as const
 });
 
-const ports = [4173, 4174, ...Object.values(FRESH_PORTS).flatMap((ports) => Object.values(ports))];
+const portsOf = (kinds: Record<string, Record<string, number>>) =>
+	Object.values(kinds).flatMap((ports) => Object.values(ports));
+const freshPorts = portsOf(FRESH_PORTS);
+// Set up, in open mode, one per spec and engine (e2e/support/fresh.ts): the firm's own state, such as the logo.
+const ownPorts = portsOf(OWN_PORTS);
+const ports = [4173, 4174, ...freshPorts, ...ownPorts];
 
 // Printing after an intake and an issue is on by default; in a browser it opens the preview, which would
 // cover the screen in every test that accepts or issues an order. Off here, in every origin; the tests of
@@ -43,7 +48,8 @@ export default defineConfig({
 		server(4173),
 		server(4174, ' --admin'),
 		// Never one left from an earlier run: its base would be set up already.
-		...ports.slice(2).map((port) => ({ ...server(port, ' --fresh'), reuseExistingServer: false }))
+		...freshPorts.map((port) => ({ ...server(port, ' --fresh'), reuseExistingServer: false })),
+		...ownPorts.map((port) => server(port))
 	],
 	projects: [
 		{

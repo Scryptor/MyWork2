@@ -16,6 +16,7 @@
 		createSettingsEditor,
 		type SettingsField
 	} from '#lib/settings/settings-editor.svelte.js';
+	import FirmLogo from '#lib/settings/FirmLogo.svelte';
 	import Callout from '#lib/ui/Callout.svelte';
 	import Card from '#lib/ui/Card.svelte';
 	import TextInput from '#lib/ui/TextInput.svelte';
@@ -96,6 +97,10 @@
 		{/each}
 		<SaveNote {editor} />
 	</div>
+</Card>
+
+<Card>
+	<FirmLogo canEdit={!locked} />
 </Card>
 
 <Card>

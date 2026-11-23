@@ -9,6 +9,7 @@
 	import CopyLabelProps from './props/CopyLabelProps.svelte';
 	import CopiesField from './props/CopiesField.svelte';
 	import FieldsProps from './props/FieldsProps.svelte';
+	import LogoProps from './props/LogoProps.svelte';
 	import PageProps from './props/PageProps.svelte';
 	import SignaturesProps from './props/SignaturesProps.svelte';
 	import SpacerProps from './props/SpacerProps.svelte';
@@ -35,6 +36,8 @@
 				<FieldsProps {editor} path={selected} />
 			{:else if block.body.type === 'barcode'}
 				<BarcodeProps {editor} path={selected} />
+			{:else if block.body.type === 'logo'}
+				<LogoProps {editor} path={selected} />
 			{:else if block.body.type === 'signatures'}
 				<SignaturesProps {editor} path={selected} />
 			{:else if block.body.type === 'spacer'}
