@@ -316,6 +316,8 @@ impl Generator {
                 }
             }
             BlockBody::CalibrationMarks {} => self.calibration_marks(out),
+            // Task 2 of plan 7.3 replaces this branch: the code is rendered by the worker process.
+            BlockBody::TypstCode { .. } => out.push_str("none"),
         }
         out.push('\n');
     }

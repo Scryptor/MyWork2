@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 /// Ошибка валидации поля: имя поля и машинный код (`required`, `invalid`, `too_short`,
 /// `duplicate`, `out_of_range`, `estimate_range`, `deleted`, `last_admin`, `last_issued_status`,
-/// `comma`, `changes_term`, `stale`, `closed`, `too_many`, `too_long`, `too_large`, `no_room`, `text_budget`, `too_many_pages`, `too_many_pixels`, `requires_a4`,
+/// `comma`, `changes_term`, `stale`, `closed`, `too_many`, `too_long`, `too_large`, `no_room`, `text_budget`, `code_budget`, `typst_error`, `code_timeout`, `code_crashed`, `too_slow`, `code_unavailable`, `too_many_pages`, `too_many_pixels`, `requires_a4`,
 /// `not_allowed`, `nested_columns`, `fill_in_columns`, `unsupported`, `mismatch`, `not_editable`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
 pub struct FieldError {
@@ -77,6 +77,14 @@ impl FieldError {
             "text_budget" => {
                 "В шаблоне слишком много текста: сократите тексты (не больше 20 000 знаков)"
             }
+            "code_budget" => "Весь Typst-код шаблона — не больше 50 000 знаков",
+            "typst_error" => "Ошибка в Typst-коде",
+            "code_timeout" => "Свой Typst-код строится дольше 5 секунд — проверьте циклы",
+            "code_crashed" => {
+                "Построение документа прервалось — возможно, своему Typst-коду не хватило памяти"
+            }
+            "too_slow" => "Документы строятся дольше 25 секунд — напечатайте пачку частями",
+            "code_unavailable" => "Этот блок нельзя превратить в Typst-код",
             "too_many_pages" => {
                 "Документ получается слишком большим (больше 50 страниц на заказ или 200 в пачке): уберите лишнее или увеличьте страницу"
             }

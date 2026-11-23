@@ -5557,6 +5557,25 @@
                 ]
               }
             }
+          },
+          {
+            "type": "object",
+            "description": "The author's own Typst code: it prints whatever it likes in place of the block. Empty code is\nallowed and prints nothing.",
+            "required": [
+              "code",
+              "type"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "typst_code"
+                ]
+              }
+            }
           }
         ],
         "description": "Text in `Text`, `FieldRow::value` and `Signatures` may contain substitutions such as `{заказ.номер}`\n(список — в модуле `fields` крейта `mw-docs`); an unknown one is printed as written."

@@ -1875,7 +1875,8 @@ export const ru = {
 			spacer: 'Отступ',
 			columns: 'Колонки',
 			copy_label: 'Подпись экземпляра',
-			calibration_marks: 'Метки калибровки'
+			calibration_marks: 'Метки калибровки',
+			typst_code: 'Typst-код'
 		} satisfies Record<BlockBody['type'], string>,
 		mmUnit: 'мм',
 		previewFailed: 'Шаблон не построен',

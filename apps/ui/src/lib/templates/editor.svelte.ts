@@ -263,6 +263,10 @@ export function blockLabel(block: Block): string {
 	else if (b.type === 'fields') detail = start(b.rows.map((r) => r.label).join(', '));
 	else if (b.type === 'signatures') detail = start([b.left, b.right].filter(Boolean).join(' / '));
 	else if (b.type === 'spacer') detail = `${formatMm(b.mm)} ${t.mmUnit}`;
+	else if (b.type === 'typst_code')
+		detail = start(
+			b.code.split('\n').find((l) => l.trim() !== '' && !l.trim().startsWith('//')) ?? ''
+		);
 	else if (b.type === 'columns') detail = String(b.columns.length);
 	return detail ? `${type} · ${detail}` : type;
 }

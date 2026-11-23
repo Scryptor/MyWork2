@@ -167,6 +167,27 @@ pub enum BlockBody {
     /// edges, a crosshair in the centre and a caption «W × H мм · N dpi · смещение X/Y» from the
     /// render options (page size, printer DPI when given, offset).
     CalibrationMarks {},
+    /// The author's own Typst code: it prints whatever it likes in place of the block. Empty code is
+    /// allowed and prints nothing.
+    TypstCode { code: String },
+}
+
+/// Where in the author's Typst code a diagnostic points: the path of the block (`[i]`, or
+/// `[i, column, j]` inside columns), the line and the column, both counted from 1.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, ToSchema)]
+pub struct CodePlace {
+    pub block: Vec<usize>,
+    pub line: u32,
+    pub column: u32,
+}
+
+/// One error of the author's Typst code.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, ToSchema)]
+pub struct CodeDiagnostic {
+    #[schema(required = true)]
+    pub place: Option<CodePlace>,
+    pub message: String,
+    pub hints: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, ToSchema)]
@@ -185,7 +206,7 @@ pub struct FieldRow {
 }
 
 pub const TEMPLATE_FILE_FORMAT: &str = "mwtemplate";
-pub const TEMPLATE_FILE_VERSION: u32 = 2;
+pub const TEMPLATE_FILE_VERSION: u32 = 3;
 pub const TEMPLATE_FILE_MAX_BYTES: usize = 1_048_576;
 
 const MAX_BLOCKS: usize = 200;
@@ -197,6 +218,10 @@ const MAX_CAPTION_CHARS: usize = 200;
 /// Все тексты шаблона вместе: подписи, значения, тексты блоков и подписи для подписей. Не даёт
 /// собрать шаблон, который печатается тысячами страниц.
 const MAX_TEMPLATE_TEXT_CHARS: usize = 20_000;
+/// Typst-код одного блока.
+const MAX_CODE_CHARS: usize = 20_000;
+/// Весь Typst-код шаблона, отдельно от бюджета текста.
+const MAX_TEMPLATE_CODE_CHARS: usize = 50_000;
 /// Минимальный размер места под содержимое, мм.
 const MIN_CONTENT_MM: f32 = 10.0;
 
@@ -242,7 +267,31 @@ fn text_chars(blocks: &[Block]) -> usize {
         .sum()
 }
 
+fn code_chars(blocks: &[Block]) -> usize {
+    blocks
+        .iter()
+        .map(|b| match &b.body {
+            BlockBody::TypstCode { code } => code.chars().count(),
+            BlockBody::Columns { columns, .. } => columns.iter().map(|c| code_chars(c)).sum(),
+            _ => 0,
+        })
+        .sum()
+}
+
+fn has_code_block(blocks: &[Block]) -> bool {
+    blocks.iter().any(|b| match &b.body {
+        BlockBody::TypstCode { .. } => true,
+        BlockBody::Columns { columns, .. } => columns.iter().any(|c| has_code_block(c)),
+        _ => false,
+    })
+}
+
 impl Template {
+    /// Есть ли в шаблоне свой Typst-код (и в колонках): такой шаблон строится в процессе-рендерере.
+    pub fn has_code(&self) -> bool {
+        has_code_block(&self.blocks)
+    }
+
     /// Проверяет границы шаблона. Поле ошибки — путь через точку: `blocks.{i}`, во вложенных
     /// `blocks.{i}.columns.{c}.{j}`, затем имя поля.
     pub fn validate(&self) -> Result<(), Vec<FieldError>> {
@@ -276,6 +325,9 @@ impl Template {
         }
         if text_chars(&self.blocks) > MAX_TEMPLATE_TEXT_CHARS {
             errors.push(FieldError::new("blocks", "text_budget"));
+        }
+        if code_chars(&self.blocks) > MAX_TEMPLATE_CODE_CHARS {
+            errors.push(FieldError::new("blocks", "code_budget"));
         }
         self.validate_blocks(&self.blocks, "blocks", false, &mut errors);
         if errors.is_empty() {
@@ -403,6 +455,9 @@ impl Template {
                     if self.kind != DocumentKind::Calibration {
                         errors.push(FieldError::new(at.clone(), "not_allowed"));
                     }
+                }
+                BlockBody::TypstCode { code } => {
+                    check_len(errors, format!("{at}.code"), code, MAX_CODE_CHARS);
                 }
                 BlockBody::Separator {} | BlockBody::CopyLabel { .. } => {}
             }
@@ -677,7 +732,7 @@ mod tests {
             pair("format_version", "unsupported")
         );
         assert_eq!(
-            code(&file("mwtemplate", 3, &t)),
+            code(&file("mwtemplate", 4, &t)),
             pair("format_version", "unsupported")
         );
         assert_eq!(code("{"), pair("file", "invalid"));
@@ -844,7 +899,7 @@ mod tests {
         v["format_version"] = "1".into();
         assert_eq!(code(v), pair("format", "invalid"));
         let mut v = ok;
-        v["format_version"] = 3.into();
+        v["format_version"] = 4.into();
         assert_eq!(code(v), pair("format_version", "unsupported"));
     }
 
@@ -878,6 +933,83 @@ mod tests {
         }
     }
 
+    fn code_block(n: usize) -> Block {
+        Block {
+            copies: CopyFilter::Both,
+            body: BlockBody::TypstCode {
+                code: "ж".repeat(n),
+            },
+        }
+    }
+
+    #[test]
+    fn typst_code_round_trips_as_json() {
+        let json = serde_json::json!({"type":"typst_code","code":"#v(\"order.number\")"});
+        let body: BlockBody = serde_json::from_value(json.clone()).unwrap();
+        assert_eq!(
+            body,
+            BlockBody::TypstCode {
+                code: "#v(\"order.number\")".into()
+            }
+        );
+        assert_eq!(serde_json::to_value(&body).unwrap(), json);
+        let extra = serde_json::json!({"type":"typst_code","code":"","extra":1});
+        assert!(serde_json::from_value::<BlockBody>(extra).is_err());
+    }
+
+    #[test]
+    fn code_length_is_limited() {
+        let mut t = base(DocumentKind::IntakeAct);
+        t.blocks = vec![code_block(20_000)];
+        assert_eq!(t.validate(), Ok(()));
+        t.blocks = vec![code_block(20_001)];
+        assert_eq!(errs(&t), [pair("blocks.0.code", "too_long")]);
+        t.blocks = vec![columns(vec![vec![], vec![code_block(20_001)]])];
+        assert_eq!(errs(&t), [pair("blocks.0.columns.1.0.code", "too_long")]);
+    }
+
+    #[test]
+    fn template_code_budget_is_separate() {
+        let mut t = base(DocumentKind::IntakeAct);
+        t.blocks = vec![code_block(20_000), code_block(20_000), code_block(20_000)];
+        assert_eq!(errs(&t), [pair("blocks", "code_budget")]);
+        t.blocks = vec![
+            text("ж".repeat(10_000), None),
+            text("ж".repeat(10_000), None),
+        ];
+        t.blocks.push(code_block(20_000));
+        assert_eq!(t.validate(), Ok(()));
+    }
+
+    #[test]
+    fn has_code_looks_into_columns() {
+        let mut t = base(DocumentKind::IntakeAct);
+        t.blocks = vec![text("a".into(), None), columns(vec![vec![spacer()]])];
+        assert!(!t.has_code());
+        t.blocks = vec![columns(vec![vec![spacer()], vec![code_block(1)]])];
+        assert!(t.has_code());
+        t.blocks = vec![code_block(0)];
+        assert!(t.has_code());
+    }
+
+    #[test]
+    fn file_version_3() {
+        let mut t = base(DocumentKind::IntakeAct);
+        t.blocks = vec![code_block(5)];
+        for v in [1, 2, 3] {
+            assert!(
+                TemplateFile::parse(&file("mwtemplate", v, &t), DocumentKind::IntakeAct).is_ok()
+            );
+        }
+        let e =
+            TemplateFile::parse(&file("mwtemplate", 4, &t), DocumentKind::IntakeAct).unwrap_err();
+        assert_eq!(
+            (e[0].field.as_str(), e[0].code.as_str()),
+            ("format_version", "unsupported")
+        );
+        assert_eq!(TemplateFile::new(t).format_version, 3);
+    }
+
     #[test]
     fn version_1_file_still_reads() {
         let mut t = base(DocumentKind::IntakeAct);
@@ -885,7 +1017,7 @@ mod tests {
         let parsed =
             TemplateFile::parse(&file("mwtemplate", 1, &t), DocumentKind::IntakeAct).unwrap();
         assert_eq!(parsed.blocks, t.blocks);
-        assert_eq!(TEMPLATE_FILE_VERSION, 2);
+        assert_eq!(TEMPLATE_FILE_VERSION, 3);
     }
 
     #[test]

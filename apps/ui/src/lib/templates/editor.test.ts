@@ -364,6 +364,18 @@ describe('blockLabel', () => {
 		expect(blockLabel({ copies: 'both', body: { type: 'spacer', mm: 4.5 } })).toBe(
 			'Отступ · 4,5 мм'
 		);
+		expect(
+			blockLabel({
+				copies: 'both',
+				body: { type: 'typst_code', code: '// пояснение\n\n#v("order.number")' }
+			})
+		).toBe('Typst-код · #v("order.number")');
+		expect(blockLabel({ copies: 'both', body: { type: 'typst_code', code: '' } })).toBe(
+			'Typst-код'
+		);
+		expect(
+			blockLabel({ copies: 'both', body: { type: 'typst_code', code: '// только\n  \n' } })
+		).toBe('Typst-код');
 		// One way to write millimetres: `formatMm`, the texts add the unit themselves.
 		expect('mm' in ru.templates).toBe(false);
 	});
