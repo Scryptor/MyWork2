@@ -107,7 +107,12 @@ export function createTemplateEditor(
 		if (sameValue(next, ed.record.template)) {
 			// Back to what the other computer saved: the dispute is over, theirs is ours.
 			if (ed.conflicts.has('template')) ed.take('template');
-			else ed.autosave.discard('template');
+			else {
+				ed.autosave.discard('template');
+				// A failed write of what is gone is no failure any more: with nothing left to send the
+				// retry only clears the error, «Не сохранено» and the reason with it.
+				ed.autosave.retry();
+			}
 			return;
 		}
 		if (typing) ed.autosave.edit('template', next);

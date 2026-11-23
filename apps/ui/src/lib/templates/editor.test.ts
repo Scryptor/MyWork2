@@ -198,6 +198,31 @@ describe('createTemplateEditor', () => {
 		ed.dispose();
 	});
 
+	it('a failed write undone back to the saved template leaves no error in the save state', async () => {
+		const server = fakeServer();
+		const refused = new ApiError(422, 'validation', 'Проверьте введённые данные', {
+			code: 'validation',
+			message: 'Проверьте введённые данные',
+			fields: [{ field: 'blocks.2.text', code: 'too_long', message: 'Слишком длинный текст' }],
+			current_version: null,
+			permission: null,
+			retry_after_secs: null
+		});
+		server.api.saveTemplate.mockRejectedValueOnce(refused);
+		const ed = createTemplateEditor(server.current, { api: server.api });
+		ed.edit(withText(ed.template, 'Своя строка'));
+		await settle();
+		expect(ed.status.saveState).toBe('error');
+		expect(ed.status.lost).toBe('в шаблоне ошибка, она показана над превью');
+
+		ed.undo();
+		expect(ed.unsaved).toBe(false);
+		expect(ed.status.saveState).not.toBe('error');
+		expect(ed.status.lost).toBeNull();
+		expect(ed.status.autosave.error).toBeNull();
+		ed.dispose();
+	});
+
 	it('a value the server keeps in its own form is not sent again and again', async () => {
 		const server = fakeServer();
 		// The server keeps sizes as f32: 9.123456789 comes back a little different.

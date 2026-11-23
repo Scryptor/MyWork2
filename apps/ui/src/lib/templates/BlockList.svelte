@@ -19,6 +19,7 @@
 	import SortableList from '#lib/ui/SortableList.svelte';
 	import { BLOCK_TYPES, newBlock } from './defaults.js';
 	import { blockLabel, type Selection, type TemplateEditor } from './editor.svelte.js';
+	import { createBlockKeys } from './keys.js';
 	import {
 		canMove,
 		duplicateBlock,
@@ -34,18 +35,24 @@
 
 	const t = ru.templates;
 
-	/** A row of a list: the block, its path and its place in its own list (the key of the row). */
+	/** A row of a list: the block, its path, its place in its own list and the key of its row. */
 	interface Entry {
 		block: Block;
 		path: BlockPath;
 		index: number;
+		key: number;
 	}
 
 	const template = $derived(editor.template);
 	const selected = $derived(editor.selected);
+	// The rows follow their blocks: a handle moved with the arrows keeps the focus on its block.
+	const blockKeys = createBlockKeys();
+	const keys = $derived(blockKeys.of(template));
 	const tops = $derived<Entry[]>(
-		template.blocks.map((block, i) => ({ block, path: [i], index: i }))
+		template.blocks.map((block, i) => ({ block, path: [i], index: i, key: keys.top[i]! }))
 	);
+	const columnEntries = (i: number, c: number, column: Block[]): Entry[] =>
+		column.map((block, j) => ({ block, path: [i, c, j], index: j, key: keys.columns[i]![c]![j]! }));
 	/** The blocks of columns, by their place on the page. */
 	const columnBlocks = $derived(
 		template.blocks.flatMap((b, i) => (b.body.type === 'columns' ? [{ i, body: b.body }] : []))
@@ -83,9 +90,17 @@
 		editor.select(to);
 	}
 
-	/** The list of a container in a new order; the chosen block in it keeps being chosen. */
+	/**
+	 * The list of a container in a new order (the keys of its rows); the chosen block in it keeps being
+	 * chosen. An order of rows the list no longer has (it changed meanwhile) is nothing to apply.
+	 */
 	function reorderIn(container: Container, order: number[]) {
-		editor.edit(reorder(template, container, order));
+		const list = blockKeys.listOf(keys, container);
+		const from = order.map((k) => list?.indexOf(k) ?? -1);
+		if (list === undefined || from.length !== list.length || from.some((i) => i < 0)) return;
+		const next = reorder(template, container, from);
+		blockKeys.reordered(template, next, container, order);
+		editor.edit(next);
 		const depth = container.length;
 		if (
 			selected !== 'page' &&
@@ -93,7 +108,7 @@
 			container.every((n, k) => selected[k] === n)
 		) {
 			const was = selected[depth]!;
-			editor.select(selected.map((n, k) => (k === depth ? order.indexOf(was) : n)));
+			editor.select(selected.map((n, k) => (k === depth ? from.indexOf(was) : n)));
 		}
 	}
 
@@ -179,8 +194,8 @@
 					<p class="empty">{t.emptyColumn}</p>
 				{:else}
 					<SortableList
-						items={column.map((block, j) => ({ block, path: [e.index, c, j], index: j }))}
-						key={(x) => x.index}
+						items={columnEntries(e.index, c, column)}
+						key={(x) => x.key}
 						label={(x) => blockLabel(x.block)}
 						row={item}
 						onreorder={(order) => reorderIn([e.index, c], order)}
@@ -204,7 +219,7 @@
 	</button>
 	<SortableList
 		items={tops}
-		key={(e) => e.index}
+		key={(e) => e.key}
 		label={(e) => blockLabel(e.block)}
 		row={top}
 		onreorder={(order) => reorderIn([], order)}
