@@ -6,7 +6,7 @@ use crate::model::{Layout, Template};
 
 use super::RenderOptions;
 use super::blocks::Generator;
-use super::code::CodeFile;
+use super::code::CodeBlocks;
 
 /// Space between the two copies of [`Layout::TwoPerA4`]; the cut line runs in its middle.
 const CUT_GAP_MM: f64 = 8.0;
@@ -74,7 +74,7 @@ pub(super) fn body(
     generator: &Generator,
     template: &Template,
     out: &mut String,
-    code: &mut Vec<CodeFile>,
+    code: &mut CodeBlocks,
 ) {
     let page = &generator.page;
     let width = generator.area_mm.0;
@@ -117,7 +117,7 @@ pub(super) fn body(
 }
 
 /// Defines `copy-service` and `copy-client`: the blocks of the template for each copy.
-fn copies(generator: &Generator, template: &Template, out: &mut String, code: &mut Vec<CodeFile>) {
+fn copies(generator: &Generator, template: &Template, out: &mut String, code: &mut CodeBlocks) {
     let width = generator.area_mm.0;
     for (name, role) in [
         ("copy-service", CopyRole::Service),

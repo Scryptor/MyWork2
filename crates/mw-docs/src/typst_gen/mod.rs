@@ -21,10 +21,12 @@ use crate::model::{Block, BlockBody, Template};
 use crate::render::{DocsError, Rendered, compile};
 
 use blocks::Generator;
+use code::CodeBlocks;
 use page::{body, mm, pt};
 use text::typst_str;
 
 pub(crate) use code::CodeSources;
+pub use code::block_code;
 
 /// The values of one document.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -205,9 +207,11 @@ fn typst_source(
     );
     let helpers = helpers();
     out.push_str(&helpers);
-    let mut code = Vec::new();
+    let mut code = CodeBlocks::Files(Vec::new());
     body(&generator, template, &mut out, &mut code);
-    let code = template.has_code().then(|| CodeSources::new(helpers, code));
+    let code = template
+        .has_code()
+        .then(|| CodeSources::new(helpers, code.into_files()));
     (out, code)
 }
 

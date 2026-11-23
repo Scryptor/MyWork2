@@ -20,7 +20,7 @@ pub use barcode::{Symbology, code128_svg, module_mm, symbology, upc_a_svg};
 pub use fonts::{FontSet, FontSources, configure_fonts, font_covers, warm_fonts};
 pub use render::{DocsError, Rendered, merge};
 pub use standard::{sample_data, standard_template};
-pub use typst_gen::{DocumentData, RenderOptions, render, render_with_fonts, to_typst};
+pub use typst_gen::{DocumentData, RenderOptions, block_code, render, render_with_fonts, to_typst};
 
 /// Test hook: compiles Typst `source` with virtual `files` (name, bytes). Only with the `testing` feature.
 #[cfg(feature = "testing")]

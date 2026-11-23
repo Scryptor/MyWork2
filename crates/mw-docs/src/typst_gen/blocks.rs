@@ -6,7 +6,7 @@ use crate::barcode::{Shape, fit_module_mm, stretch_module_mm};
 use crate::model::{Align, Block, BlockBody, CopyFilter, FieldRow, Layout, Template};
 
 use super::RenderOptions;
-use super::code::CodeFile;
+use super::code::CodeBlocks;
 use super::page::{CopyRole, Page, decimal, mm, pt};
 use super::text::{Piece, TextMode, literal_expr, pieces, text_expr, typst_str};
 
@@ -116,14 +116,14 @@ impl Generator {
 
     /// A full-width block with `blocks` one under another: one Typst code expression. `path` is
     /// where `blocks` are in the template (`[]`, or `[i, column]` for a column), `width_mm` the width
-    /// of the column they are in. The code blocks go to `code`.
+    /// of the column they are in. `code` takes the code blocks.
     pub(super) fn flow(
         &self,
         blocks: &[Block],
         path: &[usize],
         copy: CopyRole,
         width_mm: f64,
-        code: &mut Vec<CodeFile>,
+        code: &mut CodeBlocks,
     ) -> String {
         let mut out = String::from("block(width: 100%, {\n");
         for (i, block) in blocks.iter().enumerate() {
@@ -150,7 +150,7 @@ impl Generator {
         path: &[usize],
         copy: CopyRole,
         width_mm: f64,
-        code: &mut Vec<CodeFile>,
+        code: &mut CodeBlocks,
     ) {
         match body {
             BlockBody::Text {
@@ -339,12 +339,53 @@ impl Generator {
             // block it is a row of its own: the paragraph break ends inline content (next to a block it
             // adds no space).
             BlockBody::TypstCode { code: source } => {
-                let file = CodeFile::new(path, copy, source);
-                let _ = write!(out, "include {}; parbreak()", typst_str(file.path()));
-                code.push(file);
+                let _ = write!(out, "{}; parbreak()", code.expr(path, copy, source));
             }
         }
         out.push('\n');
+    }
+
+    /// The block at `path` (`[i]`, or `[i, column, j]` inside columns) and the width of the column
+    /// it is in.
+    pub(super) fn find<'a>(&self, blocks: &'a [Block], path: &[usize]) -> Option<(&'a Block, f64)> {
+        fn find<'a>(blocks: &'a [Block], path: &[usize], width: f64) -> Option<(&'a Block, f64)> {
+            match path {
+                [i] => Some((blocks.get(*i)?, width)),
+                [i, c, rest @ ..] if !rest.is_empty() => match &blocks.get(*i)?.body {
+                    BlockBody::Columns { columns, gap_mm } => find(
+                        columns.get(*c)?,
+                        rest,
+                        column_width(width, columns.len(), *gap_mm),
+                    ),
+                    _ => None,
+                },
+                _ => None,
+            }
+        }
+        find(blocks, path, self.area_mm.0)
+    }
+
+    /// The expression [`Self::flow`] puts in place of the block at `path` in `copy`, `width_mm` the
+    /// width of its column; code blocks in it are written in place.
+    pub(super) fn expr(
+        &self,
+        body: &BlockBody,
+        path: &[usize],
+        copy: CopyRole,
+        width_mm: f64,
+    ) -> String {
+        let mut out = String::new();
+        self.block(
+            &mut out,
+            body,
+            path,
+            copy,
+            width_mm,
+            &mut CodeBlocks::Inline,
+        );
+        // Without the line break every block ends with.
+        out.pop();
+        out
     }
 
     /// See [`BlockBody::CalibrationMarks`]. The marks are as thick as two dots of a 203 dpi printer.
