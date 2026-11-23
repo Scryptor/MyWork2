@@ -24,6 +24,9 @@ fn digits_pt(module_mm: f64) -> f64 {
 }
 /// Space between the bars and the digits under them.
 const DIGITS_GAP_MM: f64 = 0.5;
+/// Space between a QR code and its caption, as a share of the side, and its least.
+const QR_CAPTION_GAP: f64 = 0.1;
+const QR_CAPTION_GAP_MIN_MM: f64 = 1.0;
 const SERVICE_COPY: &str = "Экземпляр сервиса";
 const CLIENT_COPY: &str = "Экземпляр клиента";
 
@@ -298,23 +301,31 @@ impl Generator {
                 align,
             } => {
                 // The side is counted here, in mm: a column narrower than it shrinks the code.
-                let side = mm(f64::from(*size_mm).min(width_mm).max(0.0));
+                let side_mm = f64::from(*size_mm).min(width_mm).max(0.0);
+                let side = mm(side_mm);
                 let name = qr_name(link, path);
                 let image = format!(
                     "image({}, width: {side})",
                     typst_str(&format!("qr-{name}.svg"))
                 );
+                // The caption may be wider than the code, up to the column, and is centred under it;
+                // the block is as wide as the wider of them and keeps its alignment in the column. A
+                // tenth of the side between them, at least 1 mm, is about 2 modules of a typical code:
+                // a quiet zone (the SVG has none).
                 let content = if caption.trim().is_empty() {
-                    image
+                    format!("block(width: {side}, {image})")
                 } else {
                     format!(
-                        "stack(spacing: 1mm, {image}, align(center, text(size: 0.85em, {})))",
-                        text_expr(caption, TextMode::ShortLine)
+                        "layout(size => {{ let caption = text(size: 0.85em, {caption}); \
+                         block(width: calc.min(size.width, calc.max({side}, measure(caption).width)), \
+                         stack(spacing: {gap}, align(center, {image}), align(center, caption))) }})",
+                        gap = mm((side_mm * QR_CAPTION_GAP).max(QR_CAPTION_GAP_MIN_MM)),
+                        caption = text_expr(caption, TextMode::ShortLine),
                     )
                 };
                 let _ = write!(
                     out,
-                    "if {} in data.qr {{ block(width: 100%, align({}, block(width: {side}, {content}))) }}",
+                    "if {} in data.qr {{ block(width: 100%, align({}, {content})) }}",
                     typst_str(&name),
                     align_name(*align),
                 );

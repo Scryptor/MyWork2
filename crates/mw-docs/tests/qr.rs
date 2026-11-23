@@ -105,6 +105,164 @@ fn qr_block_prints_its_link() {
     assert!(doc.text().contains("Мы в Telegram"), "{}", doc.text());
 }
 
+/// The captions of the presets at the default 20 mm are wider than the code: they print on one line,
+/// centred under it, with room for a quiet zone between them.
+#[test]
+fn preset_caption_is_one_line_at_the_default_size() {
+    let opts = RenderOptions::default();
+    let data = sample_data(DocumentKind::IntakeAct);
+    for (link, caption) in [
+        ("{фирма.гугл_карты}", "Мы на Google Картах"),
+        ("{фирма.яндекс_карты}", "Мы на Яндекс Картах"),
+    ] {
+        let t = small_page(DocumentKind::IntakeAct, vec![qr(link, 20.0, caption)]);
+        let doc = render(&t, &data, &opts).expect("renders");
+        assert!(doc.text().contains(caption), "{}", doc.text());
+        assert_eq!(decode_all(&doc.png_pages(300).expect("png")[0]).len(), 1);
+        // A tenth of the side, at least 1 mm: about 2 modules of a typical code.
+        assert!(to_typst(&t, &opts).contains("spacing: 2.000mm"));
+    }
+}
+
+/// A caption wider than the column wraps inside it, whatever the alignment of the block: the other
+/// column stays blank.
+#[test]
+fn caption_stays_in_its_column() {
+    let caption = "Отсканируйте код камерой телефона, чтобы написать нам в Telegram";
+    let dpi = 203;
+    for align in [Align::Left, Align::Center, Align::Right] {
+        let mut block = qr("{фирма.телеграм}", 15.0, caption);
+        if let BlockBody::Qr { align: a, .. } = &mut block.body {
+            *a = align;
+        }
+        let mut t = small_page(
+            DocumentKind::Sticker,
+            vec![Block {
+                copies: CopyFilter::Both,
+                body: BlockBody::Columns {
+                    columns: vec![vec![block], vec![]],
+                    gap_mm: 2.0,
+                },
+            }],
+        );
+        t.page.size = PageSize::Custom {
+            width_mm: 60.0,
+            height_mm: 60.0,
+        };
+        t.page.margins_mm = margins(2.0);
+        t.font_size_pt = 8.0;
+        let opts = RenderOptions {
+            label_mm: Some((60.0, 60.0)),
+            offset_mm: (0.0, 0.0),
+            dpi: Some(dpi),
+        };
+        let data = sample_data(DocumentKind::Sticker);
+        let png = &pages(&t, &data, &opts, dpi)[0];
+        assert_eq!(decode_all(png), [TELEGRAM], "{align:?}");
+        // The first column ends at 2 + (60 − 2 · 2 − 2) / 2 = 29 mm.
+        let page = image::load_from_memory(png).expect("png").to_luma_alpha8();
+        let from = (29.5 / 25.4 * f64::from(dpi)).ceil() as u32;
+        let ink = (from..page.width())
+            .flat_map(|x| (0..page.height()).map(move |y| (x, y)))
+            .filter(|&(x, y)| {
+                let [luma, alpha] = page.get_pixel(x, y).0;
+                alpha > 0 && luma < 128
+            })
+            .count();
+        assert_eq!(ink, 0, "{align:?}");
+        assert!(
+            render(&t, &data, &opts)
+                .expect("renders")
+                .text()
+                .contains("Telegram")
+        );
+    }
+}
+
+/// The edges of the ink on a PNG page, in mm: (left, right).
+fn ink_edges_mm(png: &[u8], dpi: u32) -> (f64, f64) {
+    let page = image::load_from_memory(png).expect("png").to_luma_alpha8();
+    let columns: Vec<u32> = (0..page.width())
+        .filter(|&x| {
+            (0..page.height()).any(|y| {
+                let [luma, alpha] = page.get_pixel(x, y).0;
+                alpha > 0 && luma < 128
+            })
+        })
+        .collect();
+    let to_mm = |px: u32| f64::from(px) * 25.4 / f64::from(dpi);
+    (
+        to_mm(*columns.first().expect("ink")),
+        to_mm(*columns.last().expect("ink") + 1),
+    )
+}
+
+/// A caption wider than the code widens the block, which keeps its alignment in the column.
+#[test]
+fn wide_caption_block_keeps_its_alignment() {
+    let dpi = 300;
+    let data = sample_data(DocumentKind::IntakeAct);
+    let opts = RenderOptions::default();
+    let edges = |align: Align| {
+        let mut block = qr("{фирма.гугл_карты}", 15.0, "Мы на Google Картах");
+        if let BlockBody::Qr { align: a, .. } = &mut block.body {
+            *a = align;
+        }
+        ink_edges_mm(
+            &pages(
+                &small_page(DocumentKind::IntakeAct, vec![block]),
+                &data,
+                &opts,
+                dpi,
+            )[0],
+            dpi,
+        )
+    };
+    // The page is 100 mm wide with margins of 5 mm.
+    let (left, right) = edges(Align::Left);
+    assert!((5.0..5.6).contains(&left), "{left}");
+    assert!(right - left > 15.5 && right < 60.0, "{left}..{right}");
+    let (left, right) = edges(Align::Right);
+    assert!((94.4..=95.0).contains(&right), "{right}");
+    assert!(right - left > 15.5 && left > 40.0, "{left}..{right}");
+    let (left, right) = edges(Align::Center);
+    assert!(((left + right) / 2.0 - 50.0).abs() < 0.5, "{left}..{right}");
+}
+
+/// A link of its own inside a column: its file is named by the block's path there.
+#[test]
+fn own_link_in_a_column_prints_its_link() {
+    let own = "https://example.com/o/{заказ.номер}";
+    let t = small_page(
+        DocumentKind::IntakeAct,
+        vec![
+            qr("{фирма.телеграм}", 20.0, ""),
+            Block {
+                copies: CopyFilter::Both,
+                body: BlockBody::Columns {
+                    columns: vec![
+                        vec![qr("{фирма.яндекс_карты}", 25.0, "")],
+                        vec![qr(own, 25.0, "Заказ")],
+                    ],
+                    gap_mm: 4.0,
+                },
+            },
+        ],
+    );
+    let opts = RenderOptions::default();
+    assert_eq!(
+        to_typst(&t, &opts)
+            .matches("\"qr-block-1-1-0.svg\"")
+            .count(),
+        1
+    );
+    let data = sample_data(DocumentKind::IntakeAct);
+    assert_eq!(
+        decode_all(&pages(&t, &data, &opts, 300)[0]),
+        ["https://example.com/o/1234", TELEGRAM, YANDEX]
+    );
+}
+
 #[test]
 fn custom_link_with_substitution_is_filled_per_document() {
     let t = small_page(
