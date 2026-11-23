@@ -1,7 +1,7 @@
 <!-- «Вставить поле» under a text field of a template: opens a search over the fields an order offers
      (`documentFields()`), and puts `{field}` into the text where the caret was (own Typst code puts what
-     its `format` makes of the field); the focus goes back to the field with the caret after what was put
-     in. -->
+     its `format` makes of the field and the text before the caret); the focus goes back to the field
+     with the caret after what was put in. -->
 <script lang="ts">
 	import Braces from '@lucide/svelte/icons/braces';
 	import { tick } from 'svelte';
@@ -28,8 +28,11 @@
 		onchange: (value: string) => void;
 		/** Which of several fields of a block this is, for the name of the button. */
 		name?: string;
-		/** What goes into the text for the field; the placeholder `{заказ.номер}` of a text by default. */
-		format?: (field: DocumentField) => string;
+		/**
+		 * What goes into the text for the field, put after `before` (the text before the caret); the
+		 * placeholder `{заказ.номер}` of a text by default.
+		 */
+		format?: (field: DocumentField, before: string) => string;
 	} = $props();
 
 	const t = ru.templates;
@@ -64,7 +67,7 @@
 		const at = target
 			? { start: target.selectionStart ?? value.length, end: target.selectionEnd ?? value.length }
 			: { start: value.length, end: value.length };
-		const next = insertAtCaret(value, at, format(field));
+		const next = insertAtCaret(value, at, format(field, value.slice(0, at.start)));
 		onchange(next.value);
 		open = false;
 		query = '';

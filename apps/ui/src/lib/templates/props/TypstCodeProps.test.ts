@@ -108,4 +108,15 @@ describe('TypstCodeProps', () => {
 		await userEvent.type(screen.getByRole('combobox', { name: 'Поле' }), 'номер{Enter}');
 		expect(codeAt()).toBe('ab#v("order.number")\ncd');
 	});
+
+	it('«Вставить поле» inside code mode puts v("key") without #', async () => {
+		const { codeAt, field } = setup([code('#{\n\n}\n')], [0]);
+		const box = field() as HTMLTextAreaElement;
+		box.focus();
+		box.setSelectionRange(3, 3);
+		await userEvent.click(screen.getByRole('button', { name: 'Вставить поле' }));
+		await waitFor(() => expect(api.documentFields).toHaveBeenCalled());
+		await userEvent.type(screen.getByRole('combobox', { name: 'Поле' }), 'номер{Enter}');
+		expect(codeAt()).toBe('#{\nv("order.number")\n}\n');
+	});
 });

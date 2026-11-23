@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { insertAtCaret } from './insert.js';
+import { inTypstCode, insertAtCaret } from './insert.js';
 
 describe('insertAtCaret', () => {
 	it('puts the text in the middle', () => {
@@ -20,5 +20,28 @@ describe('insertAtCaret', () => {
 	});
 	it('cuts a selection out of the text to the text', () => {
 		expect(insertAtCaret('ab', { start: 9, end: 12 }, '!')).toEqual({ value: 'ab!', caret: 3 });
+	});
+});
+
+describe('inTypstCode', () => {
+	it('is markup at the top of the code, after a closed block and inside content', () => {
+		expect(inTypstCode('')).toBe(false);
+		expect(inTypstCode('Номер: ')).toBe(false);
+		expect(inTypstCode('#{\n  v("a")\n}\n')).toBe(false);
+		expect(inTypstCode('#{\n  text(size: 8pt)[Номер ')).toBe(false);
+		expect(inTypstCode('#v("order.number") (скобка) ')).toBe(false);
+	});
+	it('is code inside an unclosed { or ( opened in code', () => {
+		expect(inTypstCode('#{\n')).toBe(true);
+		expect(inTypstCode('#if copy == "service" {\n')).toBe(true);
+		expect(inTypstCode('#{\n  text(size: 8pt, ')).toBe(true);
+		expect(inTypstCode('#{\n  text[a] + ')).toBe(true);
+	});
+	it('does not count brackets in strings and comments', () => {
+		expect(inTypstCode('#v("{(") ')).toBe(false);
+		expect(inTypstCode('#{ "}" + ')).toBe(true);
+		expect(inTypstCode('#{ "a\\"}" + ')).toBe(true);
+		expect(inTypstCode('// Свой Typst-код: v( — значение поля {\n')).toBe(false);
+		expect(inTypstCode('#{ /* } */ ')).toBe(true);
 	});
 });

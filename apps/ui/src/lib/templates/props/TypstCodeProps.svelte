@@ -1,6 +1,6 @@
 <!-- The properties of a «Typst-код» block: its code (typing in it is one step to undo per pause), the
      errors of the newest preview that are in this block, by line, and «Вставить поле», which puts
-     `#v("order.number")` where the caret was. -->
+     `#v("order.number")` where the caret was (`v("order.number")` in code mode: `#{…}`, `if … {…}`). -->
 <script lang="ts">
 	import type { DocumentField } from '$api/DocumentField';
 	import { ru } from '#lib/i18n/ru.js';
@@ -8,6 +8,7 @@
 	import { CODE_MAX } from '../defaults.js';
 	import { diagnosticText, type TemplateEditor } from '../editor.svelte.js';
 	import InsertField from '../InsertField.svelte';
+	import { inTypstCode } from '../insert.js';
 	import { blockAt, replaceBlock, type BlockPath } from '../ops.js';
 
 	let { editor, path }: { editor: TemplateEditor; path: BlockPath } = $props();
@@ -31,8 +32,9 @@
 		)
 	);
 
-	/** A field in own code: its value by its key. */
-	const asCode = (f: DocumentField) => `#v("${f.key}")`;
+	/** A field in own code: its value by its key; `#` only in markup, in code mode it is an error. */
+	const asCode = (f: DocumentField, before: string) =>
+		`${inTypstCode(before) ? '' : '#'}v("${f.key}")`;
 
 	function set(code: string) {
 		if (!block || !body) return;
