@@ -112,7 +112,13 @@ fn docs_error(e: DocsError, kind: DocumentKind) -> CoreError {
             );
             CoreError::Unavailable(NO_CODE_RENDERER)
         }
-        e => CoreError::Internal(format!("документ «{}» не построен: {e}", kind.as_str())),
+        // Без общей ветки: новый вариант `DocsError` не соберётся, пока его здесь нет.
+        e @ (DocsError::Compile(_)
+        | DocsError::Pdf(_)
+        | DocsError::Png(_)
+        | DocsError::BadFileName(_)) => {
+            CoreError::Internal(format!("документ «{}» не построен: {e}", kind.as_str()))
+        }
     }
 }
 
@@ -144,9 +150,11 @@ impl std::fmt::Display for JobFailure {
 }
 
 impl JobFailure {
-    /// Отказ своего кода (решение 7 плана): ошибки компиляции, предел документа, падение процесса,
-    /// процесс недоступен или не настроен. Пределы страниц, пикселей и времени задания — не отказ
-    /// кода.
+    /// Отказ своего кода шаблона с блоками кода (решение 7 плана): ошибки компиляции, предел
+    /// документа, падение процесса, процесс недоступен или не настроен, а также PDF или PNG, которые
+    /// не собрались: у typst-pdf есть ошибки только выгрузки (файл приложен дважды, ссылки), а превью
+    /// в редакторе — PNG, и автор их не видит. Пределы страниц, пикселей и времени задания — не
+    /// отказ кода.
     fn is_code_refusal(&self) -> bool {
         matches!(
             self,
@@ -156,7 +164,18 @@ impl JobFailure {
                         | DocsError::CodeTimeout
                         | DocsError::WorkerCrashed
                         | DocsError::WorkerUnavailable(_)
+                        | DocsError::Pdf(_)
+                        | DocsError::Png(_)
                 )
+        )
+    }
+
+    /// Своему коду негде строиться: процесс-рендерер не настроен или не запустился. На пути печати
+    /// это `error!`, как и у превью: иначе печать стандартным шаблоном прошла бы незамеченной.
+    fn renderer_missing(&self) -> bool {
+        matches!(
+            self,
+            Self::NoCodeRenderer | Self::Docs(DocsError::WorkerUnavailable(_))
         )
     }
 
@@ -166,6 +185,53 @@ impl JobFailure {
             Self::Docs(e) => docs_error(e, kind),
             Self::NoCodeRenderer => CoreError::Unavailable(NO_CODE_RENDERER),
         }
+    }
+}
+
+/// Отказ для журнала печати: без текстов ошибок Typst — в них может быть значение поля
+/// (`#panic(v("client.name"))`) или строка любой длины. Ошибки своего кода — их число и места
+/// (блок, строка, знак); остальное — вид отказа; причина недоступности процесса — наша, от пула.
+fn refusal_summary(failure: &JobFailure) -> String {
+    let error = match failure {
+        JobFailure::NoCodeRenderer => return "процесс-рендерер не настроен".to_owned(),
+        JobFailure::Core(_) => return "сбой ограничителя рендера".to_owned(),
+        JobFailure::Docs(error) => error,
+    };
+    match error {
+        DocsError::Code(diagnostics) => {
+            let places: Vec<String> = diagnostics
+                .iter()
+                .map(|d| match &d.place {
+                    Some(p) => {
+                        let block: Vec<String> = p.block.iter().map(usize::to_string).collect();
+                        format!(
+                            "блок {}, строка {}, знак {}",
+                            block.join("."),
+                            p.line,
+                            p.column
+                        )
+                    }
+                    None => "без места".to_owned(),
+                })
+                .collect();
+            format!(
+                "ошибок в своём коде: {} ({})",
+                diagnostics.len(),
+                places.join("; ")
+            )
+        }
+        DocsError::Compile(lines) => format!("не компилируется, ошибок: {}", lines.len()),
+        DocsError::Pdf(lines) => format!("PDF не собран, ошибок: {}", lines.len()),
+        DocsError::Png(_) => "PNG не собран".to_owned(),
+        DocsError::BadFileName(_) => "неверное имя виртуального файла".to_owned(),
+        // Тексты этих — свои, без данных; у `WorkerUnavailable` — причина от пула.
+        DocsError::Dpi(_)
+        | DocsError::TooManyPages(_)
+        | DocsError::TooManyPixels
+        | DocsError::TooSlow
+        | DocsError::CodeTimeout
+        | DocsError::WorkerCrashed
+        | DocsError::WorkerUnavailable(_) => error.to_string(),
     }
 }
 
@@ -434,7 +500,8 @@ impl Core {
 
     /// Задание печати сохранённого шаблона (решение 7 плана): при отказе своего кода документы
     /// строятся стандартным шаблоном вида в процессе ядра — с теми же данными, настройками,
-    /// логотипом и пределами. Остальные ошибки — как у [`Core::render_job`].
+    /// логотипом и пределами. В журнал — вид документа и [`refusal_summary`], без текстов ошибок
+    /// Typst. Остальные ошибки — как у [`Core::render_job`].
     async fn print_job(&self, job: Job, kind: DocumentKind) -> Result<DocumentFile, CoreError> {
         if !job.template.has_code() {
             return self.render_job(job, kind).await;
@@ -446,10 +513,16 @@ impl Core {
         match self.build(job).await {
             Ok(result) => Ok(result.into()),
             Err(e) if e.is_code_refusal() => {
-                tracing::warn!(
-                    "документ «{}» напечатан стандартным шаблоном: свой Typst-код не построен: {e}",
-                    kind.as_str()
-                );
+                let (kind_name, summary) = (kind.as_str(), refusal_summary(&e));
+                if e.renderer_missing() {
+                    tracing::error!(
+                        "документ «{kind_name}» напечатан стандартным шаблоном: свой Typst-код не построен: {summary}"
+                    );
+                } else {
+                    tracing::warn!(
+                        "документ «{kind_name}» напечатан стандартным шаблоном: свой Typst-код не построен: {summary}"
+                    );
+                }
                 self.render_job(standard, kind).await
             }
             Err(e) => Err(e.into_core(kind)),
@@ -1008,7 +1081,7 @@ mod tests {
     use chrono::{TimeZone, Utc};
     use mw_db::entity::role;
     use mw_docs::fields::fields;
-    use mw_domain::document_template::CodeDiagnostic;
+    use mw_domain::document_template::{CodeDiagnostic, CodePlace};
     use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
     use super::*;
@@ -1293,8 +1366,9 @@ mod tests {
         }
     }
 
-    /// Запасной путь печати — только для отказов своего кода; пределы страниц, пикселей и времени
-    /// задания отвечают ошибкой, как раньше.
+    /// Запасной путь печати шаблона со своим кодом — только для отказов своего кода, в том числе
+    /// PDF и PNG, которые не собрались (у typst-pdf есть ошибки только выгрузки: файл приложен
+    /// дважды, ссылки); пределы страниц, пикселей и времени задания отвечают ошибкой, как раньше.
     #[test]
     fn only_code_refusals_print_the_standard() {
         for refusal in [
@@ -1303,6 +1377,10 @@ mod tests {
             JobFailure::Docs(DocsError::CodeTimeout),
             JobFailure::Docs(DocsError::WorkerCrashed),
             JobFailure::Docs(DocsError::WorkerUnavailable("нет программы".into())),
+            JobFailure::Docs(DocsError::Pdf(vec![
+                "attempted to attach file a.txt twice".into(),
+            ])),
+            JobFailure::Docs(DocsError::Png("сбой кодировщика".into())),
         ] {
             assert!(refusal.is_code_refusal(), "{refusal}");
         }
@@ -1311,9 +1389,82 @@ mod tests {
             JobFailure::Docs(DocsError::TooManyPixels),
             JobFailure::Docs(DocsError::TooSlow),
             JobFailure::Docs(DocsError::Dpi(1)),
+            JobFailure::Docs(DocsError::BadFileName("../x".into())),
             JobFailure::Core(CoreError::Internal("сбой".into())),
         ] {
             assert!(!other.is_code_refusal(), "{other}");
+        }
+    }
+
+    /// В журнал отказа своего кода не попадают тексты ошибок Typst: в них может быть значение поля
+    /// (`#panic(v("client.name"))`) или строка любой длины. Только число ошибок и их места, вид
+    /// отказа и наша причина недоступности процесса.
+    #[test]
+    fn refusal_summary_has_no_diagnostic_text() {
+        let secret = "Иван Секретов";
+        let code = DocsError::Code(vec![
+            CodeDiagnostic {
+                place: Some(CodePlace {
+                    block: vec![1, 0, 2],
+                    line: 3,
+                    column: 7,
+                }),
+                message: format!("panicked with: \"{secret}\""),
+                hints: vec![secret.to_owned()],
+            },
+            CodeDiagnostic {
+                place: None,
+                message: secret.repeat(10_000),
+                hints: Vec::new(),
+            },
+        ]);
+        let summary = refusal_summary(&JobFailure::Docs(code));
+        assert!(!summary.contains("Секретов"), "{summary}");
+        assert!(summary.contains("ошибок в своём коде: 2"), "{summary}");
+        assert!(
+            summary.contains("блок 1.0.2, строка 3, знак 7"),
+            "{summary}"
+        );
+        assert!(summary.len() < 200, "{summary}");
+
+        for failure in [
+            DocsError::Pdf(vec![format!("attempted to attach file {secret} twice")]),
+            DocsError::Png(secret.to_owned()),
+            DocsError::Compile(vec![secret.to_owned()]),
+            DocsError::BadFileName(secret.to_owned()),
+        ] {
+            let summary = refusal_summary(&JobFailure::Docs(failure));
+            assert!(!summary.contains("Секретов"), "{summary}");
+            assert!(!summary.is_empty());
+        }
+        let summary = refusal_summary(&JobFailure::Docs(DocsError::WorkerUnavailable(
+            "не готов за 60 с".into(),
+        )));
+        assert!(summary.contains("не готов за 60 с"), "{summary}");
+        let kinds: BTreeSet<String> = [
+            JobFailure::NoCodeRenderer,
+            JobFailure::Docs(DocsError::CodeTimeout),
+            JobFailure::Docs(DocsError::WorkerCrashed),
+        ]
+        .iter()
+        .map(refusal_summary)
+        .collect();
+        assert_eq!(kinds.len(), 3, "{kinds:?}");
+    }
+
+    /// Недоступный или не настроенный процесс-рендерер — `error!` и на пути печати; остальные отказы
+    /// своего кода — `warn!`.
+    #[test]
+    fn missing_renderer_is_an_error_on_the_print_path() {
+        assert!(JobFailure::NoCodeRenderer.renderer_missing());
+        assert!(JobFailure::Docs(DocsError::WorkerUnavailable("нет".into())).renderer_missing());
+        for other in [
+            DocsError::CodeTimeout,
+            DocsError::WorkerCrashed,
+            DocsError::Code(Vec::new()),
+            DocsError::Pdf(Vec::new()),
+        ] {
+            assert!(!JobFailure::Docs(other).renderer_missing());
         }
     }
 

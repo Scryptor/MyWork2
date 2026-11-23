@@ -1252,3 +1252,98 @@ async fn saved_broken_code_prints_the_standard() -> Result<(), CoreError> {
     }
     Ok(())
 }
+
+/// PDF документа или пачки.
+fn pdf_of(label: &str, file: mw_core::documents::DocumentFile) -> Vec<u8> {
+    match file.bytes {
+        DocumentBytes::Pdf(pdf) => pdf,
+        other => panic!("{label}: ждали PDF: {other:?}"),
+    }
+}
+
+/// Сохраняет шаблон наклейки: стандартный и блок своего кода `code` в конце.
+async fn save_sticker_with_code(t: &TestCore, code: &str) -> Result<(), CoreError> {
+    let mut template = mw_docs::standard_template(DocumentKind::Sticker);
+    template.blocks.push(code_block(code));
+    t.core
+        .save_document_template(
+            &admin(),
+            DocumentKind::Sticker,
+            mw_core::TemplateSave {
+                template,
+                version: 0,
+            },
+        )
+        .await?;
+    Ok(())
+}
+
+/// Сохранённый шаблон с рабочим кодом печатается своим кодом, а не стандартным: и документ, и пачка.
+#[tokio::test]
+async fn saved_working_code_prints_its_code() -> Result<(), CoreError> {
+    for t in code_cores().await {
+        let ids = orders(&t, 2).await;
+        let sticker = || request(DocumentKind::Sticker, Some(ids[0]));
+        let both = || batch(DocumentKind::Sticker, ids.clone());
+        let standard = png_pages(&t, sticker()).await?;
+        let standard_batch = pdf_of(t.label, t.core.export_documents(&admin(), both()).await?);
+        // PDF строится одинаково: иначе неравенство ниже ничего не доказывает.
+        let again = pdf_of(t.label, t.core.export_documents(&admin(), both()).await?);
+        assert_eq!(again, standard_batch, "{}: PDF пачки меняется сам", t.label);
+
+        save_sticker_with_code(&t, "КОД-ПЕЧАТЬ").await?;
+        assert_ne!(
+            png_pages(&t, sticker()).await?,
+            standard,
+            "{}: документ напечатан стандартным шаблоном",
+            t.label
+        );
+        let file = t.core.export_documents(&admin(), both()).await?;
+        assert_eq!(file.page_count, 2, "{}", t.label);
+        assert_ne!(
+            pdf_of(t.label, file),
+            standard_batch,
+            "{}: пачка напечатана стандартным шаблоном",
+            t.label
+        );
+    }
+    Ok(())
+}
+
+/// Свой код, который компилируется, но не выгружается в PDF (файл приложен дважды — ошибка только
+/// typst-pdf; превью в редакторе — PNG, автор её не видит): PDF документа и пачки печатается
+/// стандартным шаблоном, а не 500.
+#[tokio::test]
+async fn saved_code_failing_only_in_pdf_prints_the_standard() -> Result<(), CoreError> {
+    for t in code_cores().await {
+        let ids = orders(&t, 2).await;
+        let sticker = || request(DocumentKind::Sticker, Some(ids[0]));
+        let both = || batch(DocumentKind::Sticker, ids.clone());
+        let export = || async {
+            t.core
+                .export_document(&admin(), sticker(), DocumentOutput::Pdf)
+                .await
+        };
+        let standard = pdf_of(t.label, export().await?);
+        let standard_batch = pdf_of(t.label, t.core.export_documents(&admin(), both()).await?);
+
+        save_sticker_with_code(
+            &t,
+            r#"#pdf.attach("a.txt", bytes("1"))#pdf.attach("a.txt", bytes("2"))"#,
+        )
+        .await?;
+        assert_eq!(
+            pdf_of(t.label, export().await?),
+            standard,
+            "{}: документ напечатан не стандартным шаблоном",
+            t.label
+        );
+        assert_eq!(
+            pdf_of(t.label, t.core.export_documents(&admin(), both()).await?),
+            standard_batch,
+            "{}: пачка напечатана не стандартным шаблоном",
+            t.label
+        );
+    }
+    Ok(())
+}
