@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
+import { tick } from 'svelte';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Block } from '$api/Block';
 import { editorOf, templateOf } from '../editor-fixtures.test-helper.js';
@@ -26,6 +27,14 @@ const qr = (link: string): Block => ({
 	body: { type: 'qr', link, size_mm: 20, caption: 'Мы в Telegram', align: 'center' }
 });
 
+/** Picks `label` in «Откуда ссылка», opened from the keyboard: jsdom does not place the list. */
+async function choose(label: string) {
+	screen.getByRole('combobox', { name: 'Откуда ссылка' }).focus();
+	await userEvent.keyboard('{Enter}');
+	const options = await screen.findAllByRole('option', { hidden: true });
+	await userEvent.click(options.find((o) => o.textContent?.trim() === label)!);
+}
+
 function setup(link: string) {
 	const editor = editorOf(templateOf('intake_act', [qr(link)]));
 	render(QrProps, { editor, path: [0] });
@@ -42,13 +51,67 @@ describe('QrProps', () => {
 		const { body } = setup('{фирма.телеграм}');
 		expect(screen.queryByRole('textbox', { name: 'Ссылка' })).toBeNull();
 		// Opened from the keyboard: jsdom does not place the list, so its options are hidden.
-		screen.getByRole('combobox', { name: 'Ссылка' }).focus();
+		screen.getByRole('combobox', { name: 'Откуда ссылка' }).focus();
 		await userEvent.keyboard('{Enter}');
 		const options = await screen.findAllByRole('option', { hidden: true });
 		await userEvent.click(options.find((o) => o.textContent?.trim() === 'Своя ссылка')!);
 		const field = await screen.findByRole('textbox', { name: 'Ссылка' });
 		expect(field).toHaveValue('https://');
 		expect(body().link).toBe('https://');
+	});
+
+	it('the list and the field are named apart', () => {
+		setup('https://a.b');
+		expect(screen.getByRole('combobox', { name: 'Откуда ссылка' })).toBeInTheDocument();
+		expect(screen.queryByRole('combobox', { name: 'Ссылка' })).toBeNull();
+		expect(screen.getByRole('textbox', { name: 'Ссылка' })).toBeInTheDocument();
+	});
+
+	it('the field takes no more than the model', () => {
+		setup('https://a.b');
+		expect(screen.getByRole('textbox', { name: 'Ссылка' })).toHaveAttribute('maxlength', '500');
+	});
+
+	it('a link typed into the firm one stays its own: the field does not go', async () => {
+		const { body } = setup('https://a.b');
+		const field = screen.getByRole('textbox', { name: 'Ссылка' });
+		await userEvent.clear(field);
+		await userEvent.type(field, '{{фирма.телеграм}');
+		expect(body().link).toBe('{фирма.телеграм}');
+		expect(screen.getByRole('textbox', { name: 'Ссылка' })).toBe(field);
+		expect(field).toHaveFocus();
+		await userEvent.type(field, '?start=1');
+		expect(body().link).toBe('{фирма.телеграм}?start=1');
+	});
+
+	it('«Своя ссылка» chosen again keeps the link typed', async () => {
+		const { body } = setup('https://a.b');
+		const field = screen.getByRole('textbox', { name: 'Ссылка' });
+		await userEvent.clear(field);
+		await userEvent.type(field, '{{фирма.телеграм}');
+		await choose('Своя ссылка');
+		expect(body().link).toBe('{фирма.телеграм}');
+		expect(screen.getByRole('textbox', { name: 'Ссылка' })).toHaveValue('{фирма.телеграм}');
+	});
+
+	it('an undo back to a firm link shows it as the firm one', async () => {
+		const { editor, body } = setup('{фирма.телеграм}');
+		await choose('Своя ссылка');
+		expect(body().link).toBe('https://');
+		editor.undo();
+		await tick();
+		expect(body().link).toBe('{фирма.телеграм}');
+		expect(screen.queryByRole('textbox', { name: 'Ссылка' })).toBeNull();
+		expect(screen.getByRole('combobox', { name: 'Откуда ссылка' })).toHaveTextContent(
+			'Telegram фирмы'
+		);
+	});
+
+	it('a preset chosen in the list hides the field', async () => {
+		const { body } = setup('https://a.b');
+		await choose('Google Карты фирмы');
+		expect(body().link).toBe('{фирма.гугл_карты}');
+		expect(screen.queryByRole('textbox', { name: 'Ссылка' })).toBeNull();
 	});
 
 	it('a link of its own is typed into the field', async () => {

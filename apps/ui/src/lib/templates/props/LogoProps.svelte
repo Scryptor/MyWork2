@@ -76,7 +76,7 @@
 		{#if missing}
 			<Callout tone="info">
 				{t.logoMissing}
-				<a href={resolve('settings/documents')}>{t.logoMissingLink}</a>
+				<a href={resolve('settings/documents')}>{t.documentsSettingsLink}</a>
 			</Callout>
 		{/if}
 	</div>

@@ -2,6 +2,7 @@
      of the order), the side of the square in millimetres, the caption under it and the alignment. A link
      of the firm that is not filled in prints nothing: the hint says so and leads to where it is set. -->
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { resolve } from '$app/paths';
 	import type { Align } from '$api/Align';
 	import { app } from '#lib/app/context.svelte.js';
@@ -10,6 +11,7 @@
 	import SegmentedControl from '#lib/ui/SegmentedControl.svelte';
 	import Select from '#lib/ui/Select.svelte';
 	import TextInput from '#lib/ui/TextInput.svelte';
+	import { QR_LINK_MAX } from '../defaults.js';
 	import type { TemplateEditor } from '../editor.svelte.js';
 	import InsertField from '../InsertField.svelte';
 	import { blockAt, replaceBlock, type BlockPath } from '../ops.js';
@@ -25,6 +27,20 @@
 	const preset = $derived(body ? qrPreset(body.link) : null);
 	const unset = $derived(preset !== null && !app.settings[QR_PRESETS[preset].setting]?.trim());
 	let linkField = $state<HTMLInputElement | null>(null);
+	/**
+	 * The link written here as «своя» (by «Своя ссылка» or in the field; the one the block opened with,
+	 * when it is not a firm's): while the block's link is still it, the link stays «своя» even when it
+	 * reads as a firm's one, so the field does not vanish under the caret. A preset picked in the list
+	 * ends it; so does an undo to another link, which shows as what it is.
+	 */
+	let own = $state<string | null>(untrack(() => (body && preset === null ? body.link : null)));
+	const custom = $derived(preset === null || (body !== null && own === body.link));
+
+	/** The link typed (or a field put) into the field. */
+	function write(link: string) {
+		own = link;
+		set({ link }, 'link');
+	}
 
 	/** A change of the block; typed fields pass their key, so their keys make one step. */
 	function set(patch: Partial<Omit<QrBody, 'type'>>, field?: string) {
@@ -38,7 +54,11 @@
 
 	function choose(value: QrPreset | 'custom' | null) {
 		if (!block || !body || value === null) return;
-		editor.edit(replaceBlock(editor.template, path, { ...block, body: choosePreset(body, value) }));
+		// «Своя ссылка» again leaves the link as it is typed.
+		if (value === 'custom' && custom) return;
+		const next = choosePreset(body, value);
+		own = value === 'custom' ? next.link : null;
+		editor.edit(replaceBlock(editor.template, path, { ...block, body: next }));
 	}
 
 	const sources = [...(Object.keys(QR_PRESETS) as QrPreset[]), 'custom' as const].map((value) => ({
@@ -51,21 +71,21 @@
 
 {#if body}
 	<div class="props">
-		<Select label={t.qrLink} items={sources} bind:value={() => preset ?? 'custom', choose} />
-		{#if preset === null}
+		<Select
+			label={t.qrSource}
+			items={sources}
+			bind:value={() => (custom || preset === null ? 'custom' : preset), choose}
+		/>
+		{#if custom}
 			<div class="one">
 				<TextInput
 					label={t.qrLink}
 					hint={t.qrLinkHint}
+					maxlength={QR_LINK_MAX}
 					bind:ref={linkField}
-					bind:value={() => body.link, (v) => set({ link: v }, 'link')}
+					bind:value={() => body.link, write}
 				/>
-				<InsertField
-					name={t.qrLink}
-					target={linkField}
-					value={body.link}
-					onchange={(v) => set({ link: v }, 'link')}
-				/>
+				<InsertField name={t.qrLink} target={linkField} value={body.link} onchange={write} />
 			</div>
 		{/if}
 		<NumberField
@@ -91,7 +111,7 @@
 		{#if unset}
 			<Callout tone="info">
 				{t.qrMissing}
-				<a href={resolve('settings/documents')}>{t.logoMissingLink}</a>
+				<a href={resolve('settings/documents')}>{t.documentsSettingsLink}</a>
 			</Callout>
 		{/if}
 	</div>

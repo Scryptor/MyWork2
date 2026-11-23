@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BLOCK_TYPES, CODE_MAX, newBlock } from './defaults.js';
+import { BLOCK_TYPES, CODE_MAX, newBlock, QR_LINK_MAX } from './defaults.js';
 
 describe('newBlock', () => {
 	it('the menu has the types in this order and no calibration marks', () => {
@@ -71,6 +71,11 @@ describe('newBlock', () => {
 		});
 		// As `MAX_CODE_CHARS` of the model.
 		expect(CODE_MAX).toBe(20_000);
+	});
+
+	it('a link of a QR code is at most as long as the model takes', () => {
+		// As `MAX_QR_LINK_CHARS` of the model.
+		expect(QR_LINK_MAX).toBe(500);
 	});
 
 	it('every call gives a fresh object', () => {

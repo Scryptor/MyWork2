@@ -112,7 +112,7 @@ test.describe('the editor', () => {
 		await expect(preview.getByRole('img', { name: /^Страница 1 из \d+$/ })).toBeVisible();
 		await expect(page.getByText('Шаблон не построен')).toHaveCount(0);
 
-		await props(page).getByRole('combobox', { name: 'Ссылка' }).click();
+		await props(page).getByRole('combobox', { name: 'Откуда ссылка' }).click();
 		await page.getByRole('option', { name: 'Своя ссылка' }).click();
 		await props(page).getByRole('textbox', { name: 'Ссылка' }).fill(link);
 		await expect

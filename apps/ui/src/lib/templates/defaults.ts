@@ -21,6 +21,9 @@ export const BLOCK_TYPES = [
 /** The longest code of a «Typst-код» block, as `MAX_CODE_CHARS` of the model. */
 export const CODE_MAX = 20_000;
 
+/** The longest link of a «QR-код» block, as `MAX_QR_LINK_CHARS` of the model. */
+export const QR_LINK_MAX = 500;
+
 function body(type: (typeof BLOCK_TYPES)[number]): BlockBody {
 	const d = ru.templates.defaults;
 	switch (type) {

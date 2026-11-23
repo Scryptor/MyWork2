@@ -1987,7 +1987,9 @@ export const ru = {
 		logoWidth: 'Ширина, мм',
 		logoHeight: 'Высота, мм',
 		logoMissing: 'Логотип не загружен — блок не печатается.',
-		logoMissingLink: 'Документы и реквизиты',
+		/** The link of a hint to the screen where the firm's logo and links are set. */
+		documentsSettingsLink: 'Документы и реквизиты',
+		qrSource: 'Откуда ссылка',
 		qrLink: 'Ссылка',
 		qrPresets: {
 			telegram: 'Telegram фирмы',
