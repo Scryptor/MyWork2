@@ -826,3 +826,45 @@ fn standard_acts_start_with_logo() {
         }
     }
 }
+
+/// The font sizes (pt) of the texts of the first page that are exactly `value`.
+fn sizes_of_text(doc: &Rendered, value: &str) -> Vec<f64> {
+    fn walk(frame: &Frame, value: &str, out: &mut Vec<f64>) {
+        for (_, item) in frame.items() {
+            match item {
+                FrameItem::Text(text) if text.text.as_str() == value => {
+                    out.push(text.size.to_pt());
+                }
+                FrameItem::Group(group) => walk(&group.frame, value, out),
+                _ => {}
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(&doc.document().pages()[0].frame, value, &mut out);
+    out
+}
+
+#[test]
+fn stretched_barcode_digits_are_at_most_14_pt() {
+    let template = template_of(
+        DocumentKind::IntakeAct,
+        page_of(PageSize::A4, 10.0),
+        Layout::OnePerPage,
+        vec![block(BlockBody::Barcode {
+            height_mm: 20.0,
+            digits: true,
+            align: Align::Left,
+            fill: false,
+            stretch: true,
+        })],
+    );
+    let data = DocumentData {
+        barcode: Some(BARCODE.to_owned()),
+        ..DocumentData::default()
+    };
+    let doc = render(&template, &data, &sticker_options(None, None)).expect("renders");
+    let sizes = sizes_of_text(&doc, BARCODE);
+    assert!(!sizes.is_empty(), "the digits are printed");
+    assert!(sizes.iter().all(|s| *s <= 14.0 + 1e-6), "{sizes:?}");
+}

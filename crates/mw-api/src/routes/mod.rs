@@ -13,6 +13,7 @@ mod catalogs;
 mod clients;
 mod document_templates;
 mod documents;
+mod headers;
 mod legacy_import;
 mod logo;
 mod meta;

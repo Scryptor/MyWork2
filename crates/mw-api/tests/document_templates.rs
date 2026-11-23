@@ -91,6 +91,11 @@ async fn preview_returns_pages() {
             )
             .await;
         assert_eq!(r.status, 200, "{}: {}", t.label, r.body);
+        assert_eq!(
+            r.headers["cache-control"], "private, no-store",
+            "{}",
+            t.label
+        );
         assert!(
             !r.body["pages"].as_array().unwrap().is_empty(),
             "{}",
@@ -118,6 +123,8 @@ async fn file_export_and_import() {
         let (status, headers, body) = t.get_raw(&format!("{BASE}/intake_act/file"), &token).await;
         assert_eq!(status, 200, "{}", t.label);
         assert_eq!(headers["content-type"], "application/json");
+        // Своего `Cache-Control` у файла шаблона нет: остаётся общий `no-store`.
+        assert_eq!(headers["cache-control"], "no-store", "{}", t.label);
         let disposition = headers["content-disposition"].to_str().unwrap();
         assert!(disposition.starts_with("attachment"), "{disposition}");
         assert!(
@@ -278,5 +285,165 @@ async fn legacy_template_text_is_served_or_404() {
         }
         let r = t.get(&format!("{BASE}/intake_act/legacy"), None).await;
         assert_eq!(r.status, 401, "{}", t.label);
+    }
+}
+
+async fn standard(t: &common::TestApi, token: &str, kind: &str) -> Value {
+    let r = t.get(&format!("{BASE}/{kind}"), Some(token)).await;
+    assert_eq!(r.status, 200, "{}: {}", t.label, r.body);
+    r.body["template"].clone()
+}
+
+#[tokio::test]
+async fn rights_beat_validation_on_put() {
+    for t in apis(Listen::Network).await {
+        let admin = t.admin_token().await;
+        let mut bad = standard(&t, &admin, "intake_act").await;
+        bad["page"]["size"] = json!("a5");
+        bad["layout"] = json!("two_per_a4");
+        let plain = t.token_with("plain", &[Permission::OrdersCreate]).await;
+        let r = t
+            .send(
+                Method::PUT,
+                &format!("{BASE}/intake_act"),
+                Some(&plain),
+                Some(json!({"template": bad, "version": 0})),
+            )
+            .await;
+        assert_eq!(r.status, 403, "{}: {}", t.label, r.body);
+    }
+}
+
+#[tokio::test]
+async fn put_and_file_upload_need_the_settings_right() {
+    for t in apis(Listen::Network).await {
+        let admin = t.admin_token().await;
+        let template = standard(&t, &admin, "intake_act").await;
+        let (_, _, file) = t.get_raw(&format!("{BASE}/intake_act/file"), &admin).await;
+        let file: Value = serde_json::from_slice(&file).unwrap();
+        let plain = t.token_with("plain", &[Permission::OrdersCreate]).await;
+        let r = t
+            .send(
+                Method::PUT,
+                &format!("{BASE}/intake_act"),
+                Some(&plain),
+                Some(json!({"template": template, "version": 0})),
+            )
+            .await;
+        assert_eq!(r.status, 403, "{}: {}", t.label, r.body);
+        let r = t
+            .send(
+                Method::POST,
+                &format!("{BASE}/intake_act/file"),
+                Some(&plain),
+                Some(file),
+            )
+            .await;
+        assert_eq!(r.status, 403, "{}: {}", t.label, r.body);
+    }
+}
+
+#[tokio::test]
+async fn unknown_kind_is_400() {
+    for t in apis(Listen::Network).await {
+        let admin = t.admin_token().await;
+        let template = standard(&t, &admin, "intake_act").await;
+        let r = t.get(&format!("{BASE}/no_such_kind"), Some(&admin)).await;
+        assert_eq!(r.status, 400, "{}: {}", t.label, r.body);
+        let r = t
+            .send(
+                Method::PUT,
+                &format!("{BASE}/no_such_kind"),
+                Some(&admin),
+                Some(json!({"template": template, "version": 0})),
+            )
+            .await;
+        assert_eq!(r.status, 400, "{}: {}", t.label, r.body);
+        let r = t
+            .send(
+                Method::POST,
+                &format!("{BASE}/no_such_kind/preview"),
+                Some(&admin),
+                Some(json!({"template": template})),
+            )
+            .await;
+        assert_eq!(r.status, 400, "{}: {}", t.label, r.body);
+    }
+}
+
+#[tokio::test]
+async fn preview_of_another_kind_is_422() {
+    for t in apis(Listen::Network).await {
+        let admin = t.admin_token().await;
+        let template = standard(&t, &admin, "intake_act").await;
+        let r = t
+            .send(
+                Method::POST,
+                &format!("{BASE}/issue_act/preview"),
+                Some(&admin),
+                Some(json!({"template": template})),
+            )
+            .await;
+        assert_eq!(r.status, 422, "{}: {}", t.label, r.body);
+        assert_eq!(r.body["fields"][0]["field"], "kind", "{}", t.label);
+        assert_eq!(r.body["fields"][0]["code"], "mismatch", "{}", t.label);
+    }
+}
+
+#[tokio::test]
+async fn preview_with_order_id_uses_the_order() {
+    for t in apis(Listen::Network).await {
+        let admin = t.admin_token().await;
+        let template = standard(&t, &admin, "intake_act").await;
+        let order = common::create_order(&t, &admin, common::new_order("Иван", "", "A", "B")).await;
+        let id = order["id"].as_i64().unwrap();
+        let preview = |order_id: i64| {
+            let (t, admin, template) = (&t, admin.clone(), template.clone());
+            async move {
+                t.send(
+                    Method::POST,
+                    &format!("{BASE}/intake_act/preview"),
+                    Some(&admin),
+                    Some(json!({"template": template, "order_id": order_id})),
+                )
+                .await
+            }
+        };
+        let r = preview(id).await;
+        assert_eq!(r.status, 200, "{}: {}", t.label, r.body);
+        assert!(!r.body["pages"].as_array().unwrap().is_empty());
+        // Заказ действительно берётся из базы: несуществующий даёт 404, а не образец.
+        let r = preview(id + 1000).await;
+        assert_eq!(r.status, 404, "{}: {}", t.label, r.body);
+    }
+}
+
+#[tokio::test]
+async fn preview_renders_the_draft_not_the_standard() {
+    for t in apis(Listen::Network).await {
+        let admin = t.admin_token().await;
+        let standard = standard(&t, &admin, "intake_act").await;
+        let mut draft = standard.clone();
+        draft["page"]["size"] = json!("a5");
+        draft["layout"] = json!("one_per_page");
+        let preview = |template: Value| {
+            let (t, admin) = (&t, admin.clone());
+            async move {
+                t.send(
+                    Method::POST,
+                    &format!("{BASE}/intake_act/preview"),
+                    Some(&admin),
+                    Some(json!({"template": template})),
+                )
+                .await
+            }
+        };
+        let base = preview(standard).await;
+        let changed = preview(draft).await;
+        assert_eq!(base.status, 200, "{}: {}", t.label, base.body);
+        assert_eq!(changed.status, 200, "{}: {}", t.label, changed.body);
+        let width = |r: &common::TestResponse| r.body["width_mm"].as_f64().unwrap();
+        assert!((width(&base) - 210.0).abs() < 0.01, "{}", t.label);
+        assert!((width(&changed) - 148.0).abs() < 0.01, "{}", t.label);
     }
 }

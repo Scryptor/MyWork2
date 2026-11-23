@@ -1,7 +1,6 @@
 //! Шаблоны печатных документов: правка, превью черновика, файл `.mwtemplate`.
 
 use axum::extract::State;
-use axum::http::{HeaderValue, header};
 use axum::response::{IntoResponse, Response};
 use mw_core::documents::{DocumentBytes, DocumentOutput, DocumentRequest};
 use mw_core::{
@@ -11,6 +10,7 @@ use mw_domain::document_template::{Template, TemplateFile};
 use mw_domain::documents::DocumentKind;
 
 use super::documents::{DEFAULT_PNG_DPI, file_base, png_response, render_options};
+use super::headers::{Disposition, no_store, with_disposition};
 use crate::auth::CurrentActor;
 use crate::dto::{DocumentPages, TemplatePreview};
 use crate::error::ApiError;
@@ -133,12 +133,7 @@ pub(super) async fn preview_template(
     let DocumentBytes::Png(pages) = file.bytes else {
         return Err(mw_core::CoreError::Internal("Превью вернуло не PNG".into()).into());
     };
-    let mut response = png_response(&pages, file.page_size_mm, dpi);
-    response.headers_mut().insert(
-        header::CACHE_CONTROL,
-        HeaderValue::from_static("private, no-store"),
-    );
-    Ok(response)
+    Ok(no_store(png_response(&pages, file.page_size_mm, dpi)))
 }
 
 /// Шаблон как файл `.mwtemplate` (достаточно войти).
@@ -158,14 +153,12 @@ pub(super) async fn export_template_file(
     Path(kind): Path<DocumentKind>,
 ) -> Result<Response, ApiError> {
     let template = state.core.get_document_template(&actor, kind).await?;
-    let mut response = Json(TemplateFile::new(template.template)).into_response();
     let name = format!("{}.mwtemplate", file_base(kind));
-    if let Ok(v) = HeaderValue::from_str(&format!("attachment; filename=\"{name}\"")) {
-        response
-            .headers_mut()
-            .insert(header::CONTENT_DISPOSITION, v);
-    }
-    Ok(response)
+    Ok(with_disposition(
+        Json(TemplateFile::new(template.template)).into_response(),
+        Disposition::Attachment,
+        &name,
+    ))
 }
 
 /// Разбирает файл `.mwtemplate` для вида и возвращает модель; ничего не сохраняет (право

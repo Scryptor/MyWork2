@@ -4,6 +4,9 @@
 //! стандартной модели сбрасывает строку в `NULL`, а неразбираемая или не прошедшая проверку модель
 //! печатается как стандартная, чтобы документы не пропали из-за порчи данных.
 
+use std::collections::HashSet;
+use std::sync::Mutex;
+
 use chrono::NaiveDateTime;
 use mw_db::entity::document_template;
 use mw_docs::standard_template;
@@ -77,6 +80,16 @@ fn ensure_editable(kind: DocumentKind) -> Result<(), CoreError> {
     }
 }
 
+/// `true` при первом сообщении о непригодном шаблоне этого вида и этой `version` за время работы
+/// процесса: читают шаблон часто, и повторять одно и то же предупреждение незачем.
+fn first_warning(kind: DocumentKind, version: i64) -> bool {
+    static SEEN: Mutex<Option<HashSet<(DocumentKind, i64)>>> = Mutex::new(None);
+    SEEN.lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get_or_insert_with(HashSet::new)
+        .insert((kind, version))
+}
+
 /// Сохранённая модель, если она читается и проходит проверку; иначе `None` (печатается стандартная).
 fn usable_model(row: &document_template::Model, kind: DocumentKind) -> Option<Template> {
     let json = row.model.as_deref()?;
@@ -90,11 +103,14 @@ fn usable_model(row: &document_template::Model, kind: DocumentKind) -> Option<Te
     match parsed {
         Ok(template) => Some(template),
         Err(error) => {
-            tracing::warn!(
-                kind = kind.as_str(),
-                %error,
-                "сохранённый шаблон документа непригоден, печатается стандартный"
-            );
+            if first_warning(kind, row.version) {
+                tracing::warn!(
+                    kind = kind.as_str(),
+                    version = row.version,
+                    %error,
+                    "сохранённый шаблон документа непригоден, печатается стандартный"
+                );
+            }
             None
         }
     }
@@ -258,5 +274,19 @@ impl Core {
             .one(&self.db)
             .await?;
         Ok(assemble(kind, row.as_ref()).template)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_broken_template_is_warned_about_once_per_kind_and_version() {
+        // Виды и версии, которых не берёт ни один другой тест процесса.
+        assert!(first_warning(DocumentKind::Sticker, 9_001));
+        assert!(!first_warning(DocumentKind::Sticker, 9_001));
+        assert!(first_warning(DocumentKind::Sticker, 9_002));
+        assert!(first_warning(DocumentKind::IntakeAct, 9_001));
     }
 }

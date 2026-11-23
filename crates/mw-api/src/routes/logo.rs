@@ -13,6 +13,8 @@ use crate::error::ApiError;
 use crate::extract::Json;
 use crate::state::AppState;
 
+use super::headers::no_store;
+
 /// Предел тела загрузки: файл до 5 МиБ проверяет ядро (422), с запасом на служебные байты.
 pub(super) const LOGO_BODY_LIMIT: usize = 6 * 1024 * 1024;
 
@@ -53,11 +55,7 @@ pub(super) async fn get_logo(
     headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("image/png"));
     headers.insert(header::CONTENT_LENGTH, HeaderValue::from(len));
     // Логотип меняется под тем же адресом.
-    headers.insert(
-        header::CACHE_CONTROL,
-        HeaderValue::from_static("private, no-store"),
-    );
-    Ok(response)
+    Ok(no_store(response))
 }
 
 /// Сведения о логотипе (достаточно войти); 404, если логотипа нет.

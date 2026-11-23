@@ -1,7 +1,7 @@
 //! Документы заказа в PDF и PNG.
 
 use axum::extract::State;
-use axum::http::{HeaderValue, header};
+use axum::http::header;
 use axum::response::{IntoResponse, Response};
 use base64::Engine as _;
 use mw_core::CoreError;
@@ -14,6 +14,8 @@ use crate::dto::{DocumentBatch, DocumentFormat, DocumentPages, DocumentQuery};
 use crate::error::ApiError;
 use crate::extract::{Json, Path, Query};
 use crate::state::AppState;
+
+use super::headers::{Disposition, no_store, with_disposition};
 
 /// Разрешение растра PNG по умолчанию: хватает для предпросмотра на экране.
 pub(super) const DEFAULT_PNG_DPI: u32 = 110;
@@ -169,22 +171,11 @@ async fn respond(
 
 /// PDF с именем файла для показа в окне.
 fn pdf_response(pdf: Vec<u8>, name: &str) -> Response {
-    let mut response = ([(header::CONTENT_TYPE, "application/pdf")], pdf).into_response();
-    if let Ok(v) = HeaderValue::from_str(&format!("inline; filename=\"{name}\"")) {
-        response
-            .headers_mut()
-            .insert(header::CONTENT_DISPOSITION, v);
-    }
-    response
-}
-
-/// Документы с данными клиента не оседают в кэше браузера и прокси.
-fn no_store(mut response: Response) -> Response {
-    response.headers_mut().insert(
-        header::CACHE_CONTROL,
-        HeaderValue::from_static("private, no-store"),
-    );
-    response
+    with_disposition(
+        ([(header::CONTENT_TYPE, "application/pdf")], pdf).into_response(),
+        Disposition::Inline,
+        name,
+    )
 }
 
 /// Параметры отрисовки из запроса: размер наклейки — только парой.

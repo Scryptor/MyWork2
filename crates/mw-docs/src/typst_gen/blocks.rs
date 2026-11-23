@@ -9,10 +9,17 @@ use super::RenderOptions;
 use super::page::{CopyRole, Page, decimal, mm, pt};
 use super::text::{Piece, TextMode, literal_expr, pieces, text_expr, typst_str};
 
-/// Size of the barcode digits per millimetre of module width (0.33 mm → 7.9 pt), never below
-/// [`DIGITS_MIN_PT`].
+/// Size of the barcode digits per millimetre of module width (0.33 mm → 7.9 pt), within
+/// [`DIGITS_MIN_PT`] and [`DIGITS_MAX_PT`].
 const DIGITS_PT_PER_MODULE_MM: f64 = 24.0;
 const DIGITS_MIN_PT: f64 = 7.0;
+/// Upper limit of the digits, so a stretched barcode does not grow huge ones.
+const DIGITS_MAX_PT: f64 = 14.0;
+
+/// The size of the digits under a barcode with this module.
+fn digits_pt(module_mm: f64) -> f64 {
+    (module_mm * DIGITS_PT_PER_MODULE_MM).clamp(DIGITS_MIN_PT, DIGITS_MAX_PT)
+}
 /// Space between the bars and the digits under them.
 const DIGITS_GAP_MM: f64 = 0.5;
 const SERVICE_COPY: &str = "Экземпляр сервиса";
@@ -199,7 +206,7 @@ impl Generator {
                         out,
                         "if data.barcode != none {{ align({}, text(size: {}, data.barcode.clusters().join(sym.zws))) }}",
                         align_name(*align),
-                        pt((module * DIGITS_PT_PER_MODULE_MM).max(DIGITS_MIN_PT))
+                        pt(digits_pt(module))
                     );
                     out.push('\n');
                     return;
@@ -208,7 +215,7 @@ impl Generator {
                 let digits = if *digits {
                     format!(
                         "align(center, text(size: {}, data.barcode))",
-                        pt((module * DIGITS_PT_PER_MODULE_MM).max(DIGITS_MIN_PT))
+                        pt(digits_pt(module))
                     )
                 } else {
                     "none".to_owned()
