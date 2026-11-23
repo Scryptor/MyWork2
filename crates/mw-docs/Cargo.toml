@@ -21,7 +21,8 @@ comemo = { workspace = true }
 mw-domain = { path = "../mw-domain" }
 serde = { workspace = true }
 serde_json = { workspace = true }
-fontdb = { version = "0.23", default-features = false, features = ["std", "fs"] }
+# `memmap`: the book of fonts is built from the mapped file (`with_face_data`), not from a second read.
+fontdb = { version = "0.23", default-features = false, features = ["std", "fs", "memmap"] }
 tracing = { workspace = true }
 
 [dev-dependencies]

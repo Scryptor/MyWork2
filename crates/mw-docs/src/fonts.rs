@@ -3,13 +3,16 @@
 //! follow serve only the glyphs Libertinus lacks (Typst's own fallback picks a face that has the glyph):
 //! first the fonts folder of the program's data, then the system fonts.
 //!
-//! The book (`FontInfo` of every face) is built once; the font itself is read from its file on first use.
+//! The book (`FontInfo` of every face) is built once, from the font files mapped to memory (fontdb's
+//! `memmap`), so warming up does not read a file a second time; the font itself is read from its file on
+//! first use.
 
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 
 use fontdb::Source;
+use serde::{Deserialize, Serialize};
 use typst::foundations::Bytes;
 use typst::text::{Font, FontBook, FontInfo};
 use typst::utils::LazyHash;
@@ -21,8 +24,9 @@ const FACES: [&[u8]; 4] = [
     include_bytes!("../fonts/LibertinusSerif-Bold.otf"),
 ];
 
-/// Where fallback fonts come from, besides the embedded ones.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+/// Where fallback fonts come from, besides the embedded ones. Crosses to the render process in JSON.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct FontSources {
     /// Folders with font files, in order of preference.
     pub dirs: Vec<PathBuf>,
@@ -86,8 +90,6 @@ impl FontSet {
             db.load_system_fonts();
         }
         let mut seen = HashSet::new();
-        // The faces of one file follow each other, so the file is read once for all of them.
-        let mut loaded: Option<(PathBuf, Option<Vec<u8>>)> = None;
         for face in db.faces() {
             let (Source::File(path) | Source::SharedFile(path, _)) = &face.source else {
                 continue;
@@ -95,27 +97,20 @@ impl FontSet {
             if !seen.insert((path.clone(), face.index)) {
                 continue;
             }
-            if loaded.as_ref().is_none_or(|(p, _)| p != path) {
-                let data = match std::fs::read(path) {
-                    Ok(data) => Some(data),
-                    Err(error) => {
-                        tracing::warn!(path = %path.display(), %error, "файл шрифта не прочитан, пропущен");
-                        None
-                    }
-                };
-                loaded = Some((path.clone(), data));
-            }
-            let Some(data) = loaded.as_ref().and_then(|(_, data)| data.as_deref()) else {
-                continue;
-            };
-            let Some(info) = FontInfo::new(data, face.index) else {
-                if face.index == 0 {
+            // The file is mapped to memory, as fontdb did when loading it: no second read.
+            match db.with_face_data(face.id, FontInfo::new) {
+                Some(Some(info)) => {
+                    infos.push(info);
+                    slots.push(Slot::lazy(path.clone(), face.index));
+                }
+                Some(None) if face.index == 0 => {
                     tracing::warn!(path = %path.display(), "файл шрифта повреждён, пропущен");
                 }
-                continue;
-            };
-            infos.push(info);
-            slots.push(Slot::lazy(path.clone(), face.index));
+                None if face.index == 0 => {
+                    tracing::warn!(path = %path.display(), "файл шрифта не прочитан, пропущен");
+                }
+                _ => {}
+            }
         }
         Self {
             book: LazyHash::new(FontBook::from_infos(infos)),

@@ -1,5 +1,6 @@
 //! Compiling Typst source and turning the result into PDF and PNG.
 
+use serde::{Deserialize, Serialize};
 use typst::diag::SourceDiagnostic;
 use typst::utils::Scalar;
 use typst_layout::PagedDocument;
@@ -11,7 +12,7 @@ use crate::model::CodeDiagnostic;
 use crate::typst_gen::CodeSources;
 use crate::world::DocsWorld;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, PartialEq, thiserror::Error)]
 pub enum DocsError {
     /// Typst rejected the source; one line per error.
     #[error("document does not compile: {}", .0.join("; "))]
@@ -36,6 +37,55 @@ pub enum DocsError {
     /// The documents of a job took longer to compile than its time budget.
     #[error("rendering took longer than its budget")]
     TooSlow,
+}
+
+/// [`DocsError`] на проводе процесса-рендерера (`wire`): те же варианты с теми же данными, в JSON —
+/// внешний тег serde: `{"Code":[…]}`, `{"TooManyPages":3}`, `"TooSlow"`. Отдельный тип, чтобы
+/// ошибка библиотеки не становилась форматом обмена; новый вариант `DocsError` не соберётся, пока
+/// его нет здесь.
+#[derive(Debug, Serialize, Deserialize)]
+pub(crate) enum WireError {
+    Compile(Vec<String>),
+    Code(Vec<CodeDiagnostic>),
+    Pdf(Vec<String>),
+    Png(String),
+    BadFileName(String),
+    Dpi(u32),
+    TooManyPages(usize),
+    TooManyPixels,
+    TooSlow,
+}
+
+impl From<DocsError> for WireError {
+    fn from(error: DocsError) -> Self {
+        match error {
+            DocsError::Compile(lines) => Self::Compile(lines),
+            DocsError::Code(diagnostics) => Self::Code(diagnostics),
+            DocsError::Pdf(lines) => Self::Pdf(lines),
+            DocsError::Png(message) => Self::Png(message),
+            DocsError::BadFileName(name) => Self::BadFileName(name),
+            DocsError::Dpi(dpi) => Self::Dpi(dpi),
+            DocsError::TooManyPages(pages) => Self::TooManyPages(pages),
+            DocsError::TooManyPixels => Self::TooManyPixels,
+            DocsError::TooSlow => Self::TooSlow,
+        }
+    }
+}
+
+impl From<WireError> for DocsError {
+    fn from(error: WireError) -> Self {
+        match error {
+            WireError::Compile(lines) => Self::Compile(lines),
+            WireError::Code(diagnostics) => Self::Code(diagnostics),
+            WireError::Pdf(lines) => Self::Pdf(lines),
+            WireError::Png(message) => Self::Png(message),
+            WireError::BadFileName(name) => Self::BadFileName(name),
+            WireError::Dpi(dpi) => Self::Dpi(dpi),
+            WireError::TooManyPages(pages) => Self::TooManyPages(pages),
+            WireError::TooManyPixels => Self::TooManyPixels,
+            WireError::TooSlow => Self::TooSlow,
+        }
+    }
 }
 
 fn code_messages(diagnostics: &[CodeDiagnostic]) -> String {
