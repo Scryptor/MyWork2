@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "MyWork 3 API",
-    "description": "HTTP API учёта сервисного центра MyWork 3.\n\n**Вход.** `POST /api/v1/auth/login` выдаёт токен; дальше он передаётся в заголовке `Authorization: Bearer <токен>`. Если сервер слушает только локальный адрес и в базе нет пользователей, которые могут войти (учётная запись активна, вход разрешён — `can_sign_in` — и задан пароль), вход не нужен (режим без входа): запросы без токена выполняются с полными правами. Узнать это можно по `GET /api/v1/server-info` (`auth_required`).\n\n**Форматы.** Поля JSON — `snake_case`. Деньги — целое число копеек. Даты и время — местное время предприятия без смещения, `YYYY-MM-DDTHH:MM:SS` (в схемах помечены `date-time`, но смещения в них нет).\n\n**Правки.** В теле `PATCH` непереданное поле не меняется; `null` очищает только те поля, которые бывают пустыми; `null` у остальных полей и неизвестные поля — ошибка 400.\n\n**Версия записи.** Изменение заказов, клиентов, пользователей и ролей принимает параметр `version` — версию записи, которую видел клиент; устаревшая даёт 409 с `current_version`. 409 без `current_version` — запись нельзя удалить, пока ею пользуются (например, роль с пользователями); причина — в `message`.\n\n**Тело запроса.** Каждый изменяющий запрос (POST, PUT, PATCH, DELETE) должен нести `Content-Type: application/json`, даже без тела (выход, выдача, удаление), иначе ответ 415. Исключение — загрузка вложений (`POST /orders/{id}/attachments`, `POST /intake-drafts/{key}/attachments`): тело — байты файла, `Content-Type: application/octet-stream`, не больше 25 МБ; и загрузка логотипа (`PUT /settings/logo`): тело — байты картинки, `Content-Type: application/octet-stream`, не больше 5 МБ.\n\n**Ошибки.** Любая ошибка — JSON `ErrorBody` с полями `code`, `message` (по-русски), `fields`, `current_version`, `permission`, `retry_after_secs`. Коды: `bad_request` (400, 405, 413 — тело больше 1 МиБ (файла — больше 25 МБ), 415), `unauthenticated` и `invalid_credentials` (401), `forbidden` (403), `not_found` (404), `conflict` (409), `validation` (422), `too_many_attempts` (429), `unavailable` (503), `internal` (500).",
+    "description": "HTTP API учёта сервисного центра MyWork 3.\n\n**Вход.** `POST /api/v1/auth/login` выдаёт токен; дальше он передаётся в заголовке `Authorization: Bearer <токен>`. Если сервер слушает только локальный адрес и в базе нет пользователей, которые могут войти (учётная запись активна, вход разрешён — `can_sign_in` — и задан пароль), вход не нужен (режим без входа): запросы без токена выполняются с полными правами. Узнать это можно по `GET /api/v1/server-info` (`auth_required`).\n\n**Форматы.** Поля JSON — `snake_case`. Деньги — целое число копеек. Даты и время — местное время предприятия без смещения, `YYYY-MM-DDTHH:MM:SS` (в схемах помечены `date-time`, но смещения в них нет).\n\n**Правки.** В теле `PATCH` непереданное поле не меняется; `null` очищает только те поля, которые бывают пустыми; `null` у остальных полей и неизвестные поля — ошибка 400.\n\n**Версия записи.** Изменение заказов, клиентов, пользователей и ролей принимает параметр `version` — версию записи, которую видел клиент; устаревшая даёт 409 с `current_version`. 409 без `current_version` — запись нельзя удалить, пока ею пользуются (например, роль с пользователями); причина — в `message`.\n\n**Тело запроса.** Каждый изменяющий запрос (POST, PUT, PATCH, DELETE) должен нести `Content-Type: application/json`, даже без тела (выход, выдача, удаление), иначе ответ 415. Исключение — загрузка вложений (`POST /orders/{id}/attachments`, `POST /intake-drafts/{key}/attachments`): тело — байты файла, `Content-Type: application/octet-stream`, не больше 25 МБ; и загрузка логотипа (`PUT /settings/logo`): тело — байты картинки, `Content-Type: application/octet-stream`, не больше 5 МБ.\n\n**Ошибки.** Любая ошибка — JSON `ErrorBody` с полями `code`, `message` (по-русски), `fields`, `current_version`, `permission`, `retry_after_secs`, `diagnostics` (ошибки своего Typst-кода шаблона со строкой и знаком; у остальных ошибок пусто). Коды: `bad_request` (400, 405, 413 — тело больше 1 МиБ (файла — больше 25 МБ), 415), `unauthenticated` и `invalid_credentials` (401), `forbidden` (403), `not_found` (404), `conflict` (409), `validation` (422), `too_many_attempts` (429), `unavailable` (503), `internal` (500).",
     "license": {
       "name": "MIT",
       "identifier": "MIT"
@@ -5869,6 +5869,64 @@
           "orders_count"
         ]
       },
+      "CodeDiagnostic": {
+        "type": "object",
+        "description": "One error of the author's Typst code.",
+        "required": [
+          "place",
+          "message",
+          "hints"
+        ],
+        "properties": {
+          "hints": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "message": {
+            "type": "string"
+          },
+          "place": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CodePlace"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "CodePlace": {
+        "type": "object",
+        "description": "Where in the author's Typst code a diagnostic points: the path of the block (`[i]`, or\n`[i, column, j]` inside columns), the line and the column, both counted from 1.",
+        "required": [
+          "block",
+          "line",
+          "column"
+        ],
+        "properties": {
+          "block": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "column": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "line": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
       "CopyFilter": {
         "type": "string",
         "enum": [
@@ -6254,7 +6312,8 @@
           "fields",
           "current_version",
           "permission",
-          "retry_after_secs"
+          "retry_after_secs",
+          "diagnostics"
         ],
         "properties": {
           "code": {
@@ -6267,6 +6326,13 @@
             ],
             "format": "int64",
             "description": "Текущая версия записи (только для `conflict`)."
+          },
+          "diagnostics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CodeDiagnostic"
+            },
+            "description": "Ошибки своего Typst-кода шаблона с местом в коде (только для `validation` с сообщением\n«Ошибка в своём Typst-коде»); у остальных ответов пусто."
           },
           "fields": {
             "type": "array",

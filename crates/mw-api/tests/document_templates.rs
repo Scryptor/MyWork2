@@ -116,6 +116,44 @@ async fn preview_returns_pages() {
     }
 }
 
+/// Ошибка своего Typst-кода в превью: 422 с полем блока и строкой ошибки.
+#[tokio::test]
+async fn preview_names_the_code_block_and_line_of_an_error() {
+    for t in apis(Listen::Network).await {
+        let token = t.admin_token().await;
+        let r = t.get(&format!("{BASE}/intake_act"), Some(&token)).await;
+        let mut template = r.body["template"].clone();
+        template["blocks"].as_array_mut().unwrap().insert(
+            1,
+            json!({"copies": "both", "body": {"type": "typst_code", "code": "#nope"}}),
+        );
+        let r = t
+            .send(
+                Method::POST,
+                &format!("{BASE}/intake_act/preview"),
+                Some(&token),
+                Some(json!({"template": template})),
+            )
+            .await;
+        assert_eq!(r.status, 422, "{}: {}", t.label, r.body);
+        assert_eq!(r.body["code"], "validation", "{}", t.label);
+        assert_eq!(
+            r.body["message"], "Ошибка в своём Typst-коде",
+            "{}",
+            t.label
+        );
+        assert_eq!(r.body["fields"][0]["field"], "blocks.1.code", "{}", t.label);
+        assert_eq!(r.body["fields"][0]["code"], "typst_error", "{}", t.label);
+        assert_eq!(r.body["diagnostics"][0]["place"]["line"], 1, "{}", t.label);
+        assert_eq!(
+            r.body["diagnostics"][0]["place"]["block"],
+            json!([1]),
+            "{}",
+            t.label
+        );
+    }
+}
+
 #[tokio::test]
 async fn file_export_and_import() {
     for t in apis(Listen::Network).await {

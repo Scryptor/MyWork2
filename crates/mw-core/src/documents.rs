@@ -5,13 +5,14 @@
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 use std::time::Duration;
 
 use chrono::{Datelike, NaiveDate};
 use mw_db::entity::service_point;
 use mw_docs::{
-    DocsError, DocumentData, Job, JobBytes, JobLimits, JobOutput, JobResult, RenderOptions,
-    sample_data,
+    DocsError, DocumentData, FontSources, Job, JobBytes, JobLimits, JobOutput, JobResult,
+    RenderOptions, RenderPool, WorkerLimits, sample_data, standard_template,
 };
 use mw_domain::document_template::Template;
 use mw_domain::documents::DocumentKind;
@@ -21,6 +22,7 @@ use mw_domain::phone::format_phone;
 use mw_domain::validation::FieldError;
 use sea_orm::EntityTrait;
 
+use crate::core::CodeRenderer;
 use crate::{Actor, AppSettings, Client, Core, CoreError, Order};
 
 /// Знак валюты, когда в настройках он пустой (как `DEFAULT_CURRENCY` интерфейса).
@@ -47,6 +49,30 @@ const MAX_RASTER_PIXELS: f64 = 36_000_000.0;
 /// Сколько может строиться одно задание рендера (документ или пачка): меньше 30 с
 /// `REQUEST_TIMEOUT` сервера, чтобы ответом был понятный отказ, а не обрыв по времени.
 pub const RENDER_BUDGET: Duration = Duration::from_secs(25);
+/// Сколько может компилироваться один документ шаблона со своим Typst-кодом: от отправки задания
+/// процессу-рендереру или от готовности предыдущего документа пачки. Дольше — процесс убивается.
+pub const CODE_DOCUMENT_LIMIT: Duration = Duration::from_secs(5);
+/// Сколько может запускаться процесс-рендерер (книга шрифтов системы на медленном Windows); не
+/// входит ни в [`CODE_DOCUMENT_LIMIT`], ни в [`RENDER_BUDGET`].
+pub const WORKER_STARTUP_LIMIT: Duration = Duration::from_secs(60);
+/// Ошибок своего кода в ответе не больше.
+const MAX_CODE_DIAGNOSTICS: usize = 20;
+/// Ответ, когда шаблон со своим кодом строить негде: процесс-рендерер не настроен или не запустился.
+const NO_CODE_RENDERER: &str = "Документы со своим Typst-кодом сейчас не строятся";
+
+/// Пул для своего Typst-кода с пределами ядра: `program` — программа, которая понимает аргумент
+/// процесса-рендерера (`mw_docs::WORKER_ARG`); `fonts` — запасные шрифты, их каждый процесс собирает
+/// сам при запуске.
+pub fn code_render_pool(program: PathBuf, fonts: FontSources) -> RenderPool {
+    RenderPool::new(
+        program,
+        fonts,
+        WorkerLimits {
+            startup: WORKER_STARTUP_LIMIT,
+            per_document: CODE_DOCUMENT_LIMIT,
+        },
+    )
+}
 
 /// Пределы задания рендера ядра; `max_total_pages` — страниц во всём задании.
 fn job_limits(max_total_pages: usize) -> JobLimits {
@@ -69,7 +95,77 @@ fn docs_error(e: DocsError, kind: DocumentKind) -> CoreError {
             CoreError::Validation(vec![FieldError::new("dpi", "too_many_pixels")])
         }
         DocsError::TooSlow => CoreError::Validation(vec![FieldError::new("documents", "too_slow")]),
+        DocsError::Code(mut diagnostics) => {
+            diagnostics.truncate(MAX_CODE_DIAGNOSTICS);
+            CoreError::TemplateCode(diagnostics)
+        }
+        DocsError::CodeTimeout => {
+            CoreError::Validation(vec![FieldError::new("template", "code_timeout")])
+        }
+        DocsError::WorkerCrashed => {
+            CoreError::Validation(vec![FieldError::new("template", "code_crashed")])
+        }
+        DocsError::WorkerUnavailable(reason) => {
+            tracing::error!(
+                "документ «{}» не построен: процесс-рендерер недоступен: {reason}",
+                kind.as_str()
+            );
+            CoreError::Unavailable(NO_CODE_RENDERER)
+        }
         e => CoreError::Internal(format!("документ «{}» не построен: {e}", kind.as_str())),
+    }
+}
+
+/// Почему задание рендера не построено.
+#[derive(Debug)]
+enum JobFailure {
+    /// Сбой ограничителя рендера.
+    Core(CoreError),
+    /// Ошибка рендера.
+    Docs(DocsError),
+    /// Шаблон со своим Typst-кодом, а процесса-рендерера у ядра нет.
+    NoCodeRenderer,
+}
+
+impl From<CoreError> for JobFailure {
+    fn from(e: CoreError) -> Self {
+        Self::Core(e)
+    }
+}
+
+impl std::fmt::Display for JobFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Core(e) => e.fmt(f),
+            Self::Docs(e) => e.fmt(f),
+            Self::NoCodeRenderer => f.write_str("процесс-рендерер не настроен"),
+        }
+    }
+}
+
+impl JobFailure {
+    /// Отказ своего кода (решение 7 плана): ошибки компиляции, предел документа, падение процесса,
+    /// процесс недоступен или не настроен. Пределы страниц, пикселей и времени задания — не отказ
+    /// кода.
+    fn is_code_refusal(&self) -> bool {
+        matches!(
+            self,
+            Self::NoCodeRenderer
+                | Self::Docs(
+                    DocsError::Code(_)
+                        | DocsError::CodeTimeout
+                        | DocsError::WorkerCrashed
+                        | DocsError::WorkerUnavailable(_)
+                )
+        )
+    }
+
+    fn into_core(self, kind: DocumentKind) -> CoreError {
+        match self {
+            Self::Core(e) => e,
+            Self::Docs(e) => docs_error(e, kind),
+            Self::NoCodeRenderer => CoreError::Unavailable(NO_CODE_RENDERER),
+        }
     }
 }
 
@@ -192,6 +288,12 @@ impl Core {
     /// компиляции). Данные и проверки — те же, что у `Core::render_document` (он только для
     /// тестов). Неверный `dpi` у PNG — ошибка проверки поля `dpi`; дольше [`RENDER_BUDGET`] —
     /// `documents`/`too_slow`.
+    ///
+    /// Шаблон со своим Typst-кодом строится процессом-рендерером. Превью черновика показывает отказ
+    /// своего кода: ошибки компиляции — [`CoreError::TemplateCode`], документ дольше
+    /// [`CODE_DOCUMENT_LIMIT`] — `template`/`code_timeout`, процесс упал — `template`/`code_crashed`,
+    /// процесса нет — [`CoreError::Unavailable`]. Сохранённый шаблон при отказе своего кода
+    /// печатается стандартным.
     pub async fn export_document(
         &self,
         actor: &Actor,
@@ -215,7 +317,11 @@ impl Core {
             output: output.into(),
             limits: job_limits(MAX_PAGES),
         };
-        self.render_job(job, req.kind).await
+        if req.draft.is_some() {
+            self.render_job(job, req.kind).await
+        } else {
+            self.print_job(job, req.kind).await
+        }
     }
 
     /// Документы нескольких заказов одним PDF, по заказу подряд. Вид должен печататься из заказа
@@ -223,7 +329,8 @@ impl Core {
     /// `order_ids`/`too_many`). Данные каждого заказа собираются как у документа одного заказа
     /// (нет заказа — `NotFound` с его номером); шаблон и логотип читаются один раз. Вся пачка —
     /// одно задание под ограничителем рендера; больше 50 страниц у заказа или больше 200 во всей
-    /// пачке — `template`/`too_many_pages`, дольше [`RENDER_BUDGET`] — `documents`/`too_slow`.
+    /// пачке — `template`/`too_many_pages`, дольше [`RENDER_BUDGET`] — `documents`/`too_slow`. Отказ
+    /// своего кода сохранённого шаблона — вся пачка стандартным шаблоном.
     pub async fn export_documents(
         &self,
         actor: &Actor,
@@ -277,7 +384,7 @@ impl Core {
             output: JobOutput::Pdf,
             limits: job_limits(MAX_BATCH_PAGES),
         };
-        self.render_job(job, kind).await
+        self.print_job(job, kind).await
     }
 
     /// Строит документ. Из заказа — с теми же правами, что и просмотр заказа (`get_order`): нужен
@@ -317,13 +424,57 @@ impl Core {
         Ok((template, data))
     }
 
-    /// Задание рендера под ограничителем; его ошибка — ошибка ядра.
+    /// Задание рендера; его ошибка — ошибка ядра.
     async fn render_job(&self, job: Job, kind: DocumentKind) -> Result<DocumentFile, CoreError> {
-        self.render_gate
-            .run(move || mw_docs::run_job(&job, &mut |_| {}))
-            .await?
+        self.build(job)
+            .await
             .map(DocumentFile::from)
-            .map_err(|e| docs_error(e, kind))
+            .map_err(|e| e.into_core(kind))
+    }
+
+    /// Задание печати сохранённого шаблона (решение 7 плана): при отказе своего кода документы
+    /// строятся стандартным шаблоном вида в процессе ядра — с теми же данными, настройками,
+    /// логотипом и пределами. Остальные ошибки — как у [`Core::render_job`].
+    async fn print_job(&self, job: Job, kind: DocumentKind) -> Result<DocumentFile, CoreError> {
+        if !job.template.has_code() {
+            return self.render_job(job, kind).await;
+        }
+        let standard = Job {
+            template: standard_template(kind),
+            ..job.clone()
+        };
+        match self.build(job).await {
+            Ok(result) => Ok(result.into()),
+            Err(e) if e.is_code_refusal() => {
+                tracing::warn!(
+                    "документ «{}» напечатан стандартным шаблоном: свой Typst-код не построен: {e}",
+                    kind.as_str()
+                );
+                self.render_job(standard, kind).await
+            }
+            Err(e) => Err(e.into_core(kind)),
+        }
+    }
+
+    /// Строит задание под ограничителем рендера. Шаблон без своего кода — в процессе ядра;
+    /// со своим кодом — процессом-рендерером пула (в тестах — в процессе, `with_code_in_process`),
+    /// а без пула не строится.
+    async fn build(&self, job: Job) -> Result<JobResult, JobFailure> {
+        let in_process = |job: Job| move || mw_docs::run_job(&job, &mut |_| {});
+        let result = if !job.template.has_code() {
+            self.render_gate.run(in_process(job)).await?
+        } else {
+            match &self.code_renderer {
+                CodeRenderer::Missing => return Err(JobFailure::NoCodeRenderer),
+                CodeRenderer::Pool(pool) => {
+                    let pool = pool.clone();
+                    self.render_gate.run(move || pool.run(&job)).await?
+                }
+                #[cfg(any(test, feature = "testing"))]
+                CodeRenderer::InProcess => self.render_gate.run(in_process(job)).await?,
+            }
+        };
+        result.map_err(JobFailure::Docs)
     }
 
     /// Модель для рендера: черновик, иначе сохранённая, иначе стандартная (калибровка — всегда
@@ -857,6 +1008,7 @@ mod tests {
     use chrono::{TimeZone, Utc};
     use mw_db::entity::role;
     use mw_docs::fields::fields;
+    use mw_domain::document_template::CodeDiagnostic;
     use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
     use super::*;
@@ -1104,6 +1256,65 @@ mod tests {
             matches!(&e, CoreError::Validation(f) if *f == vec![FieldError::new("documents", "too_slow")]),
             "{e:?}"
         );
+    }
+
+    /// Отказы своего кода: предел документа и падение процесса — ошибки шаблона, недоступный
+    /// процесс — 503, ошибки компиляции — `TemplateCode`, не больше 20.
+    #[test]
+    fn code_failures_map_to_core_errors() {
+        let kind = DocumentKind::IntakeAct;
+        let fields = |e: CoreError| match e {
+            CoreError::Validation(fields) => fields,
+            other => panic!("{other:?}"),
+        };
+        assert_eq!(
+            fields(docs_error(DocsError::CodeTimeout, kind)),
+            [FieldError::new("template", "code_timeout")]
+        );
+        assert_eq!(
+            fields(docs_error(DocsError::WorkerCrashed, kind)),
+            [FieldError::new("template", "code_crashed")]
+        );
+        let e = docs_error(DocsError::WorkerUnavailable("нет программы".into()), kind);
+        assert!(
+            matches!(e, CoreError::Unavailable(NO_CODE_RENDERER)),
+            "{e:?}"
+        );
+        let many: Vec<CodeDiagnostic> = (0..21)
+            .map(|i| CodeDiagnostic {
+                place: None,
+                message: format!("ошибка {i}"),
+                hints: Vec::new(),
+            })
+            .collect();
+        match docs_error(DocsError::Code(many.clone()), kind) {
+            CoreError::TemplateCode(d) => assert_eq!(d, many[..20]),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    /// Запасной путь печати — только для отказов своего кода; пределы страниц, пикселей и времени
+    /// задания отвечают ошибкой, как раньше.
+    #[test]
+    fn only_code_refusals_print_the_standard() {
+        for refusal in [
+            JobFailure::NoCodeRenderer,
+            JobFailure::Docs(DocsError::Code(Vec::new())),
+            JobFailure::Docs(DocsError::CodeTimeout),
+            JobFailure::Docs(DocsError::WorkerCrashed),
+            JobFailure::Docs(DocsError::WorkerUnavailable("нет программы".into())),
+        ] {
+            assert!(refusal.is_code_refusal(), "{refusal}");
+        }
+        for other in [
+            JobFailure::Docs(DocsError::TooManyPages(51)),
+            JobFailure::Docs(DocsError::TooManyPixels),
+            JobFailure::Docs(DocsError::TooSlow),
+            JobFailure::Docs(DocsError::Dpi(1)),
+            JobFailure::Core(CoreError::Internal("сбой".into())),
+        ] {
+            assert!(!other.is_code_refusal(), "{other}");
+        }
     }
 
     #[test]

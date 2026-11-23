@@ -3,6 +3,7 @@ use crate::config::{
 };
 use axum::Router;
 use mw_api::ApiConfig;
+use mw_core::documents::code_render_pool;
 use mw_core::{Core, SystemClock};
 use sea_orm::DatabaseConnection;
 use std::future::{Future, IntoFuture};
@@ -105,9 +106,23 @@ impl Server {
             validate_ui_dir(dir)?;
         }
         migrate(&db, None).await?;
-        let core = Core::open(db.clone(), Arc::new(SystemClock), &system_timezone(config))
+        let mut core = Core::open(db.clone(), Arc::new(SystemClock), &system_timezone(config))
             .await?
             .with_attachments_dir(config.data_dir.clone());
+        // Шаблоны со своим Typst-кодом строятся процессами-рендерерами; их запасные шрифты — те же,
+        // что у сервера.
+        let render_pool = config.render_worker.clone().map(|program| {
+            code_render_pool(
+                program,
+                mw_docs::FontSources {
+                    dirs: vec![config.data_dir.join("fonts")],
+                    system: true,
+                },
+            )
+        });
+        if let Some(pool) = &render_pool {
+            core = core.with_render_pool(pool.clone());
+        }
         finish_interrupted_imports(&core, config).await;
         log_timezone(&core, config.timezone.as_deref());
         let listener =
@@ -126,6 +141,11 @@ impl Server {
             ApiConfig::for_listen_addr(local_addr).with_ui_dir(config.ui_dir.clone()),
         );
         tracing::info!("сервер слушает {local_addr}");
+        if let Some(pool) = render_pool {
+            // Один процесс-рендерер запускается заранее, в фоне: запуск сервера его не ждёт (книга
+            // шрифтов системы собирается до минуты).
+            tokio::task::spawn_blocking(move || pool.warm());
+        }
         Ok(Server {
             core,
             db,

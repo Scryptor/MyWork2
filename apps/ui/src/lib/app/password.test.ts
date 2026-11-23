@@ -10,6 +10,7 @@ function apiError(status: number, body: Partial<ErrorBody> & Pick<ErrorBody, 'co
 		current_version: null,
 		permission: null,
 		retry_after_secs: null,
+		diagnostics: [],
 		...body
 	};
 	return new ApiError(status, full.code, full.message, full);

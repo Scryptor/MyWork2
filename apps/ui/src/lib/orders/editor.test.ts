@@ -19,7 +19,8 @@ const conflict = () =>
 		fields: [],
 		current_version: 0,
 		permission: null,
-		retry_after_secs: null
+		retry_after_secs: null,
+		diagnostics: []
 	});
 
 /**
@@ -367,7 +368,8 @@ describe('createOrderEditor', () => {
 			fields: [{ field: 'id', code: 'deleted', message: 'Запись удалена' }],
 			current_version: null,
 			permission: null,
-			retry_after_secs: null
+			retry_after_secs: null,
+			diagnostics: []
 		});
 		const forbidden = new ApiError(403, 'forbidden', 'Недостаточно прав: Изменение заказов', null);
 		for (const refusal of [deleted, forbidden]) {

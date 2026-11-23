@@ -28,6 +28,7 @@ function apiError(code: 'conflict' | 'validation' | 'not_found', body: Partial<E
 		current_version: null,
 		permission: null,
 		retry_after_secs: null,
+		diagnostics: [],
 		...body
 	});
 }

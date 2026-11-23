@@ -741,7 +741,8 @@ test('a deletion refused at «Принять» stops it: the photo is back, «П
 						fields: [],
 						current_version: null,
 						permission: null,
-						retry_after_secs: null
+						retry_after_secs: null,
+						diagnostics: []
 					}
 				})
 			: route.fallback()

@@ -15,6 +15,9 @@ pub struct Config {
     pub timezone: Option<String>,
     /// Папка собранного интерфейса; пусто — сервер отдаёт только API.
     pub ui_dir: Option<PathBuf>,
+    /// Программа процесса-рендерера для шаблонов со своим Typst-кодом (сама программа сервера или
+    /// программа для компьютера: аргумент `RENDER_WORKER_ARG`); пусто — такие документы не строятся.
+    pub render_worker: Option<PathBuf>,
 }
 
 impl std::fmt::Debug for Config {
@@ -29,6 +32,7 @@ impl std::fmt::Debug for Config {
             )
             .field("timezone", &self.timezone)
             .field("ui_dir", &self.ui_dir)
+            .field("render_worker", &self.render_worker)
             .finish()
     }
 }
@@ -171,7 +175,8 @@ mod tests {
                 data_dir: "/d".into(),
                 database_url: None,
                 timezone: None,
-                ui_dir: None
+                ui_dir: None,
+                render_worker: None,
             }
             .database_url(),
             mw_db::sqlite_url(&Path::new("/d").join("mywork.db"))
@@ -227,7 +232,10 @@ mod tests {
             database_url: Some("postgres://mw:s3cr3t@db/mw".into()),
             timezone: None,
             ui_dir: None,
+            render_worker: Some("/opt/mw/mw-server".into()),
         };
-        assert!(!format!("{config:?}").contains("s3cr3t"));
+        let debug = format!("{config:?}");
+        assert!(!debug.contains("s3cr3t"), "{debug}");
+        assert!(debug.contains("/opt/mw/mw-server"), "{debug}");
     }
 }

@@ -1120,3 +1120,135 @@ async fn batch_total_page_cap() -> Result<(), CoreError> {
     }
     Ok(())
 }
+
+/// Блок своего Typst-кода для обоих экземпляров.
+fn code_block(code: &str) -> mw_domain::document_template::Block {
+    use mw_domain::document_template::{Block, BlockBody, CopyFilter};
+    Block {
+        copies: CopyFilter::Both,
+        body: BlockBody::TypstCode { code: code.into() },
+    }
+}
+
+/// Превью образца по черновику `draft`.
+fn draft_request(draft: mw_domain::document_template::Template) -> DocumentRequest {
+    let kind = draft.kind;
+    DocumentRequest {
+        sample: true,
+        draft: Some(draft),
+        ..request(kind, None)
+    }
+}
+
+async fn png_pages(t: &TestCore, req: DocumentRequest) -> Result<Vec<Vec<u8>>, CoreError> {
+    match t
+        .core
+        .export_document(&admin(), req, DocumentOutput::Png { dpi: 72 })
+        .await?
+        .bytes
+    {
+        DocumentBytes::Png(pages) => Ok(pages),
+        other => panic!("{}: ждали PNG: {other:?}", t.label),
+    }
+}
+
+/// Черновик со своим кодом строится и показывается: код печатается на листе.
+#[tokio::test]
+async fn draft_with_code_previews() -> Result<(), CoreError> {
+    for t in code_cores().await {
+        let plain = mw_docs::standard_template(DocumentKind::IntakeAct);
+        let mut with_code = plain.clone();
+        with_code.blocks.push(code_block("КОД-ПРЕВЬЮ"));
+        let pages = png_pages(&t, draft_request(with_code)).await?;
+        assert!(!pages.is_empty(), "{}", t.label);
+        assert_ne!(
+            pages,
+            png_pages(&t, draft_request(plain)).await?,
+            "{}: кода нет на листе",
+            t.label
+        );
+    }
+    Ok(())
+}
+
+/// Ошибка своего кода в превью — `TemplateCode` с блоком и строкой, без запасного пути.
+#[tokio::test]
+async fn draft_code_error_names_block_and_line() {
+    for t in code_cores().await {
+        let mut draft = mw_docs::standard_template(DocumentKind::IntakeAct);
+        draft.blocks.insert(2, code_block("#nope"));
+        let res = png_pages(&t, draft_request(draft)).await;
+        let Err(CoreError::TemplateCode(diagnostics)) = &res else {
+            panic!("{}: ждали ошибку кода: {res:?}", t.label);
+        };
+        let place = diagnostics[0]
+            .place
+            .as_ref()
+            .unwrap_or_else(|| panic!("{}: без места: {diagnostics:?}", t.label));
+        assert_eq!(
+            (place.block.as_slice(), place.line),
+            (&[2][..], 1),
+            "{}: {diagnostics:?}",
+            t.label
+        );
+    }
+}
+
+/// Без пула и без `with_code_in_process` шаблон со своим кодом не строится (503), без кода — как
+/// раньше.
+#[tokio::test]
+async fn code_without_renderer_is_unavailable() -> Result<(), CoreError> {
+    for t in cores().await {
+        let plain = mw_docs::standard_template(DocumentKind::IntakeAct);
+        let mut with_code = plain.clone();
+        with_code.blocks.push(code_block("КОД"));
+        let res = png_pages(&t, draft_request(with_code)).await;
+        assert!(
+            matches!(res, Err(CoreError::Unavailable(_))),
+            "{}: {res:?}",
+            t.label
+        );
+        assert!(!png_pages(&t, draft_request(plain)).await?.is_empty());
+    }
+    Ok(())
+}
+
+/// Сохранённый шаблон с битым кодом печатается стандартным: документ и пачка не ломаются. И в ядре,
+/// где код строится, и в ядре без рендерера.
+#[tokio::test]
+async fn saved_broken_code_prints_the_standard() -> Result<(), CoreError> {
+    let all = code_cores()
+        .await
+        .into_iter()
+        .map(|t| ("код в процессе", t))
+        .chain(cores().await.into_iter().map(|t| ("без рендерера", t)));
+    for (how, t) in all {
+        let ids = orders(&t, 2).await;
+        let sticker = || request(DocumentKind::Sticker, Some(ids[0]));
+        let standard = png_pages(&t, sticker()).await?;
+        let mut template = mw_docs::standard_template(DocumentKind::Sticker);
+        template.blocks.push(code_block("#nope"));
+        t.core
+            .save_document_template(
+                &admin(),
+                DocumentKind::Sticker,
+                mw_core::TemplateSave {
+                    template,
+                    version: 0,
+                },
+            )
+            .await?;
+        assert_eq!(
+            png_pages(&t, sticker()).await?,
+            standard,
+            "{} {how}: напечатан не стандартный шаблон",
+            t.label
+        );
+        let both = t
+            .core
+            .export_documents(&admin(), batch(DocumentKind::Sticker, ids.clone()))
+            .await?;
+        assert_eq!(both.page_count, 2, "{} {how}", t.label);
+    }
+    Ok(())
+}

@@ -161,7 +161,8 @@ describe('createAutosave', () => {
 			fields: [],
 			current_version: 7,
 			permission: null,
-			retry_after_secs: null
+			retry_after_secs: null,
+			diagnostics: []
 		});
 		calls[0]!.reject(conflict);
 		await expect(flushed).rejects.toBe(conflict);

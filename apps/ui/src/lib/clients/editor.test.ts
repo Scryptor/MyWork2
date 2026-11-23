@@ -19,7 +19,8 @@ const conflict = () =>
 		fields: [],
 		current_version: 0,
 		permission: null,
-		retry_after_secs: null
+		retry_after_secs: null,
+		diagnostics: []
 	});
 
 const validation = (field: string, code: string) =>
@@ -29,7 +30,8 @@ const validation = (field: string, code: string) =>
 		fields: [{ field, code, message: '' }],
 		current_version: null,
 		permission: null,
-		retry_after_secs: null
+		retry_after_secs: null,
+		diagnostics: []
 	});
 
 /**

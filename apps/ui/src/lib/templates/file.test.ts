@@ -14,7 +14,8 @@ const invalid = (...fields: [string, string][]) =>
 		fields: fields.map(([field, message]) => ({ field, code: 'invalid', message })),
 		current_version: null,
 		permission: null,
-		retry_after_secs: null
+		retry_after_secs: null,
+		diagnostics: []
 	});
 
 describe('readTemplateFile', () => {

@@ -9,7 +9,8 @@ const tooSmall = () =>
 		fields: [{ field: 'next', code: 'too_small', message: 'x' }],
 		current_version: null,
 		permission: null,
-		retry_after_secs: null
+		retry_after_secs: null,
+		diagnostics: []
 	});
 
 function deferred() {

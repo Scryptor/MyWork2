@@ -127,7 +127,8 @@ describe('request', () => {
 			fields: [],
 			current_version: 7,
 			permission: null,
-			retry_after_secs: null
+			retry_after_secs: null,
+			diagnostics: []
 		});
 		await expect(request('PATCH', '/orders/1')).rejects.toMatchObject({
 			status: 409,
@@ -156,7 +157,8 @@ describe('request', () => {
 			fields: [],
 			current_version: null,
 			permission: null,
-			retry_after_secs: null
+			retry_after_secs: null,
+			diagnostics: []
 		});
 		await expect(request('GET', '/orders')).rejects.toMatchObject({ status: 401 });
 		expect(handler).toHaveBeenCalledTimes(1);
@@ -172,7 +174,8 @@ describe('request', () => {
 			fields: [],
 			current_version: null,
 			permission: null,
-			retry_after_secs: null
+			retry_after_secs: null,
+			diagnostics: []
 		});
 		await expect(
 			request('GET', '/legacy-import/current', { quietUnauthenticated: true })
@@ -188,7 +191,8 @@ describe('request', () => {
 			fields: [],
 			current_version: null,
 			permission: null,
-			retry_after_secs: null
+			retry_after_secs: null,
+			diagnostics: []
 		});
 		await expect(request('POST', '/auth/login', { body: {} })).rejects.toMatchObject({
 			code: 'invalid_credentials'

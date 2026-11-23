@@ -20,7 +20,8 @@ const validation = (field: string, code: string) =>
 		fields: [{ field, code, message: 'x' }],
 		current_version: null,
 		permission: null,
-		retry_after_secs: null
+		retry_after_secs: null,
+		diagnostics: []
 	});
 
 let save: ReturnType<typeof vi.fn<(patch: SettingsPatch) => Promise<AppSettings>>>;

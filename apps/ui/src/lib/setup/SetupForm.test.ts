@@ -51,7 +51,8 @@ describe('SetupForm («Начать с пустой базы»)', () => {
 				fields: [{ field: 'point_name', code: 'required', message: 'Обязательное поле' }],
 				current_version: null,
 				permission: null,
-				retry_after_secs: null
+				retry_after_secs: null,
+				diagnostics: []
 			})
 		);
 		const ondone = vi.fn();

@@ -187,3 +187,69 @@ fn worker_exits_when_stdin_closes() {
     };
     assert_eq!(status.code(), Some(0), "{status:?}");
 }
+
+/// Запрос к серверу по HTTP/1.1 с телом JSON: статус и тело ответа.
+async fn http(addr: std::net::SocketAddr, path: &str, body: &serde_json::Value) -> (u16, String) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let mut stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+    let body = body.to_string();
+    let request = format!(
+        "POST {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    );
+    stream.write_all(request.as_bytes()).await.unwrap();
+    let mut raw = Vec::new();
+    stream.read_to_end(&mut raw).await.unwrap();
+    let text = String::from_utf8_lossy(&raw).to_string();
+    let status = text.split(' ').nth(1).unwrap().parse().unwrap();
+    let body = text
+        .split_once("\r\n\r\n")
+        .map(|x| x.1)
+        .unwrap_or("")
+        .to_string();
+    (status, body)
+}
+
+/// Сервер с процессом-рендерером: бесконечный цикл своего кода в превью обрывается пределом
+/// документа ядра — 422 `code_timeout` раньше `REQUEST_TIMEOUT`; следующее превью строится.
+#[tokio::test]
+async fn http_preview_with_endless_code_times_out() {
+    for (label, db) in mw_db::testing::all_backends().await {
+        let dir = tempfile::tempdir().unwrap();
+        let config = mw_server::Config {
+            listen: "127.0.0.1:0".parse().unwrap(),
+            data_dir: dir.path().to_path_buf(),
+            database_url: None,
+            timezone: Some("UTC".into()),
+            ui_dir: None,
+            render_worker: Some(program()),
+        };
+        let server = mw_server::Server::start_with_db(&config, db).await.unwrap();
+        let addr = server.local_addr();
+        let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
+        let running = tokio::spawn(server.serve(async {
+            stopped.await.ok();
+        }));
+        let preview = "/api/v1/document-templates/sticker/preview";
+
+        let endless = code_job(ENDLESS_CODE, Duration::from_secs(20)).template;
+        let started = Instant::now();
+        let (status, body) = http(addr, preview, &serde_json::json!({ "template": endless })).await;
+        let took = started.elapsed();
+        assert_eq!(status, 422, "{label}: {body}");
+        assert!(body.contains("code_timeout"), "{label}: {body}");
+        assert!(took < Duration::from_secs(15), "{label}: ответ за {took:?}");
+
+        let standard = standard_template(DocumentKind::Sticker);
+        let (status, body) =
+            http(addr, preview, &serde_json::json!({ "template": standard })).await;
+        assert_eq!(status, 200, "{label}: {body}");
+
+        stop.send(()).unwrap();
+        tokio::time::timeout(Duration::from_secs(10), running)
+            .await
+            .expect("сервер не остановился")
+            .unwrap()
+            .unwrap();
+    }
+}

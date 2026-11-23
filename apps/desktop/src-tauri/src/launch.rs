@@ -139,6 +139,8 @@ fn config(data_dir: &Path, ui_dir: &Path, port: u16) -> Config {
         database_url: None,
         timezone: None,
         ui_dir: Some(ui_dir.to_path_buf()),
+        // Процесс-рендерер своего Typst-кода — эта же программа с аргументом `RENDER_WORKER_ARG`.
+        render_worker: std::env::current_exe().ok(),
     }
 }
 

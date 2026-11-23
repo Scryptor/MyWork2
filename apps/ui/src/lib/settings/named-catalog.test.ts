@@ -19,7 +19,8 @@ const validation = (field: string, code: string) =>
 		fields: [{ field, code, message: 'x' }],
 		current_version: null,
 		permission: null,
-		retry_after_secs: null
+		retry_after_secs: null,
+		diagnostics: []
 	});
 
 function make() {

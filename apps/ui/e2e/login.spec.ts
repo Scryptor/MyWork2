@@ -125,7 +125,8 @@ async function cardWithUnsavedEdit(
 								fields: [],
 								current_version: null,
 								permission: null,
-								retry_after_secs: null
+								retry_after_secs: null,
+								diagnostics: []
 							}
 						})
 	);

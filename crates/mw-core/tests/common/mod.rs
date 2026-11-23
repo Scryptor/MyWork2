@@ -37,6 +37,19 @@ pub async fn cores() -> Vec<TestCore> {
     out
 }
 
+/// То же, что [`cores`], но свой Typst-код строится в процессе теста (`Core::with_code_in_process`);
+/// у [`cores`] рендерера своего кода нет.
+pub async fn code_cores() -> Vec<TestCore> {
+    cores()
+        .await
+        .into_iter()
+        .map(|t| TestCore {
+            core: t.core.with_code_in_process(),
+            ..t
+        })
+        .collect()
+}
+
 pub fn admin() -> Actor {
     Actor::unrestricted("Тест")
 }

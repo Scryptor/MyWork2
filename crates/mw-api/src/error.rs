@@ -5,7 +5,9 @@ use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum_extra::extract::QueryRejection;
 use mw_core::CoreError;
+use mw_domain::document_template::CodeDiagnostic;
 use mw_domain::permission::Permission;
+use mw_domain::validation::FieldError;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use utoipa::ToSchema;
@@ -54,6 +56,9 @@ pub struct ErrorBody {
     /// Через сколько секунд повторить (только для `too_many_attempts`).
     #[schema(required = true)]
     pub retry_after_secs: Option<u64>,
+    /// Ошибки своего Typst-кода шаблона с местом в коде (только для `validation` с сообщением
+    /// «Ошибка в своём Typst-коде»); у остальных ответов пусто.
+    pub diagnostics: Vec<CodeDiagnostic>,
 }
 
 /// Ошибка обработчика: статус и тело.
@@ -74,8 +79,27 @@ impl ApiError {
                 current_version: None,
                 permission: None,
                 retry_after_secs: None,
+                diagnostics: Vec::new(),
             },
         }
+    }
+
+    /// 422 `validation` с ошибками полей `fields`.
+    fn validation(message: &str, fields: Vec<FieldError>) -> Self {
+        let mut e = Self::new(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            ErrorCode::Validation,
+            message,
+        );
+        e.body.fields = fields
+            .into_iter()
+            .map(|f| ErrorField {
+                message: f.message_ru().to_owned(),
+                field: f.field,
+                code: f.code,
+            })
+            .collect();
+        e
     }
 
     /// Заказ из пачки документов не найден: в сообщении его номер.
@@ -220,20 +244,11 @@ impl From<CoreError> for ApiError {
                 e.body.current_version = Some(current_version);
                 e
             }
-            CoreError::Validation(fields) => {
-                let mut e = Self::new(
-                    StatusCode::UNPROCESSABLE_ENTITY,
-                    ErrorCode::Validation,
-                    "Проверьте введённые данные",
-                );
-                e.body.fields = fields
-                    .into_iter()
-                    .map(|f| ErrorField {
-                        message: f.message_ru().to_owned(),
-                        field: f.field,
-                        code: f.code,
-                    })
-                    .collect();
+            CoreError::Validation(fields) => Self::validation("Проверьте введённые данные", fields),
+            CoreError::TemplateCode(diagnostics) => {
+                let mut e =
+                    Self::validation("Ошибка в своём Typst-коде", code_fields(&diagnostics));
+                e.body.diagnostics = diagnostics;
                 e
             }
             CoreError::InUse(message) => {
@@ -278,6 +293,38 @@ impl From<CoreError> for ApiError {
             }
         }
     }
+}
+
+/// Поля ошибок своего кода: по одному на блок в порядке первой ошибки — `blocks.N.code`, в колонках
+/// `blocks.N.columns.C.J.code` (путь блока `[N, C, J]`); ошибки без места — `template`. Код у всех
+/// `typst_error`.
+fn code_fields(diagnostics: &[CodeDiagnostic]) -> Vec<FieldError> {
+    let mut fields: Vec<FieldError> = Vec::new();
+    for diagnostic in diagnostics {
+        let field = match &diagnostic.place {
+            Some(place) if !place.block.is_empty() => code_field(&place.block),
+            _ => "template".to_owned(),
+        };
+        if !fields.iter().any(|f| f.field == field) {
+            fields.push(FieldError::new(field, "typst_error"));
+        }
+    }
+    fields
+}
+
+/// Поле кода блока по его пути: `[N]` — `blocks.N.code`, `[N, C, J]` — `blocks.N.columns.C.J.code`,
+/// как поля ошибок `Template::validate`.
+fn code_field(block: &[usize]) -> String {
+    let mut field = String::from("blocks");
+    for (depth, index) in block.iter().enumerate() {
+        if depth % 2 == 1 {
+            field.push_str(".columns");
+        }
+        field.push('.');
+        field.push_str(&index.to_string());
+    }
+    field.push_str(".code");
+    field
 }
 
 impl From<JsonRejection> for ApiError {
@@ -402,5 +449,51 @@ mod tests {
             (e.status.as_u16(), e.body.fields[0].message.as_str()),
             (422, "Заполните поле")
         );
+        assert!(e.body.diagnostics.is_empty());
+    }
+
+    /// Ошибки своего кода: 422 с полем на каждый блок (в колонках — с путём колонки), без места —
+    /// `template`; сами ошибки — в `diagnostics`.
+    #[test]
+    fn template_code_errors_name_their_blocks() {
+        use mw_domain::document_template::CodePlace;
+        let at = |block: &[usize], line| {
+            Some(CodePlace {
+                block: block.to_vec(),
+                line,
+                column: 1,
+            })
+        };
+        let diagnostics: Vec<CodeDiagnostic> = [at(&[3], 2), None, at(&[0, 1, 2], 1), at(&[3], 5)]
+            .into_iter()
+            .map(|place| CodeDiagnostic {
+                place,
+                message: "unknown variable: nope".into(),
+                hints: Vec::new(),
+            })
+            .collect();
+        let e = ApiError::from(CoreError::TemplateCode(diagnostics.clone()));
+        assert_eq!(e.status.as_u16(), 422);
+        assert_eq!(e.body.code, ErrorCode::Validation);
+        assert_eq!(e.body.message, "Ошибка в своём Typst-коде");
+        let fields: Vec<(&str, &str, &str)> = e
+            .body
+            .fields
+            .iter()
+            .map(|f| (f.field.as_str(), f.code.as_str(), f.message.as_str()))
+            .collect();
+        assert_eq!(
+            fields,
+            [
+                ("blocks.3.code", "typst_error", "Ошибка в Typst-коде"),
+                ("template", "typst_error", "Ошибка в Typst-коде"),
+                (
+                    "blocks.0.columns.1.2.code",
+                    "typst_error",
+                    "Ошибка в Typst-коде"
+                ),
+            ]
+        );
+        assert_eq!(e.body.diagnostics, diagnostics);
     }
 }

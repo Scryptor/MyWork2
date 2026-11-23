@@ -62,7 +62,8 @@ const tooLarge = (message: string) =>
 		fields: [{ field: 'file', code: 'too_large', message }],
 		current_version: null,
 		permission: null,
-		retry_after_secs: null
+		retry_after_secs: null,
+		diagnostics: []
 	});
 
 afterEach(() => {

@@ -18,7 +18,8 @@ const validation = (field: string, code: string) =>
 		fields: [{ field, code, message: 'x' }],
 		current_version: null,
 		permission: null,
-		retry_after_secs: null
+		retry_after_secs: null,
+		diagnostics: []
 	});
 
 let api: { [K in keyof CatalogApi]: ReturnType<typeof vi.fn<CatalogApi[K]>> };

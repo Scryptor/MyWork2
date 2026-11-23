@@ -57,7 +57,9 @@ pub async fn apis(listen: Listen) -> Vec<TestApi> {
         let core = Core::open(db, clock.clone(), "UTC")
             .await
             .unwrap()
-            .with_attachments_dir(dir.path().to_path_buf());
+            .with_attachments_dir(dir.path().to_path_buf())
+            // Свой Typst-код в тестах API строится в процессе теста, без процесса-рендерера.
+            .with_code_in_process();
         let router = router(core.clone(), ApiConfig::for_listen_addr(addr));
         out.push(TestApi {
             label,

@@ -7,6 +7,7 @@ use sea_orm::{
     TransactionOptions, TransactionTrait,
 };
 
+use mw_docs::RenderPool;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
@@ -15,6 +16,19 @@ use crate::documents::MAX_CONCURRENT_RENDERS;
 use crate::gate::BlockingGate;
 use crate::settings::{self, AppSettings};
 use crate::{Clock, CoreError};
+
+/// Где строятся шаблоны со своим Typst-кодом (`Template::has_code`).
+#[derive(Clone, Default)]
+pub(crate) enum CodeRenderer {
+    /// Нигде: такие документы не строятся (ядро без сервера).
+    #[default]
+    Missing,
+    /// В процессах-рендерерах пула: бесконечный цикл автора обрывается убийством процесса.
+    Pool(RenderPool),
+    /// В процессе ядра — только в тестах.
+    #[cfg(any(test, feature = "testing"))]
+    InProcess,
+}
 
 /// Приложение: БД, часы и кэш настроек. Дёшево клонируется.
 #[derive(Clone)]
@@ -26,6 +40,8 @@ pub struct Core {
     pub(crate) hash_gate: BlockingGate,
     /// Рендер документов Typst: каждый занимает ЦП и десятки МиБ памяти.
     pub(crate) render_gate: BlockingGate,
+    /// Где строятся шаблоны со своим Typst-кодом.
+    pub(crate) code_renderer: CodeRenderer,
     /// Корень папки данных: файлы вложений лежат в `<корень>/attachments`.
     pub(crate) data_dir: Option<PathBuf>,
     /// Фоновые задачи, которые нельзя бросать при остановке (перенос файлов черновиков, импорт).
@@ -54,6 +70,7 @@ impl Core {
                 "сбой вычисления хэша пароля",
             ),
             render_gate: BlockingGate::new(MAX_CONCURRENT_RENDERS, "сбой построения документа"),
+            code_renderer: CodeRenderer::Missing,
             data_dir: None,
             background: TaskTracker::new(),
             shutdown: CancellationToken::new(),
@@ -64,6 +81,21 @@ impl Core {
     /// Задаёт папку данных; без неё операции с файлами вложений недоступны.
     pub fn with_attachments_dir(mut self, data_dir: PathBuf) -> Core {
         self.data_dir = Some(data_dir);
+        self
+    }
+
+    /// Шаблоны со своим Typst-кодом строятся процессами-рендерерами `pool`
+    /// ([`crate::documents::code_render_pool`]); без пула такие документы не строятся.
+    pub fn with_render_pool(mut self, pool: RenderPool) -> Core {
+        self.code_renderer = CodeRenderer::Pool(pool);
+        self
+    }
+
+    /// Шаблоны со своим Typst-кодом строятся в процессе ядра, без процесса-рендерера. Только для
+    /// тестов: бесконечный цикл автора здесь ничем не оборвать.
+    #[cfg(any(test, feature = "testing"))]
+    pub fn with_code_in_process(mut self) -> Core {
+        self.code_renderer = CodeRenderer::InProcess;
         self
     }
 

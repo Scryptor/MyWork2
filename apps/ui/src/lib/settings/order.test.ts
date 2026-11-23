@@ -9,7 +9,8 @@ const stale = () =>
 		fields: [{ field: 'ordered_ids', code: 'stale', message: 'x' }],
 		current_version: null,
 		permission: null,
-		retry_after_secs: null
+		retry_after_secs: null,
+		diagnostics: []
 	});
 
 const refusal = (status: number, field: string, code: string) =>
@@ -19,7 +20,8 @@ const refusal = (status: number, field: string, code: string) =>
 		fields: [{ field, code, message: 'x' }],
 		current_version: null,
 		permission: null,
-		retry_after_secs: null
+		retry_after_secs: null,
+		diagnostics: []
 	});
 /** The ids of the sent list are not the ids of the server: a mistake of `ordered_ids`, not of rights. */
 const otherIds = () => refusal(422, 'ordered_ids', 'invalid');
@@ -114,7 +116,8 @@ describe('putOrder', () => {
 				fields: [],
 				current_version: null,
 				permission: 'settings_manage',
-				retry_after_secs: null
+				retry_after_secs: null,
+				diagnostics: []
 			}),
 			new ApiError(500, 'internal', 'Сбой', null),
 			new TypeError('Failed to fetch')

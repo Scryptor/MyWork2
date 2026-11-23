@@ -58,7 +58,8 @@ const forbidden = () =>
 		fields: [],
 		current_version: null,
 		permission: 'settings_manage',
-		retry_after_secs: null
+		retry_after_secs: null,
+		diagnostics: []
 	});
 
 beforeEach(() => {

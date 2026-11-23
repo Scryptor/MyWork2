@@ -19,6 +19,8 @@ async fn unknown_paths_and_methods_answer_with_json_errors() {
             "{}",
             t.label
         );
+        // Ошибки своего кода есть в каждом ответе, пустые у всех, кроме ошибки кода.
+        assert_eq!(r.body["diagnostics"], json!([]), "{}", t.label);
         let r = t
             .send(Method::DELETE, "/api/v1/server-info", None, None)
             .await;

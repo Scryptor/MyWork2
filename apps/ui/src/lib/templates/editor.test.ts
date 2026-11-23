@@ -32,7 +32,8 @@ const conflict = () =>
 		fields: [],
 		current_version: 0,
 		permission: null,
-		retry_after_secs: null
+		retry_after_secs: null,
+		diagnostics: []
 	});
 
 /**
@@ -219,7 +220,8 @@ describe('createTemplateEditor', () => {
 			fields: [{ field: 'blocks.2.text', code: 'too_long', message: 'Слишком длинный текст' }],
 			current_version: null,
 			permission: null,
-			retry_after_secs: null
+			retry_after_secs: null,
+			diagnostics: []
 		});
 		server.api.saveTemplate.mockRejectedValueOnce(refused);
 		const ed = createTemplateEditor(server.current, { api: server.api });
@@ -393,7 +395,8 @@ describe('templateErrors', () => {
 			],
 			current_version: null,
 			permission: null,
-			retry_after_secs: null
+			retry_after_secs: null,
+			diagnostics: []
 		});
 		expect(templateErrors(e, STANDARD)).toEqual([
 			'Текст · Акт приёма по гарантии: Слишком длинный текст',

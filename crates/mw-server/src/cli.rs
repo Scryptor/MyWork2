@@ -126,6 +126,8 @@ impl Cli {
             database_url: self.database_url.clone(),
             timezone: self.timezone.clone(),
             ui_dir: self.ui_dir.clone(),
+            // Процесс-рендерер — эта же программа с аргументом `RENDER_WORKER_ARG`.
+            render_worker: exe,
         })
     }
 }

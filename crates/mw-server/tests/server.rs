@@ -51,6 +51,7 @@ fn config(dir: PathBuf) -> Config {
         database_url: None,
         timezone: Some("UTC".into()),
         ui_dir: None,
+        render_worker: None,
     }
 }
 
