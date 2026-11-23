@@ -46,6 +46,32 @@ describe('inTypstCode', () => {
 		expect(inTypstCode('#if data.blank { ')).toBe(true);
 		expect(inTypstCode('#{ let a = (1, ')).toBe(true);
 	});
+	it('is code in every branch of per-copy code, as «Свой Typst-код» writes it', () => {
+		// `block_code` of crates/mw-docs/src/typst_gen/code.rs.
+		const service = '#if copy == "service" {\n  text[a]\n';
+		const client = `${service}} else if copy == "client" {\n  text[b]\n`;
+		const single = `${client}} else {\n  text[c]\n`;
+		expect(inTypstCode(service)).toBe(true);
+		expect(inTypstCode(client)).toBe(true);
+		expect(inTypstCode(single)).toBe(true);
+		expect(inTypstCode(`${single}}\n`)).toBe(false);
+		expect(inTypstCode('#if a [\n  x\n] else {\n')).toBe(true);
+	});
+	it('is code after #context and #return, and after a name of any letters', () => {
+		expect(inTypstCode('#context {\n')).toBe(true);
+		expect(inTypstCode('#context (')).toBe(true);
+		expect(inTypstCode('#return (')).toBe(true);
+		expect(inTypstCode('#моя(')).toBe(true);
+		expect(inTypstCode('#моя.функция_2(')).toBe(true);
+	});
+	it('takes a bracket after a closed #set rule for text', () => {
+		expect(inTypstCode('#set text(size: 8pt)\nЦена (руб.: ')).toBe(false);
+		expect(inTypstCode('#set text(size: 8pt) Цена (руб.: ')).toBe(false);
+		expect(inTypstCode('#set text(')).toBe(true);
+		expect(inTypstCode('#set text(fill: rgb(')).toBe(true);
+		expect(inTypstCode('#set par(justify: true) if data.blank {')).toBe(true);
+		expect(inTypstCode('Цена } else ( ')).toBe(false);
+	});
 	it('does not count brackets in strings and comments', () => {
 		expect(inTypstCode('#v("{(") ')).toBe(false);
 		expect(inTypstCode('#{ "}" + ')).toBe(true);
