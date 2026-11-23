@@ -5083,6 +5083,9 @@
           "firm_phone",
           "firm_details",
           "firm_legal_details",
+          "firm_telegram",
+          "firm_google_maps",
+          "firm_yandex_maps",
           "intake_terms",
           "issue_terms",
           "timezone",
@@ -5123,6 +5126,10 @@
             "type": "string",
             "description": "Данные фирмы (адрес, часы работы)."
           },
+          "firm_google_maps": {
+            "type": "string",
+            "description": "Ссылка на фирму на Google Картах (пусто или `http://`/`https://`)."
+          },
           "firm_legal_details": {
             "type": "string",
             "description": "Реквизиты фирмы."
@@ -5134,6 +5141,14 @@
           "firm_phone": {
             "type": "string",
             "description": "Телефон фирмы."
+          },
+          "firm_telegram": {
+            "type": "string",
+            "description": "Ссылка на Telegram фирмы (пусто или `http://`/`https://`)."
+          },
+          "firm_yandex_maps": {
+            "type": "string",
+            "description": "Ссылка на фирму на Яндекс Картах (пусто или `http://`/`https://`)."
           },
           "intake_required_fields": {
             "type": "boolean",
@@ -8518,6 +8533,10 @@
             "type": "string",
             "description": "Данные фирмы (адрес, часы работы)."
           },
+          "firm_google_maps": {
+            "type": "string",
+            "description": "Ссылка на фирму на Google Картах (пусто или `http://`/`https://`)."
+          },
           "firm_legal_details": {
             "type": "string",
             "description": "Реквизиты фирмы."
@@ -8529,6 +8548,14 @@
           "firm_phone": {
             "type": "string",
             "description": "Телефон фирмы."
+          },
+          "firm_telegram": {
+            "type": "string",
+            "description": "Ссылка на Telegram фирмы (пусто или `http://`/`https://`)."
+          },
+          "firm_yandex_maps": {
+            "type": "string",
+            "description": "Ссылка на фирму на Яндекс Картах (пусто или `http://`/`https://`)."
           },
           "intake_required_fields": {
             "type": "boolean",

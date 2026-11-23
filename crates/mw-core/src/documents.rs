@@ -679,6 +679,9 @@ fn firm_values(settings: &AppSettings, point: &str) -> BTreeMap<String, String> 
         ("firm.details", plain_text(&settings.firm_details)),
         ("firm.legal", plain_text(&settings.firm_legal_details)),
         ("firm.intake_terms", plain_text(&settings.intake_terms)),
+        ("firm.telegram", settings.firm_telegram.clone()),
+        ("firm.google_maps", settings.firm_google_maps.clone()),
+        ("firm.yandex_maps", settings.firm_yandex_maps.clone()),
         ("firm.issue_terms", plain_text(&settings.issue_terms)),
         ("point.name", point.to_owned()),
     ]
@@ -1170,6 +1173,9 @@ mod tests {
                 firm_phone: Some("+7 900 000-00-01".into()),
                 firm_details: Some("ул. Мастеров, 5".into()),
                 firm_legal_details: Some("ИНН 000000000000".into()),
+                firm_telegram: Some("https://t.me/example_service".into()),
+                firm_google_maps: Some("https://maps.google.com/?q=example".into()),
+                firm_yandex_maps: Some("https://yandex.ru/maps/?text=example".into()),
                 intake_terms: Some("Принято на диагностику.".into()),
                 issue_terms: Some("Претензий нет.".into()),
                 ..Default::default()
@@ -1249,6 +1255,15 @@ mod tests {
                 ("client.phone", "+7 900 000-00-00".into()),
                 ("client.phones", "+7 900 000-00-00, 20-00-00".into()),
                 ("firm.legal", "ИНН 000000000000".into()),
+                ("firm.telegram", "https://t.me/example_service".into()),
+                (
+                    "firm.google_maps",
+                    "https://maps.google.com/?q=example".into(),
+                ),
+                (
+                    "firm.yandex_maps",
+                    "https://yandex.ru/maps/?text=example".into(),
+                ),
                 ("point.name", "Центральная".into()),
                 ("doc.date", "22 ноября 2026".into()),
             ] {

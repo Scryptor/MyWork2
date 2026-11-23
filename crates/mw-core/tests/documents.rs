@@ -1347,3 +1347,44 @@ async fn saved_code_failing_only_in_pdf_prints_the_standard() -> Result<(), Core
     }
     Ok(())
 }
+
+/// Ссылки фирмы печатаются текстом; пустая настройка — пустое место.
+#[tokio::test]
+async fn firm_links_print_as_text() -> Result<(), CoreError> {
+    use mw_domain::document_template::{Align, Block, BlockBody, CopyFilter};
+    for t in cores().await {
+        t.core
+            .update_settings(
+                &admin(),
+                SettingsPatch {
+                    firm_telegram: Some("https://t.me/example_service".into()),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        let mut template = mw_docs::standard_template(DocumentKind::IntakeAct);
+        template.blocks = vec![Block {
+            copies: CopyFilter::Both,
+            body: BlockBody::Text {
+                text: "TG={фирма.телеграм}; YA={ФИРМА.ЯНДЕКС_КАРТЫ}.".into(),
+                size_pt: None,
+                bold: false,
+                align: Align::Left,
+                one_line: false,
+            },
+        }];
+        let order = t.core.create_order(&admin(), sample_new_order()).await?;
+        let req = DocumentRequest {
+            sample: false,
+            order_id: Some(order.id),
+            ..draft_request(template)
+        };
+        let out = text(&t, req).await;
+        assert!(
+            out.contains("TG=https://t.me/example_service; YA=."),
+            "{}: {out:?}",
+            t.label
+        );
+    }
+    Ok(())
+}

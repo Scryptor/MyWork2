@@ -469,7 +469,7 @@ async fn import_replaces_kind() -> Result<(), CoreError> {
 async fn fields_are_listed() {
     for t in cores().await {
         let fields = t.core.document_fields();
-        assert_eq!(fields.len(), 33, "{}", t.label);
+        assert_eq!(fields.len(), 36, "{}", t.label);
         assert_eq!(fields[0].placeholder, "заказ.номер");
         assert_eq!(fields[0].key, "order.number");
         assert_eq!(fields[0].label, "Номер заказа");

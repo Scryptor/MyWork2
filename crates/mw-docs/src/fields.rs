@@ -34,7 +34,10 @@ const fn field(
 
 const NOT_SET: &str = "Не указан";
 
-static FIELDS: [FieldDef; 33] = [
+/// Keys of the firm-link fields, in the order of the menu.
+pub const FIRM_LINKS: [&str; 3] = ["firm.telegram", "firm.google_maps", "firm.yandex_maps"];
+
+static FIELDS: [FieldDef; 36] = [
     field("order.number", "заказ.номер", "Номер заказа", "1234", ""),
     field(
         "order.barcode",
@@ -197,6 +200,27 @@ static FIELDS: [FieldDef; 33] = [
         "",
     ),
     field(
+        "firm.telegram",
+        "фирма.телеграм",
+        "Telegram фирмы",
+        "https://t.me/example_service",
+        "",
+    ),
+    field(
+        "firm.google_maps",
+        "фирма.гугл_карты",
+        "Фирма на Google Картах",
+        "https://maps.google.com/?q=example",
+        "",
+    ),
+    field(
+        "firm.yandex_maps",
+        "фирма.яндекс_карты",
+        "Фирма на Яндекс Картах",
+        "https://yandex.ru/maps/?text=example",
+        "",
+    ),
+    field(
         "firm.intake_terms",
         "фирма.договор_приёма",
         "Условия приёма (договор)",
@@ -271,6 +295,36 @@ mod tests {
         assert_eq!(key("ЗАКАЗ.ДАТА_ПРИЁМА"), Some("order.received"));
         assert_eq!(key("заказ.нет_такого"), None);
         assert_eq!(key("order.number"), None);
+    }
+
+    #[test]
+    fn firm_links_follow_legal_details() {
+        let key = |name| field_by_placeholder(name).map(|f| f.key);
+        assert_eq!(key("фирма.телеграм"), Some("firm.telegram"));
+        assert_eq!(key("фирма.гугл_карты"), Some("firm.google_maps"));
+        assert_eq!(key("Фирма.Яндекс_Карты"), Some("firm.yandex_maps"));
+        assert_eq!(FIELDS.len(), 36);
+        let at = FIELDS.iter().position(|f| f.key == "firm.legal").unwrap();
+        let next: Vec<_> = FIELDS[at + 1..at + 4].iter().map(|f| f.key).collect();
+        assert_eq!(next, FIRM_LINKS);
+        let sample = |k| {
+            FIELDS
+                .iter()
+                .find(|f| f.key == k)
+                .map(|f| (f.sample, f.empty))
+        };
+        assert_eq!(
+            sample("firm.telegram"),
+            Some(("https://t.me/example_service", ""))
+        );
+        assert_eq!(
+            sample("firm.google_maps"),
+            Some(("https://maps.google.com/?q=example", ""))
+        );
+        assert_eq!(
+            sample("firm.yandex_maps"),
+            Some(("https://yandex.ru/maps/?text=example", ""))
+        );
     }
 
     #[test]

@@ -43,6 +43,9 @@ const SETTINGS: AppSettings = {
 	firm_phone: '',
 	firm_details: '',
 	firm_legal_details: '',
+	firm_telegram: '',
+	firm_google_maps: '',
+	firm_yandex_maps: '',
 	intake_terms: '',
 	issue_terms: '',
 	timezone: 'UTC'

@@ -350,3 +350,65 @@ async fn issue_required_is_a_set_in_enum_order() -> Result<(), CoreError> {
     }
     Ok(())
 }
+
+#[tokio::test]
+async fn firm_links_are_validated_trimmed_and_audited() -> Result<(), CoreError> {
+    for t in cores().await {
+        let one = |f: &dyn Fn(&mut SettingsPatch)| {
+            let mut p = SettingsPatch::default();
+            f(&mut p);
+            p
+        };
+        let s = t
+            .core
+            .update_settings(
+                &admin(),
+                one(&|p| p.firm_telegram = Some("  https://t.me/example_service ".into())),
+            )
+            .await?;
+        assert_eq!(
+            s.firm_telegram, "https://t.me/example_service",
+            "{}",
+            t.label
+        );
+        assert_eq!(count_audit(&t.core, "settings.updated").await, 1);
+        // Та же ссылка — не правка.
+        t.core
+            .update_settings(
+                &admin(),
+                one(&|p| p.firm_telegram = Some("https://t.me/example_service".into())),
+            )
+            .await?;
+        assert_eq!(count_audit(&t.core, "settings.updated").await, 1);
+        for bad in [
+            "t.me/servis",
+            "@servis",
+            "https://t.me/a b",
+            "ftp://example.com",
+        ] {
+            assert_validation(
+                t.core
+                    .update_settings(&admin(), one(&|p| p.firm_google_maps = Some(bad.into())))
+                    .await,
+                &[("firm_google_maps", "not_a_link")],
+            );
+        }
+        let long = format!("https://example.com/{}", "a".repeat(500));
+        assert_validation(
+            t.core
+                .update_settings(&admin(), one(&|p| p.firm_yandex_maps = Some(long.clone())))
+                .await,
+            &[("firm_yandex_maps", "too_long")],
+        );
+        t.core
+            .update_settings(&admin(), one(&|p| p.firm_yandex_maps = Some(String::new())))
+            .await?;
+        t.core
+            .update_settings(
+                &admin(),
+                one(&|p| p.firm_telegram = Some("HTTPS://t.me/x".into())),
+            )
+            .await?;
+    }
+    Ok(())
+}

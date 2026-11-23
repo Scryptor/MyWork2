@@ -56,6 +56,18 @@ firm_details: string,
  */
 firm_legal_details: string, 
 /**
+ * Ссылка на Telegram фирмы (пусто или `http://`/`https://`).
+ */
+firm_telegram: string, 
+/**
+ * Ссылка на фирму на Google Картах (пусто или `http://`/`https://`).
+ */
+firm_google_maps: string, 
+/**
+ * Ссылка на фирму на Яндекс Картах (пусто или `http://`/`https://`).
+ */
+firm_yandex_maps: string, 
+/**
  * Условия приёма (текст акта приёма).
  */
 intake_terms: string, 
