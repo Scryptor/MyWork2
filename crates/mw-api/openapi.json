@@ -5510,6 +5510,38 @@
           },
           {
             "type": "object",
+            "description": "A QR code of `link`, text with substitutions: the values put in and the spaces at its ends\ntrimmed. `size_mm` is the side of the code, narrowed to the width of the column; `caption`\n(text with substitutions) is printed under it, centred. Nothing, and no space, when the link\nis empty, when any substitution in it is empty, or when it does not fit a QR code.",
+            "required": [
+              "link",
+              "size_mm",
+              "caption",
+              "align",
+              "type"
+            ],
+            "properties": {
+              "align": {
+                "$ref": "#/components/schemas/Align"
+              },
+              "caption": {
+                "type": "string"
+              },
+              "link": {
+                "type": "string"
+              },
+              "size_mm": {
+                "type": "number",
+                "format": "float"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "qr"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "Two signature lines side by side, each after its caption.",
             "required": [
               "left",
@@ -5649,7 +5681,7 @@
             }
           }
         ],
-        "description": "Text in `Text`, `FieldRow::value` and `Signatures` may contain substitutions such as `{заказ.номер}`\n(список — в модуле `fields` крейта `mw-docs`); an unknown one is printed as written."
+        "description": "Text in `Text`, `FieldRow::value`, `Signatures` and `Qr` may contain substitutions such as\n`{заказ.номер}` (список — в модуле `fields` крейта `mw-docs`); an unknown one is printed as written."
       },
       "BlockCode": {
         "type": "object",

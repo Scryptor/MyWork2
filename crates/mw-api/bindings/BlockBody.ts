@@ -4,8 +4,8 @@ import type { Block } from "./Block";
 import type { FieldRow } from "./FieldRow";
 
 /**
- * Text in `Text`, `FieldRow::value` and `Signatures` may contain substitutions such as `{заказ.номер}`
- * (список — в модуле `fields` крейта `mw-docs`); an unknown one is printed as written.
+ * Text in `Text`, `FieldRow::value`, `Signatures` and `Qr` may contain substitutions such as
+ * `{заказ.номер}` (список — в модуле `fields` крейта `mw-docs`); an unknown one is printed as written.
  */
 export type BlockBody = { "type": "text", text: string, 
 /**
@@ -35,4 +35,4 @@ fill: boolean,
  * The module grows until the code fills the width of the column (with DPI by whole printer
  * dots); never below the nominal 0.33 mm, except on a narrow label, where it shrinks as usual.
  */
-stretch: boolean, } | { "type": "logo", width_mm: number, height_mm: number, align: Align, } | { "type": "signatures", left: string, right: string, } | { "type": "separator", } | { "type": "spacer", mm: number, } | { "type": "columns", columns: Array<Array<Block>>, gap_mm: number, } | { "type": "copy_label", align: Align, } | { "type": "calibration_marks", } | { "type": "typst_code", code: string, };
+stretch: boolean, } | { "type": "logo", width_mm: number, height_mm: number, align: Align, } | { "type": "qr", link: string, size_mm: number, caption: string, align: Align, } | { "type": "signatures", left: string, right: string, } | { "type": "separator", } | { "type": "spacer", mm: number, } | { "type": "columns", columns: Array<Array<Block>>, gap_mm: number, } | { "type": "copy_label", align: Align, } | { "type": "calibration_marks", } | { "type": "typst_code", code: string, };

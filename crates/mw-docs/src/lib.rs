@@ -16,6 +16,7 @@ mod job;
 mod layout_tests;
 pub mod model;
 mod pool;
+mod qr;
 mod render;
 mod standard;
 mod typst_gen;

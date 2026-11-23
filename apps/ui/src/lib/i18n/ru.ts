@@ -1879,6 +1879,7 @@ export const ru = {
 			fields: 'Поля',
 			barcode: 'Штрихкод',
 			logo: 'Логотип',
+			qr: 'QR-код',
 			signatures: 'Подписи',
 			separator: 'Разделитель',
 			spacer: 'Отступ',

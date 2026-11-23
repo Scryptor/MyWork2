@@ -101,8 +101,8 @@ fn align_right() -> Align {
     Align::Right
 }
 
-/// Text in `Text`, `FieldRow::value` and `Signatures` may contain substitutions such as `{заказ.номер}`
-/// (список — в модуле `fields` крейта `mw-docs`); an unknown one is printed as written.
+/// Text in `Text`, `FieldRow::value`, `Signatures` and `Qr` may contain substitutions such as
+/// `{заказ.номер}` (список — в модуле `fields` крейта `mw-docs`); an unknown one is printed as written.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, ToSchema)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum BlockBody {
@@ -144,6 +144,16 @@ pub enum BlockBody {
     Logo {
         width_mm: f32,
         height_mm: f32,
+        align: Align,
+    },
+    /// A QR code of `link`, text with substitutions: the values put in and the spaces at its ends
+    /// trimmed. `size_mm` is the side of the code, narrowed to the width of the column; `caption`
+    /// (text with substitutions) is printed under it, centred. Nothing, and no space, when the link
+    /// is empty, when any substitution in it is empty, or when it does not fit a QR code.
+    Qr {
+        link: String,
+        size_mm: f32,
+        caption: String,
         align: Align,
     },
     /// Two signature lines side by side, each after its caption.
@@ -206,7 +216,7 @@ pub struct FieldRow {
 }
 
 pub const TEMPLATE_FILE_FORMAT: &str = "mwtemplate";
-pub const TEMPLATE_FILE_VERSION: u32 = 3;
+pub const TEMPLATE_FILE_VERSION: u32 = 4;
 pub const TEMPLATE_FILE_MAX_BYTES: usize = 1_048_576;
 
 const MAX_BLOCKS: usize = 200;
@@ -215,8 +225,10 @@ const MAX_ROWS: usize = 50;
 const MAX_LABEL_CHARS: usize = 200;
 const MAX_VALUE_CHARS: usize = 2_000;
 const MAX_CAPTION_CHARS: usize = 200;
-/// Все тексты шаблона вместе: подписи, значения, тексты блоков и подписи для подписей. Не даёт
-/// собрать шаблон, который печатается тысячами страниц.
+/// Ссылка QR-блока, как она написана в шаблоне (с подстановками).
+const MAX_QR_LINK_CHARS: usize = 500;
+/// Все тексты шаблона вместе: подписи, значения, тексты блоков, подписи для подписей и подписи
+/// QR-кодов (ссылки не печатаются текстом). Не даёт собрать шаблон, который печатается тысячами страниц.
 const MAX_TEMPLATE_TEXT_CHARS: usize = 20_000;
 /// Typst-код одного блока.
 const MAX_CODE_CHARS: usize = 20_000;
@@ -261,6 +273,7 @@ fn text_chars(blocks: &[Block]) -> usize {
             BlockBody::Text { text, .. } => n(text),
             BlockBody::Fields { rows } => rows.iter().map(|r| n(&r.label) + n(&r.value)).sum(),
             BlockBody::Signatures { left, right } => n(left) + n(right),
+            BlockBody::Qr { caption, .. } => n(caption),
             BlockBody::Columns { columns, .. } => columns.iter().map(|c| text_chars(c)).sum(),
             _ => 0,
         })
@@ -425,6 +438,16 @@ impl Template {
                 } => {
                     check_range(errors, format!("{at}.width_mm"), *width_mm, 5.0, 200.0);
                     check_range(errors, format!("{at}.height_mm"), *height_mm, 5.0, 100.0);
+                }
+                BlockBody::Qr {
+                    link,
+                    size_mm,
+                    caption,
+                    ..
+                } => {
+                    check_range(errors, format!("{at}.size_mm"), *size_mm, 10.0, 100.0);
+                    check_len(errors, format!("{at}.link"), link, MAX_QR_LINK_CHARS);
+                    check_len(errors, format!("{at}.caption"), caption, MAX_CAPTION_CHARS);
                 }
                 BlockBody::Signatures { left, right } => {
                     check_len(errors, format!("{at}.left"), left, MAX_CAPTION_CHARS);
@@ -732,7 +755,7 @@ mod tests {
             pair("format_version", "unsupported")
         );
         assert_eq!(
-            code(&file("mwtemplate", 4, &t)),
+            code(&file("mwtemplate", 5, &t)),
             pair("format_version", "unsupported")
         );
         assert_eq!(code("{"), pair("file", "invalid"));
@@ -899,7 +922,7 @@ mod tests {
         v["format_version"] = "1".into();
         assert_eq!(code(v), pair("format", "invalid"));
         let mut v = ok;
-        v["format_version"] = 4.into();
+        v["format_version"] = 5.into();
         assert_eq!(code(v), pair("format_version", "unsupported"));
     }
 
@@ -993,21 +1016,33 @@ mod tests {
     }
 
     #[test]
-    fn file_version_3() {
+    fn file_version_4() {
         let mut t = base(DocumentKind::IntakeAct);
-        t.blocks = vec![code_block(5)];
-        for v in [1, 2, 3] {
+        t.blocks = vec![
+            code_block(5),
+            qr(20.0, "{фирма.телеграм}".into(), String::new()),
+        ];
+        for v in [1, 2, 3, 4] {
             assert!(
                 TemplateFile::parse(&file("mwtemplate", v, &t), DocumentKind::IntakeAct).is_ok()
             );
         }
         let e =
-            TemplateFile::parse(&file("mwtemplate", 4, &t), DocumentKind::IntakeAct).unwrap_err();
+            TemplateFile::parse(&file("mwtemplate", 5, &t), DocumentKind::IntakeAct).unwrap_err();
         assert_eq!(
             (e[0].field.as_str(), e[0].code.as_str()),
             ("format_version", "unsupported")
         );
-        assert_eq!(TemplateFile::new(t).format_version, 3);
+        assert_eq!(TemplateFile::new(t).format_version, 4);
+    }
+
+    #[test]
+    fn version_3_file_without_qr_still_reads() {
+        let mut t = base(DocumentKind::IntakeAct);
+        t.blocks = vec![text("a".into(), None), barcode(false), code_block(5)];
+        let parsed =
+            TemplateFile::parse(&file("mwtemplate", 3, &t), DocumentKind::IntakeAct).unwrap();
+        assert_eq!(parsed.blocks, t.blocks);
     }
 
     #[test]
@@ -1017,7 +1052,7 @@ mod tests {
         let parsed =
             TemplateFile::parse(&file("mwtemplate", 1, &t), DocumentKind::IntakeAct).unwrap();
         assert_eq!(parsed.blocks, t.blocks);
-        assert_eq!(TEMPLATE_FILE_VERSION, 3);
+        assert_eq!(TEMPLATE_FILE_VERSION, 4);
     }
 
     #[test]
@@ -1032,6 +1067,79 @@ mod tests {
             serde_json::from_value::<BlockBody>(json).unwrap(),
             block.body
         );
+    }
+
+    fn qr(size_mm: f32, link: String, caption: String) -> Block {
+        Block {
+            copies: CopyFilter::Both,
+            body: BlockBody::Qr {
+                link,
+                size_mm,
+                caption,
+                align: Align::Center,
+            },
+        }
+    }
+
+    #[test]
+    fn qr_round_trips_as_json() {
+        let json =
+            r#"{"type":"qr","link":"{фирма.телеграм}","size_mm":20,"caption":"","align":"center"}"#;
+        let body: BlockBody = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            body,
+            BlockBody::Qr {
+                link: "{фирма.телеграм}".into(),
+                size_mm: 20.0,
+                caption: String::new(),
+                align: Align::Center,
+            }
+        );
+        // The same JSON, the size written as a float.
+        assert_eq!(
+            serde_json::to_string(&body).unwrap(),
+            json.replace("\"size_mm\":20", "\"size_mm\":20.0")
+        );
+        let extra = r#"{"type":"qr","link":"","size_mm":20,"caption":"","align":"center","x":1}"#;
+        assert!(serde_json::from_str::<BlockBody>(extra).is_err());
+    }
+
+    #[test]
+    fn qr_block_limits() {
+        let mut t = base(DocumentKind::IntakeAct);
+        let link = || "{фирма.телеграм}".to_owned();
+        t.blocks = vec![
+            qr(10.0, link(), String::new()),
+            qr(100.0, link(), String::new()),
+        ];
+        assert_eq!(t.validate(), Ok(()));
+        for size in [9.9, 100.1, f32::NAN] {
+            t.blocks = vec![qr(size, link(), String::new())];
+            assert_eq!(errs(&t), [pair("blocks.0.size_mm", "out_of_range")]);
+            t.blocks = vec![columns(vec![vec![], vec![qr(size, link(), String::new())]])];
+            assert_eq!(
+                errs(&t),
+                [pair("blocks.0.columns.1.0.size_mm", "out_of_range")]
+            );
+        }
+        t.blocks = vec![qr(20.0, "ж".repeat(500), "я".repeat(200))];
+        assert_eq!(t.validate(), Ok(()));
+        t.blocks = vec![qr(20.0, "ж".repeat(501), String::new())];
+        assert_eq!(errs(&t), [pair("blocks.0.link", "too_long")]);
+        t.blocks = vec![qr(20.0, link(), "я".repeat(201))];
+        assert_eq!(errs(&t), [pair("blocks.0.caption", "too_long")]);
+    }
+
+    #[test]
+    fn qr_caption_counts_in_the_text_budget() {
+        let mut t = base(DocumentKind::IntakeAct);
+        t.blocks = (0..100)
+            .map(|_| qr(20.0, "{фирма.телеграм}".into(), "я".repeat(200)))
+            .collect();
+        // 100 × 200 = 20 000: the whole budget; the links are not in it.
+        assert_eq!(t.validate(), Ok(()));
+        t.blocks.push(text("ж".into(), None));
+        assert_eq!(errs(&t), [pair("blocks", "text_budget")]);
     }
 
     #[test]

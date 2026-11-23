@@ -23,6 +23,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 # `memmap`: the book of fonts is built from the mapped file (`with_face_data`), not from a second read.
 fontdb = { version = "0.23", default-features = false, features = ["std", "fs", "memmap"] }
+qrcode = { version = "0.15", default-features = false, features = ["std"] }
 tracing = { workspace = true }
 
 [dev-dependencies]
@@ -30,3 +31,4 @@ mw-docs = { path = ".", features = ["testing"] }
 tempfile = { workspace = true }
 image = { workspace = true }
 typst-assets = { version = "0.15.1", features = ["fonts"] }
+rqrr = { version = "0.11", default-features = false }

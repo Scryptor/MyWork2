@@ -8,6 +8,7 @@ use crate::model::{Align, Block, BlockBody, CopyFilter, FieldRow, Layout, Templa
 use super::RenderOptions;
 use super::code::CodeBlocks;
 use super::page::{CopyRole, Page, decimal, mm, pt};
+use super::qr::qr_name;
 use super::text::{Piece, TextMode, literal_expr, pieces, text_expr, typst_str};
 
 /// Size of the barcode digits per millimetre of module width (0.33 mm → 7.9 pt), within
@@ -288,6 +289,34 @@ impl Generator {
                      let k = calc.min({width} / natural.width, {height} / natural.height); \
                      align({align} + top, image(\"logo.png\", width: natural.width * k)) }}))) }}",
                     align = align_name(*align),
+                );
+            }
+            BlockBody::Qr {
+                link,
+                size_mm,
+                caption,
+                align,
+            } => {
+                // The side is counted here, in mm: a column narrower than it shrinks the code.
+                let side = mm(f64::from(*size_mm).min(width_mm).max(0.0));
+                let name = qr_name(link, path);
+                let image = format!(
+                    "image({}, width: {side})",
+                    typst_str(&format!("qr-{name}.svg"))
+                );
+                let content = if caption.trim().is_empty() {
+                    image
+                } else {
+                    format!(
+                        "stack(spacing: 1mm, {image}, align(center, text(size: 0.85em, {})))",
+                        text_expr(caption, TextMode::ShortLine)
+                    )
+                };
+                let _ = write!(
+                    out,
+                    "if {} in data.qr {{ block(width: 100%, align({}, block(width: {side}, {content}))) }}",
+                    typst_str(&name),
+                    align_name(*align),
                 );
             }
             BlockBody::Signatures { left, right } => {

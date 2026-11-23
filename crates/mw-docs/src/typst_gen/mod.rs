@@ -6,6 +6,7 @@
 mod blocks;
 mod code;
 mod page;
+mod qr;
 mod text;
 
 use std::collections::BTreeMap;
@@ -24,6 +25,7 @@ use crate::render::{DocsError, Rendered, compile};
 use blocks::Generator;
 use code::CodeBlocks;
 use page::{body, mm, pt};
+use qr::qr_files;
 use text::typst_str;
 
 pub(crate) use code::CodeSources;
@@ -97,12 +99,16 @@ pub(crate) fn render_with_logo(
     // Likewise `logo` in `data.json` is set exactly when `logo.png` exists. The author's code may
     // show it too.
     let logo = logo.filter(|_| has_logo_block(&template.blocks) || template.has_code());
+    // And a name is in `qr` exactly when `qr-<name>.svg` exists; the link is only in the file.
+    let qr = qr_files(template, &data.values);
+    let qr_names: Vec<&str> = qr.iter().map(|(name, _)| name.as_str()).collect();
     let mut files = vec![(
         "data.json".to_owned(),
         data_json(
             data,
             barcode.as_ref().map(|(code, _)| *code),
             logo.is_some(),
+            &qr_names,
         ),
     )];
     if let Some(png) = logo {
@@ -111,11 +117,14 @@ pub(crate) fn render_with_logo(
     if let Some((_, svg)) = barcode {
         files.push(("barcode.svg".to_owned(), svg.into_bytes()));
     }
+    for (name, svg) in qr {
+        files.push((format!("qr-{name}.svg"), svg.into_bytes()));
+    }
     let (main, code) = typst_source(template, opts, shape);
     compile(main, code, files, fonts)
 }
 
-fn data_json(data: &DocumentData, barcode: Option<&str>, logo: bool) -> Vec<u8> {
+fn data_json(data: &DocumentData, barcode: Option<&str>, logo: bool, qr: &[&str]) -> Vec<u8> {
     let values: Map<String, Value> = data
         .values
         .iter()
@@ -131,6 +140,14 @@ fn data_json(data: &DocumentData, barcode: Option<&str>, logo: bool) -> Vec<u8> 
         barcode.map_or(Value::Null, |code| Value::String(code.to_owned())),
     );
     root.insert("logo".to_owned(), Value::Bool(logo));
+    root.insert(
+        "qr".to_owned(),
+        Value::Array(
+            qr.iter()
+                .map(|name| Value::String((*name).to_owned()))
+                .collect(),
+        ),
+    );
     root.insert("blank".to_owned(), Value::Bool(data.blank));
     Value::Object(root).to_string().into_bytes()
 }
@@ -152,7 +169,8 @@ fn has_logo_block(blocks: &[Block]) -> bool {
 /// text. `v1(key)`: the same in one line, with a short line. `one-line(where, body)`: `body` without
 /// wrapping; a string that is too long is cut to the longest start (by grapheme clusters, found by
 /// bisection) that fits together with «…» (U+2026); other content is cut off at the right edge (the
-/// outset keeps accents and descenders inside the clip).
+/// outset keeps accents and descenders inside the clip). `qr-image(name, width)`: the QR code named
+/// `name` (see [`qr::qr_name`]) `width` wide; nothing when the document has none.
 const PRELUDE: &str = r#"#set par(leading: 0.5em, spacing: 0.8em)
 #set block(spacing: 0.8em)
 #let vspace = v
@@ -183,6 +201,7 @@ const PRELUDE: &str = r#"#set par(leading: 0.5em, spacing: 0.8em)
     line(align(where, clusters.slice(0, fit).join(default: "").trim(at: end) + "…"))
   } else { line(box(width: width + 1pt, body)) }
 })
+#let qr-image(name, width) = if name in data.qr { image("qr-" + name + ".svg", width: width) }
 "#;
 
 /// Typst source of `template`. It never contains document data, so it is the same for every order of
