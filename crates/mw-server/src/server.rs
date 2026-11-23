@@ -93,7 +93,7 @@ impl Server {
         Ok(server)
     }
 
-    /// То же на уже подключённой базе (тесты, десктоп).
+    /// То же на уже подключённой базе (тесты).
     pub async fn start_with_db(
         config: &Config,
         db: DatabaseConnection,
