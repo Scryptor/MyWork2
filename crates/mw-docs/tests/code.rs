@@ -8,7 +8,8 @@ use mw_docs::model::{
     PageSize, Template,
 };
 use mw_docs::{
-    DocsError, DocumentData, RenderOptions, Rendered, render, standard_template, to_typst,
+    DocsError, DocumentData, RenderOptions, Rendered, render, sample_data, standard_template,
+    to_typst,
 };
 use mw_domain::documents::DocumentKind;
 
@@ -319,4 +320,47 @@ fn template_without_code_is_unchanged() {
         assert!(!source.contains("/mw.typ"), "{kind:?}");
         assert!(!source.contains("include"), "{kind:?}");
     }
+}
+
+/// Every code found on a PNG page, decoded and sorted.
+#[allow(clippy::expect_used)]
+fn decode_all(png: &[u8]) -> Vec<String> {
+    let page = image::load_from_memory(png).expect("png").to_luma_alpha8();
+    let (w, h) = (page.width() as usize, page.height() as usize);
+    let mut image = rqrr::PreparedImage::prepare_from_greyscale(w, h, |x, y| {
+        let [luma, alpha] = page.get_pixel(x as u32, y as u32).0;
+        let ink = (255 - u16::from(luma)) * u16::from(alpha) / 255;
+        (255 - ink) as u8
+    });
+    let mut found: Vec<String> = image
+        .detect_grids()
+        .iter()
+        .map(|grid| grid.decode().expect("decodes").1)
+        .collect();
+    found.sort();
+    found
+}
+
+#[test]
+fn code_prints_firm_link_qr() {
+    let t = template(
+        Layout::OnePerPage,
+        vec![code(r#"#qr-image("firm.telegram", 25mm)"#)],
+    );
+    let data = sample_data(DocumentKind::IntakeAct);
+    let png = rendered(&t, &data).png_pages(300).expect("png");
+    assert_eq!(decode_all(&png[0]), ["https://t.me/example_service"]);
+}
+
+#[test]
+fn code_with_empty_firm_link_prints_nothing() {
+    let t = template(
+        Layout::OnePerPage,
+        vec![code(r#"#qr-image("firm.telegram", 25mm)"#)],
+    );
+    let mut data = sample_data(DocumentKind::IntakeAct);
+    data.values
+        .insert("firm.telegram".to_owned(), String::new());
+    let png = rendered(&t, &data).png_pages(300).expect("png");
+    assert!(decode_all(&png[0]).is_empty());
 }

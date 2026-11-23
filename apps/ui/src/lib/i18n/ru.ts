@@ -1949,7 +1949,7 @@ export const ru = {
 		insertFieldSearch: 'Поле',
 		code: 'Typst-код',
 		codeHelp:
-			'Код Typst на месте блока. Доступны: v("order.number") и v1(…) — значения полей, data.values — все значения, copy — "service", "client" или "single", vspace(…) — отступ, image("logo.png"), когда есть data.logo. Штрихкод — блоком «Штрихкод». Предел — 5 секунд на документ.',
+			'Код Typst на месте блока. Доступны: v("order.number") и v1(…) — значения полей, data.values — все значения, copy — "service", "client" или "single", vspace(…) — отступ, image("logo.png"), когда есть data.logo, qr-image("firm.telegram", 25mm) — QR-код ссылки фирмы (firm.google_maps, firm.yandex_maps). Штрихкод — блоком «Штрихкод». Предел — 5 секунд на документ.',
 		fieldRow: (n: number) => `Строка ${n}`,
 		rowLabel: 'Название',
 		rowValue: 'Значение',

@@ -278,3 +278,72 @@ fn converted_code_keeps_data_out() {
     assert!(code.contains(r#"v("order.number")"#), "{code}");
     assert!(!code.contains(&number), "{code}");
 }
+
+/// Every code found on a PNG page, decoded and sorted.
+#[allow(clippy::expect_used)]
+fn decode_all(png: &[u8]) -> Vec<String> {
+    let page = image::load_from_memory(png).expect("png").to_luma_alpha8();
+    let (w, h) = (page.width() as usize, page.height() as usize);
+    let mut image = rqrr::PreparedImage::prepare_from_greyscale(w, h, |x, y| {
+        let [luma, alpha] = page.get_pixel(x as u32, y as u32).0;
+        let ink = (255 - u16::from(luma)) * u16::from(alpha) / 255;
+        (255 - ink) as u8
+    });
+    let mut found: Vec<String> = image
+        .detect_grids()
+        .iter()
+        .map(|grid| grid.decode().expect("decodes").1)
+        .collect();
+    found.sort();
+    found
+}
+
+fn qr_block(link: &str) -> Block {
+    block(BlockBody::Qr {
+        link: link.to_owned(),
+        size_mm: 25.0,
+        caption: String::new(),
+        align: Align::Center,
+    })
+}
+
+#[test]
+fn qr_block_with_preset_becomes_code() {
+    let t = template(
+        Layout::OnePerPage,
+        vec![text("до"), qr_block("{фирма.гугл_карты}")],
+    );
+    let code = block_code(&t, &[1]).expect("a preset QR converts");
+    assert!(
+        code.contains("qr-image") || code.contains("image(\"qr-firm.google_maps.svg\""),
+        "{code}"
+    );
+    let data = sample_data(DocumentKind::IntakeAct);
+    let got = pages(&converted(&t, &[1], code.clone()), &data);
+    assert!(got == pages(&t, &data), "prints otherwise:\n{code}");
+    let png = rendered(&t, &data).png_pages(300).expect("png");
+    assert_eq!(decode_all(&png[0]), ["https://maps.google.com/?q=example"]);
+}
+
+#[test]
+fn qr_block_with_own_link_stays_a_block() {
+    let own = template(
+        Layout::OnePerPage,
+        vec![qr_block("https://example.com/{заказ.номер}")],
+    );
+    assert_eq!(block_code(&own, &[0]), None);
+    let with = |qr: Block| {
+        template(
+            Layout::OnePerPage,
+            vec![block(BlockBody::Columns {
+                columns: vec![vec![text("слева")], vec![qr]],
+                gap_mm: 4.0,
+            })],
+        )
+    };
+    assert_eq!(
+        block_code(&with(qr_block("https://example.com/{заказ.номер}")), &[0]),
+        None
+    );
+    assert!(block_code(&with(qr_block("{фирма.телеграм}")), &[0]).is_some());
+}

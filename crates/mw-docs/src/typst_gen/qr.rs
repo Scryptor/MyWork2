@@ -54,7 +54,8 @@ pub(super) fn link_value(link: &str, values: &BTreeMap<String, String>) -> Optio
 }
 
 /// The codes of the QR blocks of `template`, columns included, in the order of the blocks: (name,
-/// SVG), one per name. A block whose link is empty or does not fit a QR code has none.
+/// SVG), one per name. A block whose link is empty or does not fit a QR code has none. A template
+/// with code also gets the non-empty links of the firm that no block made.
 pub(super) fn qr_files(
     template: &Template,
     values: &BTreeMap<String, String>,
@@ -70,6 +71,18 @@ pub(super) fn qr_files(
         }
         if let Some(svg) = link_value(link, values).and_then(|value| qr_svg(&value)) {
             files.push((name, svg));
+        }
+    }
+    // The author's code reads the firm's links by their keys, whatever blocks there are.
+    if template.has_code() {
+        for key in FIRM_LINKS {
+            if names.contains(key) {
+                continue;
+            }
+            let value = values.get(key).map_or("", |value| value.trim());
+            if let Some(svg) = (!value.is_empty()).then(|| qr_svg(value)).flatten() {
+                files.push((key.to_owned(), svg));
+            }
         }
     }
     files

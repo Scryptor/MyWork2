@@ -20,6 +20,7 @@ use crate::world::file_id;
 use super::RenderOptions;
 use super::blocks::Generator;
 use super::page::CopyRole;
+use super::qr::qr_name;
 use super::text::typst_str;
 
 /// The lines a code file has before the author's code.
@@ -38,7 +39,7 @@ const HELPERS_PATH: &str = "/mw.typ";
 ///
 /// `None` when there is no block at `path`, and for the blocks that cannot become code: the barcode,
 /// whose module is counted in printer dots over all the Barcode blocks of the template, and the
-/// columns that hold one; the QR code, whose file is made from the block itself; the calibration
+/// columns that hold one; the QR code with a link of its own, whose file is made from the block itself; the calibration
 /// marks, which print the print settings; code itself; and columns with code that does not stay
 /// itself in theirs (see [`inlines`]).
 pub fn block_code(template: &Template, path: &[usize]) -> Option<String> {
@@ -62,8 +63,10 @@ pub fn block_code(template: &Template, path: &[usize]) -> Option<String> {
 /// Whether [`block_code`] turns `body` into code. Code blocks in columns are written in place.
 fn convertible(body: &BlockBody) -> bool {
     match body {
+        // A preset link reads only the firm-link file, which code templates always get; a link of
+        // its own has a file named by the block.
+        BlockBody::Qr { link, .. } => !qr_name(link, &[]).starts_with("block-"),
         BlockBody::Barcode { .. }
-        | BlockBody::Qr { .. }
         | BlockBody::CalibrationMarks {}
         | BlockBody::TypstCode { .. } => false,
         BlockBody::Columns { columns, .. } => {
