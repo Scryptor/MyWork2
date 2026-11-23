@@ -5302,6 +5302,35 @@
           },
           {
             "type": "object",
+            "description": "The firm's logo (PNG from the settings) in a box `width_mm` × `height_mm`: the picture is\nscaled to fit it without distortion and sits at the top, `align` places the box (and the\npicture in it) on the line. Nothing, and no space, when the firm has no logo.",
+            "required": [
+              "width_mm",
+              "height_mm",
+              "align",
+              "type"
+            ],
+            "properties": {
+              "align": {
+                "$ref": "#/components/schemas/Align"
+              },
+              "height_mm": {
+                "type": "number",
+                "format": "float"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "logo"
+                ]
+              },
+              "width_mm": {
+                "type": "number",
+                "format": "float"
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "Two signature lines side by side, each after its caption.",
             "required": [
               "left",

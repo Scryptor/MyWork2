@@ -247,6 +247,23 @@ impl Generator {
                     );
                 }
             }
+            BlockBody::Logo {
+                width_mm,
+                height_mm,
+                align,
+            } => {
+                // The box is exactly `width` × `height`, placed by `align`. The picture is scaled to fit
+                // it without padding and sits at the top, at the same side as the box.
+                let (width, height) = (mm(f64::from(*width_mm)), mm(f64::from(*height_mm)));
+                let _ = write!(
+                    out,
+                    "if data.logo {{ block(width: 100%, align({align}, block(width: {width}, height: {height}, \
+                     context {{ let natural = measure(image(\"logo.png\")); \
+                     let k = calc.min({width} / natural.width, {height} / natural.height); \
+                     align({align} + top, image(\"logo.png\", width: natural.width * k)) }}))) }}",
+                    align = align_name(*align),
+                );
+            }
             BlockBody::Signatures { left, right } => {
                 let _ = write!(
                     out,

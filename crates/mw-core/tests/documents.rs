@@ -880,3 +880,49 @@ async fn legacy_barcode_is_printed_and_found() -> Result<(), CoreError> {
     }
     Ok(())
 }
+
+/// A small PNG of one colour, the firm's logo.
+fn logo_png() -> Vec<u8> {
+    let img = image::RgbImage::from_pixel(80, 30, image::Rgb([20, 60, 160]));
+    let mut out = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::ImageRgb8(img)
+        .write_to(&mut out, image::ImageFormat::Png)
+        .unwrap();
+    out.into_inner()
+}
+
+#[tokio::test]
+async fn act_prints_uploaded_logo() -> Result<(), CoreError> {
+    for (label, db) in mw_db::testing::all_backends().await {
+        let clock = std::sync::Arc::new(mw_core::FixedClock::new(
+            chrono::TimeZone::with_ymd_and_hms(&chrono::Utc, 2026, 11, 11, 9, 0, 0).unwrap(),
+        ));
+        let dir = tempfile::tempdir().unwrap();
+        let core = mw_core::Core::open(db, clock, "UTC")
+            .await?
+            .with_attachments_dir(dir.path().to_path_buf());
+        let order = core.create_order(&admin(), sample_new_order()).await?;
+        let actor = admin();
+        let export = |output: DocumentOutput| {
+            core.export_document(
+                &actor,
+                request(DocumentKind::IntakeAct, Some(order.id)),
+                output,
+            )
+        };
+        let pages = || async {
+            match export(DocumentOutput::Png { dpi: 96 }).await?.bytes {
+                DocumentBytes::Png(pages) => Ok::<_, CoreError>(pages),
+                other => panic!("{label}: {other:?}"),
+            }
+        };
+        let before = pages().await?;
+        core.set_firm_logo(&admin(), logo_png()).await?;
+        assert_ne!(pages().await?, before, "{label}: логотипа на листе нет");
+        export(DocumentOutput::Pdf).await?;
+        core.remove_firm_logo(&admin()).await?;
+        assert_eq!(pages().await?, before, "{label}: логотип остался на листе");
+        export(DocumentOutput::Pdf).await?;
+    }
+    Ok(())
+}

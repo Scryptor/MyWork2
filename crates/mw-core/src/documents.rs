@@ -244,6 +244,8 @@ impl Core {
                 *value = text;
             }
         }
+        // Логотип фирмы — для блоков «Логотип» любого вида документа, в том числе образца и черновика.
+        data.logo = self.firm_logo_png().await;
         Ok(data)
     }
 
@@ -262,6 +264,7 @@ impl Core {
                 Ok(DocumentData {
                     values: own_values(&settings, &point, today),
                     barcode: None,
+                    logo: None,
                     blank: true,
                 })
             }
@@ -411,6 +414,7 @@ fn order_data(
     DocumentData {
         values,
         barcode: Some(order.barcode.clone()).filter(|code| !code.is_empty()),
+        logo: None,
         blank: false,
     }
 }

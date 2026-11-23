@@ -9,13 +9,14 @@ mod text;
 
 use std::collections::BTreeMap;
 use std::fmt::Write;
+use std::sync::Arc;
 
 use serde_json::{Map, Value};
 
 use crate::barcode::{Shape, barcode_svg};
 use crate::fields::fields;
 use crate::fonts::{FontSet, shared};
-use crate::model::Template;
+use crate::model::{Block, BlockBody, Template};
 use crate::render::{DocsError, Rendered, compile};
 
 use blocks::Generator;
@@ -30,6 +31,8 @@ pub struct DocumentData {
     /// The order's barcode: UPC-A digits or, for old orders, up to 40 printable ASCII characters
     /// (printed as Code 128). `None` or a value that cannot be encoded prints no barcode.
     pub barcode: Option<String>,
+    /// The firm's logo, a PNG. `None` prints nothing in the Logo blocks.
+    pub logo: Option<Arc<[u8]>>,
     /// A form to fill in by hand: empty values become lines to write on.
     pub blank: bool,
 }
@@ -72,17 +75,29 @@ pub fn render_with_fonts(
         .and_then(|((code, _), (module, bars))| {
             barcode_svg(code, module, bars).map(|svg| (code, svg))
         });
+    // Likewise `logo` in `data.json` is set exactly when `logo.png` exists.
+    let logo = data
+        .logo
+        .as_deref()
+        .filter(|_| has_logo_block(&template.blocks));
     let mut files = vec![(
         "data.json".to_owned(),
-        data_json(data, barcode.as_ref().map(|(code, _)| *code)),
+        data_json(
+            data,
+            barcode.as_ref().map(|(code, _)| *code),
+            logo.is_some(),
+        ),
     )];
+    if let Some(png) = logo {
+        files.push(("logo.png".to_owned(), png.to_vec()));
+    }
     if let Some((_, svg)) = barcode {
         files.push(("barcode.svg".to_owned(), svg.into_bytes()));
     }
     compile(typst_source(template, opts, shape), files, fonts)
 }
 
-fn data_json(data: &DocumentData, barcode: Option<&str>) -> Vec<u8> {
+fn data_json(data: &DocumentData, barcode: Option<&str>, logo: bool) -> Vec<u8> {
     let values: Map<String, Value> = data
         .values
         .iter()
@@ -97,8 +112,18 @@ fn data_json(data: &DocumentData, barcode: Option<&str>) -> Vec<u8> {
         "barcode".to_owned(),
         barcode.map_or(Value::Null, |code| Value::String(code.to_owned())),
     );
+    root.insert("logo".to_owned(), Value::Bool(logo));
     root.insert("blank".to_owned(), Value::Bool(data.blank));
     Value::Object(root).to_string().into_bytes()
+}
+
+/// Whether `blocks`, columns included, hold a Logo block.
+fn has_logo_block(blocks: &[Block]) -> bool {
+    blocks.iter().any(|block| match &block.body {
+        BlockBody::Logo { .. } => true,
+        BlockBody::Columns { columns, .. } => columns.iter().any(|c| has_logo_block(c)),
+        _ => false,
+    })
 }
 
 /// Helpers every document starts with (after `empties`, which `v` captures).

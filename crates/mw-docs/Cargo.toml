@@ -27,4 +27,5 @@ tracing = { workspace = true }
 [dev-dependencies]
 mw-docs = { path = ".", features = ["testing"] }
 tempfile = { workspace = true }
+image = { workspace = true }
 typst-assets = { version = "0.15.1", features = ["fonts"] }

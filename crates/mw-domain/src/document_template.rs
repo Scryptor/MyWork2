@@ -138,6 +138,14 @@ pub enum BlockBody {
         #[serde(default)]
         stretch: bool,
     },
+    /// The firm's logo (PNG from the settings) in a box `width_mm` × `height_mm`: the picture is
+    /// scaled to fit it without distortion and sits at the top, `align` places the box (and the
+    /// picture in it) on the line. Nothing, and no space, when the firm has no logo.
+    Logo {
+        width_mm: f32,
+        height_mm: f32,
+        align: Align,
+    },
     /// Two signature lines side by side, each after its caption.
     Signatures { left: String, right: String },
     /// A horizontal line across the column.
@@ -177,7 +185,7 @@ pub struct FieldRow {
 }
 
 pub const TEMPLATE_FILE_FORMAT: &str = "mwtemplate";
-pub const TEMPLATE_FILE_VERSION: u32 = 1;
+pub const TEMPLATE_FILE_VERSION: u32 = 2;
 pub const TEMPLATE_FILE_MAX_BYTES: usize = 1_048_576;
 
 const MAX_BLOCKS: usize = 200;
@@ -357,6 +365,14 @@ impl Template {
                     if *fill && in_column {
                         errors.push(FieldError::new(at.clone(), "fill_in_columns"));
                     }
+                }
+                BlockBody::Logo {
+                    width_mm,
+                    height_mm,
+                    ..
+                } => {
+                    check_range(errors, format!("{at}.width_mm"), *width_mm, 5.0, 200.0);
+                    check_range(errors, format!("{at}.height_mm"), *height_mm, 5.0, 100.0);
                 }
                 BlockBody::Signatures { left, right } => {
                     check_len(errors, format!("{at}.left"), left, MAX_CAPTION_CHARS);
@@ -661,7 +677,7 @@ mod tests {
             pair("format_version", "unsupported")
         );
         assert_eq!(
-            code(&file("mwtemplate", 2, &t)),
+            code(&file("mwtemplate", 3, &t)),
             pair("format_version", "unsupported")
         );
         assert_eq!(code("{"), pair("file", "invalid"));
@@ -828,8 +844,62 @@ mod tests {
         v["format_version"] = "1".into();
         assert_eq!(code(v), pair("format", "invalid"));
         let mut v = ok;
-        v["format_version"] = 2.into();
+        v["format_version"] = 3.into();
         assert_eq!(code(v), pair("format_version", "unsupported"));
+    }
+
+    fn logo(width_mm: f32, height_mm: f32) -> Block {
+        Block {
+            copies: CopyFilter::Both,
+            body: BlockBody::Logo {
+                width_mm,
+                height_mm,
+                align: Align::Left,
+            },
+        }
+    }
+
+    #[test]
+    fn logo_block_limits() {
+        let mut t = base(DocumentKind::IntakeAct);
+        t.blocks = vec![logo(5.0, 5.0), logo(200.0, 100.0)];
+        assert_eq!(t.validate(), Ok(()));
+        for (w, h, field) in [
+            (4.9, 10.0, "width_mm"),
+            (200.1, 10.0, "width_mm"),
+            (40.0, 4.9, "height_mm"),
+            (40.0, 100.1, "height_mm"),
+        ] {
+            t.blocks = vec![logo(w, h)];
+            assert_eq!(
+                errs(&t),
+                [pair(&format!("blocks.0.{field}"), "out_of_range")]
+            );
+        }
+    }
+
+    #[test]
+    fn version_1_file_still_reads() {
+        let mut t = base(DocumentKind::IntakeAct);
+        t.blocks = vec![text("a".into(), None)];
+        let parsed =
+            TemplateFile::parse(&file("mwtemplate", 1, &t), DocumentKind::IntakeAct).unwrap();
+        assert_eq!(parsed.blocks, t.blocks);
+        assert_eq!(TEMPLATE_FILE_VERSION, 2);
+    }
+
+    #[test]
+    fn logo_round_trips() {
+        let block = logo(40.0, 15.0);
+        let json = serde_json::to_value(&block.body).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({"type":"logo","width_mm":40.0,"height_mm":15.0,"align":"left"})
+        );
+        assert_eq!(
+            serde_json::from_value::<BlockBody>(json).unwrap(),
+            block.body
+        );
     }
 
     #[test]

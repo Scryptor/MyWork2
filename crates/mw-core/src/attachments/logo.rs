@@ -139,7 +139,6 @@ impl Core {
     }
 
     /// Байты PNG для печати документов; `None` — логотипа нет, файла нет или папка данных не задана.
-    #[allow(dead_code, reason = "логотип в документы подключается отдельным шагом")]
     pub(crate) async fn firm_logo_png(&self) -> Option<Arc<[u8]>> {
         let data_dir = self.data_dir.as_deref()?;
         let m = match self.logo_row().await {

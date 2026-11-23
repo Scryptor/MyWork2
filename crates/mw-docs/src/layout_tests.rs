@@ -1,6 +1,8 @@
 //! Tests that look at where things land on the laid-out page: the barcode crops and the calibration
 //! offset.
 
+use std::sync::Arc;
+
 use mw_domain::documents::DocumentKind;
 use typst::layout::{Frame, FrameItem, Point};
 use typst::visualize::ImageKind;
@@ -668,4 +670,159 @@ fn code128_too_long_for_the_label_prints_as_text_without_bars() {
     assert_eq!(doc.page_count(), 1);
     let printed = page_texts(&doc).concat().replace('\u{200b}', "");
     assert!(printed.contains(value), "{printed:?}");
+}
+
+/// A grey PNG of `width` × `height` pixels.
+fn logo_png(width: u32, height: u32) -> Arc<[u8]> {
+    let image = image::RgbImage::from_pixel(width, height, image::Rgb([40, 90, 160]));
+    let mut bytes = std::io::Cursor::new(Vec::new());
+    image
+        .write_to(&mut bytes, image::ImageFormat::Png)
+        .expect("png");
+    Arc::from(bytes.into_inner())
+}
+
+fn logo_block(width_mm: f32, height_mm: f32, align: Align) -> Block {
+    block(BlockBody::Logo {
+        width_mm,
+        height_mm,
+        align,
+    })
+}
+
+fn logo_data(logo: Option<Arc<[u8]>>) -> DocumentData {
+    DocumentData {
+        logo,
+        ..DocumentData::default()
+    }
+}
+
+/// The raster pictures of the first page: left edge, top edge, width and height in mm.
+fn pictures(doc: &Rendered) -> Vec<(f64, f64, f64, f64)> {
+    fn walk(frame: &Frame, offset: Point, out: &mut Vec<(f64, f64, f64, f64)>) {
+        for (pos, item) in frame.items() {
+            match item {
+                FrameItem::Image(image, size, _)
+                    if matches!(image.kind(), ImageKind::Raster(_)) =>
+                {
+                    let at = offset + *pos;
+                    out.push((at.x.to_mm(), at.y.to_mm(), size.x.to_mm(), size.y.to_mm()));
+                }
+                FrameItem::Group(group) => {
+                    assert!(group.transform.is_identity());
+                    walk(&group.frame, offset + *pos, out);
+                }
+                _ => {}
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(&doc.document().pages()[0].frame, Point::zero(), &mut out);
+    out
+}
+
+fn logo_template(blocks: Vec<Block>) -> Template {
+    template_of(
+        DocumentKind::IntakeAct,
+        page_of(PageSize::A4, 10.0),
+        Layout::OnePerPage,
+        blocks,
+    )
+}
+
+fn close(a: f64, b: f64) -> bool {
+    (a - b).abs() < 0.01
+}
+
+#[test]
+fn logo_fits_its_box() {
+    let t = logo_template(vec![logo_block(40.0, 15.0, Align::Left)]);
+    let doc = render(
+        &t,
+        &logo_data(Some(logo_png(400, 100))),
+        &RenderOptions::default(),
+    )
+    .expect("renders");
+    let [(x, y, w, h)] = pictures(&doc)[..] else {
+        panic!("{:?}", pictures(&doc));
+    };
+    assert!(close(x, 10.0) && close(y, 10.0), "{x} {y}");
+    assert!(close(w, 40.0) && close(h, 10.0), "{w} {h}");
+}
+
+#[test]
+fn tall_logo_sits_at_its_align_edge() {
+    for (align, left) in [(Align::Left, 10.0), (Align::Right, 200.0 - 3.75)] {
+        let t = logo_template(vec![logo_block(40.0, 15.0, align)]);
+        let doc = render(
+            &t,
+            &logo_data(Some(logo_png(100, 400))),
+            &RenderOptions::default(),
+        )
+        .expect("renders");
+        let [(x, y, w, h)] = pictures(&doc)[..] else {
+            panic!("{:?}", pictures(&doc));
+        };
+        assert!(close(x, left), "{align:?}: {x}");
+        assert!(close(y, 10.0), "{align:?}: {y}");
+        assert!(close(w, 3.75) && close(h, 15.0), "{align:?}: {w} {h}");
+    }
+}
+
+#[test]
+fn missing_logo_takes_no_space() {
+    let png = |blocks: Vec<Block>| {
+        render(
+            &logo_template(blocks),
+            &logo_data(None),
+            &RenderOptions::default(),
+        )
+        .expect("renders")
+        .png_pages(110)
+        .expect("png")
+    };
+    let text = || plain_text("Первая строка");
+    let with = png(vec![text(), logo_block(40.0, 15.0, Align::Left), text()]);
+    let without = png(vec![text(), text()]);
+    assert!(with == without, "pages differ");
+}
+
+#[test]
+fn standard_act_without_logo_is_unchanged() {
+    let data = sample_data(DocumentKind::IntakeAct);
+    assert!(data.logo.is_none());
+    let full = standard_template(DocumentKind::IntakeAct);
+    let mut bare = full.clone();
+    let BlockBody::Columns { columns, .. } = &mut bare.blocks[0].body else {
+        panic!("header");
+    };
+    assert!(matches!(columns[0].remove(0).body, BlockBody::Logo { .. }));
+    let png = |t: &Template| {
+        render(t, &data, &RenderOptions::default())
+            .expect("renders")
+            .png_pages(110)
+            .expect("png")
+    };
+    assert!(png(&full) == png(&bare), "pages differ");
+}
+
+#[test]
+fn standard_acts_start_with_logo() {
+    for kind in DocumentKind::ALL {
+        let t = standard_template(kind);
+        let first = match &t.blocks[0].body {
+            BlockBody::Columns { columns, .. } => columns[0].first().map(|b| &b.body),
+            _ => None,
+        };
+        let expected = BlockBody::Logo {
+            width_mm: 40.0,
+            height_mm: 15.0,
+            align: Align::Left,
+        };
+        let acts = !matches!(kind, DocumentKind::Sticker | DocumentKind::Calibration);
+        assert_eq!(first == Some(&expected), acts, "{kind:?}");
+        if !acts {
+            assert!(!format!("{:?}", t.blocks).contains("Logo"), "{kind:?}");
+        }
+    }
 }

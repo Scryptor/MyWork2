@@ -78,6 +78,7 @@ fn data(values: &[(&str, &str)]) -> DocumentData {
             .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
             .collect::<BTreeMap<_, _>>(),
         barcode: None,
+        logo: None,
         blank: false,
     }
 }

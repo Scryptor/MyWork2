@@ -2692,6 +2692,7 @@ version = "0.1.0"
 dependencies = [
  "comemo",
  "fontdb",
+ "image",
  "mw-docs",
  "mw-domain",
  "serde",

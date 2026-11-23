@@ -13,6 +13,9 @@ use crate::model::{
 use crate::typst_gen::DocumentData;
 
 const ACT_MARGIN_MM: f32 = 10.0;
+/// The logo's box in the header of the acts.
+const LOGO_WIDTH_MM: f32 = 40.0;
+const LOGO_HEIGHT_MM: f32 = 15.0;
 const BODY_PT: f32 = 9.0;
 const FIRM_NAME_PT: f32 = 13.0;
 const TITLE_PT: f32 = 11.0;
@@ -78,6 +81,7 @@ pub fn sample_data(kind: DocumentKind) -> DocumentData {
                 .filter(|(key, _)| !key.starts_with("order.") && !key.starts_with("client."))
                 .collect(),
             barcode: None,
+            logo: None,
             blank: true,
         },
         _ => {
@@ -85,6 +89,7 @@ pub fn sample_data(kind: DocumentKind) -> DocumentData {
             DocumentData {
                 barcode: values.get("order.barcode").cloned(),
                 values,
+                logo: None,
                 blank: false,
             }
         }
@@ -132,6 +137,11 @@ fn act(
     (left, right): (&str, &str),
 ) -> Template {
     let firm = vec![
+        both(BlockBody::Logo {
+            width_mm: LOGO_WIDTH_MM,
+            height_mm: LOGO_HEIGHT_MM,
+            align: Align::Left,
+        }),
         text("{фирма.название}", Some(FIRM_NAME_PT), true, Align::Left),
         text("{фирма.телефон}", None, false, Align::Left),
         text("{фирма.сведения}", Some(DETAILS_PT), false, Align::Left),

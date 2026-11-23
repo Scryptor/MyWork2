@@ -126,7 +126,7 @@ async fn file_export_and_import() {
         );
         let file: Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(file["format"], "mwtemplate");
-        assert_eq!(file["format_version"], 1);
+        assert_eq!(file["format_version"], 2);
 
         let r = t
             .send(

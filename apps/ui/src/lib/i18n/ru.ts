@@ -1845,6 +1845,7 @@ export const ru = {
 			text: 'Текст',
 			fields: 'Поля',
 			barcode: 'Штрихкод',
+			logo: 'Логотип',
 			signatures: 'Подписи',
 			separator: 'Разделитель',
 			spacer: 'Отступ',

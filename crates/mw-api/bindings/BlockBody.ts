@@ -35,4 +35,4 @@ fill: boolean,
  * The module grows until the code fills the width of the column (with DPI by whole printer
  * dots); never below the nominal 0.33 mm, except on a narrow label, where it shrinks as usual.
  */
-stretch: boolean, } | { "type": "signatures", left: string, right: string, } | { "type": "separator", } | { "type": "spacer", mm: number, } | { "type": "columns", columns: Array<Array<Block>>, gap_mm: number, } | { "type": "copy_label", align: Align, } | { "type": "calibration_marks", };
+stretch: boolean, } | { "type": "logo", width_mm: number, height_mm: number, align: Align, } | { "type": "signatures", left: string, right: string, } | { "type": "separator", } | { "type": "spacer", mm: number, } | { "type": "columns", columns: Array<Array<Block>>, gap_mm: number, } | { "type": "copy_label", align: Align, } | { "type": "calibration_marks", };
