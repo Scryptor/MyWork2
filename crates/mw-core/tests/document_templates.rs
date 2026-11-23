@@ -576,3 +576,44 @@ async fn block_code_needs_settings_manage() {
         );
     }
 }
+
+#[tokio::test]
+async fn fields_have_keys() {
+    for t in cores().await {
+        let fields = t.core.document_fields();
+        let number = fields
+            .iter()
+            .find(|f| f.placeholder == "заказ.номер")
+            .expect("поле «заказ.номер» есть");
+        assert_eq!(number.key, "order.number", "{}", t.label);
+        assert!(fields.iter().all(|f| !f.key.is_empty()), "{}", t.label);
+    }
+}
+
+#[tokio::test]
+async fn block_code_of_an_empty_path_is_unavailable() {
+    for t in cores().await {
+        let kind = DocumentKind::IntakeAct;
+        assert_validation(
+            t.core
+                .document_block_code(&admin(), kind, standard_template(kind), vec![])
+                .await,
+            &[("path", "code_unavailable")],
+        );
+    }
+}
+
+#[tokio::test]
+async fn block_code_of_a_text_inside_columns() -> Result<(), CoreError> {
+    for t in cores().await {
+        let kind = DocumentKind::IntakeAct;
+        // Первый блок акта — колонки; в первой колонке второй блок — текст с полем фирмы.
+        let template = standard_template(kind);
+        let code = t
+            .core
+            .document_block_code(&admin(), kind, template, vec![0, 0, 1])
+            .await?;
+        assert!(code.contains("v(\""), "{}: {code}", t.label);
+    }
+    Ok(())
+}
