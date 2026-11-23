@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { choosePreset, qrPreset, type QrBody } from './qr.js';
+import { ru } from '#lib/i18n/ru.js';
+import { choosePreset, qrPreset, QR_PRESETS, type QrBody } from './qr.js';
 
 const body = (link: string, caption: string): QrBody => ({
 	type: 'qr',
@@ -16,10 +17,27 @@ describe('qrPreset', () => {
 		expect(qrPreset('{фирма.гугл_карты}')).toBe('google_maps');
 	});
 
+	it('reads the name in the braces as the server does: spaces inside, NFC', () => {
+		expect(qrPreset('{ фирма.телеграм }')).toBe('telegram');
+		expect(qrPreset('{\tФирма.Гугл_Карты\n}')).toBe('google_maps');
+		// «ё» as «е» and a combining diaeresis: NFC makes it «ё», then it is «е».
+		expect(qrPreset('{фирма.тел\u0435\u0308грам}')).toBe('telegram');
+		expect(qrPreset('{фирма. телеграм}')).toBeNull();
+		expect(qrPreset('{ фирма.телеграм }x')).toBeNull();
+	});
+
 	it('is null for a link of its own or with more than the substitution', () => {
 		expect(qrPreset('https://t.me/x')).toBeNull();
 		expect(qrPreset('{фирма.телеграм}/x')).toBeNull();
 		expect(qrPreset('')).toBeNull();
+	});
+});
+
+describe('QR_PRESETS', () => {
+	it('takes its captions from the default texts of the editor', () => {
+		expect(QR_PRESETS.telegram.caption).toBe(ru.templates.defaults.qrCaptions.telegram);
+		expect(QR_PRESETS.google_maps.caption).toBe(ru.templates.defaults.qrCaptions.google_maps);
+		expect(QR_PRESETS.yandex_maps.caption).toBe(ru.templates.defaults.qrCaptions.yandex_maps);
 	});
 });
 

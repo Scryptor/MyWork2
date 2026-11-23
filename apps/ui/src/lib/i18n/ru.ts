@@ -1859,7 +1859,13 @@ export const ru = {
 			fieldLabel: 'Название',
 			signatureLeft: 'Подпись сервиса',
 			signatureRight: 'Подпись клиента',
-			code: '// Свой Typst-код: v("ключ") — значение поля, copy — экземпляр\n#v("order.number")\n'
+			code: '// Свой Typst-код: v("ключ") — значение поля, copy — экземпляр\n#v("order.number")\n',
+			/** The caption of a «QR-код» block of a firm's link. */
+			qrCaptions: {
+				telegram: 'Мы в Telegram',
+				google_maps: 'Мы на Google Картах',
+				yandex_maps: 'Мы на Яндекс Картах'
+			}
 		},
 		title: 'Редактор шаблонов',
 		editButton: 'Изменить',
