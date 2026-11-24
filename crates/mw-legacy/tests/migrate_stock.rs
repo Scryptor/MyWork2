@@ -11,10 +11,11 @@ use mw_core::{
     StockImportSummary,
 };
 use mw_db::entity::{legacy_row, order, order_part};
-use mw_domain::dictionary::DEFAULT_DICTIONARY;
+use mw_domain::dictionary::{DEFAULT_DICTIONARY, DictionaryKind};
 use mw_domain::money::Money;
 use mw_domain::permission::{Permission, PermissionSet};
 use mw_legacy::fixture::FixtureVersion::V32;
+use mw_legacy::fixture::add_stock_oddities;
 use mw_legacy::{ImportReport, LegacyError, Warning, import_folder, migrate_stock};
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 use tempfile::TempDir;
@@ -26,7 +27,41 @@ type Res = Result<(), Box<dyn std::error::Error>>;
 /// `stock_preserved`; файлы разложены, как у `import_folder`. Вложения — в папке `data`.
 async fn import_like_before_stock(core: &Core, data: &Path) -> Result<ImportReport, LegacyError> {
     let src = fixture_dir(V32).await;
-    mw_legacy::testing::import_before_stock(core, &admin(), &options(src.path(), data, false)).await
+    import_before_stock_from(core, src.path(), data).await
+}
+
+/// Как `import_like_before_stock`, из папки `src`.
+async fn import_before_stock_from(
+    core: &Core,
+    src: &Path,
+    data: &Path,
+) -> Result<ImportReport, LegacyError> {
+    mw_legacy::testing::import_before_stock(core, &admin(), &options(src, data, false)).await
+}
+
+/// Фикстура V32 с испорченным складом (`mw_legacy::fixture::add_stock_oddities`).
+async fn odd_stock_fixture() -> TempDir {
+    let src = fixture_dir(V32).await;
+    add_stock_oddities(src.path()).await.unwrap();
+    src
+}
+
+/// Строка отчёта о справочнике «Типы запчастей».
+fn part_type_line(w: &Warning) -> bool {
+    w.code.as_str() == "dictionary_from_orders" && w.key == "Типы запчастей"
+}
+
+/// Записи журнала с этим действием (по всей базе).
+async fn audit_count(core: &Core, action: &str) -> usize {
+    let filter = AuditFilter {
+        action_prefix: Some(action.to_owned()),
+        ..Default::default()
+    };
+    core.list_audit(&admin(), &filter, 100, 0)
+        .await
+        .unwrap()
+        .items
+        .len()
 }
 
 /// `Core` с папкой данных `data` (там лежат вложения импорта).
@@ -187,8 +222,9 @@ async fn state_offers_migration_only_when_stock_is_empty() -> Res {
     Ok(())
 }
 
-/// Перенос даёт то же, что новый импорт той же папки: позиции, фото, запчасти, «расходы»,
-/// справочники, цели следов и предупреждения отчёта.
+/// Перенос даёт то же, что новый импорт той же папки (склад с испорченными ячейками и неизвестной
+/// колонкой): позиции, фото, запчасти, «расходы», справочники, цели следов и предупреждения отчёта.
+/// «Типы запчастей» старой базы — стандартные: значения склада дописываются в конец.
 #[tokio::test]
 async fn migration_matches_fresh_import() -> Res {
     for (old, new) in cores().await.into_iter().zip(cores().await) {
@@ -196,14 +232,23 @@ async fn migration_matches_fresh_import() -> Res {
         let (old_data, new_data) = (tempfile::tempdir()?, tempfile::tempdir()?);
         let migrated = with_data(&old.core, &old_data);
         let fresh = with_data(&new.core, &new_data);
-        let before = import_like_before_stock(&migrated, old_data.path()).await?;
-        let src = fixture_dir(V32).await;
+        let old_src = odd_stock_fixture().await;
+        let before = import_before_stock_from(&migrated, old_src.path(), old_data.path()).await?;
+        let src = odd_stock_fixture().await;
         let imported = import_folder(
             &fresh,
             &admin(),
             &options(src.path(), new_data.path(), false),
         )
         .await?;
+        // В старом отчёте нет строк о ячейках и колонках склада (их тогда не проверяли).
+        let old_warnings = stored_warnings(&migrated, before.summary.import_id).await;
+        assert!(
+            !old_warnings
+                .iter()
+                .any(|w| w.source.starts_with("Stock") && w.code.as_str() == "text_invalid_utf8"),
+            "{label}"
+        );
         // До переноса: затраты как есть.
         assert_eq!(
             migrated.get_order(&admin(), 2).await?.extra_costs,
@@ -277,12 +322,23 @@ async fn migration_matches_fresh_import() -> Res {
                 "{label}: расходы заказа {id}"
             );
         }
+        let order2 = migrated.get_order(&admin(), 2).await?;
+        assert_eq!(order2.extra_costs, Money::from_kopecks(29_950));
+        // Правка «расходов» — правка заказа: время правки — время переноса.
+        assert_eq!(order2.updated_at, migrated.now(), "{label}");
+        assert_ne!(
+            migrated.get_order(&admin(), 4).await?.updated_at,
+            migrated.now(),
+            "{label}"
+        );
+        // Номер заказа списания 3 — «5» с NUL: запчасть у заказа 5, как у нового импорта.
         assert_eq!(
-            migrated.get_order(&admin(), 2).await?.extra_costs,
-            Money::from_kopecks(29_950)
+            migrated.list_order_parts(&admin(), 5).await?.parts.len(),
+            1,
+            "{label}"
         );
 
-        for (kind, _) in DEFAULT_DICTIONARY {
+        for (kind, defaults) in DEFAULT_DICTIONARY {
             let values = |core: Core| async move {
                 core.list_dictionary(*kind, true)
                     .await
@@ -291,9 +347,20 @@ async fn migration_matches_fresh_import() -> Res {
                     .map(|i| (i.value, i.archived))
                     .collect::<Vec<_>>()
             };
+            let expected = if *kind == DictionaryKind::PartType {
+                // Стандартные значения остаются, тип позиции 1 («Дисплеи») — в конце; «АККУМУЛЯТОР»
+                // и «ДИСПЛЕЙ» уже есть другим регистром.
+                defaults
+                    .iter()
+                    .map(|v| ((*v).to_owned(), false))
+                    .chain([("Дисплеи".to_owned(), false)])
+                    .collect()
+            } else {
+                values(fresh.clone()).await
+            };
             assert_eq!(
                 values(migrated.clone()).await,
-                values(fresh.clone()).await,
+                expected,
                 "{label}: справочник {kind:?}"
             );
         }
@@ -348,9 +415,34 @@ async fn migration_matches_fresh_import() -> Res {
                 && w.value == "позиций 4, запчастей 5"),
             "{label}"
         );
+        // Испорченные ячейки и неизвестная колонка склада — в отчёте, по одному разу.
+        for (code, source, key, field) in [
+            ("text_invalid_utf8", "Stock", "2", "Primechanie"),
+            ("text_invalid_utf8", "StockMap", "3", "clientId"),
+            ("unknown_column", "Stock", "Garantiya", "Garantiya"),
+        ] {
+            let found = warnings
+                .iter()
+                .filter(|w| {
+                    (
+                        w.code.as_str(),
+                        w.source.as_str(),
+                        w.key.as_str(),
+                        w.field.as_str(),
+                    ) == (code, source, key, field)
+                })
+                .count();
+            assert_eq!(found, 1, "{label}: {code} {source} {key}");
+        }
+        // «Типы запчастей»: строки отчёта у старой базы не было — перенос её заводит.
+        let line: Vec<_> = warnings.iter().filter(|w| part_type_line(w)).collect();
+        assert_eq!(line.len(), 1, "{label}");
+        assert_eq!(line[0].value, "в программе — 11, со склада — 1", "{label}");
+        let without_part_types =
+            |list: Vec<Warning>| sorted(list.into_iter().filter(|w| !part_type_line(w)).collect());
         assert_eq!(
-            sorted(warnings),
-            sorted(imported.warnings.clone()),
+            without_part_types(warnings),
+            without_part_types(imported.warnings.clone()),
             "{label}"
         );
         let view = mw_legacy::report_view(&record, None);
@@ -482,6 +574,64 @@ async fn second_run_is_refused() -> Res {
             1,
             "{label}"
         );
+    }
+    Ok(())
+}
+
+/// Перенос, который не создал ни позиции, ни запчасти, второй раз не предлагается и не проходит:
+/// предложение держится на отметке `stock_preserved` в отчёте импорта, а перенос её снимает.
+#[tokio::test]
+async fn migration_that_moved_nothing_is_not_repeated() -> Res {
+    for t in cores().await {
+        let label = t.label;
+        let data = tempfile::tempdir()?;
+        let core = with_data(&t.core, &data);
+        // Номера позиций не больше нуля, заказов списаний нет: переносить нечего.
+        let src = fixture_dir(V32).await;
+        run_sql(
+            src.path(),
+            &[
+                "UPDATE Stock SET id = -id",
+                "UPDATE StockMap SET clientId = '404'",
+            ],
+        )
+        .await;
+        let before = import_before_stock_from(&core, src.path(), data.path()).await?;
+        let id = before.summary.import_id;
+        assert!(
+            core.legacy_stock_state(&admin()).await?.available,
+            "{label}"
+        );
+
+        let summary = migrate_stock(&core, &admin()).await?;
+        assert_eq!(
+            summary,
+            StockImportSummary {
+                import_id: id,
+                stock_items: 0,
+                order_parts: 0,
+                orders_changed: 0,
+            },
+            "{label}"
+        );
+        let state = core.legacy_stock_state(&admin()).await?;
+        assert_eq!((state.stock_rows, state.available), (4, false), "{label}");
+        assert_eq!(
+            field_error(&migrate_stock(&core, &admin()).await),
+            stock_error("not_available"),
+            "{label}"
+        );
+        assert_eq!(
+            audit_count(&core, "legacy.stock_imported").await,
+            1,
+            "{label}"
+        );
+        let imported = stored_warnings(&core, id)
+            .await
+            .into_iter()
+            .filter(|w| w.code.as_str() == "stock_imported")
+            .count();
+        assert_eq!(imported, 1, "{label}");
     }
     Ok(())
 }

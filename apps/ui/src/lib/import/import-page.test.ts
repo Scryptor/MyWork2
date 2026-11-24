@@ -122,4 +122,38 @@ describe('the stock of a past import', () => {
 		expect(await screen.findByText('Импорт уже идёт')).toBeInTheDocument();
 		expect(nav.goto).not.toHaveBeenCalled();
 	});
+
+	it('after a refusal the offer is read again and goes when the stock is no longer to transfer', async () => {
+		catalogs.getAbout.mockResolvedValue(about('SQLite'));
+		api.legacyStockState
+			.mockResolvedValueOnce(stockState(true))
+			.mockResolvedValueOnce(stockState(false));
+		api.migrateLegacyStock.mockRejectedValue(
+			new ApiError(422, 'validation', 'Проверьте введённые данные', {
+				code: 'validation',
+				message: 'Проверьте введённые данные',
+				fields: [
+					{
+						field: 'stock',
+						code: 'not_empty',
+						message: 'На складе или в заказах уже есть запчасти: перенос склада не нужен'
+					}
+				],
+				current_version: null,
+				permission: null,
+				retry_after_secs: null,
+				diagnostics: []
+			})
+		);
+		render(Page);
+		await userEvent.click(await screen.findByRole('button', { name: MIGRATE }));
+		expect(
+			await screen.findByText('На складе или в заказах уже есть запчасти: перенос склада не нужен')
+		).toBeInTheDocument();
+		await vi.waitFor(() =>
+			expect(screen.queryByRole('button', { name: MIGRATE })).not.toBeInTheDocument()
+		);
+		expect(screen.queryByText('Склад MyWork 2 ещё не перенесён')).not.toBeInTheDocument();
+		expect(api.legacyStockState).toHaveBeenCalledTimes(2);
+	});
 });

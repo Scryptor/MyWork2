@@ -945,6 +945,37 @@ fn put(dir: &Path, relative: &str, bytes: &[u8]) -> std::io::Result<()> {
     std::fs::write(path, bytes)
 }
 
+/// Испорченный склад (`add_stock_oddities`): в примечании позиции 2 — байт не UTF-8, номер заказа
+/// списания 3 — «5» с символом NUL, у `Stock` — колонка, которой MyWork 2 не создаёт (`Garantiya`,
+/// заполнена у позиции 3).
+const STOCK_ODDITIES: [&str; 4] = [
+    "UPDATE Stock SET Primechanie = CAST(X'C0' AS TEXT) WHERE id = 2",
+    "UPDATE StockMap SET clientId = '5' || char(0) WHERE id = 3",
+    "ALTER TABLE Stock ADD COLUMN Garantiya",
+    "UPDATE Stock SET Garantiya = '6 мес.' WHERE id = 3",
+];
+
+/// Портит склад готовой папки V30 и новее (`STOCK_ODDITIES`): ячейки, которые разбор склада не может
+/// прочитать как есть, и неизвестная колонка — для тестов переноса склада из прошлого импорта. Общая
+/// фикстура не меняется: на её числа опираются другие тесты.
+pub async fn add_stock_oddities(dir: &Path) -> std::io::Result<()> {
+    let connect = SqliteConnectOptions::new()
+        .filename(dir.join("baza.sqlite"))
+        .journal_mode(SqliteJournalMode::Delete);
+    let mut conn = sqlx::SqliteConnection::connect_with(&connect)
+        .await
+        .map_err(db_error)?;
+    let mut result = Ok(());
+    for sql in STOCK_ODDITIES {
+        result = exec(&mut conn, sql).await;
+        if result.is_err() {
+            break;
+        }
+    }
+    conn.close().await.map_err(db_error)?;
+    result
+}
+
 /// Собирает папку старой программы: `baza.sqlite`, `Config.ini`, `settings/…`, `ClientFiles/…`.
 pub async fn write_fixture(dir: &Path, options: &FixtureOptions) -> std::io::Result<()> {
     std::fs::create_dir_all(dir)?;

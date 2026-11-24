@@ -96,6 +96,12 @@
 		} catch (e) {
 			stockFailure =
 				(e instanceof ApiError ? e.body?.fields[0]?.message : undefined) ?? errorMessage(e);
+			// A refusal can mean there is nothing to transfer any more: the offer follows the server.
+			try {
+				stock = await legacyStockState();
+			} catch {
+				// Without an answer the offer stays as it was; the message above explains the refusal.
+			}
 		} finally {
 			migrating = false;
 		}
@@ -117,8 +123,8 @@
 				<Button variant="primary" busy={migrating} onclick={migrateStock}>{t.stockMigrate}</Button>
 			{/snippet}
 		</Callout>
-		{#if stockFailure}<Callout tone="danger">{stockFailure}</Callout>{/if}
 	{/if}
+	{#if stockFailure && !wizard}<Callout tone="danger">{stockFailure}</Callout>{/if}
 	{#if wizard}
 		<Card>
 			<ImportWizard replace {resume} onback={resume ? undefined : () => (wizard = false)} />

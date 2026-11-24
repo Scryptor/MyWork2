@@ -184,15 +184,15 @@ pub async fn import_folder(
     actor: &Actor,
     options: &ImportOptions,
 ) -> Result<ImportReport, LegacyError> {
-    import_folder_with(core, actor, options, convert::transfer_stock).await
+    import_folder_with(core, actor, options, convert::CURRENT_STEPS).await
 }
 
-/// `import_folder`, склад переносит `stock_step` (см. `convert::convert_with`).
+/// `import_folder` с шагами разбора `steps` (см. `convert::convert_with`).
 pub(crate) async fn import_folder_with(
     core: &Core,
     actor: &Actor,
     options: &ImportOptions,
-    stock_step: convert::StockStep,
+    steps: convert::ConvertSteps,
 ) -> Result<ImportReport, LegacyError> {
     options.emit(ImportStage::Reading, 0);
     core.check_import_rights(actor)?;
@@ -228,7 +228,7 @@ pub(crate) async fn import_folder_with(
     options.emit(ImportStage::Converting, 0);
     let mut conversion = tokio::task::spawn_blocking({
         let folder = folder.clone();
-        move || convert::convert_with(&db, &folder, started_at, stock_step)
+        move || convert::convert_with(&db, &folder, started_at, steps)
     })
     .await
     .map_err(interrupted("Разбор данных прерван"))?;

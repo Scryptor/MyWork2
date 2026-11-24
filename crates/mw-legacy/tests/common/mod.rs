@@ -235,6 +235,21 @@ pub async fn money_totals(core: &Core) -> [i64; 5] {
     ["a", "b", "c", "d", "e"].map(|c| row.try_get::<i64>("", c).unwrap())
 }
 
+/// Правит базу готовой фикстуры (`baza.sqlite` в `dir`) запросами `statements`.
+pub async fn run_sql(dir: &Path, statements: &[&str]) {
+    let file = dir.join("baza.sqlite");
+    let mut conn = SqliteConnection::connect(&format!("sqlite://{}", file.display()))
+        .await
+        .unwrap();
+    for sql in statements {
+        sqlx::query(sqlx::AssertSqlSafe((*sql).to_owned()))
+            .execute(&mut conn)
+            .await
+            .unwrap();
+    }
+    conn.close().await.unwrap();
+}
+
 /// Куда попала исходная строка: (таблица, id).
 pub async fn legacy_target(core: &Core, source: &str, key: &str) -> Option<(String, i64)> {
     let row = legacy_row::Entity::find()

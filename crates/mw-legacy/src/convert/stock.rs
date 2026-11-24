@@ -221,11 +221,7 @@ fn convert_parts(
     for (n, row) in table.rows.iter().enumerate() {
         let key = row_key(table, row, n);
         let raw_order = table.text(row, "clientId");
-        let order_id = raw_order
-            .trim()
-            .parse::<i64>()
-            .ok()
-            .filter(|id| orders.contains_key(id));
+        let order_id = order_number(&raw_order).filter(|id| orders.contains_key(id));
         let Some(order_id) = order_id else {
             w.push(
                 WarningCode::StockPartWithoutOrder,
@@ -279,6 +275,11 @@ fn convert_parts(
         targets.push((key, order_id));
     }
     (parts, targets)
+}
+
+/// Номер заказа строки `StockMap` по тексту её `clientId` (`LegacyTable::text`: NUL уже убран).
+pub(crate) fn order_number(client_id: &str) -> Option<i64> {
+    client_id.trim().parse().ok()
 }
 
 /// Сумма для отчёта: «1 000,00» (простые пробелы, всегда копейки).

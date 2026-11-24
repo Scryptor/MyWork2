@@ -9,23 +9,40 @@ use mw_core::{Actor, Core, CoreError, LegacyStockSource, StockImport, StockImpor
 use serde_json::Value;
 
 use crate::convert::dictionaries::append_stock_values;
-use crate::convert::stock::{OrderCosts, StockSource, convert_stock, list_name};
+use crate::convert::stock::{OrderCosts, StockSource, convert_stock, list_name, order_number};
+use crate::convert::{warn_table_text_cells, warn_table_unknown_columns};
 use crate::error::LegacyError;
 use crate::parse::money::{MoneyValue, parse_money};
 use crate::report::{Warning, WarningCode, Warnings};
 use crate::source::LegacyTable;
 
 /// Переносит склад из следов последнего импорта так, как его перенёс бы новый импорт той же папки
-/// (права `settings_manage` и `users_manage`). Импорта со складом нет — `stock` `not_available`;
-/// склад или запчасти заказов уже есть — `stock` `not_empty`.
+/// (права `settings_manage` и `users_manage`). Импорта со складом нет или его склад уже переносили —
+/// `stock` `not_available`; склад или запчасти заказов уже есть — `stock` `not_empty`.
 pub async fn migrate_stock(core: &Core, actor: &Actor) -> Result<StockImportSummary, LegacyError> {
-    let source = core.legacy_stock_source(actor).await?;
+    let source = core.legacy_stock_source(actor, stock_map_order).await?;
     let input = stock_import(source)?;
     Ok(core.import_stock(actor, input).await?)
 }
 
+/// Номер заказа строки `StockMap` по её следу — так же, как его читает разбор склада.
+fn stock_map_order(raw: &Value) -> Option<i64> {
+    let table = LegacyTable::from_json_rows("StockMap", std::slice::from_ref(raw));
+    let row = table.rows.first()?;
+    order_number(&table.text(row, "clientId"))
+}
+
+/// Строка отчёта о ячейке или колонке таблиц склада: перенос выдаёт их заново.
+pub(crate) fn stock_cell_warning(x: &Warning) -> bool {
+    (x.source == "Stock" || x.source == "StockMap")
+        && matches!(
+            x.code,
+            WarningCode::TextInvalidUtf8 | WarningCode::UnknownColumn
+        )
+}
+
 /// Склад из следов: позиции, запчасти, правки «расходов», добавки справочников и отчёт импорта
-/// без `stock_preserved`, с предупреждениями склада.
+/// без `stock_preserved`, с предупреждениями склада (и о его ячейках и колонках — по разу).
 fn stock_import(source: LegacyStockSource) -> Result<StockImport, CoreError> {
     let table = |name: &str| {
         let rows: Vec<Value> = source
@@ -86,7 +103,7 @@ fn stock_import(source: LegacyStockSource) -> Result<StockImport, CoreError> {
     let mut w = Warnings::from(
         stored
             .into_iter()
-            .filter(|x| x.code != WarningCode::StockPreserved)
+            .filter(|x| x.code != WarningCode::StockPreserved && !stock_cell_warning(x))
             .collect::<Vec<_>>(),
     );
     let src = StockSource {
@@ -97,7 +114,34 @@ fn stock_import(source: LegacyStockSource) -> Result<StockImport, CoreError> {
         sequence,
     };
     let converted = convert_stock(&src, &source.dictionary, &mut w);
+    for table in [&stock, &stock_map] {
+        warn_table_unknown_columns(table, &mut w);
+        warn_table_text_cells(table, &mut w);
+    }
     // Справочники здесь не пишутся: нужны только строки отчёта о них («со склада — N»).
+    for (kind, values) in &converted.dictionary_additions {
+        if values.is_empty()
+            || w.find_mut(WarningCode::DictionaryFromOrders, kind.label_ru())
+                .is_some()
+        {
+            continue;
+        }
+        // Справочника не было в отчёте (его завело обновление программы, как «Типы запчастей»):
+        // строка о нём начинается с того, что в программе уже есть.
+        let present = source
+            .dictionary
+            .iter()
+            .find(|(k, _)| k == kind)
+            .map_or(0, |(_, list)| list.len());
+        w.push(
+            WarningCode::DictionaryFromOrders,
+            "dictionary",
+            kind.label_ru(),
+            "",
+            &format!("в программе — {present}"),
+            "Справочник заведён обновлением программы: значения, которые в нём уже были.",
+        );
+    }
     let mut dictionary = source.dictionary.clone();
     append_stock_values(&mut dictionary, &converted.dictionary_additions, &mut w);
 

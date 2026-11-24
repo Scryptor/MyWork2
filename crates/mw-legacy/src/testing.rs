@@ -8,35 +8,53 @@ use std::sync::Mutex;
 use std::sync::mpsc;
 
 use mw_core::{Actor, Core, ImportedOrder, ImportedStock};
-use mw_domain::dictionary::DictionaryKind;
+use mw_domain::dictionary::{DEFAULT_DICTIONARY, DictionaryKind};
 use tokio::sync::oneshot;
 
+use crate::convert::ConvertSteps;
 use crate::convert::stock::StockConversion;
 use crate::folder::LegacyFolder;
-use crate::report::Warnings;
+use crate::report::{Warning, Warnings};
 use crate::source::LegacyDb;
 use crate::{ImportOptions, ImportReport, ImportStage, LegacyError, WarningCode};
 
-/// Импорт папки так, как его делала программа до плана 8.1: склада нет, «расходы» заказов —
-/// затраты MyWork 2 как есть, следы `Stock`, `StockMap` и фото склада — без цели, справочники —
-/// без значений склада, в отчёте — `stock_preserved`. Остальное (пакет, файлы, отчёт) — как у
-/// `import_folder`.
+/// Импорт папки так, как его делала программа до плана 8.1 (база, которую потом обновили до 8.1):
+/// склада нет, «расходы» заказов — затраты MyWork 2 как есть, следы `Stock`, `StockMap` и фото склада —
+/// без цели, справочники — без значений склада, «Типы запчастей» — стандартные (их завела миграция
+/// `m20261124_000002_stock_data`) и без строки отчёта, в отчёте — `stock_preserved` и нет строк о
+/// ячейках и колонках `Stock`/`StockMap` и о файле `TypeOvZIP.txt` (их тогда не проверяли). Остальное
+/// (пакет, файлы, отчёт) — как у `import_folder`.
 pub async fn import_before_stock(
     core: &Core,
     actor: &Actor,
     options: &ImportOptions,
 ) -> Result<ImportReport, LegacyError> {
-    crate::import_folder_with(core, actor, options, preserved_stock).await
+    let steps = ConvertSteps {
+        stock: preserved_stock,
+        warnings: warnings_before_stock,
+    };
+    crate::import_folder_with(core, actor, options, steps).await
 }
 
-/// Шаг склада до плана 8.1: таблицы склада только сохраняются следами.
+/// Шаг склада до плана 8.1: таблицы склада только сохраняются следами; «Типы запчастей» — стандартные.
 fn preserved_stock(
     db: &LegacyDb,
     _folder: &LegacyFolder,
     _orders: &mut [ImportedOrder],
-    _dictionary: &mut [(DictionaryKind, Vec<String>)],
+    dictionary: &mut [(DictionaryKind, Vec<String>)],
     w: &mut Warnings,
 ) -> StockConversion {
+    let defaults = DEFAULT_DICTIONARY
+        .iter()
+        .find(|(kind, _)| *kind == DictionaryKind::PartType)
+        .map(|(_, values)| values.iter().map(|v| (*v).to_owned()).collect())
+        .unwrap_or_default();
+    if let Some((_, values)) = dictionary
+        .iter_mut()
+        .find(|(kind, _)| *kind == DictionaryKind::PartType)
+    {
+        *values = defaults;
+    }
     if let Some(stock) = db.table("Stock").filter(|t| !t.rows.is_empty()) {
         w.push(
             WarningCode::StockPreserved,
@@ -54,6 +72,20 @@ fn preserved_stock(
         stock_targets: Vec::new(),
         part_targets: Vec::new(),
     }
+}
+
+/// Строк, которых до плана 8.1 в отчёте не было, нет.
+fn warnings_before_stock(w: &mut Warnings) {
+    w.retain(|x| !added_by_stock_module(x));
+}
+
+/// Строка отчёта, которую выдаёт только импорт со складом: испорченная ячейка или неизвестная
+/// колонка `Stock`/`StockMap`, строка справочника «Типы запчастей», строки о файле `TypeOvZIP.txt`.
+fn added_by_stock_module(x: &Warning) -> bool {
+    crate::migrate_stock::stock_cell_warning(x)
+        || (x.code == WarningCode::DictionaryFromOrders
+            && x.key == DictionaryKind::PartType.label_ru())
+        || x.key == "settings/Stock/TypeOvZIP.txt"
 }
 
 /// Остановка, назначенная тестом.

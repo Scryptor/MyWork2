@@ -160,27 +160,34 @@ fn known_columns(table: &str) -> Option<&'static [&'static str]> {
 
 fn warn_unknown_columns(db: &LegacyDb, w: &mut Warnings) {
     for table in &db.tables {
-        let Some(known) = known_columns(&table.name) else {
+        warn_table_unknown_columns(table, w);
+    }
+}
+
+/// Колонки таблицы, которых разбор не знает (таблица без списка колонок не проверяется): по строке
+/// на колонку, значение — сколько ячеек заполнено. Перенос склада из прошлого импорта проверяет так
+/// восстановленные `Stock` и `StockMap`.
+pub(crate) fn warn_table_unknown_columns(table: &LegacyTable, w: &mut Warnings) {
+    let Some(known) = known_columns(&table.name) else {
+        return;
+    };
+    for (i, column) in table.columns.iter().enumerate() {
+        if known.iter().any(|k| k.eq_ignore_ascii_case(column)) {
             continue;
-        };
-        for (i, column) in table.columns.iter().enumerate() {
-            if known.iter().any(|k| k.eq_ignore_ascii_case(column)) {
-                continue;
-            }
-            let filled = table
-                .rows
-                .iter()
-                .filter(|r| r.get(i).is_some_and(|v| !v.as_text().trim().is_empty()))
-                .count();
-            w.push(
-                WarningCode::UnknownColumn,
-                &table.name,
-                column,
-                column,
-                &filled.to_string(),
-                "Неизвестная колонка: значения сохранены только в исходной строке (legacy_rows).",
-            );
         }
+        let filled = table
+            .rows
+            .iter()
+            .filter(|r| r.get(i).is_some_and(|v| !v.as_text().trim().is_empty()))
+            .count();
+        w.push(
+            WarningCode::UnknownColumn,
+            &table.name,
+            column,
+            column,
+            &filled.to_string(),
+            "Неизвестная колонка: значения сохранены только в исходной строке (legacy_rows).",
+        );
     }
 }
 
@@ -213,30 +220,35 @@ const TEXT_CHECKED_TABLES: [&str; 8] = [
 /// По одному предупреждению на испорченную ячейку (не UTF-8, двоичная) или ячейку с символом NUL; значение не печатается.
 fn warn_text_cells(db: &LegacyDb, w: &mut Warnings) {
     for name in TEXT_CHECKED_TABLES {
-        let Some(table) = db.table(name) else {
-            continue;
-        };
-        for (n, row) in table.rows.iter().enumerate() {
-            let key = row_key(table, row, n);
-            for (column, value) in table.columns.iter().zip(row) {
-                let message = match value {
-                    LegacyValue::InvalidText(_) | LegacyValue::Blob(_) => {
-                        "Текст не является корректным UTF-8: нечитаемые символы заменены, исходные байты сохранены в legacy_rows."
-                    }
-                    LegacyValue::Text(s) if s.contains('\0') => {
-                        "В тексте есть символ NUL: он удалён, исходное значение сохранено в legacy_rows."
-                    }
-                    _ => continue,
-                };
-                w.push(
-                    WarningCode::TextInvalidUtf8,
-                    &table.name,
-                    &key,
-                    column,
-                    "",
-                    message,
-                );
-            }
+        if let Some(table) = db.table(name) {
+            warn_table_text_cells(table, w);
+        }
+    }
+}
+
+/// Испорченные ячейки и ячейки с NUL одной таблицы (как `warn_text_cells`); перенос склада из
+/// прошлого импорта проверяет так восстановленные `Stock` и `StockMap`.
+pub(crate) fn warn_table_text_cells(table: &LegacyTable, w: &mut Warnings) {
+    for (n, row) in table.rows.iter().enumerate() {
+        let key = row_key(table, row, n);
+        for (column, value) in table.columns.iter().zip(row) {
+            let message = match value {
+                LegacyValue::InvalidText(_) | LegacyValue::Blob(_) => {
+                    "Текст не является корректным UTF-8: нечитаемые символы заменены, исходные байты сохранены в legacy_rows."
+                }
+                LegacyValue::Text(s) if s.contains('\0') => {
+                    "В тексте есть символ NUL: он удалён, исходное значение сохранено в legacy_rows."
+                }
+                _ => continue,
+            };
+            w.push(
+                WarningCode::TextInvalidUtf8,
+                &table.name,
+                &key,
+                column,
+                "",
+                message,
+            );
         }
     }
 }
@@ -416,8 +428,7 @@ fn sequence_of(db: &LegacyDb, table: &str) -> i64 {
         .map_or(0, |(_, v)| *v)
 }
 
-/// Шаг склада внутри `convert_with`: обычный — `transfer_stock`; тесты переноса склада в уже
-/// импортированную базу подставляют склад «до плана 8.1» (`crate::testing`).
+/// Шаг склада внутри `convert_with` (обычный — `transfer_stock`).
 pub(crate) type StockStep = fn(
     &LegacyDb,
     &LegacyFolder,
@@ -425,6 +436,24 @@ pub(crate) type StockStep = fn(
     &mut [(mw_domain::dictionary::DictionaryKind, Vec<String>)],
     &mut Warnings,
 ) -> stock::StockConversion;
+
+/// Подменяемые шаги разбора: обычный импорт — `CURRENT_STEPS`; тесты переноса склада в уже
+/// импортированную базу собирают импорт «как до плана 8.1» (`crate::testing`).
+#[derive(Clone, Copy)]
+pub(crate) struct ConvertSteps {
+    /// Склад: позиции и запчасти, «расходы» заказов, значения склада в справочниках.
+    pub stock: StockStep,
+    /// Последняя правка предупреждений перед отчётом.
+    pub warnings: fn(&mut Warnings),
+}
+
+/// Шаги обычного импорта.
+pub(crate) const CURRENT_STEPS: ConvertSteps = ConvertSteps {
+    stock: transfer_stock,
+    warnings: keep_warnings,
+};
+
+fn keep_warnings(_: &mut Warnings) {}
 
 /// Склад: позиции и запчасти; «расходы» заказов — без запчастей; значения склада — в конец
 /// справочников (и строк отчёта о них).
@@ -470,15 +499,15 @@ pub(crate) fn transfer_stock(
 
 /// Собирает пакет импорта из прочитанной базы и папки; `now` — время импорта для подстановок.
 pub(crate) fn convert(db: &LegacyDb, folder: &LegacyFolder, now: NaiveDateTime) -> Conversion {
-    convert_with(db, folder, now, transfer_stock)
+    convert_with(db, folder, now, CURRENT_STEPS)
 }
 
-/// Как `convert`, склад переносит `stock_step`.
+/// Как `convert`, с шагами `steps`.
 pub(crate) fn convert_with(
     db: &LegacyDb,
     folder: &LegacyFolder,
     now: NaiveDateTime,
-    stock_step: StockStep,
+    steps: ConvertSteps,
 ) -> Conversion {
     let mut w = Warnings::default();
     let hints = history::history_hints(db);
@@ -496,7 +525,7 @@ pub(crate) fn convert_with(
         &rewrites,
         &mut w,
     );
-    let stock = stock_step(db, folder, &mut converted, &mut dictionary, &mut w);
+    let stock = (steps.stock)(db, folder, &mut converted, &mut dictionary, &mut w);
     let history = history::convert_history(db, &converted, now, &mut w);
     warn_unknown_columns(db, &mut w);
     warn_text_cells(db, &mut w);
@@ -535,6 +564,7 @@ pub(crate) fn convert_with(
         &next_order_id.to_string(),
         "Следующий заказ получит этот номер.",
     );
+    (steps.warnings)(&mut w);
     let bundle = ImportBundle {
         source_path: folder.root.display().to_string(),
         statuses: catalogs.statuses,

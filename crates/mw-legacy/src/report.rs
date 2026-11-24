@@ -157,6 +157,11 @@ impl Warnings {
         self.0
     }
 
+    /// Оставляет только предупреждения, для которых `keep` — да.
+    pub(crate) fn retain(&mut self, keep: impl FnMut(&Warning) -> bool) {
+        self.0.retain(keep);
+    }
+
     /// Последнее предупреждение кода с этим ключом — чтобы дополнить его.
     pub(crate) fn find_mut(&mut self, code: WarningCode, key: &str) -> Option<&mut Warning> {
         self.0

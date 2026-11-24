@@ -32,6 +32,8 @@ const STOCK_PHOTO: &str = "Stock.Photo";
 const SEQUENCE: &str = "sqlite_sequence";
 const FILE: &str = "file";
 const CATALOG: &str = "Catalog";
+/// Отметка отчёта импорта «склад сохранён только следами»; перенос её снимает.
+const STOCK_PRESERVED: &str = "stock_preserved";
 /// Списки склада среди следов файлов.
 const LISTS_PREFIX: &str = "settings/Stock/";
 /// Номеров в одном `IN (…)`.
@@ -47,8 +49,8 @@ pub struct LegacyStockState {
     pub stock_rows: u64,
     /// Строк `StockMap` (списаний со склада в заказы) в следах последнего импорта.
     pub stock_map_rows: u64,
-    /// Перенос доступен: у последнего импорта есть строки `Stock`, а позиций склада и запчастей
-    /// заказов в базе нет.
+    /// Перенос доступен: у последнего импорта есть строки `Stock`, в его отчёте ещё есть отметка
+    /// `stock_preserved` (склад не переносили), а позиций склада и запчастей заказов в базе нет.
     pub available: bool,
 }
 
@@ -122,7 +124,9 @@ impl Core {
         };
         let stock_rows = trace_count(&self.db, import_id, STOCK).await?;
         let stock_map_rows = trace_count(&self.db, import_id, STOCK_MAP).await?;
-        let available = stock_rows > 0 && stock_is_empty(&self.db).await?;
+        let available = stock_rows > 0
+            && stock_is_empty(&self.db).await?
+            && stock_preserved(&self.db, import_id).await?;
         Ok(LegacyStockState {
             import_id: Some(import_id),
             stock_rows,
@@ -132,9 +136,15 @@ impl Core {
     }
 
     /// Следы последнего импорта для переноса склада (права `settings_manage` и `users_manage`).
-    /// Импорта нет или в нём нет строк `Stock` — `stock` `not_available`. Пустоту склада здесь не
-    /// проверяем: это делает `import_stock` внутри своей транзакции.
-    pub async fn legacy_stock_source(&self, actor: &Actor) -> Result<LegacyStockSource, CoreError> {
+    /// Импорта нет или в нём нет строк `Stock` — `stock` `not_available`. Пустоту склада и отметку
+    /// `stock_preserved` здесь не проверяем: это делает `import_stock` внутри своей транзакции.
+    /// `order_of` — номер заказа строки `StockMap` по её следу, как его читает разбор склада
+    /// (`mw-legacy`): по нему выбираются заказы, «расходы» которых нужны.
+    pub async fn legacy_stock_source(
+        &self,
+        actor: &Actor,
+        order_of: fn(&Value) -> Option<i64>,
+    ) -> Result<LegacyStockSource, CoreError> {
         self.check_import_rights(actor)?;
         let db = &self.db;
         let import_id = latest_import(db).await?.ok_or_else(not_available)?;
@@ -176,7 +186,7 @@ impl Core {
         let ids: BTreeSet<i64> = rows
             .iter()
             .filter(|r| r.source == STOCK_MAP)
-            .filter_map(|r| order_ref(&r.raw))
+            .filter_map(|r| order_of(&r.raw))
             .collect();
         let orders = order_costs(db, import_id, &ids).await?;
         let dictionary = dictionary_values(db).await?;
@@ -199,7 +209,8 @@ impl Core {
     /// позиции и запчасти, цели следов `Stock`, `Stock.Photo`, `StockMap`, фото позиций, правки
     /// «расходов» (только если они не менялись с чтения, иначе `Conflict`), добавки справочников,
     /// отчёт импорта и запись журнала. Импорт уже не последний или без склада — `stock`
-    /// `not_available`; позиции склада или запчасти заказов уже есть — `stock` `not_empty`.
+    /// `not_available`; позиции склада или запчасти заказов уже есть — `stock` `not_empty`; склад
+    /// этого импорта уже переносили (в отчёте нет `stock_preserved`) — `stock` `not_available`.
     pub async fn import_stock(
         &self,
         actor: &Actor,
@@ -247,6 +258,11 @@ impl Core {
         if !stock_is_empty(&tx).await? {
             return Err(not_empty());
         }
+        // После проверки пустоты: повтор после переноса с позициями — по-прежнему `not_empty`, а
+        // перенос, не создавший ничего, второй раз не проходит.
+        if !stock_preserved(&tx, input.import_id).await? {
+            return Err(not_available());
+        }
         let orders = existing_orders(&tx, &referenced).await?;
         if let Some(id) = referenced.iter().find(|id| !orders.contains_key(id)) {
             return Err(bad(format!("заказа №{id} нет")));
@@ -266,6 +282,7 @@ impl Core {
         for c in &input.cost_changes {
             let res = order::Entity::update_many()
                 .col_expr(order::Column::ExtraCosts, Expr::value(c.to.kopecks()))
+                .col_expr(order::Column::UpdatedAt, Expr::value(now))
                 .col_expr(
                     order::Column::Version,
                     Expr::col(order::Column::Version).add(1),
@@ -425,20 +442,25 @@ async fn stock_is_empty(conn: &impl ConnectionTrait) -> Result<bool, CoreError> 
         && order_part::Entity::find().count(conn).await? == 0)
 }
 
-/// Номер заказа строки `StockMap` (`clientId`, имя колонки без учёта регистра), как его читает
-/// `mw-legacy`: целое число или текст с целым числом.
-fn order_ref(raw: &Value) -> Option<i64> {
-    let (_, value) = raw
-        .as_object()?
-        .iter()
-        .find(|(k, _)| k.to_lowercase() == "clientid")?;
-    match value {
-        Value::Number(n) => n
-            .as_i64()
-            .or_else(|| n.as_f64().filter(|x| x.fract() == 0.0).map(|x| x as i64)),
-        Value::String(s) => s.trim().parse().ok(),
-        _ => None,
-    }
+/// В отчёте импорта ещё есть отметка `stock_preserved`: склад сохранён только следами и не
+/// переносился. Отчёт, который не читается, отметки не содержит.
+async fn stock_preserved(conn: &impl ConnectionTrait, import_id: i64) -> Result<bool, CoreError> {
+    let report: Option<String> = legacy_import::Entity::find_by_id(import_id)
+        .select_only()
+        .column(legacy_import::Column::Report)
+        .into_tuple()
+        .one(conn)
+        .await?;
+    let Some(report) = report.and_then(|r| serde_json::from_str::<Value>(&r).ok()) else {
+        return Ok(false);
+    };
+    Ok(report
+        .get("warnings")
+        .and_then(Value::as_array)
+        .is_some_and(|list| {
+            list.iter()
+                .any(|w| w.get("code").and_then(Value::as_str) == Some(STOCK_PRESERVED))
+        }))
 }
 
 /// «Расходы» заказов `ids`, которые есть в базе, и следы их строк `Catalog` в импорте `import_id`.
