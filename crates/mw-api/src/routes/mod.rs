@@ -22,7 +22,28 @@ mod setup;
 mod stock;
 mod users;
 
+/// Все маршруты API.
+///
+/// Разделы собираются отдельными функциями и сливаются по очереди: в отладочной сборке временные
+/// значения `routes!(…)` не делят слоты стека, и одна функция со всеми маршрутами занимала больше
+/// полумегабайта стека — на Windows (1 МБ у главного потока) сервер падал при запуске. Новые
+/// маршруты — в свой раздел; размер держит тест `tests/stack.rs`.
 pub(crate) fn api_routes() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .merge(file_routes())
+        .merge(meta_routes())
+        .merge(catalog_routes())
+        .merge(client_routes())
+        .merge(stock_routes())
+        .merge(order_routes())
+        .merge(document_routes())
+        .merge(user_routes())
+        .merge(legacy_import_routes())
+}
+
+/// Вложения, черновики, фото склада и логотип; загрузки — со своим пределом тела.
+#[inline(never)]
+fn file_routes() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
         .merge(
             OpenApiRouter::new()
@@ -51,6 +72,12 @@ pub(crate) fn api_routes() -> OpenApiRouter<AppState> {
             attachments::update_attachment,
             attachments::delete_attachment
         ))
+}
+
+/// Сведения о сервере, документ API, первичная настройка и вход.
+#[inline(never)]
+fn meta_routes() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
         .routes(routes!(meta::server_info))
         .routes(routes!(meta::openapi_json))
         .routes(routes!(meta::about))
@@ -59,6 +86,12 @@ pub(crate) fn api_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(auth::logout))
         .routes(routes!(auth::me))
         .routes(routes!(auth::change_password))
+}
+
+/// Настройки, статусы, справочники и точки приёма.
+#[inline(never)]
+fn catalog_routes() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
         .routes(routes!(catalogs::get_settings, catalogs::update_settings))
         .routes(routes!(catalogs::list_statuses, catalogs::create_status))
         .routes(routes!(catalogs::update_status))
@@ -83,11 +116,23 @@ pub(crate) fn api_routes() -> OpenApiRouter<AppState> {
         ))
         .routes(routes!(catalogs::update_service_point))
         .routes(routes!(catalogs::reorder_service_points))
+}
+
+/// Клиенты.
+#[inline(never)]
+fn client_routes() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
         .routes(routes!(clients::list_clients, clients::create_client))
         .routes(routes!(clients::clients_by_phone))
         .routes(routes!(clients::merge_clients))
         .routes(routes!(clients::similar_clients))
         .routes(routes!(clients::get_client, clients::update_client))
+}
+
+/// Склад.
+#[inline(never)]
+fn stock_routes() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
         .routes(routes!(stock::list_stock, stock::create_stock_item))
         .routes(routes!(stock::stock_summary))
         .routes(routes!(
@@ -97,6 +142,12 @@ pub(crate) fn api_routes() -> OpenApiRouter<AppState> {
         ))
         .routes(routes!(stock::stock_item_history))
         .routes(routes!(stock::list_stock_photos))
+}
+
+/// Заказы, их журнал, комментарии и запчасти.
+#[inline(never)]
+fn order_routes() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
         .routes(routes!(orders::list_orders, orders::create_order))
         .routes(routes!(orders::order_summary))
         .routes(routes!(orders::order_values))
@@ -117,6 +168,12 @@ pub(crate) fn api_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(orders::order_parts, orders::add_order_part))
         .routes(routes!(orders::return_order_part))
         .routes(routes!(orders::accept_warranty_case))
+}
+
+/// Документы и шаблоны документов.
+#[inline(never)]
+fn document_routes() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
         .routes(routes!(documents::order_document))
         .routes(routes!(documents::sample_document))
         .routes(routes!(documents::batch_document))
@@ -133,6 +190,12 @@ pub(crate) fn api_routes() -> OpenApiRouter<AppState> {
             document_templates::import_template_file
         ))
         .routes(routes!(document_templates::list_fields))
+}
+
+/// Пользователи, роли и журнал.
+#[inline(never)]
+fn user_routes() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
         .routes(routes!(users::list_users, users::create_user))
         .routes(routes!(users::update_user))
         .routes(routes!(users::set_user_password))
@@ -140,6 +203,12 @@ pub(crate) fn api_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(users::update_role, users::delete_role))
         .routes(routes!(users::list_masters))
         .routes(routes!(audit::list_audit))
+}
+
+/// Импорт MyWork 2.
+#[inline(never)]
+fn legacy_import_routes() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
         .routes(routes!(legacy_import::check_legacy_folder))
         .routes(routes!(legacy_import::start_legacy_import))
         .routes(routes!(legacy_import::current_legacy_import))

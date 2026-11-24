@@ -24,6 +24,7 @@
   Программа для компьютера: `option-ext` (MPL-2.0, его тянет Tauri через `dirs`) заменён своей реализацией под MIT в `apps/desktop/src-tauri/vendor/option-ext` (`[patch.crates-io]`); лицензии того, что входит в программу (обычные зависимости на всех ОС), проверяет `npm run licenses` в `apps/desktop`.
 - После изменения зависимостей в `crates/*` обновить `apps/desktop/src-tauri/Cargo.lock` (`cargo update -p <крейт>` или `cargo check` в `apps/desktop/src-tauri`): поставляемая программа должна собираться с теми же версиями.
 - Типы API — это типы `mw-core`/`mw-domain` с `Serialize`/`Deserialize`, `ts_rs::TS` и `utoipa::ToSchema`. Входные типы — с `deny_unknown_fields`; в правках различие «не передано» и `null` — через `patch::present`/`patch::nullable`. `#[ts(export)]` не ставить.
+- Маршруты API — в функциях по разделам в `crates/mw-api/src/routes/mod.rs` (`#[inline(never)]`), не одной цепочкой: в отладочной сборке кадр такой функции растёт с каждым `routes!(…)`, а у главного потока на Windows всего 1 МБ стека. Размер держит тест `crates/mw-api/tests/stack.rs`.
 - `crates/mw-api/openapi.json` и `crates/mw-api/bindings/` генерируются, руками не правятся. После изменения API:
   `MW_UPDATE_CONTRACT=1 cargo test -p mw-api --test contract -- --test-threads=1`, затем коммит вместе с кодом.
   Один поток нужен, потому что тесты делят файлы; внутри обновления `every_openapi_schema_has_a_typescript_type` может упасть один раз
