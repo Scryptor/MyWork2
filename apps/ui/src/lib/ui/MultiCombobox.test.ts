@@ -17,6 +17,8 @@ beforeAll(() => {
 const hidden = { hidden: true } as const;
 const field = () => screen.getByRole('combobox', { name: 'Комплектность' });
 const out = () => JSON.parse(screen.getByTestId('out').textContent ?? '[]') as string[];
+/** The text typed and not chosen, as the owner sees it (`bind:pending`). */
+const pending = () => JSON.parse(screen.getByTestId('pending').textContent ?? '""') as string;
 const shown = () => screen.queryAllByRole('option', hidden).map((o) => o.textContent?.trim() ?? '');
 
 const OPTIONS = ['Чехол', 'Коробка', 'Документы к коробке', 'Шнур'];
@@ -112,17 +114,57 @@ describe('MultiCombobox', () => {
 		expect(out()).toEqual(['Чехол']);
 	});
 
-	it('Ctrl/⌘+Enter (accept the form) picks nothing, highlighted or typed', async () => {
+	it('Ctrl/⌘+Enter (accept the form) picks nothing, highlighted or typed: the text stays pending', async () => {
 		const oncreate = vi.fn();
 		render(Harness, { options: OPTIONS, allowCustom: true, oncreate });
 		await userEvent.type(field(), 'кор');
 		await userEvent.keyboard('{Control>}{Enter}{/Control}{Meta>}{Enter}{/Meta}');
 		expect(out()).toEqual([]);
+		expect(pending()).toBe('кор');
 		await userEvent.clear(field());
 		await userEvent.type(field(), 'Плёнка');
 		await userEvent.keyboard('{Control>}{Enter}{/Control}');
 		expect(out()).toEqual([]);
+		expect(pending()).toBe('Плёнка');
 		expect(oncreate).not.toHaveBeenCalled();
+	});
+
+	it('pending is the text typed and not chosen; Enter or clearing the field empties it', async () => {
+		render(Harness, { options: OPTIONS, allowCustom: true });
+		expect(pending()).toBe('');
+		await userEvent.type(field(), 'Плён');
+		expect(pending()).toBe('Плён');
+		await userEvent.keyboard('{Enter}');
+		expect(out()).toEqual(['Плён']);
+		expect(pending()).toBe('');
+		await userEvent.type(field(), 'шну');
+		expect(pending()).toBe('шну');
+		await userEvent.keyboard('{Enter}');
+		expect(out()).toEqual(['Плён', 'Шнур']);
+		expect(pending()).toBe('');
+		await userEvent.type(field(), 'кор');
+		await userEvent.clear(field());
+		expect(pending()).toBe('');
+		expect(out()).toEqual(['Плён', 'Шнур']);
+	});
+
+	it('Enter on text already chosen (any case) empties the field: nothing is left pending', async () => {
+		const oncreate = vi.fn();
+		render(Harness, { options: OPTIONS, allowCustom: true, oncreate, selected: ['Чехол'] });
+		await userEvent.type(field(), ' чехол {Enter}');
+		expect(out()).toEqual(['Чехол']);
+		expect(pending()).toBe('');
+		expect(field()).toHaveValue('');
+		expect(oncreate).not.toHaveBeenCalled();
+	});
+
+	it('an error is told under the field and marks it invalid', async () => {
+		render(Harness, {
+			options: OPTIONS,
+			error: 'Нажмите Enter, чтобы добавить, или очистите поле'
+		});
+		expect(field()).toHaveAttribute('aria-invalid', 'true');
+		expect(field()).toHaveAccessibleDescription('Нажмите Enter, чтобы добавить, или очистите поле');
 	});
 
 	it('a value repeated in the chosen ones (an old draft) is one tag, the next edit drops the repeat', async () => {

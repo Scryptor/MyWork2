@@ -91,6 +91,8 @@
 		deviceType: 'intake-type',
 		brand: 'intake-brand',
 		model: 'intake-model',
+		completeness: 'intake-completeness',
+		condition: 'intake-condition',
 		malfunction: 'intake-malfunction',
 		status: 'intake-status',
 		estimateFrom: MONEY_FIELDS.estimateFrom.id,
@@ -126,6 +128,8 @@
 	type Kind = (typeof KINDS)[number];
 	/** Lists whose values most used in orders come first. */
 	const RANKED: readonly Kind[] = ['completeness', 'condition'];
+	type ListKey = 'completeness' | 'condition';
+	const LIST_KEYS: readonly ListKey[] = ['completeness', 'condition'];
 	const noDictionaries = () =>
 		Object.fromEntries(KINDS.map((k) => [k, [] as string[]])) as Record<Kind, string[]>;
 
@@ -133,6 +137,11 @@
 	let dictionaries = $state.raw(noDictionaries());
 	let masters = $state.raw<MasterList>(null);
 	let attempted = $state(false);
+	/**
+	 * Text typed in «Комплектность» or «Внешнее состояние» and not added: it stops «Принять» until Enter
+	 * adds it or the field is cleared. It is never added by itself (it may be a piece of a search).
+	 */
+	let pending = $state<Record<ListKey, string>>({ completeness: '', condition: '' });
 	let submitError = $state<string | null>(null);
 	/** The draft as it was when `submitError` was shown: any edit since then hides it. */
 	let errorFor = '';
@@ -182,6 +191,7 @@
 		if (next !== stored && stored.acceptedAs !== null) writeStorage(INTAKE_DRAFT_KEY, written);
 		draft = next;
 		attempted = false;
+		pending = { completeness: '', condition: '' };
 		submitError = null;
 		serverErrors = {};
 		wrongMoney = { estimateFrom: false, estimateTo: false, prepayment: false };
@@ -464,15 +474,20 @@
 	const strict = $derived(app.settings.intake_required_fields);
 	const missing = $derived(missingRequired(draft, strict));
 	const wrong = $derived(MONEY_KEYS.filter((k) => wrongMoney[k]));
+	const unadded = $derived(LIST_KEYS.filter((k) => pending[k].trim() !== ''));
 	const required = (key: RequiredKey, text: string) =>
 		attempted && missing.includes(key) ? text : undefined;
+	const notAdded = (key: ListKey) =>
+		attempted && unadded.includes(key) ? t.pendingChoice : undefined;
 	const errors = $derived({
 		...serverErrors,
 		contact: serverErrors.contact ?? required('contact', t.contactRequired),
 		deviceType: serverErrors.deviceType ?? required('deviceType', t.deviceTypeRequired),
 		brand: serverErrors.brand ?? required('brand', t.brandRequired),
 		model: serverErrors.model ?? required('model', t.modelRequired),
-		malfunction: serverErrors.malfunction ?? required('malfunction', t.malfunctionRequired)
+		malfunction: serverErrors.malfunction ?? required('malfunction', t.malfunctionRequired),
+		completeness: notAdded('completeness'),
+		condition: notAdded('condition')
 	});
 
 	/** The order belongs to the point of the top bar, otherwise to the default one of the settings. */
@@ -489,10 +504,11 @@
 	 */
 	async function accept() {
 		if (intake.submitting) return;
-		if (missing.length > 0 || wrong.length > 0) {
+		if (missing.length > 0 || wrong.length > 0 || unadded.length > 0) {
 			attempted = true;
-			// The first field to fix, in the order of the form: the required ones come before the money.
-			const first = missing[0] ?? wrong[0];
+			// The first field to fix, in the order of the form.
+			const blocking: FieldKey[] = [...missing, ...wrong, ...unadded];
+			const first = (Object.keys(FIELDS) as FieldKey[]).find((k) => blocking.includes(k));
 			if (first) void focusField(first);
 			return;
 		}
@@ -681,21 +697,27 @@
 				</div>
 				<div class="grid two">
 					<MultiCombobox
+						id={FIELDS.completeness}
 						label={t.completeness}
 						help={ru.help.intake.completeness}
 						placeholder={t.pickOrType}
 						options={completeness}
 						allowCustom
 						bind:selected={draft.completeness}
+						bind:pending={pending.completeness}
+						error={errors.completeness}
 						oncreate={(v) => remember('completeness', v)}
 					/>
 					<MultiCombobox
+						id={FIELDS.condition}
 						label={t.condition}
 						help={ru.help.intake.condition}
 						placeholder={t.pickOrType}
 						options={condition}
 						allowCustom
 						bind:selected={draft.condition}
+						bind:pending={pending.condition}
+						error={errors.condition}
 						oncreate={(v) => remember('condition', v)}
 					/>
 				</div>

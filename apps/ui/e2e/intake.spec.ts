@@ -1118,6 +1118,41 @@ test('completeness is picked from a list, the most used first', async ({ page, r
 	expect((await fetchOrder(request, id)).completeness).toBe(`${common}, ${own}`);
 });
 
+test('text typed in «Комплектность» and not added stops «Принять» until Enter adds it', async ({
+	page,
+	request
+}) => {
+	const value = uniq('Зарядка');
+	const hint = 'Нажмите Enter, чтобы добавить, или очистите поле';
+	await openIntake(page);
+	await phoneOf(page).fill(uniqPhone());
+	await nameOf(page).fill(`Тестов ${uniq('П')}`);
+	await fillDevice(page);
+	await malfunctionOf(page).fill('Не заряжается');
+	await completenessOf(page).click();
+	await completenessOf(page).fill(value);
+	const accept = sheetOf(page).getByRole('button', { name: /^Принять/ });
+	await accept.click();
+	// Not added, not lost: the sheet stays and the field says what to do.
+	await expect(completenessOf(page)).toBeFocused();
+	await expect(completenessOf(page)).toHaveAccessibleDescription(hint);
+	await expect(completenessOf(page)).toHaveValue(value);
+	await expect(tagOf(page, value)).toHaveCount(0);
+	// Ctrl/⌘+Enter is stopped the same way.
+	await page.keyboard.press(`${await mod(page)}+Enter`);
+	await expect(sheetOf(page)).toBeVisible();
+	await expect(completenessOf(page)).toHaveAccessibleDescription(hint);
+	await expect(tagOf(page, value)).toHaveCount(0);
+
+	await page.keyboard.press('Enter');
+	await expect(tagOf(page, value)).toBeVisible();
+	await expect(completenessOf(page)).not.toHaveAccessibleDescription(hint);
+	await accept.click();
+	await expect(sheetOf(page)).toBeHidden();
+	const id = await acceptedNumber(page);
+	expect((await fetchOrder(request, id)).completeness).toContain(value);
+});
+
 test('without the usage counts the list keeps the order of the dictionary', async ({
 	page,
 	request

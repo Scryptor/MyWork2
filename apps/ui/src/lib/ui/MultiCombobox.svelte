@@ -2,7 +2,8 @@
      empty field the last one. Typing narrows the list (any case, ё as е), ↓/↑ and Enter or a click pick;
      the chosen values are not offered again and the list stays open for the next one. With `allowCustom`
      the text typed is offered at the end of the list as «Добавить «…»»: Enter or a click adds it and
-     tells `oncreate`. The list draws at most `limit` rows, the rest is found by typing. -->
+     tells `oncreate`. The list draws at most `limit` rows, the rest is found by typing. Text typed and not
+     chosen is never added by itself (it may be a piece of a search): the owner sees it as `pending`. -->
 <script lang="ts">
 	import X from '@lucide/svelte/icons/x';
 	import { Combobox } from 'bits-ui';
@@ -15,6 +16,7 @@
 
 	let {
 		selected = $bindable([]),
+		pending = $bindable(''),
 		options,
 		label,
 		help,
@@ -23,9 +25,12 @@
 		placeholder,
 		id,
 		disabled = false,
-		limit = 50
+		limit = 50,
+		error
 	}: {
 		selected: string[];
+		/** The text in the field, not chosen yet: Enter adds it, a pick or clearing the field empties it. */
+		pending?: string;
 		/** In the order to offer them (the most used first). */
 		options: string[];
 		label: string;
@@ -40,12 +45,12 @@
 		disabled?: boolean;
 		/** Rows of the list at most. */
 		limit?: number;
+		error?: string;
 	} = $props();
 
 	const uid = $props.id();
 	const fid = $derived(id ?? uid);
 	let open = $state(false);
-	let text = $state('');
 	let box = $state<HTMLElement | null>(null);
 	let input = $state<HTMLInputElement | null>(null);
 	let list = $state<HTMLElement | null>(null);
@@ -56,7 +61,7 @@
 
 	/** A value repeated in `selected` (an old draft) is one tag; the next change drops the repeat. */
 	const unique = $derived([...new Set(selected)]);
-	const query = $derived(normalizeSearch(text));
+	const query = $derived(normalizeSearch(pending));
 	const chosen = $derived(new Set(selected.map(normalizeSearch)));
 	const matches = $derived.by(() => {
 		const found = options.filter((o) => {
@@ -74,7 +79,7 @@
 			query !== '' &&
 			!chosen.has(query) &&
 			!options.some((o) => normalizeSearch(o) === query)
-			? text.trim().replace(/\s+/g, ' ')
+			? pending.trim().replace(/\s+/g, ' ')
 			: null
 	);
 
@@ -83,7 +88,7 @@
 		// Read before `selected` changes: the owner's options may take in the chosen values at once.
 		const created = next.filter((v) => !unique.includes(v) && !options.includes(v));
 		selected = next;
-		text = '';
+		pending = '';
 		for (const v of created) oncreate?.(v);
 	}
 
@@ -92,25 +97,31 @@
 	}
 
 	function onInput(e: Event & { currentTarget: HTMLInputElement }) {
-		text = e.currentTarget.value;
+		pending = e.currentTarget.value;
 		open = true;
 	}
 
 	function onKeydown(e: KeyboardEvent) {
-		if (e.key === 'Backspace' && text === '' && unique.length > 0) {
+		if (e.key === 'Backspace' && pending === '' && unique.length > 0) {
 			e.preventDefault();
 			remove(unique[unique.length - 1]!);
 			return;
 		}
 		if (e.key !== 'Enter' || e.isComposing) return;
 		// Ctrl/⌘+Enter accepts the form (its hotkey listens on the window, whatever is prevented here):
-		// bits-ui would pick the highlighted row on the way.
+		// bits-ui would pick the highlighted row on the way. The text typed stays pending for the owner.
 		if (e.ctrlKey || e.metaKey) {
 			e.preventDefault();
 			return;
 		}
 		// A highlighted row is bits-ui's to pick.
 		if (open && list?.querySelector('[data-highlighted]')) return;
+		// Chosen already: the text has nothing left to add, it would only stay pending.
+		if (query !== '' && chosen.has(query)) {
+			e.preventDefault();
+			pending = '';
+			return;
+		}
 		const value = custom ?? (query !== '' ? matches[0] : undefined);
 		if (value === undefined) return;
 		e.preventDefault();
@@ -122,7 +133,7 @@
 	}
 </script>
 
-<Field {label} {help} id={fid}>
+<Field {label} {help} {error} id={fid}>
 	{#snippet children(f)}
 		<Combobox.Root
 			type="multiple"
@@ -130,12 +141,13 @@
 			bind:open
 			value={unique}
 			{onValueChange}
-			inputValue={text}
+			inputValue={pending}
 		>
 			<!-- A press beside the tags is a press in the field. -->
 			<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 			<div
 				class="mw-box multi"
+				class:invalid={f.invalid}
 				class:disabled
 				bind:this={box}
 				onclick={(e) => {
@@ -165,13 +177,14 @@
 					placeholder={unique.length === 0 ? placeholder : undefined}
 					autocomplete="off"
 					aria-describedby={f.describedBy}
+					aria-invalid={f.invalid ? 'true' : undefined}
 					oninput={onInput}
 					onkeydown={onKeydown}
 					onclick={openList}
 				>
 					{#snippet child({ props })}
 						<!-- The field holds what is typed: bits-ui would put the label of a pick there. -->
-						<input {...props} value={text} />
+						<input {...props} value={pending} />
 					{/snippet}
 				</Combobox.Input>
 			</div>

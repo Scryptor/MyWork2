@@ -842,6 +842,8 @@ export const ru = {
 		condition: 'Внешнее состояние',
 		/** The placeholder of «Комплектность» and «Внешнее состояние» while nothing is chosen. */
 		pickOrType: 'Выберите или впишите',
+		/** Text typed in «Комплектность» or «Внешнее состояние» and not added stops «Принять». */
+		pendingChoice: 'Нажмите Enter, чтобы добавить, или очистите поле',
 		malfunction: 'Неисправность',
 		frequent: 'Частые неисправности',
 		photos: 'Фото',
