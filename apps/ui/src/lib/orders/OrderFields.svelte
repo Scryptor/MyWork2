@@ -33,6 +33,7 @@
 	import type { Autosave } from './autosave.js';
 	import type { Conflict, OrderField, OrderValues } from './editor.svelte.js';
 	import { masterChoices, masterName, masterOf, masterValue, type MasterList } from './masters.js';
+	import { orderCost } from './parts.svelte.js';
 	import { estimateText, isNoWarranty, toPay } from './view.js';
 
 	let {
@@ -43,6 +44,7 @@
 		readonly = false,
 		editDevice = false,
 		idPrefix = 'order',
+		partsTotal = 0,
 		conflicts = new Map(),
 		flashed = new Set(),
 		onkeep,
@@ -67,6 +69,8 @@
 		editDevice?: boolean;
 		/** Field ids are `<idPrefix>-<field>`: the same field gets focus back on another order. */
 		idPrefix?: string;
+		/** The parts written off from the stock into the order, in kopecks: the cost line under «Расходы». */
+		partsTotal?: number;
 		conflicts?: ReadonlyMap<OrderField, Conflict>;
 		flashed?: ReadonlySet<OrderField>;
 		onkeep?: (field: OrderField) => void;
@@ -336,6 +340,16 @@
 						bind:value={() => money(f), (v) => setMoney(f, v)}
 					/>
 					{@render dispute(f)}
+					{#if f === 'extra_costs' && partsTotal > 0 && !invalid[f]}
+						{@const extra = money(f) ?? 0}
+						<p class="cost num">
+							{t.cost(
+								formatMoney(orderCost(extra, partsTotal)),
+								formatMoney(extra),
+								formatMoney(partsTotal)
+							)}
+						</p>
+					{/if}
 				</div>
 			{/each}
 		</div>
@@ -561,6 +575,11 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: var(--space-2) var(--space-4);
+	}
+	.cost {
+		margin: var(--space-1) 0 0;
+		color: var(--text-3);
+		font-size: var(--text-sm);
 	}
 	.to-pay {
 		margin: 0;

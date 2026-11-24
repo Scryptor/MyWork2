@@ -40,7 +40,9 @@
 	import OrderDialogs from './OrderDialogs.svelte';
 	import OrderFields from './OrderFields.svelte';
 	import OrderHistory from './OrderHistory.svelte';
+	import OrderParts from './OrderParts.svelte';
 	import OrderPhotos from './OrderPhotos.svelte';
+	import { createOrderParts, type OrderPartsState } from './parts.svelte.js';
 	import { orderPanel } from './panel.svelte.js';
 	import { createOrderMedia, limitPhotos, type OrderMedia } from './photos.svelte.js';
 	import SaveIndicator from './SaveIndicator.svelte';
@@ -53,6 +55,8 @@
 	let client = $state.raw<Client | null>(null);
 	/** The photos and files of the order shown, one set per order. */
 	let media = $state.raw<OrderMedia | null>(null);
+	/** The parts written off into the order shown, one set per order. */
+	let parts = $state.raw<OrderPartsState | null>(null);
 	let cameraInput = $state<HTMLInputElement | null>(null);
 	let loadError = $state<string | null>(null);
 	let dictionaries = $state.raw<{ masters: MasterList; warranty: string[] }>({
@@ -158,6 +162,9 @@
 		editor = next;
 		media?.detach();
 		media = next ? createOrderMedia(next.order.id) : null;
+		parts?.detach();
+		parts = next ? createOrderParts(next.order.id) : null;
+		void parts?.load();
 		// The guard saved it; what was typed while the next order was loading is saved now.
 		if (old) closeEditor(old);
 	}
@@ -323,6 +330,7 @@
 					{dictionaries}
 					readonly={!canEdit}
 					idPrefix="order-panel"
+					partsTotal={parts?.total ?? 0}
 					conflicts={ed.conflicts}
 					flashed={ed.flashed}
 					onkeep={(f) => ed.keep(f)}
@@ -334,6 +342,7 @@
 					orderId={ed.order.id}
 					canPost={canEdit && !ed.order.deleted_at && orderPanel.id === ed.order.id}
 				/>
+				{#if parts}<OrderParts {parts} orderDeleted={ed.order.deleted_at !== null} />{/if}
 				{#if media}<OrderPhotos {media} readonly={!canEdit} />{/if}
 				<OrderHistory orderId={ed.order.id} version={ed.order.version} onall={openCard} />
 			{/key}

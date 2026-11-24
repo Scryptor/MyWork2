@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Component } from 'svelte';
 	import { formatRelative, type LocalDateTime } from '#lib/format/date.js';
 
 	let {
@@ -6,7 +7,14 @@
 		now,
 		emptyText = ''
 	}: {
-		items: { id: string | number; at: string; who?: string; text: string }[];
+		items: {
+			id: string | number;
+			at: string;
+			who?: string;
+			text: string;
+			/** A small icon before the text: the kind of the entry. */
+			icon?: Component;
+		}[];
 		now: LocalDateTime;
 		emptyText?: string;
 	} = $props();
@@ -23,7 +31,10 @@
 					<time datetime={item.at}>{formatRelative(item.at, now)}</time>
 					{#if item.who}<span>{item.who}</span>{/if}
 				</div>
-				<div>{item.text}</div>
+				<div class="text">
+					{#if item.icon}<item.icon class="kind" size={14} aria-hidden="true" />{/if}
+					<span>{item.text}</span>
+				</div>
 			</li>
 		{/each}
 	</ol>
@@ -58,6 +69,16 @@
 		display: flex;
 		gap: var(--space-2);
 		font-size: var(--text-xs);
+		color: var(--text-3);
+	}
+	.text {
+		display: flex;
+		align-items: baseline;
+		gap: var(--space-1-5);
+	}
+	.text :global(.kind) {
+		flex: none;
+		align-self: center;
 		color: var(--text-3);
 	}
 	.empty {

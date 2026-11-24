@@ -1,8 +1,25 @@
+import Warehouse from '@lucide/svelte/icons/warehouse';
+import type { Component } from 'svelte';
 import type { AuditEntry } from '$api/AuditEntry';
 
+/** Entries that move things between the stock and an order: they carry the warehouse icon. */
+const STOCK_ACTIONS = ['order.part_added', 'order.part_returned', 'order.costs_split'];
+
 /** History lines for `Timeline`: the server writes the text of each entry in Russian. */
-export function historyItems(entries: readonly AuditEntry[]) {
-	return entries.map((e) => ({ id: e.id, at: e.at, who: e.user_name, text: e.summary }));
+export function historyItems(entries: readonly AuditEntry[]): {
+	id: number;
+	at: string;
+	who: string;
+	text: string;
+	icon?: Component;
+}[] {
+	return entries.map((e) => ({
+		id: e.id,
+		at: e.at,
+		who: e.user_name,
+		text: e.summary,
+		...(STOCK_ACTIONS.includes(e.action) ? { icon: Warehouse } : {})
+	}));
 }
 
 function statusMove(e: AuditEntry): { from: number; to: number } | null {

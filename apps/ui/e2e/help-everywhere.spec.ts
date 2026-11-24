@@ -56,6 +56,7 @@ test('the order panel explains the money and the marks', async ({ page, request 
 	await expect(panel.getByRole('textbox', { name: 'Неисправность' })).toBeVisible();
 
 	await expectHint(page, panel, 'Расходы', '«К оплате» не входит');
+	await expectHint(page, panel, 'Расходы', 'Себестоимость заказа = «Расходы» + запчасти со склада');
 	await expect(panel).toBeVisible();
 	for (const name of ['Итог', 'Срок гарантии', 'Позвонить', 'Заказать запчасть']) {
 		await expect(panel.getByRole('button', { name: `Что такое «${name}»` })).toBeVisible();

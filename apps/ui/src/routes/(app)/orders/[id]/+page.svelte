@@ -34,7 +34,9 @@
 	import OrderDialogs from '#lib/orders/OrderDialogs.svelte';
 	import OrderFields from '#lib/orders/OrderFields.svelte';
 	import OrderFiles from '#lib/orders/OrderFiles.svelte';
+	import OrderParts from '#lib/orders/OrderParts.svelte';
 	import OrderPhotos from '#lib/orders/OrderPhotos.svelte';
+	import { createOrderParts, type OrderPartsState } from '#lib/orders/parts.svelte.js';
 	import { orderPanel } from '#lib/orders/panel.svelte.js';
 	import { createOrderMedia, type OrderMedia } from '#lib/orders/photos.svelte.js';
 	import SaveIndicator from '#lib/orders/SaveIndicator.svelte';
@@ -63,6 +65,8 @@
 	let client = $state.raw<Client | null>(null);
 	/** The photos and files of the order shown. */
 	let media = $state.raw<OrderMedia | null>(null);
+	/** The parts written off into the order shown. */
+	let parts = $state.raw<OrderPartsState | null>(null);
 	let loadError = $state<string | null>(null);
 	let notFound = $state(false);
 	let dictionaries = $state.raw<{
@@ -168,6 +172,9 @@
 		editor = next;
 		media?.detach();
 		media = next ? createOrderMedia(next.order.id) : null;
+		parts?.detach();
+		parts = next ? createOrderParts(next.order.id) : null;
+		void parts?.load();
 		// Another order or the screen left: what is typed is still saved.
 		if (old) closeEditor(old);
 	}
@@ -261,6 +268,7 @@
 			readonly={!canEdit}
 			editDevice
 			idPrefix="order-card"
+			partsTotal={parts?.total ?? 0}
 			conflicts={ed.conflicts}
 			flashed={ed.flashed}
 			onkeep={(f) => ed.keep(f)}
@@ -300,7 +308,7 @@
 						{/if}
 					</Section>
 				</div>
-				<div class="s4">
+				<div class="s5">
 					<Section title={c.warrantyCases} help={ru.help.order.warrantyCases} region>
 						{#if cases.length === 0}
 							<p class="muted">{c.noWarrantyCases}</p>
@@ -317,7 +325,7 @@
 						{@render cut()}
 					</Section>
 				</div>
-				<div class="s5">
+				<div class="s6">
 					<Section title={c.changes} region>
 						{#if journal.failed}
 							<p class="muted">{t.historyFailed}</p>
@@ -344,13 +352,18 @@
 		</TabPane>
 		<TabPane value="files" bare={display.cardColumns}>
 			<div class="group">
-				{#if media}
+				{#if parts && order}
 					<div class="s2">
+						<OrderParts {parts} orderDeleted={order.deleted_at !== null} />
+					</div>
+				{/if}
+				{#if media}
+					<div class="s3">
 						<Section title={c.photos} region>
 							<OrderPhotos {media} readonly={!canEdit} />
 						</Section>
 					</div>
-					<div class="s3">
+					<div class="s4">
 						<Section title={c.files} region>
 							<OrderFiles {media} readonly={!canEdit} />
 						</Section>
@@ -528,6 +541,9 @@
 	}
 	.s5 {
 		order: 5;
+	}
+	.s6 {
+		order: 6;
 	}
 	.cases {
 		display: flex;

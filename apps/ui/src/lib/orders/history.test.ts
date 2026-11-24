@@ -1,4 +1,5 @@
 import type { AuditEntry } from '$api/AuditEntry';
+import Warehouse from '@lucide/svelte/icons/warehouse';
 import { describe, expect, it } from 'vitest';
 import {
 	historyCursor,
@@ -53,6 +54,21 @@ describe('historyItems', () => {
 		expect(historyItems([entry(3, 'order.status_changed')])).toEqual([
 			{ id: 3, at: '2026-11-13T10:00:00', who: 'Администратор', text: 'Запись 3' }
 		]);
+	});
+});
+
+describe('stock actions', () => {
+	it.each(['order.part_added', 'order.part_returned', 'order.costs_split'])(
+		'%s shows the text of the entry with the warehouse icon',
+		(action) => {
+			const [line] = historyItems([entry(3, action)]);
+			expect(line?.text).toBe('Запись 3');
+			expect(line?.icon).toBe(Warehouse);
+		}
+	);
+
+	it('other actions have no icon', () => {
+		expect(historyItems([entry(3, 'order.updated')])[0]?.icon).toBeUndefined();
 	});
 });
 
