@@ -1,5 +1,7 @@
 <!-- «Склад» (decision 18): the list filter, «Все» / «Докупить», the table (cards on a phone) and the panel
-     of a position. The view and the position open live in the address: view.ts reads and writes them. -->
+     of a position. The view and the position open live in the address: view.ts reads and writes them.
+     While the stock of MyWork 2 kept by a past import waits to be transferred, a notice above the list and the
+     add dialog say that the first position closes the transfer (decision 17). -->
 <script lang="ts">
 	import { display } from '#lib/design/prefs.svelte.js';
 	import Plus from '@lucide/svelte/icons/plus';
@@ -15,6 +17,8 @@
 	import { countLabel, formatMoney } from '#lib/format/index.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import { stockColumns } from '#lib/stock/columns.js';
+	import { createLegacyStock } from '#lib/stock/legacy.svelte.js';
+	import LegacyStockNotice from '#lib/stock/LegacyStockNotice.svelte';
 	import { createStockList } from '#lib/stock/list.svelte.js';
 	import StockAddDialog from '#lib/stock/StockAddDialog.svelte';
 	import StockPanel from '#lib/stock/StockPanel.svelte';
@@ -45,6 +49,7 @@
 
 	const canView = $derived(app.can('stock_view'));
 	const canCreate = $derived(app.can('stock_create'));
+	const canMigrate = $derived(app.can('settings_manage') && app.can('users_manage'));
 	const view = $derived(stockViewFromSearch(page.url.searchParams));
 	const openId = $derived(openStockItemId(page.url.searchParams));
 
@@ -88,6 +93,12 @@
 	});
 	const filtered = $derived(view.query.trim() !== '' || view.restock);
 
+	// The stock of MyWork 2 that a past import kept as it was: asked once here and after a position is added.
+	const legacy = createLegacyStock();
+	$effect(() => {
+		if (canView) untrack(() => legacy.refresh());
+	});
+
 	// The position open: the address says which; the cursor follows it.
 	let activeId = $state<RowId | null>(null);
 	$effect(() => {
@@ -102,6 +113,7 @@
 
 	let adding = $state(false);
 	function created(item: StockItem) {
+		legacy.refresh();
 		list.load(query);
 		filter.cancel();
 		navigate({ ...view, query: filter.text }, item.id, false);
@@ -232,6 +244,7 @@
 				{@render addButton()}
 			</div>
 		{/if}
+		{#if legacy.pending}<LegacyStockNotice {canMigrate} />{/if}
 
 		{#if display.phone}
 			<InfiniteList
@@ -278,7 +291,9 @@
 		onchanged={(item) => list.update(item.id, () => item)}
 		ondeleted={() => list.load(query)}
 	/>
-	{#if canCreate}<StockAddDialog bind:open={adding} oncreated={created} />{/if}
+	{#if canCreate}
+		<StockAddDialog bind:open={adding} legacyPending={legacy.pending} oncreated={created} />
+	{/if}
 {/if}
 
 <style>

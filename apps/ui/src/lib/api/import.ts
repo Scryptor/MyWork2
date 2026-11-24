@@ -36,7 +36,8 @@ export const getLegacyImport = (id: number) =>
 
 /**
  * Can the stock of MyWork 2 that the last import kept as it was (an import made before the stock module) be
- * transferred now: it can while the base has no stock items and no parts of orders.
+ * transferred now: it can while the base has no stock items (deleted ones too) and no parts of orders;
+ * `blocked_by_stock` — the stock was started by hand first. Read with the import rights or `stock_view`.
  */
 export const legacyStockState = () => request<LegacyStockState>('GET', '/legacy-import/stock');
 

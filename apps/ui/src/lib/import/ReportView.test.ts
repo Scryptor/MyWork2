@@ -171,10 +171,17 @@ describe('explanations', () => {
 		expect(text).toContain('сколько таких не попало');
 	});
 
-	it('the stock kept raw by an old import points to the button that transfers it', () => {
+	it('the stock kept raw by an old import points to the button that transfers it, and says when there is none', () => {
 		expect(ru.importReport.explain.stock_preserved.slice(1).join(' ')).toBe(
-			'Склад был сохранён в исходном виде, когда модуля склада ещё не было. Перенести его — кнопкой «Перенести склад из прошлого импорта» на странице «Импорт» в настройках.'
+			'Склад был сохранён в исходном виде, когда модуля склада ещё не было. Перенести его — кнопкой «Перенести склад из прошлого импорта» на странице «Импорт» в настройках, пока на складе нет позиций и в заказах нет запчастей. Если склад уже начат вручную, кнопки нет: старый склад остаётся в этом отчёте, перенести его можно только повторным переносом из MyWork 2 с заменой.'
 		);
+	});
+
+	it('an unparsed price of a part of an order: nothing to type in, its cost stayed in «Расходы»', () => {
+		const [, , todo] = ru.importReport.explain.money_unparsed;
+		expect(todo).toContain('цену не поправить');
+		expect(todo).toContain('делать ничего не нужно');
+		expect(todo).toContain('не вычтена из «Расходов» заказа');
 	});
 
 	it('users: the screen of users is there; a lost password of the admins is named', () => {

@@ -3,7 +3,8 @@
      is made first). The replacement is for SQLite only and for a server on this computer only (the path is on
      its disk). An import under way shows its progress here. An import made before the stock module kept the
      stock as it was: while the base has no stock, «Перенести склад из прошлого импорта» transfers it from there
-     (decision 17; any server, the folder is not needed). Rights: «settings_manage» and «users_manage». -->
+     (decision 17; any server, the folder is not needed). Once the stock is started by hand the button is gone and
+     a notice says why and what is left. Rights: «settings_manage» and «users_manage». -->
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
@@ -27,6 +28,7 @@
 	import { reportRoute } from '#lib/import/report.js';
 	import ImportWizard from '#lib/setup/ImportWizard.svelte';
 	import { jobState } from '#lib/setup/progress.js';
+	import { stockCount } from '#lib/stock/summary.svelte.js';
 	import Badge from '#lib/ui/Badge.svelte';
 	import Button from '#lib/ui/Button.svelte';
 	import Callout from '#lib/ui/Callout.svelte';
@@ -92,6 +94,8 @@
 				tone: 'success'
 			});
 			stock = null;
+			// Positions below their threshold go into «Докупить» of the sidebar at once.
+			stockCount.refresh();
 			await goto(resolve(reportRoute(done.import_id)));
 		} catch (e) {
 			stockFailure =
@@ -121,6 +125,14 @@
 			)}
 			{#snippet actions()}
 				<Button variant="primary" busy={migrating} onclick={migrateStock}>{t.stockMigrate}</Button>
+			{/snippet}
+		</Callout>
+	{:else if stock?.blocked_by_stock && stock.import_id !== null && !wizard}
+		{@const report = resolve(reportRoute(stock.import_id))}
+		<Callout tone="info" title={t.stockBlockedTitle}>
+			{t.stockBlockedText}
+			{#snippet actions()}
+				<Button size="sm" href={report}>{t.stockBlockedReport}</Button>
 			{/snippet}
 		</Callout>
 	{/if}

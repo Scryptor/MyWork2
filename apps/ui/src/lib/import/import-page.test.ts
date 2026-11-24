@@ -20,6 +20,8 @@ const nav = vi.hoisted(() => ({ goto: vi.fn() }));
 vi.mock('$app/navigation', () => nav);
 vi.mock('$app/paths', () => ({ resolve: (p: string) => `/${p}` }));
 vi.mock('#lib/app/context.svelte.js', () => ({ app: { can: () => true } }));
+const counter = vi.hoisted(() => ({ stockCount: { refresh: vi.fn() } }));
+vi.mock('#lib/stock/summary.svelte.js', () => counter);
 
 import Page from './ImportPageHarness.test-helper.svelte';
 
@@ -31,22 +33,25 @@ const about = (database: string) => ({
 	clients: 0
 });
 
-const stockState = (available: boolean): LegacyStockState => ({
+const stockState = (available: boolean, blocked = false): LegacyStockState => ({
 	import_id: 3,
 	stock_rows: 4,
 	stock_map_rows: 6,
-	available
+	available,
+	blocked_by_stock: blocked
 });
 
 beforeEach(() => {
-	for (const f of [...Object.values(api), catalogs.getAbout, nav.goto]) f.mockReset();
+	for (const f of [...Object.values(api), catalogs.getAbout, nav.goto, counter.stockCount.refresh])
+		f.mockReset();
 	api.listLegacyImports.mockResolvedValue([]);
 	api.currentLegacyImport.mockResolvedValue(null);
 	api.legacyStockState.mockResolvedValue({
 		import_id: null,
 		stock_rows: 0,
 		stock_map_rows: 0,
-		available: false
+		available: false,
+		blocked_by_stock: false
 	});
 });
 
@@ -92,6 +97,22 @@ describe('the stock of a past import', () => {
 		await vi.waitFor(() => expect(api.legacyStockState).toHaveBeenCalled());
 		expect(screen.queryByRole('button', { name: MIGRATE })).not.toBeInTheDocument();
 		expect(screen.queryByText('Склад MyWork 2 ещё не перенесён')).not.toBeInTheDocument();
+		expect(screen.queryByText('Склад MyWork 2 не перенесён')).not.toBeInTheDocument();
+	});
+
+	it('started by hand: why there is no button and what is left', async () => {
+		catalogs.getAbout.mockResolvedValue(about('SQLite'));
+		api.legacyStockState.mockResolvedValue(stockState(false, true));
+		render(Page);
+		expect(await screen.findByText('Склад MyWork 2 не перенесён')).toBeInTheDocument();
+		expect(screen.getByText(/Склад в программе уже начат вручную/)).toBeInTheDocument();
+		expect(screen.getByText(/сохранён в отчёте импорта в исходном виде/)).toBeInTheDocument();
+		expect(screen.getByText(/повторным переносом из MyWork 2 с заменой/)).toBeInTheDocument();
+		expect(screen.getByRole('link', { name: 'Открыть отчёт импорта' })).toHaveAttribute(
+			'href',
+			'/settings/import/3'
+		);
+		expect(screen.queryByRole('button', { name: MIGRATE })).not.toBeInTheDocument();
 	});
 
 	it('is transferred once and its report is opened', async () => {
@@ -107,8 +128,11 @@ describe('the stock of a past import', () => {
 		// A second click while the request runs sends nothing.
 		await userEvent.click(button);
 		expect(api.migrateLegacyStock).toHaveBeenCalledTimes(1);
+		expect(counter.stockCount.refresh).not.toHaveBeenCalled();
 		finish({ import_id: 3, stock_items: 4, order_parts: 5, orders_changed: 2 });
 		await vi.waitFor(() => expect(nav.goto).toHaveBeenCalledWith('/settings/import/3'));
+		// Positions below their threshold count in «Докупить» of the sidebar at once.
+		expect(counter.stockCount.refresh).toHaveBeenCalledTimes(1);
 	});
 
 	it('a refusal is shown', async () => {
@@ -121,6 +145,7 @@ describe('the stock of a past import', () => {
 		await userEvent.click(await screen.findByRole('button', { name: MIGRATE }));
 		expect(await screen.findByText('Импорт уже идёт')).toBeInTheDocument();
 		expect(nav.goto).not.toHaveBeenCalled();
+		expect(counter.stockCount.refresh).not.toHaveBeenCalled();
 	});
 
 	it('after a refusal the offer is read again and goes when the stock is no longer to transfer', async () => {

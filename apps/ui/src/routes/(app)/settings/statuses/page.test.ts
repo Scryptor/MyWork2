@@ -75,4 +75,31 @@ describe('«Статусы»: a new status', () => {
 		await waitFor(() => expect(api.createStatus).toHaveBeenCalledTimes(2));
 		expect(api.createStatus).toHaveBeenLastCalledWith({ name: 'Б', kind: 'open', color: 'gray' });
 	});
+
+	it('Enter while a status is being added does nothing: the button is unavailable until it is done', async () => {
+		const answered = deferred();
+		api.listStatuses.mockResolvedValue([status(1, 'Готов')]);
+		app.refreshCatalogs.mockResolvedValue(undefined);
+		api.createStatus.mockImplementation(async (v: { name: string }) => {
+			await answered.promise;
+			return status(2, v.name);
+		});
+		render(Page);
+		const field = await screen.findByRole('textbox', { name: 'Название нового статуса' });
+
+		await userEvent.type(field, 'А');
+		await userEvent.keyboard('{Enter}');
+		await waitFor(() => expect(api.createStatus).toHaveBeenCalledTimes(1));
+		expect(screen.getByRole('button', { name: 'Добавить статус' })).toBeDisabled();
+		await userEvent.type(field, 'Б');
+		await userEvent.keyboard('{Enter}');
+		answered.resolve();
+
+		await waitFor(() =>
+			expect(screen.getByRole('button', { name: 'Добавить статус' })).toBeEnabled()
+		);
+		// Nothing was queued: the next name stays in the field until it is sent.
+		expect(api.createStatus).toHaveBeenCalledTimes(1);
+		expect(field).toHaveValue('АБ');
+	});
 });

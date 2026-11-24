@@ -1,5 +1,7 @@
 <!-- «Добавить позицию» (decision 18): the fields of a position; the name may stay empty (it is made of the
-     other fields). The server's refusals stay at their fields. After it the panel of the new position opens. -->
+     other fields). The server's refusals stay at their fields. After it the panel of the new position opens.
+     While the stock of MyWork 2 kept by a past import waits to be transferred (`legacyPending`), the dialog
+     says that this position closes the transfer (decision 17). -->
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import type { NewStockItem } from '$api/NewStockItem';
@@ -10,6 +12,7 @@
 	import { submitShortcut } from '#lib/design/hotkeys.svelte.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import Button from '#lib/ui/Button.svelte';
+	import Callout from '#lib/ui/Callout.svelte';
 	import Combobox from '#lib/ui/Combobox.svelte';
 	import Dialog from '#lib/ui/Dialog.svelte';
 	import MoneyInput from '#lib/ui/MoneyInput.svelte';
@@ -22,8 +25,9 @@
 
 	let {
 		open = $bindable(false),
+		legacyPending = false,
 		oncreated
-	}: { open: boolean; oncreated: (item: StockItem) => void } = $props();
+	}: { open: boolean; legacyPending?: boolean; oncreated: (item: StockItem) => void } = $props();
 
 	const t = ru.stock;
 	const empty = () => ({
@@ -126,6 +130,7 @@
 			void submit();
 		}}
 	>
+		{#if legacyPending}<Callout tone="warning">{t.legacyAddWarning}</Callout>{/if}
 		<TextInput
 			label={STOCK_FIELDS.name}
 			hint={t.nameHint}

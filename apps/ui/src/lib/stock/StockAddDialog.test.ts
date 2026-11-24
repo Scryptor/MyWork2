@@ -39,6 +39,21 @@ describe('StockAddDialog', () => {
 		expect(screen.getByRole('dialog', { name: 'Новая позиция' })).toBeInTheDocument();
 	});
 
+	// A base imported before the stock module: its first position closes the transfer of the stock of MyWork 2
+	// (decision 17), so the dialog says it before that position is made.
+	it('warns while the stock of MyWork 2 waits to be transferred', async () => {
+		const { unmount } = render(Harness, { legacyPending: true });
+		expect(
+			screen.getByText(
+				'Склад MyWork 2 ещё не перенесён: после этой позиции перенести его будет нельзя.'
+			)
+		).toBeInTheDocument();
+		unmount();
+		render(Harness);
+		expect(screen.getByRole('dialog', { name: 'Новая позиция' })).toBeInTheDocument();
+		expect(screen.queryByText(/Склад MyWork 2 ещё не перенесён/)).not.toBeInTheDocument();
+	});
+
 	it('a double submit makes one position', async () => {
 		const ui = userEvent.setup();
 		let answer!: (v: unknown) => void;

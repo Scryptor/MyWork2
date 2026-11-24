@@ -106,18 +106,12 @@
 	let kind = $state<StatusKind>('open');
 	let color = $state('gray');
 	let nameError = $state<string | undefined>();
+	/** While a status is being added «Добавить» is unavailable, so Enter in the form does nothing. */
 	let adding = $state(false);
-
-	/** Enter while the previous one is still being added: sent as soon as that one is done. */
-	let again = false;
 
 	async function add() {
 		const value = name.trim();
-		if (readonly) return;
-		if (adding) {
-			again = true;
-			return;
-		}
+		if (readonly || adding) return;
 		if (!value) {
 			nameError = ru.settings.required;
 			return;
@@ -135,10 +129,6 @@
 			}
 			if (kind === sent.kind) kind = 'open';
 			if (color === sent.color) color = 'gray';
-		}
-		if (again) {
-			again = false;
-			if (!error) await add();
 		}
 	}
 
