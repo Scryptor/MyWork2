@@ -21,8 +21,8 @@
 	} from '#lib/format/index.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import Badge from '#lib/ui/Badge.svelte';
-	import Button from '#lib/ui/Button.svelte';
 	import Callout from '#lib/ui/Callout.svelte';
+	import FieldDispute from '#lib/ui/FieldDispute.svelte';
 	import Combobox from '#lib/ui/Combobox.svelte';
 	import MoneyInput from '#lib/ui/MoneyInput.svelte';
 	import Section from '#lib/ui/Section.svelte';
@@ -213,13 +213,12 @@
 {#snippet dispute(f: OrderField)}
 	{@const c = conflicts.get(f)}
 	{#if c}
-		<div class="dispute" role="group" aria-label={t.conflictField(LABELS[f] ?? f)}>
-			<p class="theirs"><span class="muted">{t.theirs}:</span> {asText(f, c.theirs)}</p>
-			<div class="choices">
-				<Button size="sm" onclick={() => onkeep?.(f)}>{t.keepMine}</Button>
-				<Button size="sm" onclick={() => ontake?.(f)}>{t.takeNew}</Button>
-			</div>
-		</div>
+		<FieldDispute
+			label={LABELS[f] ?? f}
+			theirs={asText(f, c.theirs)}
+			onkeep={() => onkeep?.(f)}
+			ontake={() => ontake?.(f)}
+		/>
 	{/if}
 {/snippet}
 
@@ -594,27 +593,6 @@
 			background: var(--warning-soft);
 			box-shadow: 0 0 0 var(--space-1) var(--warning-soft);
 		}
-	}
-	.dispute {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		justify-content: space-between;
-		gap: var(--space-2);
-		padding: var(--space-2) var(--space-3);
-		border-radius: var(--radius-md);
-		background: var(--warning-soft);
-		color: var(--warning-text);
-		font-size: var(--text-sm);
-	}
-	.theirs {
-		margin: 0;
-		min-width: 0;
-		overflow-wrap: anywhere;
-	}
-	.choices {
-		display: flex;
-		gap: var(--space-2);
 	}
 	@media (pointer: coarse) {
 		.reveal,

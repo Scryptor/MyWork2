@@ -1,47 +1,46 @@
-<!-- «История» of a position: the newest entries of its journal; the text of each is the server's summary.
-     A new version of the position is a new entry: the list is asked again. -->
+<!-- «История» of a position: the newest entries of its journal, «Показать ещё» for the older ones; the
+     text of each is the server's summary. A new version of the position is a new entry: the newest page
+     is asked again. -->
 <script lang="ts">
-	import type { AuditEntry } from '$api/AuditEntry';
-	import { stockItemHistory } from '#lib/api/stock.js';
 	import { serverClock } from '#lib/api/server-clock.svelte.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import { historyItems } from '#lib/orders/history.js';
+	import Button from '#lib/ui/Button.svelte';
 	import Section from '#lib/ui/Section.svelte';
 	import Timeline from '#lib/ui/Timeline.svelte';
-
-	const LIMIT = 10;
+	import { createStockHistory } from './history.svelte.js';
 
 	let { itemId, version }: { itemId: number; version: number } = $props();
 
 	const t = ru.stock;
-	let entries = $state.raw<AuditEntry[] | null>(null);
-	let failed = $state(false);
+	const history = createStockHistory();
 
 	$effect(() => {
 		const id = itemId;
 		void version;
-		let current = true;
-		stockItemHistory(id, { limit: LIMIT }).then(
-			(page) => {
-				if (!current) return;
-				entries = page.items;
-				failed = false;
-			},
-			() => {
-				if (current) failed = entries === null;
-			}
-		);
-		return () => {
-			current = false;
-		};
+		void history.refresh(id);
 	});
 </script>
 
 <Section title={t.history}>
-	{#if failed}
+	{#if history.failed}
 		<p class="muted">{t.historyFailed}</p>
-	{:else if entries}
-		<Timeline items={historyItems(entries)} now={serverClock.now()} emptyText={t.historyEmpty} />
+	{:else}
+		<Timeline
+			items={historyItems(history.entries)}
+			now={serverClock.now()}
+			emptyText={t.historyEmpty}
+		/>
+		{#if history.moreFailed}
+			<p class="muted" role="alert">{t.historyFailed}</p>
+		{/if}
+		{#if history.hasMore}
+			<div>
+				<Button size="sm" busy={history.loadingMore} onclick={() => void history.more()}
+					>{history.moreFailed ? ru.common.retry : t.historyMore}</Button
+				>
+			</div>
+		{/if}
 	{/if}
 </Section>
 

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import { currencySymbol } from '#lib/format/currency.svelte.js';
 	import { formatMoney, parseMoney } from '#lib/format/money.js';
 	import { ru } from '#lib/i18n/ru.js';
@@ -125,10 +125,16 @@
 				aria-describedby={f.describedBy}
 				aria-invalid={f.invalid ? 'true' : undefined}
 				aria-required={required ? 'true' : undefined}
-				onfocus={() => {
+				onfocus={(e) => {
 					if (!showError) text = plain(value);
 					focused = true;
 					dirty = false;
+					// «1 000» becomes «1000» and the caret drops to the end: select it all once the text is
+					// there, so that typing replaces the amount (a click puts the caret where it landed after).
+					const input = e.currentTarget;
+					void tick().then(() => {
+						if (document.activeElement === input && !dirty) input.select();
+					});
 				}}
 				oninput={(e) => input(e.currentTarget.value)}
 				onblur={leave}

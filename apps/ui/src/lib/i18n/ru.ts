@@ -583,6 +583,7 @@ export const ru = {
 		history: 'История',
 		historyFailed: 'Историю не удалось загрузить',
 		historyEmpty: 'Пока нет записей',
+		historyMore: 'Показать ещё',
 		deleteItem: 'Удалить позицию',
 		deleteTitle: 'Удалить позицию?',
 		deleteText: 'Списанные в заказы запчасти останутся в заказах.',

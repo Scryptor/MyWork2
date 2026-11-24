@@ -155,4 +155,18 @@ describe('createStockEditor', () => {
 		expect(ed.lost).toBe('позиция удалена');
 		ed.dispose();
 	});
+
+	it('an action on a stale version (a deletion) is retried once on the newest one', async () => {
+		const server = fakeServer(item({ quantity: 5 }));
+		const ed = createStockEditor(server.current, { api: server.api });
+		server.elsewhere({ quantity: 4 });
+		const act = vi.fn(async (version: number) => {
+			if (version !== server.current.version) throw conflict();
+			return server.current;
+		});
+		await ed.run(act);
+		expect(act.mock.calls.map((c) => c[0])).toEqual([1, 2]);
+		expect(ed.item.version).toBe(2);
+		ed.dispose();
+	});
 });

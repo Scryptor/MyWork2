@@ -145,3 +145,18 @@ describe('MoneyInput', () => {
 		expect(screen.getByTestId('out')).toHaveTextContent(/^0$/);
 	});
 });
+
+describe('MoneyInput focus by keyboard', () => {
+	it('selects the plain number, so typing replaces it instead of being appended', async () => {
+		render(Harness, { kind: 'money', money: 100000 });
+		const input = screen.getByLabelText('Сумма') as HTMLInputElement;
+		await userEvent.tab();
+		expect(input).toHaveFocus();
+		expect(input).toHaveValue('1000');
+		await vi.waitFor(() => expect(input.selectionStart).toBe(0));
+		expect(input.selectionEnd).toBe(4);
+		await userEvent.keyboard('3000');
+		expect(input).toHaveValue('3000');
+		expect(screen.getByTestId('out')).toHaveTextContent('300000');
+	});
+});

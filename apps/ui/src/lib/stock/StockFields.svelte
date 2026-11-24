@@ -6,9 +6,9 @@
 	import { formatMoney } from '#lib/format/index.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import type { Autosave } from '#lib/orders/autosave.js';
-	import Button from '#lib/ui/Button.svelte';
 	import Callout from '#lib/ui/Callout.svelte';
 	import Combobox from '#lib/ui/Combobox.svelte';
+	import FieldDispute from '#lib/ui/FieldDispute.svelte';
 	import MoneyInput from '#lib/ui/MoneyInput.svelte';
 	import QuantityInput from '#lib/ui/QuantityInput.svelte';
 	import Textarea from '#lib/ui/Textarea.svelte';
@@ -77,13 +77,12 @@
 {#snippet dispute(f: StockEditField)}
 	{@const c = conflicts.get(f)}
 	{#if c}
-		<div class="dispute" role="group" aria-label={o.conflictField(STOCK_FIELDS[f])}>
-			<p class="theirs"><span class="muted">{o.theirs}:</span> {asText(f, c.theirs)}</p>
-			<div class="choices">
-				<Button size="sm" onclick={() => onkeep?.(f)}>{o.keepMine}</Button>
-				<Button size="sm" onclick={() => ontake?.(f)}>{o.takeNew}</Button>
-			</div>
-		</div>
+		<FieldDispute
+			label={STOCK_FIELDS[f]}
+			theirs={asText(f, c.theirs)}
+			onkeep={() => onkeep?.(f)}
+			ontake={() => ontake?.(f)}
+		/>
 	{/if}
 {/snippet}
 
@@ -204,9 +203,6 @@
 		grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
 		gap: var(--space-3);
 	}
-	.muted {
-		color: var(--text-3);
-	}
 	.flashable {
 		display: flex;
 		flex-direction: column;
@@ -223,26 +219,5 @@
 			background: var(--warning-soft);
 			box-shadow: 0 0 0 var(--space-1) var(--warning-soft);
 		}
-	}
-	.dispute {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		justify-content: space-between;
-		gap: var(--space-2);
-		padding: var(--space-2) var(--space-3);
-		border-radius: var(--radius-md);
-		background: var(--warning-soft);
-		color: var(--warning-text);
-		font-size: var(--text-sm);
-	}
-	.theirs {
-		margin: 0;
-		min-width: 0;
-		overflow-wrap: anywhere;
-	}
-	.choices {
-		display: flex;
-		gap: var(--space-2);
 	}
 </style>

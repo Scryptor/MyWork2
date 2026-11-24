@@ -208,12 +208,7 @@ test('the panel edits an item and keeps it after reload', async ({ page }) => {
 	await expect(panel).toBeVisible();
 	await expect(panel.getByText(`Арт. ${item.id}`)).toBeVisible();
 
-	// The field turns «1 000» into «1000» when it gets focus: select the text after that, then type.
-	const price = panel.getByRole('textbox', { name: 'Цена' });
-	await price.click();
-	await expect(price).toHaveValue('1000');
-	await price.press('ControlOrMeta+a');
-	await price.pressSequentially('3000');
+	await panel.getByRole('textbox', { name: 'Цена' }).fill('3000');
 	await expect(panel.getByText('✓ Сохранено')).toBeVisible();
 	await page.reload();
 	await expect(panelOf(page, `Тест ${id}`).getByRole('textbox', { name: 'Цена' })).toHaveValue(
@@ -315,4 +310,57 @@ test('readonly without stock_edit', async ({ page, browser }) => {
 	} finally {
 		await user.context.close();
 	}
+});
+
+test('stock_edit without stock_delete: fields are editable, there is no «Удалить позицию»', async ({
+	page,
+	browser
+}) => {
+	const id = uniq('e');
+	await signInAdmin(page);
+	const item = await makeItem(page, id, { name: `Правка ${id}` });
+	const login = await makeUser(page, ['stock_view', 'stock_edit']);
+	const user = await signInAs(browser, login);
+	try {
+		await user.page.goto(`/stock?item=${item.id}`);
+		const panel = panelOf(user.page, `Правка ${id}`);
+		await expect(panel).toBeVisible();
+		await panel.getByRole('textbox', { name: 'Примечание' }).fill('на полке');
+		await expect(panel.getByText('✓ Сохранено')).toBeVisible();
+		await expect(panel.getByRole('button', { name: 'Добавить фото' })).toBeVisible();
+		await expect(panel.getByRole('button', { name: 'Ещё действия' })).toHaveCount(0);
+		await expect(user.page.getByRole('button', { name: 'Удалить позицию' })).toHaveCount(0);
+	} finally {
+		await user.context.close();
+	}
+});
+
+test('an item edited elsewhere meanwhile is still deleted (409 is retried on the newest version)', async ({
+	page
+}) => {
+	const id = uniq('x');
+	await signInAdmin(page);
+	const item = await makeItem(page, id);
+	await page.goto(`/stock?q=${encodeURIComponent(`M-${id}`)}&item=${item.id}`);
+	const panel = panelOf(page, `Дисплей-${id} M-${id}`);
+	await expect(panel).toBeVisible();
+	// Another computer writes a part off: the panel's version is stale now.
+	const auth = await headers(page);
+	const fresh = (await (
+		await page.request.get(`/api/v1/stock/${item.id}`, { headers: auth })
+	).json()) as {
+		version: number;
+	};
+	const patched = await page.request.patch(`/api/v1/stock/${item.id}?version=${fresh.version}`, {
+		headers: auth,
+		data: { quantity: 4 }
+	});
+	expect(patched.ok(), await patched.text()).toBe(true);
+
+	await panel.getByRole('button', { name: 'Ещё действия' }).click();
+	await page.getByRole('menuitem', { name: 'Удалить позицию' }).click();
+	await page.getByRole('alertdialog').getByRole('button', { name: 'Удалить позицию' }).click();
+	await expect(panel).toBeHidden();
+	const gone = await page.request.get(`/api/v1/stock/${item.id}`, { headers: auth });
+	expect(gone.status()).toBe(404);
 });

@@ -12,6 +12,7 @@
 	import Button from '#lib/ui/Button.svelte';
 	import Callout from '#lib/ui/Callout.svelte';
 	import Combobox from '#lib/ui/Combobox.svelte';
+	import FieldDispute from '#lib/ui/FieldDispute.svelte';
 	import IconButton from '#lib/ui/IconButton.svelte';
 	import PhoneInput from '#lib/ui/PhoneInput.svelte';
 	import Section from '#lib/ui/Section.svelte';
@@ -142,13 +143,12 @@
 {#snippet dispute(f: ClientField)}
 	{@const c = conflicts.get(f)}
 	{#if c}
-		<div class="dispute" role="group" aria-label={o.conflictField(LABELS[f])}>
-			<p class="theirs"><span class="muted">{o.theirs}:</span> {asText(f, c.theirs)}</p>
-			<div class="choices">
-				<Button size="sm" onclick={() => onkeep?.(f)}>{o.keepMine}</Button>
-				<Button size="sm" onclick={() => ontake?.(f)}>{o.takeNew}</Button>
-			</div>
-		</div>
+		<FieldDispute
+			label={LABELS[f]}
+			theirs={asText(f, c.theirs)}
+			onkeep={() => onkeep?.(f)}
+			ontake={() => ontake?.(f)}
+		/>
 	{/if}
 {/snippet}
 
@@ -291,9 +291,6 @@
 		grid-column: 1 / -1;
 		margin-top: calc(-1 * var(--space-1));
 	}
-	.muted {
-		color: var(--text-3);
-	}
 	.error {
 		margin: 0;
 		color: var(--danger-text);
@@ -315,27 +312,6 @@
 			background: var(--warning-soft);
 			box-shadow: 0 0 0 var(--space-1) var(--warning-soft);
 		}
-	}
-	.dispute {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		justify-content: space-between;
-		gap: var(--space-2);
-		padding: var(--space-2) var(--space-3);
-		border-radius: var(--radius-md);
-		background: var(--warning-soft);
-		color: var(--warning-text);
-		font-size: var(--text-sm);
-	}
-	.theirs {
-		margin: 0;
-		min-width: 0;
-		overflow-wrap: anywhere;
-	}
-	.choices {
-		display: flex;
-		gap: var(--space-2);
 	}
 	:global([data-width='xs']) .phone {
 		grid-template-columns: minmax(0, 1fr);

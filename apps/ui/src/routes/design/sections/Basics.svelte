@@ -12,6 +12,7 @@
 		Card,
 		Divider,
 		EmptyState,
+		FieldDispute,
 		FlagIcons,
 		IconButton,
 		Kbd,
@@ -106,6 +107,8 @@
 <Callout tone="warning">Предупреждение.</Callout>
 <Callout tone="danger" title="Ошибка">Не удалось сохранить.</Callout>
 <Callout tone="success">Готово.</Callout>
+<h3>Спор о поле</h3>
+<FieldDispute label="Цена" theirs="3 000 ₽" />
 <h3>Выбор и итоги</h3>
 <div class="options">
 	<OptionCard

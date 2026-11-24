@@ -8,6 +8,7 @@ export { default as Checkbox } from './Checkbox.svelte';
 export { default as ChipGroup } from './ChipGroup.svelte';
 export { default as CommandPalette } from './CommandPalette.svelte';
 export { default as CodeEditor } from './CodeEditor.svelte';
+export { default as FieldDispute } from './FieldDispute.svelte';
 export { default as Combobox } from './Combobox.svelte';
 export { default as ConfirmDialog } from './ConfirmDialog.svelte';
 export { default as DateInput } from './DateInput.svelte';
