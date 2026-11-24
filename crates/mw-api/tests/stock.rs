@@ -360,3 +360,73 @@ async fn stock_rights_and_item_journal() {
         );
     }
 }
+
+fn png() -> Vec<u8> {
+    let img = image::RgbImage::from_pixel(40, 30, image::Rgb([200, 30, 30]));
+    let mut out = std::io::Cursor::new(Vec::new());
+    img.write_to(&mut out, image::ImageFormat::Png).unwrap();
+    out.into_inner()
+}
+
+#[tokio::test]
+async fn stock_photo_endpoints() {
+    use axum::body::Body;
+    use axum::http::Request;
+
+    for t in apis(Listen::Network).await {
+        let token = t
+            .token_with(
+                "sklad",
+                &[
+                    Permission::StockView,
+                    Permission::StockCreate,
+                    Permission::StockEdit,
+                ],
+            )
+            .await;
+        let viewer = t.token_with("smotr", &[Permission::StockView]).await;
+        let r = t
+            .send(
+                Method::POST,
+                "/api/v1/stock",
+                Some(&token),
+                Some(json!({ "name": "Дисплей" })),
+            )
+            .await;
+        let id = r.body["id"].as_i64().unwrap();
+        let post = async |ct: &str, tok: &str| {
+            let req = Request::post(format!("/api/v1/stock/{id}/photos?name=a.png"))
+                .header("host", "127.0.0.1:8080")
+                .header("content-type", ct)
+                .header("authorization", format!("Bearer {tok}"))
+                .body(Body::from(png()))
+                .unwrap();
+            t.request(req).await
+        };
+        let r = post("multipart/form-data; boundary=x", &token).await;
+        assert_eq!(r.status, 415, "{}", t.label);
+        let r = post("application/octet-stream", &viewer).await;
+        assert_eq!(r.status, 403, "{}", t.label);
+        let r = post("application/octet-stream", &token).await;
+        assert_eq!(
+            (r.status, &r.body["stock_item_id"]),
+            (201, &json!(id)),
+            "{}",
+            t.label
+        );
+        let aid = r.body["id"].as_i64().unwrap();
+        let r = t
+            .get(&format!("/api/v1/stock/{id}/photos"), Some(&viewer))
+            .await;
+        assert_eq!((r.status, r.body.as_array().map(Vec::len)), (200, Some(1)));
+        let r = t
+            .get_raw(&format!("/api/v1/attachments/{aid}/thumb"), &viewer)
+            .await;
+        assert_eq!(r.0, 200, "{}", t.label);
+        let nobody = t.token_with("nikto", &[Permission::OrdersEdit]).await;
+        let r = t
+            .get_raw(&format!("/api/v1/attachments/{aid}/file"), &nobody)
+            .await;
+        assert_eq!(r.0, 403, "{}", t.label);
+    }
+}

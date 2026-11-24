@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "MyWork 3 API",
-    "description": "HTTP API учёта сервисного центра MyWork 3.\n\n**Вход.** `POST /api/v1/auth/login` выдаёт токен; дальше он передаётся в заголовке `Authorization: Bearer <токен>`. Если сервер слушает только локальный адрес и в базе нет пользователей, которые могут войти (учётная запись активна, вход разрешён — `can_sign_in` — и задан пароль), вход не нужен (режим без входа): запросы без токена выполняются с полными правами. Узнать это можно по `GET /api/v1/server-info` (`auth_required`).\n\n**Форматы.** Поля JSON — `snake_case`. Деньги — целое число копеек. Даты и время — местное время предприятия без смещения, `YYYY-MM-DDTHH:MM:SS` (в схемах помечены `date-time`, но смещения в них нет).\n\n**Правки.** В теле `PATCH` непереданное поле не меняется; `null` очищает только те поля, которые бывают пустыми; `null` у остальных полей и неизвестные поля — ошибка 400.\n\n**Версия записи.** Изменение заказов, клиентов, позиций склада, пользователей и ролей принимает параметр `version` — версию записи, которую видел клиент; устаревшая даёт 409 с `current_version`. 409 без `current_version` — запись нельзя удалить, пока ею пользуются (например, роль с пользователями); причина — в `message`.\n\n**Тело запроса.** Каждый изменяющий запрос (POST, PUT, PATCH, DELETE) должен нести `Content-Type: application/json`, даже без тела (выход, выдача, удаление), иначе ответ 415. Исключение — загрузка вложений (`POST /orders/{id}/attachments`, `POST /intake-drafts/{key}/attachments`): тело — байты файла, `Content-Type: application/octet-stream`, не больше 25 МБ; и загрузка логотипа (`PUT /settings/logo`): тело — байты картинки, `Content-Type: application/octet-stream`, не больше 5 МБ.\n\n**Ошибки.** Любая ошибка — JSON `ErrorBody` с полями `code`, `message` (по-русски), `fields`, `current_version`, `permission`, `retry_after_secs`, `diagnostics` (ошибки своего Typst-кода шаблона со строкой и знаком; у остальных ошибок пусто). Коды: `bad_request` (400, 405, 413 — тело больше 1 МиБ (файла — больше 25 МБ), 415), `unauthenticated` и `invalid_credentials` (401), `forbidden` (403), `not_found` (404), `conflict` (409), `validation` (422), `too_many_attempts` (429), `unavailable` (503), `internal` (500).",
+    "description": "HTTP API учёта сервисного центра MyWork 3.\n\n**Вход.** `POST /api/v1/auth/login` выдаёт токен; дальше он передаётся в заголовке `Authorization: Bearer <токен>`. Если сервер слушает только локальный адрес и в базе нет пользователей, которые могут войти (учётная запись активна, вход разрешён — `can_sign_in` — и задан пароль), вход не нужен (режим без входа): запросы без токена выполняются с полными правами. Узнать это можно по `GET /api/v1/server-info` (`auth_required`).\n\n**Форматы.** Поля JSON — `snake_case`. Деньги — целое число копеек. Даты и время — местное время предприятия без смещения, `YYYY-MM-DDTHH:MM:SS` (в схемах помечены `date-time`, но смещения в них нет).\n\n**Правки.** В теле `PATCH` непереданное поле не меняется; `null` очищает только те поля, которые бывают пустыми; `null` у остальных полей и неизвестные поля — ошибка 400.\n\n**Версия записи.** Изменение заказов, клиентов, позиций склада, пользователей и ролей принимает параметр `version` — версию записи, которую видел клиент; устаревшая даёт 409 с `current_version`. 409 без `current_version` — запись нельзя удалить, пока ею пользуются (например, роль с пользователями); причина — в `message`.\n\n**Тело запроса.** Каждый изменяющий запрос (POST, PUT, PATCH, DELETE) должен нести `Content-Type: application/json`, даже без тела (выход, выдача, удаление), иначе ответ 415. Исключение — загрузка вложений (`POST /orders/{id}/attachments`, `POST /intake-drafts/{key}/attachments`, `POST /stock/{id}/photos`): тело — байты файла, `Content-Type: application/octet-stream`, не больше 25 МБ; и загрузка логотипа (`PUT /settings/logo`): тело — байты картинки, `Content-Type: application/octet-stream`, не больше 5 МБ.\n\n**Ошибки.** Любая ошибка — JSON `ErrorBody` с полями `code`, `message` (по-русски), `fields`, `current_version`, `permission`, `retry_after_secs`, `diagnostics` (ошибки своего Typst-кода шаблона со строкой и знаком; у остальных ошибок пусто). Коды: `bad_request` (400, 405, 413 — тело больше 1 МиБ (файла — больше 25 МБ), 415), `unauthenticated` и `invalid_credentials` (401), `forbidden` (403), `not_found` (404), `conflict` (409), `validation` (422), `too_many_attempts` (429), `unavailable` (503), `internal` (500).",
     "license": {
       "name": "MIT",
       "identifier": "MIT"
@@ -51,7 +51,7 @@
         "tags": [
           "Вложения"
         ],
-        "summary": "Удаление вложения (право `orders_edit`; у фото черновика приёма — `orders_create` или `orders_edit`).",
+        "summary": "Удаление вложения (право `orders_edit`; у фото черновика приёма — `orders_create` или `orders_edit`;\nу фото позиции склада — `stock_edit`).",
         "operationId": "delete_attachment",
         "parameters": [
           {
@@ -90,7 +90,7 @@
         "tags": [
           "Вложения"
         ],
-        "summary": "Подпись вложения (право `orders_edit`; у фото черновика приёма — `orders_create` или `orders_edit`).",
+        "summary": "Подпись вложения (право `orders_edit`; у фото черновика приёма — `orders_create` или `orders_edit`;\nу фото позиции склада — `stock_edit`).",
         "operationId": "update_attachment",
         "parameters": [
           {
@@ -148,7 +148,7 @@
         "tags": [
           "Вложения"
         ],
-        "summary": "Файл вложения (достаточно войти).",
+        "summary": "Файл вложения (достаточно войти; у фото позиции склада — право `stock_view`).",
         "operationId": "attachment_file",
         "parameters": [
           {
@@ -201,7 +201,7 @@
         "tags": [
           "Вложения"
         ],
-        "summary": "Миниатюра фото (достаточно войти).",
+        "summary": "Миниатюра фото (достаточно войти; у фото позиции склада — право `stock_view`).",
         "operationId": "attachment_thumb",
         "parameters": [
           {
@@ -5232,6 +5232,127 @@
         ]
       }
     },
+    "/api/v1/stock/{id}/photos": {
+      "get": {
+        "tags": [
+          "Склад"
+        ],
+        "summary": "Фото позиции по времени добавления (право `stock_view`).",
+        "operationId": "list_stock_photos",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер позиции",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Фото позиции",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Attachment"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Склад"
+        ],
+        "summary": "Загрузка фото позиции (право `stock_edit`): не больше трёх, только картинки. Тело — сами\nбайты, `Content-Type: application/octet-stream`; не больше 25 МБ. Подпись и удаление — общие\n`PATCH`/`DELETE /api/v1/attachments/{id}`.",
+        "operationId": "upload_stock_photo",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер позиции",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "name",
+            "in": "query",
+            "description": "Имя файла, как у пользователя: 1–255 знаков.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Фото добавлено",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Attachment"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/users": {
       "get": {
         "tags": [
@@ -5612,6 +5733,7 @@
         "required": [
           "id",
           "order_id",
+          "stock_item_id",
           "kind",
           "name",
           "caption",
@@ -5674,6 +5796,14 @@
             "type": "integer",
             "format": "int64",
             "description": "Размер в байтах."
+          },
+          "stock_item_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Номер позиции склада (у фото позиции)."
           },
           "width": {
             "type": [

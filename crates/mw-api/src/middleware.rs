@@ -76,7 +76,8 @@ pub(crate) async fn require_local_host(req: Request, next: Next) -> Response {
 }
 
 /// Маршруты загрузки вложений (`POST /orders/{id}/attachments`,
-/// `POST /intake-drafts/{key}/attachments`): только они принимают `application/octet-stream`.
+/// `POST /intake-drafts/{key}/attachments`, `POST /stock/{id}/photos`): только они принимают
+/// `application/octet-stream`.
 fn is_upload_route(req: &Request) -> bool {
     let logo = req.method() == Method::PUT && req.uri().path() == "/api/v1/settings/logo";
     if req.method() != Method::POST && !logo {
@@ -99,11 +100,14 @@ fn is_upload_route(req: &Request) -> bool {
         return true;
     }
     let path = req.uri().path();
-    ["/api/v1/orders/", "/api/v1/intake-drafts/"]
-        .iter()
-        .filter_map(|prefix| path.strip_prefix(prefix))
-        .filter_map(|rest| rest.strip_suffix("/attachments"))
-        .any(|id| !id.is_empty() && !id.contains('/'))
+    [
+        ("/api/v1/orders/", "/attachments"),
+        ("/api/v1/intake-drafts/", "/attachments"),
+        ("/api/v1/stock/", "/photos"),
+    ]
+    .iter()
+    .filter_map(|(prefix, suffix)| path.strip_prefix(prefix)?.strip_suffix(suffix))
+    .any(|id| !id.is_empty() && !id.contains('/'))
 }
 
 /// Изменяющие методы принимаются только с `Content-Type: application/json`:

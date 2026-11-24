@@ -12,7 +12,11 @@ id: number,
 /**
  * Номер заказа.
  */
-order_id: number | null, kind: AttachmentKind, 
+order_id: number | null, 
+/**
+ * Номер позиции склада (у фото позиции).
+ */
+stock_item_id: number | null, kind: AttachmentKind, 
 /**
  * Имя файла для человека.
  */

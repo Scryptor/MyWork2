@@ -76,7 +76,7 @@ HTTP API учёта сервисного центра MyWork 3.
 
 **Тело запроса.** Каждый изменяющий запрос (POST, PUT, PATCH, DELETE) должен нести \
 `Content-Type: application/json`, даже без тела (выход, выдача, удаление), иначе ответ 415. Исключение — загрузка вложений \
-(`POST /orders/{id}/attachments`, `POST /intake-drafts/{key}/attachments`): тело — байты файла, \
+(`POST /orders/{id}/attachments`, `POST /intake-drafts/{key}/attachments`, `POST /stock/{id}/photos`): тело — байты файла, \
 `Content-Type: application/octet-stream`, не больше 25 МБ; и загрузка логотипа (`PUT /settings/logo`): \
 тело — байты картинки, `Content-Type: application/octet-stream`, не больше 5 МБ.
 

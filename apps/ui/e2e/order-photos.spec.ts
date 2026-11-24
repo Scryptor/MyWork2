@@ -114,6 +114,7 @@ test('a file of the old program that is gone from the server says so', async ({
 	const legacy: Attachment = {
 		id: 987654,
 		order_id: o.id,
+		stock_item_id: null,
 		kind: 'file',
 		name: 'старый.doc',
 		caption: '',

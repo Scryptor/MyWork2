@@ -1,6 +1,7 @@
 //! Склад: позиции (`items`) — типы API, проверки и выводимое наименование.
 
 mod items;
+mod photos;
 
 use chrono::NaiveDateTime;
 use mw_db::entity::stock_item;

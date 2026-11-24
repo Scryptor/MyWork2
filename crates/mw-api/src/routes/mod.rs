@@ -34,6 +34,7 @@ pub(crate) fn api_routes() -> OpenApiRouter<AppState> {
                     attachments::list_draft_attachments,
                     attachments::upload_draft_attachment
                 ))
+                .routes(routes!(stock::upload_stock_photo))
                 .layer(DefaultBodyLimit::max(attachments::UPLOAD_BODY_LIMIT)),
         )
         .merge(
@@ -95,6 +96,7 @@ pub(crate) fn api_routes() -> OpenApiRouter<AppState> {
             stock::delete_stock_item
         ))
         .routes(routes!(stock::stock_item_history))
+        .routes(routes!(stock::list_stock_photos))
         .routes(routes!(orders::list_orders, orders::create_order))
         .routes(routes!(orders::order_summary))
         .routes(routes!(orders::order_values))

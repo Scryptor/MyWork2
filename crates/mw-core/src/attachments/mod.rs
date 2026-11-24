@@ -19,6 +19,7 @@ pub use drafts::MAX_DRAFT_ATTACHMENTS;
 pub(crate) use drafts::valid_key;
 pub use logo::FirmLogo;
 pub use photo::{MAX_ATTACHMENT_BYTES, PhotoError, ProcessedPhoto, process_photo};
+pub(crate) use store::remove_files;
 pub use store::resolve;
 
 use crate::{Actor, Core, CoreError, NewAuditEntry, write_audit};
@@ -64,6 +65,9 @@ pub struct Attachment {
     /// Номер заказа.
     #[schema(required = true)]
     pub order_id: Option<i64>,
+    /// Номер позиции склада (у фото позиции).
+    #[schema(required = true)]
+    pub stock_item_id: Option<i64>,
     pub kind: AttachmentKind,
     /// Имя файла для человека.
     pub name: String,
@@ -99,10 +103,11 @@ fn kind_of(m: &attachment::Model) -> AttachmentKind {
     }
 }
 
-fn to_api(m: attachment::Model, missing: bool) -> Attachment {
+pub(crate) fn to_api(m: attachment::Model, missing: bool) -> Attachment {
     Attachment {
         id: m.id,
         order_id: m.order_id,
+        stock_item_id: m.stock_item_id,
         kind: kind_of(&m),
         name: m.name,
         caption: m.caption,
@@ -116,10 +121,13 @@ fn to_api(m: attachment::Model, missing: bool) -> Attachment {
     }
 }
 
-/// Право на подпись и удаление вложения: фото приёма (черновика) — у того, кто принимает или
-/// правит заказы; вложение заказа — только у того, кто правит заказы.
+/// Право на подпись и удаление вложения: фото позиции склада — у того, кто правит склад; фото
+/// приёма (черновика) — у того, кто принимает или правит заказы; вложение заказа — только у того,
+/// кто правит заказы.
 fn require_edit(actor: &Actor, m: &attachment::Model) -> Result<(), CoreError> {
-    if m.order_id.is_none() && m.draft_key.is_some() {
+    if m.stock_item_id.is_some() {
+        actor.require(Permission::StockEdit)
+    } else if m.order_id.is_none() && m.draft_key.is_some() {
         actor.require_any(&[Permission::OrdersEdit, Permission::OrdersCreate])
     } else {
         actor.require(Permission::OrdersEdit)
@@ -127,13 +135,13 @@ fn require_edit(actor: &Actor, m: &attachment::Model) -> Result<(), CoreError> {
 }
 
 impl Core {
-    fn data_dir(&self) -> Result<&std::path::Path, CoreError> {
+    pub(crate) fn data_dir(&self) -> Result<&std::path::Path, CoreError> {
         self.data_dir
             .as_deref()
             .ok_or(CoreError::Unavailable("Хранилище файлов не настроено"))
     }
 
-    fn is_missing(&self, data_dir: &std::path::Path, m: &attachment::Model) -> bool {
+    pub(crate) fn is_missing(&self, data_dir: &std::path::Path, m: &attachment::Model) -> bool {
         store::resolve(data_dir, &m.path).is_none_or(|p| !p.exists())
     }
 
@@ -161,7 +169,7 @@ impl Core {
     /// Путь к файлу вложения или его миниатюры. У старых фото миниатюра строится при первом запросе.
     pub async fn attachment_file(
         &self,
-        _actor: &Actor,
+        actor: &Actor,
         id: i64,
         variant: AttachmentVariant,
     ) -> Result<AttachmentFile, CoreError> {
@@ -172,6 +180,10 @@ impl Core {
             .await?
             .filter(|m| m.kind != LOGO_KIND)
             .ok_or_else(not_found)?;
+        // Фото позиции склада видит тот, кто видит склад; остальные вложения — любой вошедший.
+        if m.stock_item_id.is_some() {
+            actor.require(Permission::StockView)?;
+        }
         let main = store::resolve(data_dir, &m.path)
             .filter(|p| p.exists())
             .ok_or_else(not_found)?;
@@ -245,14 +257,8 @@ impl Core {
         id: i64,
         caption: String,
     ) -> Result<Attachment, CoreError> {
-        actor.require_any(&[Permission::OrdersEdit, Permission::OrdersCreate])?;
         let data_dir = self.data_dir()?;
         let caption = caption.trim().to_owned();
-        if caption.chars().count() > MAX_CAPTION_CHARS {
-            return Err(CoreError::Validation(vec![FieldError::new(
-                "caption", "too_long",
-            )]));
-        }
         let tx = self.begin_write().await?;
         let current = attachment::Entity::find_by_id(id)
             .one(&tx)
@@ -260,6 +266,11 @@ impl Core {
             .filter(|m| m.kind != LOGO_KIND)
             .ok_or(CoreError::NotFound { entity: ENTITY, id })?;
         require_edit(actor, &current)?;
+        if caption.chars().count() > MAX_CAPTION_CHARS {
+            return Err(CoreError::Validation(vec![FieldError::new(
+                "caption", "too_long",
+            )]));
+        }
         if current.caption == caption {
             tx.rollback().await.ok();
             let missing = self.is_missing(data_dir, &current);
@@ -280,7 +291,7 @@ impl Core {
                 action: "attachment.caption",
                 order_id: current.order_id,
                 client_id: None,
-                stock_item_id: None,
+                stock_item_id: current.stock_item_id,
                 summary: format!("Подпись к файлу «{}»: {caption}", current.name),
                 details: Some(serde_json::json!({
                     "name": current.name,
@@ -298,7 +309,6 @@ impl Core {
     /// Удаляет вложение; файлы убираются с диска после фиксации записи. Права — как у
     /// `require_edit`.
     pub async fn delete_attachment(&self, actor: &Actor, id: i64) -> Result<(), CoreError> {
-        actor.require_any(&[Permission::OrdersEdit, Permission::OrdersCreate])?;
         let data_dir = self.data_dir()?.to_path_buf();
         let tx = self.begin_write().await?;
         let current = attachment::Entity::find_by_id(id)
@@ -316,7 +326,7 @@ impl Core {
                 action: "attachment.deleted",
                 order_id: current.order_id,
                 client_id: None,
-                stock_item_id: None,
+                stock_item_id: current.stock_item_id,
                 summary: format!("Удалён файл «{}»", current.name),
                 details: Some(serde_json::json!({
                     "name": current.name,
@@ -424,6 +434,18 @@ impl Written {
             legacy: Set(false),
             created_at: Set(created_at),
             stock_item_id: Set(None),
+        }
+    }
+
+    /// Фото позиции склада: без заказа и черновика.
+    pub(crate) fn into_stock_active(
+        self,
+        stock_item_id: i64,
+        created_at: NaiveDateTime,
+    ) -> attachment::ActiveModel {
+        attachment::ActiveModel {
+            stock_item_id: Set(Some(stock_item_id)),
+            ..self.into_active(None, None, created_at)
         }
     }
 }

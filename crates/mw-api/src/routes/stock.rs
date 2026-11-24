@@ -1,12 +1,16 @@
 //! Склад: позиции.
 
+use axum::body::Bytes;
 use axum::extract::State;
+use axum::extract::rejection::BytesRejection;
 use axum::http::StatusCode;
-use mw_core::{NewStockItem, PageRequest, StockItem, StockItemPatch, StockSummary};
+use mw_core::{Attachment, NewStockItem, PageRequest, StockItem, StockItemPatch, StockSummary};
 
 use crate::DEFAULT_PAGE_LIMIT;
 use crate::auth::CurrentActor;
-use crate::dto::{AuditPage, PageQuery, StockListQuery, StockPage, VersionParam};
+use crate::dto::{
+    AttachmentNameQuery, AuditPage, PageQuery, StockListQuery, StockPage, VersionParam,
+};
 use crate::error::ApiError;
 use crate::extract::{Json, Path, Query};
 use crate::state::AppState;
@@ -160,5 +164,49 @@ pub(super) async fn stock_item_history(
             .stock_item_history(&actor, id, page)
             .await?
             .into(),
+    ))
+}
+
+/// Фото позиции по времени добавления (право `stock_view`).
+#[utoipa::path(
+    get,
+    path = "/api/v1/stock/{id}/photos",
+    tag = "Склад",
+    security(("bearer" = [])),
+    params(("id" = i64, Path, description = "Номер позиции")),
+    responses((status = 200, description = "Фото позиции", body = Vec<Attachment>))
+)]
+pub(super) async fn list_stock_photos(
+    State(state): State<AppState>,
+    CurrentActor(actor): CurrentActor,
+    Path(id): Path<i64>,
+) -> Result<Json<Vec<Attachment>>, ApiError> {
+    Ok(Json(state.core.list_stock_photos(&actor, id).await?))
+}
+
+/// Загрузка фото позиции (право `stock_edit`): не больше трёх, только картинки. Тело — сами
+/// байты, `Content-Type: application/octet-stream`; не больше 25 МБ. Подпись и удаление — общие
+/// `PATCH`/`DELETE /api/v1/attachments/{id}`.
+#[utoipa::path(
+    post,
+    path = "/api/v1/stock/{id}/photos",
+    tag = "Склад",
+    security(("bearer" = [])),
+    params(("id" = i64, Path, description = "Номер позиции"), AttachmentNameQuery),
+    request_body(content = Vec<u8>, content_type = "application/octet-stream"),
+    responses((status = 201, description = "Фото добавлено", body = Attachment))
+)]
+pub(super) async fn upload_stock_photo(
+    State(state): State<AppState>,
+    CurrentActor(actor): CurrentActor,
+    Path(id): Path<i64>,
+    Query(q): Query<AttachmentNameQuery>,
+    body: Result<Bytes, BytesRejection>,
+) -> Result<(StatusCode, Json<Attachment>), ApiError> {
+    let name = super::attachments::checked_name(&q.name)?;
+    let bytes = body?.to_vec();
+    Ok((
+        StatusCode::CREATED,
+        Json(state.core.add_stock_photo(&actor, id, &name, bytes).await?),
     ))
 }

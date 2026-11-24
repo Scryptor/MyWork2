@@ -17,6 +17,7 @@ function attachment(id: number, over: Partial<Attachment> = {}): Attachment {
 	return {
 		id,
 		order_id: 7,
+		stock_item_id: null,
 		kind: 'photo',
 		name: `p${id}.png`,
 		caption: '',

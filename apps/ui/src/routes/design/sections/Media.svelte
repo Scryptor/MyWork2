@@ -41,6 +41,7 @@
 	const attachment = (id: number, name: string, over: Partial<Attachment> = {}): Attachment => ({
 		id,
 		order_id: 1,
+		stock_item_id: null,
 		kind: 'photo',
 		name,
 		caption: '',

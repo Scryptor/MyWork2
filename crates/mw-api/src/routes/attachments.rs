@@ -18,7 +18,7 @@ use crate::state::AppState;
 pub(super) const UPLOAD_BODY_LIMIT: usize = mw_core::attachments::MAX_ATTACHMENT_BYTES + 64 * 1024;
 
 /// Имя файла: без пробелов по краям, 1–255 знаков.
-fn checked_name(raw: &str) -> Result<String, ApiError> {
+pub(super) fn checked_name(raw: &str) -> Result<String, ApiError> {
     let name = raw.trim();
     if name.is_empty() || name.chars().count() > 255 {
         return Err(ApiError::bad_request(
@@ -141,7 +141,8 @@ pub(super) async fn discard_draft(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Подпись вложения (право `orders_edit`; у фото черновика приёма — `orders_create` или `orders_edit`).
+/// Подпись вложения (право `orders_edit`; у фото черновика приёма — `orders_create` или `orders_edit`;
+/// у фото позиции склада — `stock_edit`).
 #[utoipa::path(
     patch,
     path = "/api/v1/attachments/{id}",
@@ -165,7 +166,8 @@ pub(super) async fn update_attachment(
     ))
 }
 
-/// Удаление вложения (право `orders_edit`; у фото черновика приёма — `orders_create` или `orders_edit`).
+/// Удаление вложения (право `orders_edit`; у фото черновика приёма — `orders_create` или `orders_edit`;
+/// у фото позиции склада — `stock_edit`).
 #[utoipa::path(
     delete,
     path = "/api/v1/attachments/{id}",
@@ -183,7 +185,7 @@ pub(super) async fn delete_attachment(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Файл вложения (достаточно войти).
+/// Файл вложения (достаточно войти; у фото позиции склада — право `stock_view`).
 #[utoipa::path(
     get,
     path = "/api/v1/attachments/{id}/file",
@@ -200,7 +202,7 @@ pub(super) async fn attachment_file(
     serve(&state.core, &actor, id, AttachmentVariant::Full).await
 }
 
-/// Миниатюра фото (достаточно войти).
+/// Миниатюра фото (достаточно войти; у фото позиции склада — право `stock_view`).
 #[utoipa::path(
     get,
     path = "/api/v1/attachments/{id}/thumb",
