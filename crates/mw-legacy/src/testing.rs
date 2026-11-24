@@ -1,14 +1,60 @@
-//! Точки остановки импорта и проверки папки для тестов других крейтов (фича `testing`): импорт (или
-//! проверка) из заданной папки один раз останавливается и ждёт, пока тест его отпустит. Рабочая сборка их
-//! не содержит.
+//! Помощники тестов других крейтов (фича `testing`), рабочая сборка их не содержит:
+//! - точки остановки импорта и проверки папки: импорт (или проверка) из заданной папки один раз
+//!   останавливается и ждёт, пока тест его отпустит;
+//! - импорт «как до плана 8.1» — база для тестов переноса склада из прошлого импорта.
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::sync::mpsc;
 
+use mw_core::{Actor, Core, ImportedOrder, ImportedStock};
+use mw_domain::dictionary::DictionaryKind;
 use tokio::sync::oneshot;
 
-use crate::ImportStage;
+use crate::convert::stock::StockConversion;
+use crate::folder::LegacyFolder;
+use crate::report::Warnings;
+use crate::source::LegacyDb;
+use crate::{ImportOptions, ImportReport, ImportStage, LegacyError, WarningCode};
+
+/// Импорт папки так, как его делала программа до плана 8.1: склада нет, «расходы» заказов —
+/// затраты MyWork 2 как есть, следы `Stock`, `StockMap` и фото склада — без цели, справочники —
+/// без значений склада, в отчёте — `stock_preserved`. Остальное (пакет, файлы, отчёт) — как у
+/// `import_folder`.
+pub async fn import_before_stock(
+    core: &Core,
+    actor: &Actor,
+    options: &ImportOptions,
+) -> Result<ImportReport, LegacyError> {
+    crate::import_folder_with(core, actor, options, preserved_stock).await
+}
+
+/// Шаг склада до плана 8.1: таблицы склада только сохраняются следами.
+fn preserved_stock(
+    db: &LegacyDb,
+    _folder: &LegacyFolder,
+    _orders: &mut [ImportedOrder],
+    _dictionary: &mut [(DictionaryKind, Vec<String>)],
+    w: &mut Warnings,
+) -> StockConversion {
+    if let Some(stock) = db.table("Stock").filter(|t| !t.rows.is_empty()) {
+        w.push(
+            WarningCode::StockPreserved,
+            "Stock",
+            "",
+            "",
+            &stock.rows.len().to_string(),
+            "Склад сохранён в исходном виде до появления модуля склада.",
+        );
+    }
+    StockConversion {
+        stock: ImportedStock::default(),
+        cost_changes: Vec::new(),
+        dictionary_additions: Vec::new(),
+        stock_targets: Vec::new(),
+        part_targets: Vec::new(),
+    }
+}
 
 /// Остановка, назначенная тестом.
 pub struct Hold {

@@ -5,9 +5,14 @@
 //! кроме `LegacyImportMode`.
 
 mod reports;
+mod stock;
 mod write;
 
 pub use reports::{LegacyImportMode, LegacyImportRecord};
+pub use stock::{
+    LegacyOrderCosts, LegacySourceRow, LegacyStockSource, LegacyStockState, StockImport,
+    StockImportSummary,
+};
 
 use std::path::PathBuf;
 

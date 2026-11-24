@@ -80,6 +80,36 @@ impl LegacyValue {
             Self::InvalidText(b) | Self::Blob(b) => json!({ "hex": hex::encode(b) }),
         }
     }
+
+    /// Обратное `to_json` (значение из следа `legacy_rows`): `{"hex": …}` — текст с NUL, если байты —
+    /// UTF-8 с NUL; `InvalidText`, если не UTF-8; иначе двоичное значение. Так `to_json` и `as_text`
+    /// прочитанного дают то же, что у исходного. Чего `to_json` не выдаёт — текстом JSON.
+    pub(crate) fn from_json(value: &Value) -> Self {
+        match value {
+            Value::Null => Self::Null,
+            Value::String(s) => Self::Text(s.clone()),
+            Value::Number(n) => match (n.as_i64(), n.as_f64()) {
+                (Some(i), _) => Self::Integer(i),
+                (None, Some(x)) => Self::Real(x),
+                (None, None) => Self::Text(n.to_string()),
+            },
+            Value::Object(object) if object.len() == 1 => {
+                let bytes = object
+                    .get("hex")
+                    .and_then(Value::as_str)
+                    .and_then(|h| hex::decode(h).ok());
+                match bytes {
+                    Some(bytes) => match String::from_utf8(bytes) {
+                        Ok(text) if text.contains('\0') => Self::Text(text),
+                        Ok(text) => Self::Blob(text.into_bytes()),
+                        Err(error) => Self::InvalidText(error.into_bytes()),
+                    },
+                    None => Self::Text(value.to_string()),
+                }
+            }
+            other => Self::Text(other.to_string()),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -113,6 +143,33 @@ impl LegacyTable {
                 .or_insert_with(|| value.to_json());
         }
         Value::Object(object)
+    }
+
+    /// Таблица из строк-следов (обратное `row_json`): колонки — ключи строк в порядке появления,
+    /// нет ключа в строке — NULL. Не объект — строка без значений.
+    pub(crate) fn from_json_rows(name: &str, rows: &[Value]) -> LegacyTable {
+        let mut columns: Vec<String> = Vec::new();
+        for object in rows.iter().filter_map(Value::as_object) {
+            for key in object.keys() {
+                if !columns.contains(key) {
+                    columns.push(key.clone());
+                }
+            }
+        }
+        let rows = rows
+            .iter()
+            .map(|row| {
+                columns
+                    .iter()
+                    .map(|c| row.get(c).map_or(LegacyValue::Null, LegacyValue::from_json))
+                    .collect()
+            })
+            .collect();
+        LegacyTable {
+            name: name.to_owned(),
+            columns,
+            rows,
+        }
     }
 }
 
@@ -398,6 +455,88 @@ mod tests {
         );
         assert_eq!(json["polomka"], json!({"hex": "d0"}));
         assert_eq!(json["kommentarij"], json!({"hex": "c0"}));
+    }
+
+    /// Строка, сохранённая следом (`row_json`), читается обратно: текст, числа, NULL и `{"hex": …}`
+    /// (текст с NUL, не UTF-8, двоичное значение) дают те же значения, тот же текст и тот же JSON.
+    #[test]
+    fn json_rows_read_back() {
+        let table = LegacyTable {
+            name: "Stock".into(),
+            columns: [
+                "id",
+                "Naimenovanie",
+                "Price",
+                "CountOf",
+                "Primechanie",
+                "Model",
+                "Brand",
+                "Photo",
+            ]
+            .map(str::to_owned)
+            .to_vec(),
+            rows: vec![
+                vec![
+                    LegacyValue::Integer(3),
+                    LegacyValue::Text("ДИСПЛЕЙ  A52".into()),
+                    LegacyValue::Real(1200.5),
+                    LegacyValue::Real(3.0),
+                    LegacyValue::Null,
+                    LegacyValue::Text("A\0B".into()),
+                    LegacyValue::InvalidText(vec![0xD0, 0x41]),
+                    LegacyValue::Blob(b"photo".to_vec()),
+                ],
+                vec![
+                    LegacyValue::Text(" 4 ".into()),
+                    LegacyValue::Text(String::new()),
+                    LegacyValue::Text("abc".into()),
+                    LegacyValue::Integer(-1),
+                    LegacyValue::Text("1500".into()),
+                    LegacyValue::Null,
+                    LegacyValue::Null,
+                    LegacyValue::Null,
+                ],
+            ],
+        };
+        let raws: Vec<Value> = table.rows.iter().map(|r| table.row_json(r)).collect();
+        // Как хранит база: текстом, и обратно.
+        let stored: Vec<Value> = raws
+            .iter()
+            .map(|r| serde_json::from_str(&r.to_string()).unwrap())
+            .collect();
+        let back = LegacyTable::from_json_rows("Stock", &stored);
+        assert_eq!(back.name, "Stock");
+        let mut columns = back.columns.clone();
+        columns.sort();
+        let mut expected = table.columns.clone();
+        expected.sort();
+        assert_eq!(columns, expected);
+        for (row, original) in back.rows.iter().zip(&table.rows) {
+            for (column, value) in table.columns.iter().zip(original) {
+                assert_eq!(
+                    back.text(row, column),
+                    value.as_text(),
+                    "{column}: {value:?}"
+                );
+            }
+        }
+        assert_eq!(back.rows.len(), 2);
+        let first = &back.rows[0];
+        let cell = |row: &[LegacyValue], column: &str| row[back.column(column).unwrap()].clone();
+        assert_eq!(cell(first, "id"), LegacyValue::Integer(3));
+        assert_eq!(cell(first, "Price"), LegacyValue::Real(1200.5));
+        assert_eq!(cell(first, "CountOf"), LegacyValue::Real(3.0));
+        assert_eq!(cell(first, "Primechanie"), LegacyValue::Null);
+        assert_eq!(cell(first, "Model"), LegacyValue::Text("A\0B".into()));
+        assert_eq!(
+            cell(first, "Brand"),
+            LegacyValue::InvalidText(vec![0xD0, 0x41])
+        );
+        assert_eq!(cell(first, "Photo"), LegacyValue::Blob(b"photo".to_vec()));
+        assert_eq!(cell(&back.rows[1], "id"), LegacyValue::Text(" 4 ".into()));
+        // И снова в JSON — тот же след.
+        let again: Vec<Value> = back.rows.iter().map(|r| back.row_json(r)).collect();
+        assert_eq!(again, stored);
     }
 
     #[tokio::test]

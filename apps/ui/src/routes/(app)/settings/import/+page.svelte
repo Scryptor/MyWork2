@@ -1,18 +1,28 @@
 <!-- «Импорт из MyWork 2» (spec 6.8): the past imports (date, folder, orders, warnings) lead to their reports;
      «Перенести снова» replaces the data of the program with a folder of MyWork 2, after a confirmation (a copy
      is made first). The replacement is for SQLite only and for a server on this computer only (the path is on
-     its disk). An import under way shows its progress here. Rights: «settings_manage» and «users_manage». -->
+     its disk). An import under way shows its progress here. An import made before the stock module kept the
+     stock as it was: while the base has no stock, «Перенести склад из прошлого импорта» transfers it from there
+     (decision 17; any server, the folder is not needed). Rights: «settings_manage» and «users_manage». -->
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import type { ImportJob } from '$api/ImportJob';
 	import type { LegacyImportItem } from '$api/LegacyImportItem';
+	import type { LegacyStockState } from '$api/LegacyStockState';
 	import { getAbout } from '#lib/api/catalogs.js';
 	import { ApiError, errorMessage } from '#lib/api/client.js';
-	import { currentLegacyImport, listLegacyImports } from '#lib/api/import.js';
+	import {
+		currentLegacyImport,
+		legacyStockState,
+		listLegacyImports,
+		migrateLegacyStock
+	} from '#lib/api/import.js';
 	import { app } from '#lib/app/context.svelte.js';
 	import { formatFull } from '#lib/format/date.js';
 	import { groupDigits } from '#lib/format/digits.js';
+	import { countLabel } from '#lib/format/plural.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import { reportRoute } from '#lib/import/report.js';
 	import ImportWizard from '#lib/setup/ImportWizard.svelte';
@@ -23,6 +33,7 @@
 	import Card from '#lib/ui/Card.svelte';
 	import HelpHint from '#lib/ui/HelpHint.svelte';
 	import Skeleton from '#lib/ui/Skeleton.svelte';
+	import { toast } from '#lib/ui/toast/toast.svelte.js';
 
 	const t = ru.legacy;
 	const uid = $props.id();
@@ -38,14 +49,21 @@
 	let unknown = $state<string | null>(null);
 	let wizard = $state(false);
 	let resume = $state.raw<ImportJob | null>(null);
+	/** The stock of the last import, kept as it was: offered while `available`. */
+	let stock = $state.raw<LegacyStockState | null>(null);
+	let migrating = $state(false);
+	let stockFailure = $state<string | null>(null);
 
 	onMount(async () => {
 		if (!allowed) return;
-		const [list, about, job] = await Promise.allSettled([
+		const [list, about, job, stockState] = await Promise.allSettled([
 			listLegacyImports(),
 			getAbout(),
-			currentLegacyImport()
+			currentLegacyImport(),
+			legacyStockState()
 		]);
+		// Without an answer about the stock there is nothing to offer: the rest of the page stands.
+		if (stockState.status === 'fulfilled') stock = stockState.value;
 		if (list.status === 'fulfilled') items = list.value;
 		else failure = errorMessage(list.reason);
 		if (job.status === 'rejected' && job.reason instanceof ApiError && job.reason.status === 403)
@@ -58,6 +76,30 @@
 		replaceable =
 			notHere === null && about.status === 'fulfilled' && about.value.database === 'SQLite';
 	});
+
+	/** One request at a time (the server refuses a repeat anyway); the report of the import shows the result. */
+	async function migrateStock() {
+		if (migrating) return;
+		migrating = true;
+		stockFailure = null;
+		try {
+			const done = await migrateLegacyStock();
+			toast.show({
+				message: t.stockDone(
+					countLabel(done.stock_items, t.stockItemForms),
+					countLabel(done.order_parts, t.stockPartForms)
+				),
+				tone: 'success'
+			});
+			stock = null;
+			await goto(resolve(reportRoute(done.import_id)));
+		} catch (e) {
+			stockFailure =
+				(e instanceof ApiError ? e.body?.fields[0]?.message : undefined) ?? errorMessage(e);
+		} finally {
+			migrating = false;
+		}
+	}
 </script>
 
 <h1 class="title">{ru.settings.import}</h1>
@@ -65,6 +107,18 @@
 {#if !allowed}
 	<Callout tone="info">{t.rights}</Callout>
 {:else}
+	{#if stock?.available && !wizard}
+		<Callout tone="warning" title={t.stockTitle}>
+			{t.stockText(
+				countLabel(stock.stock_rows, t.stockItemForms),
+				countLabel(stock.stock_map_rows, t.stockWriteOffForms)
+			)}
+			{#snippet actions()}
+				<Button variant="primary" busy={migrating} onclick={migrateStock}>{t.stockMigrate}</Button>
+			{/snippet}
+		</Callout>
+		{#if stockFailure}<Callout tone="danger">{stockFailure}</Callout>{/if}
+	{/if}
 	{#if wizard}
 		<Card>
 			<ImportWizard replace {resume} onback={resume ? undefined : () => (wizard = false)} />

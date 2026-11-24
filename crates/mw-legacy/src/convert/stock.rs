@@ -19,6 +19,7 @@ use mw_domain::spelling::{has_letter, tidy};
 use mw_domain::stock::{MAX_STOCK_PRICE, MAX_STOCK_QUANTITY, StockNameParts, display_name};
 
 use super::catalogs::is_placeholder;
+use super::row_key;
 use crate::folder::LegacyFolder;
 use crate::parse::money::{MoneyValue, parse_money};
 use crate::report::{WarningCode, Warnings};
@@ -71,11 +72,13 @@ pub(crate) fn stock_lists(folder: &LegacyFolder) -> BTreeMap<String, String> {
     folder
         .text_files
         .iter()
-        .filter_map(|(path, bytes)| {
-            let name = path.strip_prefix(LISTS_PREFIX)?;
-            Some((name.to_owned(), decode_text(bytes).0))
-        })
+        .filter_map(|(path, bytes)| Some((list_name(path)?.to_owned(), decode_text(bytes).0)))
         .collect()
+}
+
+/// Имя списка склада по пути файла папки MyWork 2 (он же ключ следа `file`); не список — пусто.
+pub(crate) fn list_name(path: &str) -> Option<&str> {
+    path.strip_prefix(LISTS_PREFIX)
 }
 
 /// Количество MyWork 2 (`decimal` текстом): цифры, допускаются хвосты «.0…» и «,0…»; не больше
@@ -98,17 +101,6 @@ pub(crate) fn parse_quantity(raw: &str) -> Option<i64> {
         .parse::<i64>()
         .ok()
         .filter(|n| *n <= MAX_STOCK_QUANTITY)
-}
-
-/// Ключ строки — как у следа (`super::table_rows`): `id` без пробелов по краям, иначе номер строки.
-fn row_key(table: &LegacyTable, row: &[crate::source::LegacyValue], n: usize) -> String {
-    let id = table.text(row, "id");
-    let id = id.trim();
-    if id.is_empty() {
-        format!("строка {}", n + 1)
-    } else {
-        id.to_owned()
-    }
 }
 
 /// Одна ячейка склада: где она и что в ней.

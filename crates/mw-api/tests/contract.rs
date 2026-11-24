@@ -186,7 +186,7 @@ fn documented_operations_match_the_api_map() {
             }
         }
     }
-    assert_eq!(ops.len(), 103, "{ops:#?}");
+    assert_eq!(ops.len(), 105, "{ops:#?}");
     for expected in [
         "GET /api/v1/server-info",
         "GET /api/v1/openapi.json",
@@ -237,6 +237,8 @@ fn documented_operations_match_the_api_map() {
         "GET /api/v1/legacy-import/current",
         "GET /api/v1/legacy-imports",
         "GET /api/v1/legacy-imports/{id}",
+        "GET /api/v1/legacy-import/stock",
+        "POST /api/v1/legacy-import/stock",
         "GET /api/v1/orders/{id}/documents/{kind}",
         "GET /api/v1/documents/{kind}",
         "POST /api/v1/documents/{kind}/batch",

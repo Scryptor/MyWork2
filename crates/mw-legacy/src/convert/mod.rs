@@ -18,7 +18,7 @@ use serde_json::json;
 
 use crate::folder::LegacyFolder;
 use crate::report::{WarningCode, Warnings};
-use crate::source::{FULL_CATALOG_COLUMNS, LegacyDb, LegacyValue, SchemaSummary};
+use crate::source::{FULL_CATALOG_COLUMNS, LegacyDb, LegacyTable, LegacyValue, SchemaSummary};
 
 /// Файл, который нужно скопировать в `attachments`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -52,7 +52,25 @@ const KNOWN_TABLES: [&str; 8] = [
     "StockMap",
 ];
 
-/// Строка таблицы целиком: ключ — `id`, иначе номер строки.
+/// Ключ `n`-й строки таблицы (с нуля) в следах (`legacy_rows.source_key`) и в отчёте: `id` без
+/// пробелов по краям, пусто — «строка N». По нему перенос склада из прошлого импорта находит следы
+/// строк, ставших позициями и запчастями.
+pub(crate) fn row_key(table: &LegacyTable, row: &[LegacyValue], n: usize) -> String {
+    let id = table.text(row, "id");
+    let id = id.trim();
+    if id.is_empty() {
+        line_key(n)
+    } else {
+        id.to_owned()
+    }
+}
+
+/// «строка N» — ключ `n`-й строки (с нуля) без `id`.
+fn line_key(n: usize) -> String {
+    format!("строка {}", n + 1)
+}
+
+/// Строка таблицы целиком: ключ — `row_key`, у `by_row` — всегда номер строки.
 fn table_rows(
     db: &LegacyDb,
     name: &str,
@@ -67,11 +85,10 @@ fn table_rows(
         .iter()
         .enumerate()
         .map(|(i, row)| {
-            let id = table.text(row, "id");
-            let key = if by_row || id.trim().is_empty() {
-                format!("строка {}", i + 1)
+            let key = if by_row {
+                line_key(i)
             } else {
-                id.trim().to_owned()
+                row_key(table, row, i)
             };
             ImportedLegacyRow {
                 source: table.name.clone(),
@@ -200,12 +217,7 @@ fn warn_text_cells(db: &LegacyDb, w: &mut Warnings) {
             continue;
         };
         for (n, row) in table.rows.iter().enumerate() {
-            let id = table.text(row, "id");
-            let key = if id.trim().is_empty() {
-                format!("строка {}", n + 1)
-            } else {
-                id.trim().to_owned()
-            };
+            let key = row_key(table, row, n);
             for (column, value) in table.columns.iter().zip(row) {
                 let message = match value {
                     LegacyValue::InvalidText(_) | LegacyValue::Blob(_) => {
@@ -404,9 +416,19 @@ fn sequence_of(db: &LegacyDb, table: &str) -> i64 {
         .map_or(0, |(_, v)| *v)
 }
 
+/// Шаг склада внутри `convert_with`: обычный — `transfer_stock`; тесты переноса склада в уже
+/// импортированную базу подставляют склад «до плана 8.1» (`crate::testing`).
+pub(crate) type StockStep = fn(
+    &LegacyDb,
+    &LegacyFolder,
+    &mut [ImportedOrder],
+    &mut [(mw_domain::dictionary::DictionaryKind, Vec<String>)],
+    &mut Warnings,
+) -> stock::StockConversion;
+
 /// Склад: позиции и запчасти; «расходы» заказов — без запчастей; значения склада — в конец
 /// справочников (и строк отчёта о них).
-fn convert_stock(
+pub(crate) fn transfer_stock(
     db: &LegacyDb,
     folder: &LegacyFolder,
     orders: &mut [ImportedOrder],
@@ -448,6 +470,16 @@ fn convert_stock(
 
 /// Собирает пакет импорта из прочитанной базы и папки; `now` — время импорта для подстановок.
 pub(crate) fn convert(db: &LegacyDb, folder: &LegacyFolder, now: NaiveDateTime) -> Conversion {
+    convert_with(db, folder, now, transfer_stock)
+}
+
+/// Как `convert`, склад переносит `stock_step`.
+pub(crate) fn convert_with(
+    db: &LegacyDb,
+    folder: &LegacyFolder,
+    now: NaiveDateTime,
+    stock_step: StockStep,
+) -> Conversion {
     let mut w = Warnings::default();
     let hints = history::history_hints(db);
     let issued = orders::issued_ids(db);
@@ -464,7 +496,7 @@ pub(crate) fn convert(db: &LegacyDb, folder: &LegacyFolder, now: NaiveDateTime) 
         &rewrites,
         &mut w,
     );
-    let stock = convert_stock(db, folder, &mut converted, &mut dictionary, &mut w);
+    let stock = stock_step(db, folder, &mut converted, &mut dictionary, &mut w);
     let history = history::convert_history(db, &converted, now, &mut w);
     warn_unknown_columns(db, &mut w);
     warn_text_cells(db, &mut w);

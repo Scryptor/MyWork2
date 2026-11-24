@@ -52,7 +52,8 @@ pub use import::{
     DatabaseKind, ExtraCostsChange, ImportBundle, ImportMode, ImportSummary, ImportTarget,
     ImportedClient, ImportedHistory, ImportedLegacyRow, ImportedOrder, ImportedOrderPart,
     ImportedSettings, ImportedStock, ImportedStockItem, ImportedUser, LegacyImportMode,
-    LegacyImportRecord, LegacyTarget,
+    LegacyImportRecord, LegacyOrderCosts, LegacySourceRow, LegacyStockSource, LegacyStockState,
+    LegacyTarget, StockImport, StockImportSummary,
 };
 pub use legacy_templates::LegacyTemplate;
 pub use orders::{

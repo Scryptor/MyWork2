@@ -23,7 +23,7 @@ use serde_json::{Value, json};
 
 use super::{
     DatabaseKind, ImportBundle, ImportMode, ImportSummary, ImportTarget, ImportedClient,
-    LegacyTarget,
+    ImportedStock, LegacyTarget,
 };
 use crate::auth::PasswordScheme;
 use crate::clients::validate_client;
@@ -37,7 +37,7 @@ use crate::{Actor, Core, CoreError};
 /// Больше параметров на один запрос не отправляем (предел PostgreSQL — 65 535).
 const MAX_BIND_PARAMS: usize = 30_000;
 
-fn bad(message: impl AsRef<str>) -> CoreError {
+pub(super) fn bad(message: impl AsRef<str>) -> CoreError {
     CoreError::Internal(format!("импорт: {}", message.as_ref()))
 }
 
@@ -166,7 +166,7 @@ fn validate_bundle(b: &ImportBundle) -> Result<(), CoreError> {
         }
     }
 
-    let item_ids = validate_stock(b, &order_ids)?;
+    let item_ids = validate_stock(&b.stock, &order_ids)?;
 
     for row in &b.legacy_rows {
         let ok = match &row.target {
@@ -215,12 +215,15 @@ fn validate_bundle(b: &ImportBundle) -> Result<(), CoreError> {
 /// Склад пакета: номера позиций больше нуля и не повторяются, количества и цены — в пределах
 /// позиции склада, запчасти — к заказам и позициям пакета, следующий номер позиции (не меньше 1)
 /// больше наибольшего. Возвращает номера позиций.
-fn validate_stock(b: &ImportBundle, order_ids: &HashSet<i64>) -> Result<HashSet<i64>, CoreError> {
+pub(super) fn validate_stock(
+    stock: &ImportedStock,
+    order_ids: &HashSet<i64>,
+) -> Result<HashSet<i64>, CoreError> {
     let quantity_ok = |q: i64| (0..=MAX_STOCK_QUANTITY).contains(&q);
     let price_ok =
         |p: mw_domain::money::Money| (0..=MAX_STOCK_PRICE.kopecks()).contains(&p.kopecks());
     let mut item_ids = HashSet::new();
-    for i in &b.stock.items {
+    for i in &stock.items {
         if i.id <= 0 || !item_ids.insert(i.id) {
             return Err(bad(format!(
                 "номер позиции склада {} неверен или повторяется",
@@ -234,7 +237,7 @@ fn validate_stock(b: &ImportBundle, order_ids: &HashSet<i64>) -> Result<HashSet<
             )));
         }
     }
-    for p in &b.stock.parts {
+    for p in &stock.parts {
         if !order_ids.contains(&p.order_id) {
             return Err(bad(format!("запчасть: нет заказа №{}", p.order_id)));
         }
@@ -252,7 +255,7 @@ fn validate_stock(b: &ImportBundle, order_ids: &HashSet<i64>) -> Result<HashSet<
         }
     }
     // Склад по умолчанию (`ImportedStock::default()`) — номер 0: позиции начнутся с 1.
-    if b.stock.next_stock_item_id.max(1) <= item_ids.iter().copied().max().unwrap_or(0) {
+    if stock.next_stock_item_id.max(1) <= item_ids.iter().copied().max().unwrap_or(0) {
         return Err(bad("следующий номер позиции склада не больше наибольшего"));
     }
     Ok(item_ids)
@@ -270,7 +273,7 @@ async fn target_state(conn: &impl ConnectionTrait) -> Result<ImportTarget, CoreE
 }
 
 /// Вставка пачками: на запрос не больше `MAX_BIND_PARAMS` параметров.
-async fn insert_chunked<E>(
+pub(super) async fn insert_chunked<E>(
     conn: &impl ConnectionTrait,
     rows: Vec<E::ActiveModel>,
 ) -> Result<(), CoreError>
@@ -610,13 +613,12 @@ async fn write_settings(
 
 /// Склад: позиции со своими номерами и ключами поиска, затем запчасти заказов — перенесённые,
 /// без автора; время — время импорта.
-async fn write_stock(
+pub(super) async fn write_stock(
     conn: &impl ConnectionTrait,
-    b: &ImportBundle,
+    stock: &ImportedStock,
     now: chrono::NaiveDateTime,
 ) -> Result<(), CoreError> {
-    let items = b
-        .stock
+    let items = stock
         .items
         .iter()
         .map(|i| {
@@ -644,8 +646,7 @@ async fn write_stock(
         })
         .collect();
     insert_chunked::<stock_item::Entity>(conn, items).await?;
-    let parts = b
-        .stock
+    let parts = stock
         .parts
         .iter()
         .map(|p| order_part::ActiveModel {
@@ -667,7 +668,7 @@ async fn write_stock(
 }
 
 /// Строки таблицы должны совпасть с пакетом.
-async fn expect_count<E: EntityTrait>(
+pub(super) async fn expect_count<E: EntityTrait>(
     conn: &impl ConnectionTrait,
     what: &str,
     expected: u64,
@@ -773,7 +774,7 @@ impl Core {
         let tracking_count = write_orders(tx, b, &status_ids, &point_ids).await?;
 
         let now = self.now();
-        write_stock(tx, b, now).await?;
+        write_stock(tx, &b.stock, now).await?;
         // Мастера — пользователи: имена из файла мастеров, мастер по умолчанию и имена из заказов.
         let default_master = b.settings.default_master.clone().unwrap_or_default();
         let mut master_names = b.masters.clone();

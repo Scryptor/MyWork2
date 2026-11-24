@@ -5,6 +5,7 @@ mod convert;
 mod error;
 mod files;
 mod folder;
+mod migrate_stock;
 mod parse;
 mod progress;
 mod report;
@@ -30,6 +31,7 @@ use tokio_util::sync::CancellationToken;
 pub use check::{FolderCheck, check_folder, check_target};
 pub use error::{LegacyError, StartedFrom, import_error_message};
 pub use files::StagingCleanup;
+pub use migrate_stock::migrate_stock;
 pub use progress::{ImportJob, ImportStage, Progress};
 pub use report::{FileStats, ImportReport, Severity, Warning, WarningCode};
 pub use report_files::{REPORTS_DIR, write_report_files};
@@ -182,6 +184,16 @@ pub async fn import_folder(
     actor: &Actor,
     options: &ImportOptions,
 ) -> Result<ImportReport, LegacyError> {
+    import_folder_with(core, actor, options, convert::transfer_stock).await
+}
+
+/// `import_folder`, склад переносит `stock_step` (см. `convert::convert_with`).
+pub(crate) async fn import_folder_with(
+    core: &Core,
+    actor: &Actor,
+    options: &ImportOptions,
+    stock_step: convert::StockStep,
+) -> Result<ImportReport, LegacyError> {
     options.emit(ImportStage::Reading, 0);
     core.check_import_rights(actor)?;
     let source = options.source.clone();
@@ -216,7 +228,7 @@ pub async fn import_folder(
     options.emit(ImportStage::Converting, 0);
     let mut conversion = tokio::task::spawn_blocking({
         let folder = folder.clone();
-        move || convert::convert(&db, &folder, started_at)
+        move || convert::convert_with(&db, &folder, started_at, stock_step)
     })
     .await
     .map_err(interrupted("Разбор данных прерван"))?;

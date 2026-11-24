@@ -1,5 +1,5 @@
 //! Импорт из MyWork 2 из интерфейса: проверка папки, перенос фоновой задачей с ходом по этапам,
-//! прошлые импорты с отчётами.
+//! прошлые импорты с отчётами, перенос склада из прошлого импорта.
 //!
 //! Путь к папке — на диске сервера, поэтому проверка и перенос разрешены только серверу на loopback.
 //! Права — как у самого импорта (`settings_manage` и `users_manage`, проверяет `mw-core`).
@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use axum::extract::State;
 use axum::http::StatusCode;
-use mw_core::{Actor, Core};
+use mw_core::{Actor, Core, CoreError, LegacyStockState, StockImportSummary};
 use mw_legacy::{
     FolderCheck, ImportJob, ImportOptions, ImportReport, ImportReportView, LegacyError,
     LegacyImportItem, Progress, StartedFrom,
@@ -167,6 +167,48 @@ pub(super) async fn get_legacy_import(
             .map(|dir| dir.join("attachments"))
             .as_deref(),
     )))
+}
+
+/// Можно ли перенести склад MyWork 2 из прошлого импорта: последний импорт сохранил склад только
+/// следами, а позиций склада и запчастей заказов в базе нет (права `settings_manage` и `users_manage`).
+#[utoipa::path(
+    get,
+    path = "/api/v1/legacy-import/stock",
+    tag = "Импорт из MyWork 2",
+    security(("bearer" = [])),
+    responses((status = 200, description = "Можно ли перенести склад", body = LegacyStockState))
+)]
+pub(super) async fn legacy_stock_state(
+    State(state): State<AppState>,
+    CurrentActor(actor): CurrentActor,
+) -> Result<Json<LegacyStockState>, ApiError> {
+    Ok(Json(state.core.legacy_stock_state(&actor).await?))
+}
+
+/// Перенос склада MyWork 2 из следов последнего импорта: позиции, запчасти заказов, «расходы» без
+/// запчастей, дополненный отчёт импорта — одной транзакцией. Папка MyWork 2 не нужна. Переносить
+/// нечего — 422 `stock` `not_available`; склад уже есть (и повтор) — 422 `stock` `not_empty`; идёт
+/// импорт — 409 (права `settings_manage` и `users_manage`).
+#[utoipa::path(
+    post,
+    path = "/api/v1/legacy-import/stock",
+    tag = "Импорт из MyWork 2",
+    security(("bearer" = [])),
+    responses((status = 200, description = "Склад перенесён", body = StockImportSummary))
+)]
+pub(super) async fn migrate_legacy_stock(
+    State(state): State<AppState>,
+    CurrentActor(actor): CurrentActor,
+) -> Result<Json<StockImportSummary>, ApiError> {
+    state.core.check_import_rights(&actor)?;
+    if state.import.current().is_some_and(|job| job.is_running()) {
+        return Err(ApiError::import_running());
+    }
+    match mw_legacy::migrate_stock(&state.core, &actor).await {
+        Ok(summary) => Ok(Json(summary)),
+        Err(LegacyError::Core(e)) => Err(e.into()),
+        Err(e) => Err(CoreError::Internal(e.to_string()).into()),
+    }
 }
 
 /// Если задача импорта оборвалась (паника), ход не должен остаться «идёт» навсегда.

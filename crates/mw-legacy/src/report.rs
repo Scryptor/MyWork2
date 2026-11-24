@@ -123,6 +123,12 @@ pub struct Warning {
 #[derive(Debug, Default)]
 pub(crate) struct Warnings(Vec<Warning>);
 
+impl From<Vec<Warning>> for Warnings {
+    fn from(list: Vec<Warning>) -> Self {
+        Self(list)
+    }
+}
+
 impl Warnings {
     pub(crate) fn push(
         &mut self,
@@ -145,6 +151,10 @@ impl Warnings {
 
     pub(crate) fn list(&self) -> &[Warning] {
         &self.0
+    }
+
+    pub(crate) fn into_list(self) -> Vec<Warning> {
+        self.0
     }
 
     /// Последнее предупреждение кода с этим ключом — чтобы дополнить его.

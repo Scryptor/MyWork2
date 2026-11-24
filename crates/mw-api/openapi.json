@@ -2311,6 +2311,76 @@
         ]
       }
     },
+    "/api/v1/legacy-import/stock": {
+      "get": {
+        "tags": [
+          "Импорт из MyWork 2"
+        ],
+        "summary": "Можно ли перенести склад MyWork 2 из прошлого импорта: последний импорт сохранил склад только\nследами, а позиций склада и запчастей заказов в базе нет (права `settings_manage` и `users_manage`).",
+        "operationId": "legacy_stock_state",
+        "responses": {
+          "200": {
+            "description": "Можно ли перенести склад",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyStockState"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Импорт из MyWork 2"
+        ],
+        "summary": "Перенос склада MyWork 2 из следов последнего импорта: позиции, запчасти заказов, «расходы» без\nзапчастей, дополненный отчёт импорта — одной транзакцией. Папка MyWork 2 не нужна. Переносить\nнечего — 422 `stock` `not_available`; склад уже есть (и повтор) — 422 `stock` `not_empty`; идёт\nимпорт — 409 (права `settings_manage` и `users_manage`).",
+        "operationId": "migrate_legacy_stock",
+        "responses": {
+          "200": {
+            "description": "Склад перенесён",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StockImportSummary"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/legacy-imports": {
       "get": {
         "tags": [
@@ -7661,6 +7731,42 @@
         },
         "additionalProperties": false
       },
+      "LegacyStockState": {
+        "type": "object",
+        "description": "Можно ли перенести склад из прошлого импорта.",
+        "required": [
+          "import_id",
+          "stock_rows",
+          "stock_map_rows",
+          "available"
+        ],
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "description": "Перенос доступен: у последнего импорта есть строки `Stock`, а позиций склада и запчастей\nзаказов в базе нет."
+          },
+          "import_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Последний импорт; пусто — импортов не было."
+          },
+          "stock_map_rows": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Строк `StockMap` (списаний со склада в заказы) в следах последнего импорта.",
+            "minimum": 0
+          },
+          "stock_rows": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Строк `Stock` (позиций склада MyWork 2) в следах последнего импорта.",
+            "minimum": 0
+          }
+        }
+      },
       "LegacyTemplate": {
         "type": "object",
         "description": "Текст старого шаблона акта, переведённый в текст блока «Текст».",
@@ -9673,6 +9779,41 @@
           }
         },
         "additionalProperties": false
+      },
+      "StockImportSummary": {
+        "type": "object",
+        "description": "Итог переноса склада из прошлого импорта.",
+        "required": [
+          "import_id",
+          "stock_items",
+          "order_parts",
+          "orders_changed"
+        ],
+        "properties": {
+          "import_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Импорт, из следов которого перенесён склад (его отчёт дополнен)."
+          },
+          "order_parts": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Создано запчастей заказов.",
+            "minimum": 0
+          },
+          "orders_changed": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Заказов, из «Расходов» которых выделены запчасти.",
+            "minimum": 0
+          },
+          "stock_items": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Создано позиций склада.",
+            "minimum": 0
+          }
+        }
       },
       "StockItem": {
         "type": "object",

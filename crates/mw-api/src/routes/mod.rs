@@ -145,4 +145,8 @@ pub(crate) fn api_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(legacy_import::current_legacy_import))
         .routes(routes!(legacy_import::list_legacy_imports))
         .routes(routes!(legacy_import::get_legacy_import))
+        .routes(routes!(
+            legacy_import::legacy_stock_state,
+            legacy_import::migrate_legacy_stock
+        ))
 }

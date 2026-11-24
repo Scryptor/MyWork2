@@ -106,6 +106,8 @@ pub fn export_typescript(dir: &Path) -> Result<(), ts_rs::ExportError> {
     mw_legacy::ImportJob::export_all(&cfg)?;
     mw_legacy::LegacyImportItem::export_all(&cfg)?;
     mw_legacy::ImportReportView::export_all(&cfg)?;
+    mw_core::LegacyStockState::export_all(&cfg)?;
+    mw_core::StockImportSummary::export_all(&cfg)?;
     DocumentQuery::export_all(&cfg)?;
     crate::DocumentBatch::export_all(&cfg)?;
     DocumentPages::export_all(&cfg)?;

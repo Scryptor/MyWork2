@@ -1539,7 +1539,19 @@ export const ru = {
 		sqliteOnly: 'Перенос с заменой есть только для базы SQLite',
 		rights: 'Переносить данные из MyWork 2 может администратор',
 		itemOrders: (n: string) => `Заказов: ${n}`,
-		itemWarnings: (n: string) => `Предупреждений: ${n}`
+		itemWarnings: (n: string) => `Предупреждений: ${n}`,
+		/** The stock of an import made before the stock module: kept as it was, transferred on request. */
+		stockTitle: 'Склад MyWork 2 ещё не перенесён',
+		/** `items`, `writeOffs`: «4 позиции», «6 списаний». */
+		stockText: (items: string, writeOffs: string) =>
+			`Прошлый импорт сохранил склад в исходном виде: ${items}, ${writeOffs} в заказы. ` +
+			'Перенос создаст позиции и запчасти заказов и вычтет запчасти из «Расходов» этих заказов.',
+		stockMigrate: 'Перенести склад из прошлого импорта',
+		/** `items`, `parts`: «4 позиции», «5 запчастей». */
+		stockDone: (items: string, parts: string) => `Склад перенесён: ${items}, ${parts}`,
+		stockItemForms: ['позиция', 'позиции', 'позиций'],
+		stockWriteOffForms: ['списание', 'списания', 'списаний'],
+		stockPartForms: ['запчасть', 'запчасти', 'запчастей']
 	},
 	importReport: {
 		explain: importExplain,

@@ -18,6 +18,7 @@ const CHECK: &str = "/api/v1/legacy-import/check";
 const START: &str = "/api/v1/legacy-import";
 const CURRENT: &str = "/api/v1/legacy-import/current";
 const LIST: &str = "/api/v1/legacy-imports";
+const STOCK: &str = "/api/v1/legacy-import/stock";
 
 async fn fixture(extra_orders: usize) -> TempDir {
     let dir = tempfile::tempdir().unwrap();
@@ -500,6 +501,8 @@ async fn import_needs_settings_and_users_rights() {
             (Method::GET, CURRENT, None),
             (Method::GET, LIST, None),
             (Method::GET, "/api/v1/legacy-imports/1", None),
+            (Method::GET, STOCK, None),
+            (Method::POST, STOCK, None),
         ];
         for (method, path, body) in calls {
             let r = t.send(method, path, Some(&token), body).await;
@@ -586,5 +589,89 @@ async fn first_run_check_on_a_base_with_an_administrator_asks_for_replacing() {
                 r.body
             );
         }
+    }
+}
+
+/// База, импортированная до плана 8.1 (склад — только следами): перенос склада из прошлого импорта.
+#[tokio::test]
+async fn stock_of_a_past_import_is_migrated_once() {
+    for t in apis(Listen::Loopback).await {
+        let src = fixture(0).await;
+        let data = t.core.data_dir_path().unwrap().to_path_buf();
+        let options = mw_legacy::ImportOptions {
+            source: src.path().to_path_buf(),
+            attachments_dir: data.join("attachments"),
+            backups_dir: mw_legacy::backups_dir(&data),
+            replace: false,
+            progress: None,
+            cancel: None,
+        };
+        let report = mw_legacy::testing::import_before_stock(
+            &t.core,
+            &Actor::unrestricted("Тест"),
+            &options,
+        )
+        .await
+        .unwrap();
+        let id = report.summary.import_id;
+        let token = login_imported_admin(&t).await;
+
+        let state = t.get(STOCK, Some(&token)).await;
+        assert_eq!(state.status, 200, "{}: {}", t.label, state.body);
+        assert_eq!(
+            state.body,
+            json!({ "import_id": id, "stock_rows": 4, "stock_map_rows": 6, "available": true }),
+            "{}",
+            t.label
+        );
+
+        let done = t.send(Method::POST, STOCK, Some(&token), None).await;
+        assert_eq!(done.status, 200, "{}: {}", t.label, done.body);
+        assert_eq!(
+            done.body,
+            json!({ "import_id": id, "stock_items": 4, "order_parts": 5, "orders_changed": 2 }),
+            "{}",
+            t.label
+        );
+        assert_eq!(
+            t.get(STOCK, Some(&token)).await.body["available"],
+            json!(false)
+        );
+        let report = t.get(&format!("{LIST}/{id}"), Some(&token)).await;
+        assert_eq!(report.body["stock_items"], json!(4), "{}", t.label);
+
+        let again = t.send(Method::POST, STOCK, Some(&token), None).await;
+        assert_eq!(again.status, 422, "{}: {}", t.label, again.body);
+        assert_eq!(
+            (
+                &again.body["fields"][0]["field"],
+                &again.body["fields"][0]["code"]
+            ),
+            (&json!("stock"), &json!("not_empty")),
+            "{}",
+            again.body
+        );
+    }
+}
+
+/// Пока идёт импорт папки, склад из прошлого импорта не переносится — как второй импорт.
+#[tokio::test]
+async fn stock_migration_while_an_import_runs_is_refused() {
+    for t in apis(Listen::Loopback).await {
+        let src = fixture(0).await;
+        let held = hold(src.path(), ImportStage::Copying);
+        let body = json!({ "path": path_of(&src), "replace": false });
+        let first = t.send(Method::POST, START, None, Some(body)).await;
+        assert_eq!(first.status, 202, "{}: {}", t.label, first.body);
+        held.reached.await.unwrap();
+        let r = t.send(Method::POST, STOCK, None, None).await;
+        assert_eq!(r.status, 409, "{}: {}", t.label, r.body);
+        assert_eq!(
+            (&r.body["code"], &r.body["message"]),
+            (&json!("conflict"), &json!("Импорт уже идёт"))
+        );
+        held.release.send(()).unwrap();
+        let job = wait_finished(&t, &mut None).await;
+        assert!(job["error"].is_null(), "{}: {job}", t.label);
     }
 }
