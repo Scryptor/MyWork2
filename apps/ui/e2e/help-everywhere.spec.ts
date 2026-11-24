@@ -33,7 +33,7 @@ test('the intake explains the IMEI lookup, the chips and the money', async ({ pa
 	await expectHint(page, sheet, 'IMEI или серийный номер', 'Этот IMEI уже был');
 	// Esc closed the hint only: the sheet and what is typed stay.
 	await expect(sheet).toBeVisible();
-	await expectHint(page, sheet, 'Комплектность', '+ своё');
+	await expectHint(page, sheet, 'Комплектность', 'чаще встречаются в заказах');
 	await expectHint(page, sheet, 'Частые неисправности', 'Неисправности');
 	for (const name of ['Пометка', 'Статус', 'Гарантия', 'Оценка от', 'Предоплата']) {
 		await expect(sheet.getByRole('button', { name: `Что такое «${name}»` })).toBeVisible();

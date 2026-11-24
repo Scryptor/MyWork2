@@ -2,6 +2,7 @@ import { expect, test, type APIRequestContext, type Page } from '@playwright/tes
 import type { DictionaryItem } from '$api/DictionaryItem';
 import type { OrderPage } from '$api/OrderPage';
 import {
+	addDictionaryItem,
 	createClient,
 	createOrder,
 	deleteOrder,
@@ -31,6 +32,13 @@ const typeOf = (page: Page) => sheetOf(page).getByRole('combobox', { name: /^Т�
 const malfunctionOf = (page: Page) =>
 	sheetOf(page).getByRole('textbox', { name: /^Неисправность/ });
 const prepaymentOf = (page: Page) => sheetOf(page).getByRole('textbox', { name: 'Предоплата' });
+const completenessOf = (page: Page) =>
+	sheetOf(page).getByRole('combobox', { name: 'Комплектность' });
+const conditionOf = (page: Page) =>
+	sheetOf(page).getByRole('combobox', { name: 'Внешнее состояние' });
+/** The × of a value chosen in «Комплектность» or «Внешнее состояние». */
+const tagOf = (page: Page, value: string) =>
+	sheetOf(page).getByRole('button', { name: `Убрать: ${value}`, exact: true });
 const summaryOf = (page: Page) => sheetOf(page).getByRole('complementary', { name: 'Сводка' });
 const toastsOf = (page: Page) => page.getByRole('status', { name: 'Уведомления' });
 const photoZoneOf = (page: Page) => sheetOf(page).getByRole('group', { name: 'Область для фото' });
@@ -129,15 +137,12 @@ test('N opens intake, a new client order appears in the list', async ({ page, re
 	await nameOf(page).fill(name);
 	await fillDevice(page);
 	await malfunctionOf(page).fill('Не заряжается');
-	// «+ своё» in «Комплектность»: into the order and the dictionary.
-	const completeness = sheetOf(page).getByRole('group', { name: 'Комплектность' });
-	await completeness.getByRole('button', { name: '+ своё' }).click();
-	await completeness.getByRole('textbox', { name: '+ своё' }).fill(chip);
+	// A value of its own in «Комплектность»: into the order and the dictionary.
+	await completenessOf(page).click();
+	await completenessOf(page).fill(chip);
 	await page.keyboard.press('Enter');
-	await expect(completeness.getByRole('button', { name: chip })).toHaveAttribute(
-		'aria-pressed',
-		'true'
-	);
+	await expect(tagOf(page, chip)).toBeVisible();
+	await expect(completenessOf(page)).toHaveValue('');
 	await expect(summaryOf(page)).toContainText('Всё обязательное заполнено');
 	// Without sign-in nobody is named as the receiver.
 	await expect(sheetOf(page).getByText(/^Приёмщик/)).toHaveCount(0);
@@ -1076,4 +1081,84 @@ test('a pattern key from intake is kept on the order', async ({ page, request })
 	await expect(panel.getByText('1 · 5 · 9 · 6')).toHaveCount(0);
 	await panel.getByRole('button', { name: 'Показать ключ' }).click();
 	await expect(panel.getByText('Ключ 1 · 5 · 9 · 6')).toBeVisible();
+});
+
+test('completeness is picked from a list, the most used first', async ({ page, request }) => {
+	const mark = uniq('К');
+	const [rare, common, own] = [`Реже ${mark}`, `Чаще ${mark}`, `Своё ${mark}`];
+	// The rare one is earlier in the dictionary: only the counts put the common one first.
+	await addDictionaryItem(request, 'completeness', rare);
+	await addDictionaryItem(request, 'completeness', common);
+	for (let i = 0; i < 3; i++) await createOrder(request, { completeness: common });
+	await createOrder(request, { completeness: rare });
+
+	await openIntake(page);
+	await phoneOf(page).fill(uniqPhone());
+	await nameOf(page).fill(`Тестов ${uniq('П')}`);
+	await fillDevice(page);
+	await malfunctionOf(page).fill('Не заряжается');
+	await completenessOf(page).click();
+	await completenessOf(page).fill(mark);
+	const options = page.getByRole('option').filter({ hasText: mark });
+	await expect(options).toHaveText([common, rare, `Добавить «${mark}»`]);
+	await options.first().click();
+	await expect(tagOf(page, common)).toBeVisible();
+	// The chosen value is not offered again.
+	await completenessOf(page).fill(mark);
+	await expect(options).toHaveText([rare, `Добавить «${mark}»`]);
+	await completenessOf(page).fill(own);
+	await page.keyboard.press('Enter');
+	await expect(tagOf(page, own)).toBeVisible();
+
+	await sheetOf(page)
+		.getByRole('button', { name: /^Принять/ })
+		.click();
+	await expect(sheetOf(page)).toBeHidden();
+	const id = await acceptedNumber(page);
+	expect((await fetchOrder(request, id)).completeness).toBe(`${common}, ${own}`);
+});
+
+test('without the usage counts the list keeps the order of the dictionary', async ({
+	page,
+	request
+}) => {
+	const mark = uniq('С');
+	const [first, second] = [`Первое ${mark}`, `Второе ${mark}`];
+	await addDictionaryItem(request, 'condition', first);
+	await addDictionaryItem(request, 'condition', second);
+	await createOrder(request, { device_condition: second });
+	// A user without the right to the counts: the server refuses them.
+	let refused = 0;
+	await page.route('**/api/v1/dictionaries/*/usage', (route) => {
+		refused += 1;
+		return route.fulfill({
+			status: 403,
+			contentType: 'application/json',
+			body: JSON.stringify({
+				code: 'forbidden',
+				message: 'Недостаточно прав: Настройки',
+				permission: 'settings_manage',
+				fields: [],
+				current_version: null,
+				retry_after_secs: null,
+				diagnostics: []
+			})
+		});
+	});
+
+	await openIntake(page);
+	await expect.poll(() => refused).toBeGreaterThan(0);
+	await conditionOf(page).click();
+	await conditionOf(page).fill(mark);
+	const options = page.getByRole('option').filter({ hasText: mark });
+	await expect(options).toHaveText([first, second, `Добавить «${mark}»`]);
+	// Typing highlights the first option; ↓ moves to the next one.
+	await expect(options.first()).toHaveAttribute('data-highlighted', '');
+	await page.keyboard.press('ArrowDown');
+	await expect(options.nth(1)).toHaveAttribute('data-highlighted', '');
+	await page.keyboard.press('Enter');
+	await expect(tagOf(page, second)).toBeVisible();
+	await page.keyboard.press('Backspace');
+	await expect(tagOf(page, second)).toHaveCount(0);
+	await expect(sheetOf(page)).toBeVisible();
 });

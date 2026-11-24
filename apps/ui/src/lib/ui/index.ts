@@ -28,6 +28,7 @@ export { default as Kbd } from './Kbd.svelte';
 export { default as KeyValue } from './KeyValue.svelte';
 export { default as ListCard } from './ListCard.svelte';
 export { default as MoneyInput } from './MoneyInput.svelte';
+export { default as MultiCombobox } from './MultiCombobox.svelte';
 export { default as OptionCard } from './OptionCard.svelte';
 export { default as PatternField } from './PatternField.svelte';
 export { default as PatternInput } from './PatternInput.svelte';

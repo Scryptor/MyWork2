@@ -379,7 +379,7 @@ pub(super) async fn reorder_service_points(
 }
 
 /// Сколько заказов (клиентов) используют каждое значение справочника; значения без использования не
-/// возвращаются (право `settings_manage`).
+/// возвращаются (право `settings_manage`, `orders_create` или `orders_edit`).
 #[utoipa::path(
     get,
     path = "/api/v1/dictionaries/{kind}/usage",

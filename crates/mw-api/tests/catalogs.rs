@@ -396,8 +396,24 @@ async fn dictionary_archive_usage_next_number_and_about() {
         ] {
             let r = t.get(path, Some(&admin)).await;
             assert_eq!((r.status, &r.body), (200, &json!([])), "{path}");
+        }
+        for path in ["/api/v1/statuses/usage", "/api/v1/service-points/usage"] {
             assert_eq!(t.get(path, Some(&clerk)).await.status, 403, "{path}");
         }
+        // Счёт значений нужен приёму: «Комплектность» и «Состояние» — частые первыми.
+        let r = t
+            .get("/api/v1/dictionaries/brand/usage", Some(&clerk))
+            .await;
+        assert_eq!((r.status, &r.body), (200, &json!([])), "{}", t.label);
+        let stock = t.token_with("sklad", &[Permission::StockView]).await;
+        assert_eq!(
+            t.get("/api/v1/dictionaries/brand/usage", Some(&stock))
+                .await
+                .status,
+            403,
+            "{}",
+            t.label
+        );
         assert_eq!(
             t.get("/api/v1/dictionaries/planet/usage", Some(&admin))
                 .await

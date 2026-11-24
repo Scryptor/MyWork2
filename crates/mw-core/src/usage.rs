@@ -142,12 +142,18 @@ fn sorted(map: HashMap<i64, u64>) -> Vec<CatalogUsage> {
 
 impl Core {
     /// Сколько заказов (клиентов, позиций склада) используют каждое значение справочника.
+    /// Нужен не только настройкам: при приёме частые значения идут в списке первыми, поэтому
+    /// пускает и тех, кто принимает или правит заказы.
     pub async fn dictionary_usage(
         &self,
         actor: &Actor,
         kind: DictionaryKind,
     ) -> Result<Vec<CatalogUsage>, CoreError> {
-        actor.require(Permission::SettingsManage)?;
+        actor.require_any(&[
+            Permission::SettingsManage,
+            Permission::OrdersCreate,
+            Permission::OrdersEdit,
+        ])?;
         let target = usage_target(kind);
         // Повторы с разным регистром (из MyWork 2) — один ключ на несколько значений: счёт у каждого.
         let mut ids_by_key: HashMap<String, Vec<i64>> = HashMap::new();

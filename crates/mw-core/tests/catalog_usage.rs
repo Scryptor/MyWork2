@@ -365,12 +365,6 @@ async fn new_reads_need_settings_manage() -> Result<(), CoreError> {
     for t in cores().await {
         let clerk = actor_with(&[Permission::OrdersCreate]);
         let forbidden = |r: Result<(), CoreError>| matches!(r, Err(CoreError::Forbidden(_)));
-        assert!(forbidden(
-            t.core
-                .dictionary_usage(&clerk, DictionaryKind::Brand)
-                .await
-                .map(drop)
-        ));
         assert!(forbidden(t.core.status_usage(&clerk).await.map(drop)));
         assert!(forbidden(
             t.core.service_point_usage(&clerk).await.map(drop)
@@ -383,6 +377,55 @@ async fn new_reads_need_settings_manage() -> Result<(), CoreError> {
                 .await
                 .map(drop)
         ));
+    }
+    Ok(())
+}
+
+/// Приём ставит частые значения «Комплектности» и «Состояния» первыми: счёт нужен и без
+/// `settings_manage` — тому, кто принимает или правит заказы.
+#[tokio::test]
+async fn an_intake_clerk_can_read_usage_counts() -> Result<(), CoreError> {
+    for t in cores().await {
+        let cover = item_id(&t.core, DictionaryKind::Completeness, "Чехол").await;
+        order_with(&t.core, |o| o.completeness = "Чехол, Зарядка".into()).await;
+        order_with(&t.core, |o| o.completeness = "чехол".into()).await;
+        for permission in [Permission::OrdersCreate, Permission::OrdersEdit] {
+            let clerk = actor_with(&[permission]);
+            let got = t
+                .core
+                .dictionary_usage(&clerk, DictionaryKind::Completeness)
+                .await?;
+            let got: std::collections::HashMap<_, _> = usage(&got).into_iter().collect();
+            assert_eq!(got.get(&cover), Some(&2), "{}: {permission:?}", t.label);
+        }
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn usage_counts_need_settings_intake_or_edit() -> Result<(), CoreError> {
+    for t in cores().await {
+        // Все права, кроме трёх нужных.
+        let others: Vec<Permission> = Permission::ALL
+            .into_iter()
+            .filter(|p| {
+                ![
+                    Permission::SettingsManage,
+                    Permission::OrdersCreate,
+                    Permission::OrdersEdit,
+                ]
+                .contains(p)
+            })
+            .collect();
+        let r = t
+            .core
+            .dictionary_usage(&actor_with(&others), DictionaryKind::Completeness)
+            .await;
+        assert!(
+            matches!(r, Err(CoreError::Forbidden(Permission::SettingsManage))),
+            "{}: {r:?}",
+            t.label
+        );
     }
     Ok(())
 }

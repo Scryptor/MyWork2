@@ -8,6 +8,7 @@
 		DateInput,
 		HelpHint,
 		MoneyInput,
+		MultiCombobox,
 		PhoneInput,
 		QuantityInput,
 		SegmentedControl,
@@ -108,6 +109,15 @@
 	let masters = $state<string[]>(['Петров', 'Сидоров']);
 	let mastersErr = $state<string[]>([]);
 
+	/** «Комплектность» of the intake: the most used values first, as `rankByUsage` puts them. */
+	const KIT_RANKED = ['Зарядка', 'Чехол', 'Коробка', 'SIM-карта', 'Кабель USB', 'Документы'];
+	/** Hundreds of values after an import: the list draws 50 of them, the rest is found by typing. */
+	const MANY = Array.from({ length: 300 }, (_, i) => `Значение ${i + 1}`);
+	let kitList = $state<string[]>(['Зарядка']);
+	let kitCreated = $state<string[]>([]);
+	let manyList = $state<string[]>([]);
+	let kitOff = $state<string[]>(['Чехол', 'Коробка']);
+
 	let brand = $state('');
 	let kitReception = $state<string[]>([]);
 	let prepay = $state<number | null>(null);
@@ -203,6 +213,24 @@
 	<TagInput bind:values={masters} label="Мастера" hint="Имя и Enter" />
 	<TagInput bind:values={mastersErr} label="Мастера с ошибкой" error="Добавьте хотя бы одного" />
 </div>
+
+<h3>Выбор нескольких значений</h3>
+<div class="grid">
+	<MultiCombobox
+		bind:selected={kitList}
+		options={KIT_RANKED}
+		label="Комплектность из списка"
+		placeholder="Выберите или впишите"
+		help="Частые значения первыми. Своё — вписать и нажать Enter или выбрать «Добавить»."
+		allowCustom
+		oncreate={(v) => (kitCreated = [...kitCreated, v])}
+	/>
+	<MultiCombobox bind:selected={manyList} options={MANY} label="Сотни значений" />
+	<MultiCombobox bind:selected={kitOff} options={KIT_RANKED} label="Список отключённый" disabled />
+</div>
+<p class="muted">
+	Выбрано: {kitList.join(', ') || 'ничего'}; своё добавлено: {kitCreated.join(', ') || 'ничего'}
+</p>
 
 <h3>Подсказки «Что это?»</h3>
 <div class="grid">

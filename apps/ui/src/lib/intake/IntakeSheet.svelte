@@ -9,7 +9,7 @@
 	import type { Order } from '$api/Order';
 	import type { OrderValueField } from '$api/OrderValueField';
 	import { discardDraft } from '#lib/api/attachments.js';
-	import { addDictionaryItem, listDictionary } from '#lib/api/catalogs.js';
+	import { addDictionaryItem, dictionaryUsage, listDictionary } from '#lib/api/catalogs.js';
 	import { ApiError, errorMessage } from '#lib/api/client.js';
 	import { listMasters } from '#lib/api/masters.js';
 	import { createOrder, orderValues } from '#lib/api/orders.js';
@@ -28,6 +28,7 @@
 	import Combobox from '#lib/ui/Combobox.svelte';
 	import HelpHint from '#lib/ui/HelpHint.svelte';
 	import MoneyInput from '#lib/ui/MoneyInput.svelte';
+	import MultiCombobox from '#lib/ui/MultiCombobox.svelte';
 	import PatternField from '#lib/ui/PatternField.svelte';
 	import Section from '#lib/ui/Section.svelte';
 	import Select from '#lib/ui/Select.svelte';
@@ -61,6 +62,7 @@
 	import IntakeAside from './IntakeAside.svelte';
 	import IntakePhotos, { MAX_INTAKE_PHOTOS } from './IntakePhotos.svelte';
 	import { intake, intakeDocuments, intakePrintOptions, printSheet } from './intake.svelte.js';
+	import { rankByUsage } from './ranking.js';
 
 	const t = ru.intake;
 	/** Pause after the last key before the draft is written and the suggestions are asked. */
@@ -122,6 +124,8 @@
 		'warranty'
 	] as const satisfies readonly DictionaryKind[];
 	type Kind = (typeof KINDS)[number];
+	/** Lists whose values most used in orders come first. */
+	const RANKED: readonly Kind[] = ['completeness', 'condition'];
 	const noDictionaries = () =>
 		Object.fromEntries(KINDS.map((k) => [k, [] as string[]])) as Record<Kind, string[]>;
 
@@ -275,11 +279,22 @@
 	let dictionarySeq = 0;
 	function loadDictionaries() {
 		const mine = ++dictionarySeq;
-		void Promise.all(KINDS.map((k) => listDictionary(k).catch(() => []))).then((lists) => {
+		void Promise.all(
+			KINDS.map((k) =>
+				Promise.all([
+					listDictionary(k).catch(() => []),
+					// Without the counts (no right, no answer) the list keeps the order of the dictionary.
+					RANKED.includes(k) ? dictionaryUsage(k).catch(() => []) : []
+				])
+			)
+		).then((lists) => {
 			// Without them the fields still take any text.
 			if (mine !== dictionarySeq) return;
 			dictionaries = Object.fromEntries(
-				KINDS.map((k, i) => [k, (lists[i] ?? []).map((d) => d.value)])
+				KINDS.map((k, i) => {
+					const [items, usage] = lists[i] ?? [[], []];
+					return [k, rankByUsage(items, usage)];
+				})
 			) as Record<Kind, string[]>;
 		});
 		// Without them only «Не выбран» is offered.
@@ -428,7 +443,7 @@
 	const warrantyItems = $derived(
 		items(mergeSuggestions(dictionaries.warranty, [app.settings.default_warranty]))
 	);
-	// Chips of the draft stay on screen even when the dictionary no longer has them.
+	// Values of the draft stay in the lists even when the dictionary no longer has them.
 	const completeness = $derived(mergeSuggestions(dictionaries.completeness, draft.completeness));
 	const condition = $derived(mergeSuggestions(dictionaries.condition, draft.condition));
 	const frequent = $derived(
@@ -438,7 +453,7 @@
 		intakeStatuses(app.statuses).map((s) => ({ value: s.id, label: s.name }))
 	);
 
-	/** «+ своё» goes into the order, and into the dictionary when the user may fill it. */
+	/** A value typed of its own goes into the order, and into the dictionary when the user may fill it. */
 	function remember(kind: Kind, value: string) {
 		if (!app.can('settings_manage') && !app.can('orders_create')) return;
 		// Not added to the dictionary: the value is in the order anyway.
@@ -664,22 +679,26 @@
 						onchange={(v) => (draft.pattern = v)}
 					/>
 				</div>
-				<ChipGroup
-					label={t.completeness}
-					help={ru.help.intake.completeness}
-					options={completeness}
-					allowCustom
-					bind:selected={draft.completeness}
-					oncreate={(v) => remember('completeness', v)}
-				/>
-				<ChipGroup
-					label={t.condition}
-					help={ru.help.intake.condition}
-					options={condition}
-					allowCustom
-					bind:selected={draft.condition}
-					oncreate={(v) => remember('condition', v)}
-				/>
+				<div class="grid two">
+					<MultiCombobox
+						label={t.completeness}
+						help={ru.help.intake.completeness}
+						placeholder={t.pickOrType}
+						options={completeness}
+						allowCustom
+						bind:selected={draft.completeness}
+						oncreate={(v) => remember('completeness', v)}
+					/>
+					<MultiCombobox
+						label={t.condition}
+						help={ru.help.intake.condition}
+						placeholder={t.pickOrType}
+						options={condition}
+						allowCustom
+						bind:selected={draft.condition}
+						oncreate={(v) => remember('condition', v)}
+					/>
+				</div>
 			</Section>
 
 			<Section title={t.malfunction}>
@@ -820,6 +839,9 @@
 	.grid.three {
 		grid-template-columns: repeat(3, minmax(0, 1fr));
 	}
+	.grid.two {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
 	.failed,
 	.note {
 		flex: 1 0 100%;
@@ -856,7 +878,7 @@
 	:global(:is([data-width='xs'], [data-width='sm'])) .grid.three {
 		grid-template-columns: repeat(2, minmax(0, 1fr));
 	}
-	:global([data-width='xs']) .grid.three {
+	:global([data-width='xs']) :is(.grid.three, .grid.two) {
 		grid-template-columns: minmax(0, 1fr);
 	}
 </style>
