@@ -21,6 +21,11 @@ export interface OrderPartsState {
 	readonly error: string | null;
 	/** A write-off is on its way. */
 	readonly adding: boolean;
+	/**
+	 * Grows with every write-off or return that went through: what shows the order's journal (a part
+	 * action leaves the order's version as it is) asks it again.
+	 */
+	readonly revision: number;
 	/** The row is being given back. */
 	isReturning(partId: number): boolean;
 	load(): Promise<void>;
@@ -42,6 +47,7 @@ export function createOrderParts(orderId: number): OrderPartsState {
 	let loading = $state(false);
 	let error = $state<string | null>(null);
 	let adding = $state(false);
+	let revision = $state(0);
 	let alive = true;
 	let seq = 0;
 	/** The write-off on its way, and the key of the last one that was lost to the network. */
@@ -88,6 +94,7 @@ export function createOrderParts(orderId: number): OrderPartsState {
 					seq += 1;
 					take(answer);
 				}
+				revision += 1;
 				stockCount.refresh();
 			} catch (e) {
 				// The answer may have been lost after the write-off: the repeat asks with the same key.
@@ -112,11 +119,13 @@ export function createOrderParts(orderId: number): OrderPartsState {
 					seq += 1;
 					take(answer);
 				}
+				revision += 1;
 				stockCount.refresh();
 			} catch (e) {
 				if (!(e instanceof ApiError && e.status === 404)) throw e;
 				// Given back already (another window): the list shows what is left.
 				await load();
+				revision += 1;
 				stockCount.refresh();
 			} finally {
 				giving.delete(partId);
@@ -138,6 +147,9 @@ export function createOrderParts(orderId: number): OrderPartsState {
 		},
 		get error() {
 			return error;
+		},
+		get revision() {
+			return revision;
 		},
 		get adding() {
 			return adding;

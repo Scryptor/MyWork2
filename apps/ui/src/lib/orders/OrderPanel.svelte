@@ -344,7 +344,12 @@
 				/>
 				{#if parts}<OrderParts {parts} orderDeleted={ed.order.deleted_at !== null} />{/if}
 				{#if media}<OrderPhotos {media} readonly={!canEdit} />{/if}
-				<OrderHistory orderId={ed.order.id} version={ed.order.version} onall={openCard} />
+				<OrderHistory
+					orderId={ed.order.id}
+					version={ed.order.version}
+					refresh={parts?.revision ?? 0}
+					onall={openCard}
+				/>
 			{/key}
 		{:else if loadError}
 			<Callout tone="danger" title={t.loadFailed}>

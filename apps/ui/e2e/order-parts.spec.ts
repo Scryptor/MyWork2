@@ -107,6 +107,8 @@ test('a part is written off and given back', async ({ page }) => {
 	await expect(block).toContainText(/Итого\s+2\s000\s₽/);
 	await expect(panel).toContainText(/Себестоимость\s+2\s500\s₽/);
 	expect(await itemQuantity(request, item.id)).toBe(0);
+	// The version of the order stays, yet the journal shows the write-off at once.
+	await expect(panel).toContainText(`Списано со склада: P-${id} × 2`);
 
 	await block.getByRole('button', { name: 'Вернуть на склад' }).click();
 	const confirm = page.getByRole('alertdialog', { name: 'Вернуть на склад?' });
@@ -115,6 +117,7 @@ test('a part is written off and given back', async ({ page }) => {
 	await expect(block.getByRole('listitem')).toHaveCount(0);
 	await expect(panel).not.toContainText('Себестоимость');
 	expect(await itemQuantity(request, item.id)).toBe(2);
+	await expect(panel).toContainText(`Возвращено на склад: P-${id}`);
 	await request.dispose();
 });
 
@@ -162,6 +165,53 @@ test('the full card shows «Запчасти»', async ({ page }) => {
 		'href',
 		new RegExp(`/stock\\?item=${item.id}$`)
 	);
+	await request.dispose();
+});
+
+test('narrow, «Запчасти» are in the main tab without switching', async ({ page }) => {
+	const id = uniq('n');
+	await signInAdmin(page);
+	const request = await api(page);
+	const item = await makeItem(request, `N-${id}`, 3);
+	const order = await createOrder(request);
+	await writeOff(request, order.id, item.id, 1);
+
+	await page.setViewportSize({ width: 800, height: 900 });
+	await page.goto(`/orders/${order.id}`);
+	const block = page.getByRole('main').getByRole('region', { name: 'Запчасти', exact: true });
+	await expect(block.getByRole('listitem')).toContainText(new RegExp(`N-${id} × 1`));
+	await expect(page.getByRole('tab', { name: 'Заказ' })).toHaveAttribute('aria-selected', 'true');
+	await request.dispose();
+});
+
+test('an unsaved edit of the card is saved without a dispute after a write-off, and the journal shows it', async ({
+	page
+}) => {
+	const id = uniq('f');
+	await signInAdmin(page);
+	const request = await api(page);
+	await makeItem(request, `F-${id}`, 3);
+	const order = await createOrder(request);
+
+	await page.goto(`/orders/${order.id}`);
+	const main = page.getByRole('main');
+	const note = `Заметка ${id}`;
+	await main.getByRole('textbox', { name: 'Неисправность' }).fill(note);
+	const block = main.getByRole('region', { name: 'Запчасти', exact: true });
+	await block.getByRole('button', { name: 'Добавить со склада' }).click();
+	const dialog = page.getByRole('dialog', { name: 'Запчасть со склада' });
+	await dialog.getByRole('searchbox', { name: 'Поиск по складу' }).fill(`f-${id}`);
+	await dialog.getByRole('button', { name: new RegExp(`F-${id} 3 шт\\.`) }).click();
+	await dialog.getByRole('button', { name: 'Списать', exact: true }).click();
+	await expect(dialog).toBeHidden();
+
+	await expect(main.getByText('✓ Сохранено')).toBeVisible();
+	await expect(main.getByText('изменили на другом компьютере')).toHaveCount(0);
+	await expect(main.getByRole('region', { name: 'История изменений' })).toContainText(
+		`Списано со склада: F-${id} × 1`
+	);
+	await page.reload();
+	await expect(main.getByRole('textbox', { name: 'Неисправность' })).toHaveValue(note);
 	await request.dispose();
 });
 

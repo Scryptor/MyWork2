@@ -155,7 +155,7 @@
 				>
 			</div>
 		{:else if list.rows.length === 0}
-			{#if list.loading}
+			{#if refreshing}
 				<div class="wait"><Spinner /></div>
 			{:else}
 				<p class="muted">{t.none}. {t.noneHint}</p>

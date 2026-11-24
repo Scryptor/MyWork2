@@ -190,9 +190,12 @@
 	// The history follows every new version: a status picked here is in «Статусы и сроки» at once.
 	const journal = createCardHistory();
 	const version = $derived(order?.version);
+	// A part written off or given back does not change the version, but it is an entry of the journal.
+	const partsRevision = $derived(parts?.revision ?? 0);
 	$effect(() => {
 		const n = order?.id;
 		void version;
+		void partsRevision;
 		if (n !== undefined) {
 			latestCommentId(n);
 			untrack(() => void journal.refresh(n));
@@ -279,6 +282,10 @@
 			orderId={ed.order.id}
 			canPost={canEdit && !ed.order.deleted_at && id === ed.order.id}
 		/>
+		<!-- One column (narrow): «Запчасти» sit in the main tab, by the «Расходы» they explain. -->
+		{#if parts && !display.cardColumns}
+			<OrderParts {parts} orderDeleted={ed.order.deleted_at !== null} />
+		{/if}
 	{/key}
 {/snippet}
 
@@ -352,7 +359,7 @@
 		</TabPane>
 		<TabPane value="files" bare={display.cardColumns}>
 			<div class="group">
-				{#if parts && order}
+				{#if parts && order && display.cardColumns}
 					<div class="s2">
 						<OrderParts {parts} orderDeleted={order.deleted_at !== null} />
 					</div>

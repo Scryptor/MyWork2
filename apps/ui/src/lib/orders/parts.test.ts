@@ -168,4 +168,27 @@ describe('createOrderParts', () => {
 		await flush();
 		expect(p.parts).toEqual([]);
 	});
+
+	it('the revision grows after a write-off, a return and a return that was done already', async () => {
+		api.addOrderPart.mockResolvedValue(parts(1));
+		api.returnOrderPart
+			.mockResolvedValueOnce(parts())
+			.mockRejectedValueOnce(new ApiError(404, 'not_found', 'нет', null));
+		api.listOrderParts.mockResolvedValue(parts());
+		const p = createOrderParts(7);
+		expect(p.revision).toBe(0);
+		await p.add(5, 2);
+		expect(p.revision).toBe(1);
+		await p.giveBack(1);
+		expect(p.revision).toBe(2);
+		await p.giveBack(1);
+		expect(p.revision).toBe(3);
+	});
+
+	it('a refused write-off leaves the revision', async () => {
+		api.addOrderPart.mockRejectedValue(new ApiError(422, 'validation', 'x', null));
+		const p = createOrderParts(7);
+		await expect(p.add(5, 2)).rejects.toBeInstanceOf(ApiError);
+		expect(p.revision).toBe(0);
+	});
 });

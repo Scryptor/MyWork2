@@ -4,6 +4,7 @@
 	import Plus from '@lucide/svelte/icons/plus';
 	import Search from '@lucide/svelte/icons/search';
 	import Inbox from '@lucide/svelte/icons/inbox';
+	import Warehouse from '@lucide/svelte/icons/warehouse';
 	import {
 		Avatar,
 		Badge,
@@ -43,6 +44,13 @@
 	let chosen = $state('ничего');
 	const NOW = { year: 2026, month: 11, day: 15, hour: 12, minute: 0, second: 0 };
 	const EVENTS = [
+		{
+			id: 4,
+			at: '2026-11-15T11:00:00',
+			who: 'ИВАНОВ ИВАН',
+			text: 'Списано со склада: Дисплей × 1',
+			icon: Warehouse
+		},
 		{ id: 1, at: '2026-11-15T10:30:00', who: 'ИВАНОВ ИВАН', text: 'Принят в работу' },
 		{ id: 2, at: '2026-11-14T16:05:00', who: 'ПЕТРОВА АННА', text: 'Согласована цена' },
 		{ id: 3, at: '2026-10-02T09:00:00', text: 'Принят в ремонт' }

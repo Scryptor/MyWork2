@@ -15,11 +15,14 @@
 	let {
 		orderId,
 		version,
+		refresh = 0,
 		onall
 	}: {
 		orderId: number;
 		/** A new version is a new entry: the list is asked again. */
 		version: number;
+		/** Another reason to ask again: a part written off or given back leaves the version as it is. */
+		refresh?: number;
 		/** «все»: the full card with the whole history. */
 		onall: (e: MouseEvent) => void;
 	} = $props();
@@ -30,6 +33,7 @@
 	$effect(() => {
 		const id = orderId;
 		void version;
+		void refresh;
 		latestCommentId(id);
 		let current = true;
 		orderHistory(id, { limit: LIMIT }).then(
