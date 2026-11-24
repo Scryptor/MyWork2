@@ -495,8 +495,9 @@ pub async fn setting_value(core: &Core, key: &str) -> serde_json::Value {
 pub fn sample_bundle() -> mw_core::ImportBundle {
     use chrono::{NaiveDate, NaiveDateTime};
     use mw_core::{
-        ImportBundle, ImportedClient, ImportedHistory, ImportedOrder, ImportedSettings,
-        ImportedUser, LegacyTarget, NewRole, NewStatus, SettingsPatch,
+        ImportBundle, ImportedClient, ImportedHistory, ImportedOrder, ImportedOrderPart,
+        ImportedSettings, ImportedStock, ImportedStockItem, ImportedUser, LegacyTarget, NewRole,
+        NewStatus, SettingsPatch,
     };
     use mw_domain::dictionary::{DEFAULT_DICTIONARY, DictionaryKind};
     use mw_domain::money::Money;
@@ -671,10 +672,43 @@ pub fn sample_bundle() -> mw_core::ImportBundle {
                 "1",
                 Some(LegacyTarget::Role("Мастера".into())),
             ),
-            legacy_row("Stock", "1", None),
+            legacy_row("Stock", "1", Some(LegacyTarget::StockItem(1))),
         ],
         next_order_id: 16,
         next_client_id: 15,
+        // Позиция 1 со списанием в заказ 5; позиции 99 уже не было (запчасть удалённого заказа 6).
+        stock: ImportedStock {
+            items: vec![ImportedStockItem {
+                id: 1,
+                name: "ДИСПЛЕЙ SAMSUNG A52  (ОРИГИНАЛ)".into(),
+                device_type: "ТЕЛЕФОН".into(),
+                part_type: "ДИСПЛЕЙ".into(),
+                brand: "SAMSUNG".into(),
+                model: "A52".into(),
+                color: String::new(),
+                note: String::new(),
+                quantity: 3,
+                price: Money::from_rubles(2500),
+                restock_threshold: 1,
+            }],
+            parts: vec![
+                ImportedOrderPart {
+                    order_id: 5,
+                    stock_item_id: Some(1),
+                    name: "ДИСПЛЕЙ SAMSUNG A52  (ОРИГИНАЛ)".into(),
+                    price: Money::from_rubles(2500),
+                    quantity: 1,
+                },
+                ImportedOrderPart {
+                    order_id: 6,
+                    stock_item_id: None,
+                    name: "Позиция №99 (нет на складе)".into(),
+                    price: Money::from_kopecks(30_050),
+                    quantity: 2,
+                },
+            ],
+            next_stock_item_id: 8,
+        },
         report: json!({ "warnings": [] }),
     }
 }

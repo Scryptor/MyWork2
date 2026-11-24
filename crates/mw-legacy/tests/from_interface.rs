@@ -45,7 +45,8 @@ async fn check_folder_counts_match_the_import() -> Res {
             "{}",
             t.label
         );
-        assert_eq!((c.orders, c.files), (11, 6));
+        // Файлы клиентов (пять) и найденные фото склада: у позиции 1 — одно, у позиции 3 — три.
+        assert_eq!((c.orders, c.files), (11, 9));
     }
     Ok(())
 }
@@ -150,16 +151,22 @@ async fn stored_report_gives_the_list_item_groups_and_the_command_text() -> Res 
         let item = import_item(&records[0]);
         assert_eq!(
             (item.id, item.orders, item.warnings),
-            (r.summary.import_id, 11, 27),
+            (r.summary.import_id, 11, 33),
             "{}",
             t.label
         );
 
         let view = report_view(&records[0], Some(&data.path().join("attachments")));
         assert_eq!(
-            (view.orders, view.clients, view.users),
-            (r.summary.orders, r.summary.clients, r.summary.users)
+            (view.orders, view.clients, view.users, view.stock_items),
+            (
+                r.summary.orders,
+                r.summary.clients,
+                r.summary.users,
+                r.summary.stock_items
+            )
         );
+        assert_eq!(view.stock_items, 4);
         assert_eq!(view.files, r.files);
         assert_eq!(view.warnings_text, std::fs::read_to_string(&text_file)?);
         let total: u64 = view.groups.iter().map(|g| g.count).sum();

@@ -87,6 +87,7 @@ fn existing(target: &ImportTarget) -> String {
         ("заказы", target.orders),
         ("пользователи", target.users),
         ("записи журнала", target.audit_entries),
+        ("позиции склада", target.stock_items),
     ]
     .into_iter()
     .filter(|(_, count)| *count > 0)

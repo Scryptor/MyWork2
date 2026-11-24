@@ -216,6 +216,9 @@ const ORDERS: [(i64, &[(&str, &str)]); 11] = [
             ),
             ("Barcode", "123456789012"),
             ("brand", "Nokia"),
+            // Затраты вместе с запчастями со склада (`StockMap` 1 и 2 — 2 500 и 1 200,50): после
+            // выделения запчастей остаётся 299,50.
+            ("Zatrati", "4 000"),
             // Точка в конце остаётся в тексте заказа; в справочнике — тот же пункт, что «Шумит/ » (№1).
             ("polomka", "Шумит."),
             ("vipolnenie_raboti", "Чистка\r\n"),
@@ -257,6 +260,8 @@ const ORDERS: [(i64, &[(&str, &str)]); 11] = [
             // Пункт дважды в одном заказе — это один заказ: в справочник не идёт.
             ("polomka", "Течёт/ течёт/ "),
             ("Garanty", "0"),
+            // Затраты меньше запчастей со склада (`StockMap` 6 — 2 × 2 500): остаются как есть.
+            ("Zatrati", "1000"),
         ],
     ),
     (
@@ -271,6 +276,8 @@ const ORDERS: [(i64, &[(&str, &str)]); 11] = [
             ("master", "МАСТЕР 6"),
             // Пункт есть в `neispravnost.txt`: одно значение с ним, место — среди значений файла.
             ("polomka", "Не включается/ "),
+            // Затраты с запчастью, позиции которой на складе уже нет (`StockMap` 3 — 300).
+            ("Zatrati", "500"),
         ],
     ),
     (
@@ -761,15 +768,74 @@ async fn fill_database(
             ]),
         )
         .await?;
-    }
-    if version >= FixtureVersion::V30 {
+        // Как пишет MyWork 2: наименование собрано кодом из полей (двойной пробел — пустой цвет),
+        // всё заглавными; цена с пробелом, копейками и «р.»; три фото.
         insert(
             conn,
-            "StockMap",
-            &["id", "clientId", "ZIPId", "countOfZIP", "priceOfZIP"],
-            &strings(&["1", "2", "1", "1", "2500"]),
+            "Stock",
+            &columns,
+            &strings(&[
+                "3",
+                "ТЕЛЕФОН АККУМУЛЯТОР XIAOMI REDMI 9  (ОРИГИНАЛ)",
+                "ТЕЛЕФОН",
+                "АККУМУЛЯТОР",
+                "",
+                "XIAOMI",
+                "REDMI 9",
+                "2",
+                "1 200,50 р.",
+                "5",
+                "settings\\Stock\\Photos\\p1.jpg",
+                "ОРИГИНАЛ",
+                "settings\\Stock\\Photos\\p2.png",
+                "settings\\Stock\\Photos\\p3.jpeg",
+            ]),
         )
         .await?;
+        // Количество и порог — десятичной записью `decimal` («3.0», «3,00»), цена — не число.
+        insert(
+            conn,
+            "Stock",
+            &columns,
+            &strings(&[
+                "4",
+                "ТЕЛЕФОН ДИСПЛЕЙ",
+                "ТЕЛЕФОН",
+                "ДИСПЛЕЙ",
+                "",
+                "",
+                "",
+                "3.0",
+                "abc",
+                "3,00",
+                "",
+                "",
+                "",
+                "",
+            ]),
+        )
+        .await?;
+    }
+    if version >= FixtureVersion::V30 {
+        // Списания со склада: `clientId` — номер заказа, `ZIPId` — позиция, цена — на момент
+        // списания. Заказ 2 — две позиции; заказ 5 — позиции 99 нет; заказа 404 нет; заказ 3 —
+        // количество не число; заказ 4 — запчастей больше затрат.
+        for row in [
+            ["1", "2", "1", "1", "2500"],
+            ["2", "2", "3", "1", "1200,50"],
+            ["3", "5", "99", "1", "300"],
+            ["4", "404", "1", "1", "2500"],
+            ["5", "3", "2", "два", "800"],
+            ["6", "4", "1", "2", "2500"],
+        ] {
+            insert(
+                conn,
+                "StockMap",
+                &["id", "clientId", "ZIPId", "countOfZIP", "priceOfZIP"],
+                &strings(&row),
+            )
+            .await?;
+        }
     }
     if version >= FixtureVersion::V31 {
         for (id, who, what, full, date, order) in HISTORY {
@@ -944,10 +1010,35 @@ pub async fn write_fixture(dir: &Path, options: &FixtureOptions) -> std::io::Res
         put(dir, &format!("settings/Akts/{name}"), &cp1251(text))?;
     }
     put(dir, "settings/Stock/brands.txt", &cp1251("SAMSUNG"))?;
+    // Списки склада (MyWork 2 их не создаёт, только читает): типы запчастей — справочник «Типы
+    // запчастей»; строки остальных — в конец справочников, если их там нет («ПЛАНШЕТ», «ЗОЛОТОЙ»
+    // уже есть другим регистром).
+    put(
+        dir,
+        "settings/Stock/TypeOvZIP.txt",
+        &cp1251("АККУМУЛЯТОР\r\nДИСПЛЕЙ\r\n"),
+    )?;
+    put(
+        dir,
+        "settings/Stock/ustrojstvo.txt",
+        &cp1251("ПЛАНШЕТ\r\nЭЛЕКТРОСАМОКАТ\r\n"),
+    )?;
+    put(
+        dir,
+        "settings/Stock/DeviceColour.txt",
+        &cp1251("ЗОЛОТОЙ\r\nБРОНЗОВЫЙ\r\n"),
+    )?;
     put(dir, "Shablon_Priem.htm", &cp1251("<html>Акт</html>"))?;
     put(dir, "Shablon_Act_Priema.htm", &cp1251(INTAKE_TEMPLATE))?;
     if options.version >= FixtureVersion::V29 {
         put(dir, "settings/Stock/Photos/abc123.jpg", b"stock-photo")?;
+        for name in ["p1.jpg", "p2.png", "p3.jpeg"] {
+            put(
+                dir,
+                &format!("settings/Stock/Photos/{name}"),
+                format!("stock-{name}").as_bytes(),
+            )?;
+        }
     }
     if options.version >= FixtureVersion::V30 {
         put(dir, "ClientFiles/1/1/photo.jpg", b"photo-1")?;

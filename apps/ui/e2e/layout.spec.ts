@@ -326,6 +326,7 @@ const SAMPLE_REPORT: ImportReportView = {
 	orders: 10482,
 	clients: 6311,
 	users: 4,
+	stock_items: 0,
 	files: { copied: 3214, bytes: 1_932_735_283, missing: 12 },
 	groups: [
 		{

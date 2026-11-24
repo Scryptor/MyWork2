@@ -7,8 +7,9 @@ pub(crate) mod dictionaries;
 pub(crate) mod history;
 pub(crate) mod orders;
 pub(crate) mod settings;
+pub(crate) mod stock;
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::PathBuf;
 
 use chrono::NaiveDateTime;
@@ -82,7 +83,7 @@ fn table_rows(
         .collect()
 }
 
-/// Колонки, которые знает конвертер, по таблицам (`Stock` и `StockMap` сохраняются целиком).
+/// Колонки, которые знает конвертер, по таблицам.
 fn known_columns(table: &str) -> Option<&'static [&'static str]> {
     Some(match table.to_lowercase().as_str() {
         "catalog" => &FULL_CATALOG_COLUMNS,
@@ -99,6 +100,23 @@ fn known_columns(table: &str) -> Option<&'static [&'static str]> {
         "statesmap" => &["id", "clientId", "State", "date"],
         "historybd" => &["id", "WHO", "WHAT", "FULLWHAT", "DATA", "IDINCATALOG"],
         "users" => &["id", "type", "name", "id_gruppi_dostupa", "user_pwd"],
+        "stock" => &[
+            "id",
+            "Naimenovanie",
+            "Kategoriya",
+            "Podkategoriya",
+            "Colour",
+            "Brand",
+            "Model",
+            "CountOf",
+            "Price",
+            "Napominanie",
+            "Photo",
+            "Primechanie",
+            "Photo2",
+            "Photo3",
+        ],
+        "stockmap" => &["id", "clientId", "ZIPId", "countOfZIP", "priceOfZIP"],
         "groupdostup" => &[
             "id",
             "grName",
@@ -162,14 +180,17 @@ fn warn_skipped_entries(folder: &LegacyFolder, w: &mut Warnings) {
     }
 }
 
-/// Таблицы, ячейки которых попадают в поля нового заказа, клиента, истории, пользователей и ролей.
-const TEXT_CHECKED_TABLES: [&str; 6] = [
+/// Таблицы, ячейки которых попадают в поля нового заказа, клиента, истории, пользователей, ролей,
+/// позиций склада и запчастей заказов.
+const TEXT_CHECKED_TABLES: [&str; 8] = [
     "Catalog",
     "ClientsMap",
     "StatesMap",
     "HistoryBD",
     "Users",
     "GroupDostup",
+    "Stock",
+    "StockMap",
 ];
 
 /// По одному предупреждению на испорченную ячейку (не UTF-8, двоичная) или ячейку с символом NUL; значение не печатается.
@@ -208,10 +229,14 @@ fn warn_text_cells(db: &LegacyDb, w: &mut Warnings) {
     }
 }
 
+/// Следы строк: заказы, клиенты, позиции склада (`stock_items` — номера строк `Stock`, ставших
+/// позициями), запчасти (`parts` — ключ строки `StockMap` → заказ), неизвестные таблицы, счётчики.
 fn legacy_rows(
     db: &LegacyDb,
     orders: &[ImportedOrder],
     client_rows: Vec<ImportedLegacyRow>,
+    stock_items: &BTreeSet<i64>,
+    parts: &HashMap<&str, i64>,
     w: &mut Warnings,
 ) -> Vec<ImportedLegacyRow> {
     let order_ids: BTreeSet<i64> = orders.iter().map(|o| o.id).collect();
@@ -222,19 +247,15 @@ fn legacy_rows(
             .map(LegacyTarget::Order)
     });
     rows.extend(client_rows);
-    for name in ["Stock", "StockMap"] {
-        rows.extend(table_rows(db, name, false, |_| None));
-    }
-    if let Some(stock) = db.table("Stock").filter(|t| !t.rows.is_empty()) {
-        w.push(
-            WarningCode::StockPreserved,
-            "Stock",
-            "",
-            "",
-            &stock.rows.len().to_string(),
-            "Склад сохранён в исходном виде до появления модуля склада.",
-        );
-    }
+    rows.extend(table_rows(db, "Stock", false, |key| {
+        key.parse()
+            .ok()
+            .filter(|id| stock_items.contains(id))
+            .map(LegacyTarget::StockItem)
+    }));
+    rows.extend(table_rows(db, "StockMap", false, |key| {
+        parts.get(key).copied().map(LegacyTarget::Order)
+    }));
     for table in db
         .tables
         .iter()
@@ -320,7 +341,12 @@ fn client_file_plan(
         .collect()
 }
 
-fn stock_photo_plan(db: &LegacyDb, folder: &LegacyFolder) -> Vec<PlannedFile> {
+/// Фото склада: у перенесённой позиции (`stock_items`) — её фото.
+fn stock_photo_plan(
+    db: &LegacyDb,
+    folder: &LegacyFolder,
+    stock_items: &BTreeSet<i64>,
+) -> Vec<PlannedFile> {
     let Some(table) = db.table("Stock") else {
         return Vec::new();
     };
@@ -333,6 +359,12 @@ fn stock_photo_plan(db: &LegacyDb, folder: &LegacyFolder) -> Vec<PlannedFile> {
     let mut used = BTreeSet::new();
     for row in &table.rows {
         let id = table.text(row, "id");
+        let target = id
+            .trim()
+            .parse()
+            .ok()
+            .filter(|id| stock_items.contains(id))
+            .map(LegacyTarget::StockItem);
         for column in &photo_columns {
             let raw = table.text(row, column);
             let raw = raw.trim();
@@ -357,11 +389,61 @@ fn stock_photo_plan(db: &LegacyDb, folder: &LegacyFolder) -> Vec<PlannedFile> {
                 dest: PathBuf::from(dest),
                 legacy_source: "Stock.Photo",
                 legacy_key: format!("{}/{column}", id.trim()),
-                target: None,
+                target: target.clone(),
             });
         }
     }
     files
+}
+
+/// Счётчик `sqlite_sequence` таблицы (нет — 0).
+fn sequence_of(db: &LegacyDb, table: &str) -> i64 {
+    db.sequences
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case(table))
+        .map_or(0, |(_, v)| *v)
+}
+
+/// Склад: позиции и запчасти; «расходы» заказов — без запчастей; значения склада — в конец
+/// справочников (и строк отчёта о них).
+fn convert_stock(
+    db: &LegacyDb,
+    folder: &LegacyFolder,
+    orders: &mut [ImportedOrder],
+    dictionary: &mut [(mw_domain::dictionary::DictionaryKind, Vec<String>)],
+    w: &mut Warnings,
+) -> stock::StockConversion {
+    let costs: BTreeMap<i64, stock::OrderCosts> = orders
+        .iter()
+        .map(|o| {
+            let costs = stock::OrderCosts {
+                current: o.extra_costs,
+                imported: o.extra_costs,
+            };
+            (o.id, costs)
+        })
+        .collect();
+    let lists = stock::stock_lists(folder);
+    let src = stock::StockSource {
+        stock: db.table("Stock"),
+        stock_map: db.table("StockMap"),
+        lists: &lists,
+        orders: &costs,
+        sequence: sequence_of(db, "Stock"),
+    };
+    let converted = stock::convert_stock(&src, dictionary, w);
+    let changes: HashMap<i64, mw_domain::money::Money> = converted
+        .cost_changes
+        .iter()
+        .map(|c| (c.order_id, c.to))
+        .collect();
+    for order in orders.iter_mut() {
+        if let Some(to) = changes.get(&order.id) {
+            order.extra_costs = *to;
+        }
+    }
+    dictionaries::append_stock_values(dictionary, &converted.dictionary_additions, w);
+    converted
 }
 
 /// Собирает пакет импорта из прочитанной базы и папки; `now` — время импорта для подстановок.
@@ -371,17 +453,18 @@ pub(crate) fn convert(db: &LegacyDb, folder: &LegacyFolder, now: NaiveDateTime) 
     let issued = orders::issued_ids(db);
     let catalogs = catalogs::convert_catalogs(db, folder, &|id| issued.contains(&id), &mut w);
     let mut stage = clients::convert_clients(db, now, &mut w);
-    let (converted, rewrites) =
+    let (mut converted, rewrites) =
         orders::convert_orders(db, &catalogs, &stage.order_client, &hints, now, &mut w);
     clients::fill_created_at(&mut stage, &converted);
     catalogs::warn_junk_masters(&converted, &mut w);
-    let dictionary = dictionaries::build_dictionaries(
+    let mut dictionary = dictionaries::build_dictionaries(
         &catalogs.dictionary,
         &converted,
         &stage.clients,
         &rewrites,
         &mut w,
     );
+    let stock = convert_stock(db, folder, &mut converted, &mut dictionary, &mut w);
     let history = history::convert_history(db, &converted, now, &mut w);
     warn_unknown_columns(db, &mut w);
     warn_text_cells(db, &mut w);
@@ -389,19 +472,28 @@ pub(crate) fn convert(db: &LegacyDb, folder: &LegacyFolder, now: NaiveDateTime) 
 
     let (settings, setting_rows) = settings::convert_settings(folder, &catalogs, &mut w);
     let (roles, users, access_rows) = access::convert_access(db, &mut w);
-    let mut rows = legacy_rows(db, &converted, std::mem::take(&mut stage.rows), &mut w);
+    let stock_items: BTreeSet<i64> = stock.stock_targets.iter().copied().collect();
+    let part_targets: HashMap<&str, i64> = stock
+        .part_targets
+        .iter()
+        .map(|(key, order)| (key.as_str(), *order))
+        .collect();
+    let mut rows = legacy_rows(
+        db,
+        &converted,
+        std::mem::take(&mut stage.rows),
+        &stock_items,
+        &part_targets,
+        &mut w,
+    );
     rows.extend(setting_rows);
     rows.extend(access_rows);
 
     let order_ids: BTreeSet<i64> = converted.iter().map(|o| o.id).collect();
     let mut files = client_file_plan(folder, &order_ids, &mut w);
-    files.extend(stock_photo_plan(db, folder));
+    files.extend(stock_photo_plan(db, folder, &stock_items));
 
-    let sequence = db
-        .sequences
-        .iter()
-        .find(|(k, _)| k.eq_ignore_ascii_case("Catalog"))
-        .map_or(0, |(_, v)| *v);
+    let sequence = sequence_of(db, "Catalog");
     let next_order_id = sequence.max(order_ids.last().copied().unwrap_or(0)) + 1;
     w.push(
         WarningCode::NextNumber,
@@ -426,6 +518,7 @@ pub(crate) fn convert(db: &LegacyDb, folder: &LegacyFolder, now: NaiveDateTime) 
         legacy_rows: rows,
         next_order_id,
         next_client_id: stage.next_client_id,
+        stock: stock.stock,
         report: json!({}),
     };
     Conversion {
@@ -562,9 +655,10 @@ mod tests {
                 count("Stock"),
                 count("StockMap")
             ),
-            (11, 9, 3, 2, 1)
+            (11, 9, 3, 4, 6)
         );
-        assert_eq!(c.files.len(), 7);
+        // Файлы клиентов, два фото позиции 1 (одного нет в папке) и три фото позиции 3.
+        assert_eq!(c.files.len(), 10);
     }
 
     #[tokio::test]
@@ -720,6 +814,7 @@ mod tests {
                 ("date_unparsed", "Catalog", "5"),
                 ("date_unparsed", "HistoryBD", "4"),
                 ("date_unparsed", "StatesMap", "7"),
+                ("extra_costs_kept", "Catalog", "4"),
                 ("flag_unrecognized", "Catalog", "12"),
                 ("flag_unrecognized", "ClientsMap", "5"),
                 ("history_orphan", "HistoryBD", "5"),
@@ -727,12 +822,17 @@ mod tests {
                 ("issued_without_date", "Catalog", "7"),
                 ("login_renamed", "Users", "2"),
                 ("money_unparsed", "Catalog", "4"),
+                ("money_unparsed", "Stock", "4"),
                 ("order_without_client", "Catalog", "9"),
                 ("phone_no_digits", "ClientsMap", "7"),
                 ("phone_unusual", "ClientsMap", "9"),
+                ("quantity_unparsed", "Stock", "2"),
+                ("quantity_unparsed", "StockMap", "5"),
                 ("received_at_missing", "Catalog", "4"),
                 ("received_at_missing", "Catalog", "5"),
                 ("status_empty", "Catalog", "8"),
+                ("stock_part_orphan", "StockMap", "3"),
+                ("stock_part_without_order", "StockMap", "4"),
                 ("text_invalid_utf8", "Catalog", "7"),
                 ("user_group_missing", "Users", "3"),
                 ("user_password_invalid", "Users", "4"),
@@ -752,9 +852,10 @@ mod tests {
                 info("barcode_generated"),
                 info("tracking_found"),
                 info("stock_preserved"),
+                info("stock_imported"),
                 info("next_number")
             ),
-            (6, 1, 1, 1, 1, 1)
+            (6, 1, 1, 1, 0, 1, 1)
         );
     }
 
@@ -845,7 +946,7 @@ mod tests {
         let photos: Vec<_> = c
             .files
             .iter()
-            .filter(|f| f.legacy_source == "Stock.Photo")
+            .filter(|f| f.legacy_source == "Stock.Photo" && f.legacy_key.starts_with("1/"))
             .collect();
         assert_eq!(photos.len(), 3);
         for f in photos {
@@ -974,11 +1075,19 @@ mod tests {
                 .filter(|v| *v != "Интернет"),
         );
         assert_eq!(dictionary(&c, ClientSource), sources);
-        // «Устройство N», «ЦВЕТ N» — у каждого заказа своё: только стандартные значения.
-        assert_eq!(dictionary(&c, DeviceType), standard(DeviceType));
-        assert_eq!(dictionary(&c, Color), standard(Color));
-        // Типы запчастей — список склада: без `Stock/TypeOvZIP.txt` стандартные.
-        assert_eq!(dictionary(&c, PartType), standard(PartType));
+        // «Устройство N», «ЦВЕТ N» — у каждого заказа своё: стандартные значения, затем значения
+        // списков склада, которых среди них нет («ПЛАНШЕТ», «ЗОЛОТОЙ» — уже есть).
+        let mut devices = standard(DeviceType);
+        devices.push("ЭЛЕКТРОСАМОКАТ");
+        assert_eq!(dictionary(&c, DeviceType), devices);
+        let mut colors = standard(Color);
+        colors.push("БРОНЗОВЫЙ");
+        assert_eq!(dictionary(&c, Color), colors);
+        // Типы запчастей — список склада `Stock/TypeOvZIP.txt`, затем типы позиций склада.
+        assert_eq!(
+            dictionary(&c, PartType),
+            ["АККУМУЛЯТОР", "ДИСПЛЕЙ", "Дисплеи"]
+        );
         assert!(dictionary(&c, Master).is_empty());
 
         // «Значений из одного заказа» — только не попавшие в справочник: «apple» (бренд), «Не
@@ -996,7 +1105,8 @@ mod tests {
             [
                 (
                     "Типы устройств",
-                    "из заказов — 0, стандартных — 8, значений из одного заказа — 10"
+                    "из заказов — 0, стандартных — 8, значений из одного заказа — 10, \
+                     со склада — 1"
                 ),
                 (
                     "Бренды",
@@ -1004,12 +1114,10 @@ mod tests {
                 ),
                 (
                     "Цвета",
-                    "из заказов — 0, стандартных — 8, значений из одного заказа — 10"
+                    "из заказов — 0, стандартных — 8, значений из одного заказа — 10, \
+                     со склада — 1"
                 ),
-                (
-                    "Типы запчастей",
-                    "из заказов — 0, стандартных — 11, значений из одного заказа — 0"
-                ),
+                ("Типы запчастей", "из файла — 2, со склада — 1"),
                 (
                     "Комплектность",
                     "из заказов — 1, стандартных — 7, пунктов из одного заказа — 9, \

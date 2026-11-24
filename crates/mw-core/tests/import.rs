@@ -12,6 +12,7 @@ use mw_core::{
 use mw_domain::money::Money;
 use mw_domain::permission::Permission;
 use mw_domain::permission::PermissionSet;
+use mw_domain::stock::{MAX_STOCK_PRICE, MAX_STOCK_QUANTITY};
 use mw_domain::warranty::WarrantyTerm;
 use sea_orm::{EntityTrait, PaginatorTrait};
 
@@ -149,8 +150,168 @@ async fn import_into_empty_database_keeps_numbers_and_continues_them() {
             legacy_target(&t.core, "Users", "1").await.map(|x| x.0),
             Some("users".to_owned())
         );
-        assert_eq!(legacy_target(&t.core, "Stock", "1").await, None);
+        assert_eq!(
+            legacy_target(&t.core, "Stock", "1").await,
+            Some(("stock_items".to_owned(), 1))
+        );
         assert_eq!(t.core.list_statuses(true).await.unwrap().len(), 9);
+    }
+}
+
+/// Склад пакета: позиции с исходными номерами и ключами поиска, запчасти заказов как
+/// перенесённые; остаток позиции не меняется; следующая позиция — с номером пакета.
+#[tokio::test]
+async fn import_writes_stock_items_and_order_parts() {
+    use mw_core::{NewStockItem, StockFilter};
+    for t in cores().await {
+        let s = t
+            .core
+            .import_bundle(&admin(), sample_bundle(), ImportMode::IntoEmpty)
+            .await
+            .unwrap();
+        assert_eq!((s.stock_items, s.order_parts), (1, 2), "{}", t.label);
+        let page = t
+            .core
+            .list_stock(&admin(), &StockFilter::default(), 50, 0)
+            .await
+            .unwrap();
+        let item = &page.items[0];
+        assert_eq!(
+            (
+                page.total,
+                item.id,
+                item.display_name.as_str(),
+                item.quantity,
+                item.price,
+                item.restock_threshold,
+                item.version,
+                item.created_at,
+            ),
+            (
+                1,
+                1,
+                "ДИСПЛЕЙ SAMSUNG A52  (ОРИГИНАЛ)",
+                3,
+                Money::from_rubles(2500),
+                1,
+                1,
+                t.core.now()
+            ),
+            "{}",
+            t.label
+        );
+        let found = t
+            .core
+            .list_stock(
+                &admin(),
+                &StockFilter {
+                    query: "оригинал".into(),
+                    ..Default::default()
+                },
+                50,
+                0,
+            )
+            .await
+            .unwrap();
+        assert_eq!(found.total, 1, "{}", t.label);
+
+        let parts = t.core.list_order_parts(&admin(), 5).await.unwrap();
+        let p = &parts.parts[0];
+        assert_eq!(
+            (
+                parts.parts.len(),
+                p.stock_item_id,
+                p.item_exists,
+                p.name.as_str(),
+                p.quantity,
+                p.sum,
+                p.added_by_name.as_str(),
+                p.added_at,
+                p.legacy,
+            ),
+            (
+                1,
+                Some(1),
+                true,
+                "ДИСПЛЕЙ SAMSUNG A52  (ОРИГИНАЛ)",
+                1,
+                Money::from_rubles(2500),
+                "",
+                t.core.now(),
+                true
+            ),
+            "{}",
+            t.label
+        );
+        // Удалённый заказ читается; позиции не было уже в MyWork 2.
+        let gone = t.core.list_order_parts(&admin(), 6).await.unwrap();
+        assert_eq!(
+            (
+                gone.parts[0].stock_item_id,
+                gone.parts[0].item_exists,
+                gone.parts[0].name.as_str(),
+                gone.total,
+            ),
+            (
+                None,
+                false,
+                "Позиция №99 (нет на складе)",
+                Money::from_kopecks(60_100)
+            ),
+            "{}",
+            t.label
+        );
+        assert!(
+            t.core
+                .list_order_parts(&admin(), 10)
+                .await
+                .unwrap()
+                .parts
+                .is_empty()
+        );
+
+        let next = t
+            .core
+            .create_stock_item(
+                &admin(),
+                NewStockItem {
+                    name: "Новая".into(),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(next.id, 8, "{}", t.label);
+        assert_eq!(t.core.import_target_state().await.unwrap().stock_items, 2);
+    }
+}
+
+/// Без склада в пакете номера позиций начинаются с 1.
+#[tokio::test]
+async fn import_without_stock_starts_stock_numbers_at_one() {
+    use mw_core::{ImportedStock, NewStockItem};
+    for t in cores().await {
+        let mut b = sample_bundle();
+        b.stock = ImportedStock::default();
+        b.legacy_rows.retain(|r| r.source != "Stock");
+        let s = t
+            .core
+            .import_bundle(&admin(), b, ImportMode::IntoEmpty)
+            .await
+            .unwrap();
+        assert_eq!((s.stock_items, s.order_parts), (0, 0), "{}", t.label);
+        let item = t
+            .core
+            .create_stock_item(
+                &admin(),
+                NewStockItem {
+                    name: "Первая".into(),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(item.id, 1, "{}", t.label);
     }
 }
 
@@ -232,6 +393,49 @@ async fn broken_bundle_rolls_back_everything() {
                     phone: "+7 921 1234567".into(),
                     note: String::new(),
                 });
+                b
+            },
+            {
+                // Запчасть к заказу, которого нет в пакете.
+                let mut b = sample_bundle();
+                b.stock.parts[0].order_id = 404;
+                b
+            },
+            {
+                // Запчасть к позиции, которой нет в пакете.
+                let mut b = sample_bundle();
+                b.stock.parts[0].stock_item_id = Some(2);
+                b
+            },
+            {
+                let mut b = sample_bundle();
+                b.stock.items.push(b.stock.items[0].clone());
+                b
+            },
+            {
+                let mut b = sample_bundle();
+                b.stock.items[0].quantity = MAX_STOCK_QUANTITY + 1;
+                b
+            },
+            {
+                let mut b = sample_bundle();
+                b.stock.items[0].price = Money::from_kopecks(-1);
+                b
+            },
+            {
+                let mut b = sample_bundle();
+                b.stock.parts[1].price = Money::from_kopecks(MAX_STOCK_PRICE.kopecks() + 1);
+                b
+            },
+            {
+                let mut b = sample_bundle();
+                b.stock.parts[1].quantity = -1;
+                b
+            },
+            {
+                // Следующий номер позиции не больше занятого.
+                let mut b = sample_bundle();
+                b.stock.next_stock_item_id = 1;
                 b
             },
         ];
@@ -399,6 +603,79 @@ async fn replace_mode_backs_up_sqlite_and_is_refused_on_postgres() {
             &[("mode", "replace_unsupported")],
         );
     }
+}
+
+/// Замена стирает и склад: запчасть, списанная после прошлого импорта, держит заказ и позицию
+/// внешними ключами — стирание начинается с запчастей.
+#[tokio::test]
+async fn replace_wipes_the_stock_written_after_the_previous_import() {
+    use mw_core::{NewOrderPart, NewStockItem};
+    let dir = tempfile::tempdir().unwrap();
+    let core = file_sqlite_core(&dir.path().join("mywork.db")).await;
+    core.import_bundle(&admin(), sample_bundle(), ImportMode::IntoEmpty)
+        .await
+        .unwrap();
+    let item = core
+        .create_stock_item(
+            &admin(),
+            NewStockItem {
+                name: "Шлейф".into(),
+                quantity: 5,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(item.id, 8);
+    core.add_order_part(
+        &admin(),
+        10,
+        NewOrderPart {
+            stock_item_id: item.id,
+            quantity: 1,
+            request_key: "r1".into(),
+        },
+    )
+    .await
+    .unwrap();
+    let s = core
+        .import_bundle(
+            &admin(),
+            sample_bundle(),
+            ImportMode::Replace {
+                backup_to: dir.path().join("backups").join("before.db"),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!((s.stock_items, s.order_parts), (1, 2));
+    assert_eq!(core.import_target_state().await.unwrap().stock_items, 1);
+    assert!(
+        core.list_order_parts(&admin(), 10)
+            .await
+            .unwrap()
+            .parts
+            .is_empty()
+    );
+    assert_eq!(
+        core.list_order_parts(&admin(), 5)
+            .await
+            .unwrap()
+            .parts
+            .len(),
+        1
+    );
+    let again = core
+        .create_stock_item(
+            &admin(),
+            NewStockItem {
+                name: "Снова".into(),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(again.id, 8);
 }
 
 #[tokio::test]

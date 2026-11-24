@@ -18,6 +18,8 @@
 //!   «LG»); у гарантии — с единицей срока, если такое есть («30 дней», а не «30»).
 //! - Порядок — по убыванию числа заказов (клиентов), при равенстве — по первому появлению (по
 //!   номерам); затем значения списка, которых нет среди взятых из заказов, в порядке списка.
+//! - Типы запчастей — только список (`Stock/TypeOvZIP.txt` или стандартный). В конец справочников
+//!   затем идут значения склада, которых там нет (`append_stock_values`, `super::stock`).
 
 use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet};
@@ -241,11 +243,23 @@ pub(crate) fn build_dictionaries(
             } else {
                 ("из файла", "значения файла MyWork 2")
             };
-            let mut counts = format!(
-                "{records} — {}, {rest} — {}, {once} — {}",
-                m.from_orders, m.from_list, m.once
-            );
-            let mut message = format!("{first}, затем {rest_text}, которых среди них нет.");
+            // Типов запчастей в заказах нет: список склада (или стандартный), затем типы позиций.
+            let (mut counts, mut message) = if *kind == DictionaryKind::PartType {
+                let source = if list_values.standard {
+                    "Стандартные значения MyWork 3: списка типов запчастей склада MyWork 2 нет или он не менялся."
+                } else {
+                    "Значения списка типов запчастей склада MyWork 2."
+                };
+                (format!("{rest} — {}", m.from_list), source.to_owned())
+            } else {
+                (
+                    format!(
+                        "{records} — {}, {rest} — {}, {once} — {}",
+                        m.from_orders, m.from_list, m.once
+                    ),
+                    format!("{first}, затем {rest_text}, которых среди них нет."),
+                )
+            };
             if list {
                 counts.push_str(&format!(
                     ", заказов с переписанным полем — {}",
@@ -266,4 +280,26 @@ pub(crate) fn build_dictionaries(
             (*kind, m.values)
         })
         .collect()
+}
+
+/// Значения склада — в конец справочников; строка отчёта о справочнике получает «со склада — N».
+pub(crate) fn append_stock_values(
+    dictionary: &mut [(DictionaryKind, Vec<String>)],
+    additions: &[(DictionaryKind, Vec<String>)],
+    w: &mut Warnings,
+) {
+    for (kind, values) in additions {
+        let Some((_, list)) = dictionary.iter_mut().find(|(k, _)| k == kind) else {
+            continue;
+        };
+        list.extend(values.iter().cloned());
+        if let Some(line) = w.find_mut(WarningCode::DictionaryFromOrders, kind.label_ru()) {
+            line.value
+                .push_str(&format!(", со склада — {}", values.len()));
+            line.message.push_str(
+                " В конце — значения склада MyWork 2 (списки склада, у типов запчастей — и типы \
+                 позиций), которых среди них нет.",
+            );
+        }
+    }
 }

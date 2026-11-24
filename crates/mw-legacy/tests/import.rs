@@ -35,9 +35,13 @@ async fn every_schema_version_imports_without_losing_rows() -> Res {
                 "{label}"
             );
             assert_eq!(r.summary.next_order_id, 16, "{label}");
+            // Затраты заказов 2, 4, 5 — 4 000, 1 000 и 500 ₽. Со списаниями склада (`StockMap`, с
+            // V30) из затрат вычтены запчасти: 4 000 − 3 700,50 и 500 − 300; у №4 запчастей на
+            // 5 000 ₽ — больше затрат, они остались как есть.
+            let extra_costs = if version >= V30 { 149_950 } else { 550_000 };
             assert_eq!(
                 money_totals(&t.core).await,
-                [150_000, 50_000, 1_500_150_000, 0, 0],
+                [150_000, 50_000, 1_500_150_000, extra_costs, 0],
                 "{label}"
             );
             assert_eq!(
@@ -75,7 +79,7 @@ async fn v32_files_and_warnings_round_trip() -> Res {
                 .to_string_lossy()
                 .starts_with(".import")
         }));
-        assert_eq!((r.files.copied, r.files.missing), (6, 1), "{}", t.label);
+        assert_eq!((r.files.copied, r.files.missing), (9, 1), "{}", t.label);
         assert_eq!(
             (
                 r.count(WarningCode::FileMissing),
@@ -92,10 +96,104 @@ async fn v32_files_and_warnings_round_trip() -> Res {
                 .iter()
                 .filter(|w| w.code.severity() == Severity::Warning)
                 .count(),
-            27,
+            33,
             "{}",
             t.label
         );
+    }
+    Ok(())
+}
+
+/// Склад MyWork 2 после переноса: позиции с прежними номерами и фото, запчасти заказов, расходы
+/// без запчастей, следы строк склада.
+#[tokio::test]
+async fn v32_stock_round_trip() -> Res {
+    use mw_core::{AttachmentVariant, StockFilter};
+    use mw_domain::money::Money;
+    for t in cores().await {
+        let (src, data) = (fixture_dir(V32).await, tempfile::tempdir()?);
+        let core = t
+            .core
+            .clone()
+            .with_attachments_dir(data.path().to_path_buf());
+        let r = import_folder(&core, &admin(), &options(src.path(), data.path(), false)).await?;
+        let label = t.label;
+        assert_eq!(
+            (r.summary.stock_items, r.summary.order_parts),
+            (4, 5),
+            "{label}"
+        );
+        let stock = core
+            .list_stock(&admin(), &StockFilter::default(), 50, 0)
+            .await?;
+        let mut ids: Vec<i64> = stock.items.iter().map(|i| i.id).collect();
+        ids.sort_unstable();
+        assert_eq!(ids, [1, 2, 3, 4], "{label}");
+
+        let photos = core.list_stock_photos(&admin(), 3).await?;
+        assert_eq!(
+            photos.iter().map(|p| p.name.as_str()).collect::<Vec<_>>(),
+            ["p1.jpg", "p2.png", "p3.jpeg"],
+            "{label}"
+        );
+        for p in &photos {
+            let file = core
+                .attachment_file(&admin(), p.id, AttachmentVariant::Full)
+                .await?;
+            assert_eq!(
+                std::fs::read(file.path)?,
+                format!("stock-{}", p.name).into_bytes()
+            );
+        }
+        // У позиции 1 второго фото (`missing.jpg`) нет в папке.
+        let one = core.list_stock_photos(&admin(), 1).await?;
+        assert_eq!(
+            one.iter().map(|p| p.name.as_str()).collect::<Vec<_>>(),
+            ["abc123.jpg"],
+            "{label}"
+        );
+        assert_eq!(r.count(WarningCode::FileMissing), 1, "{label}");
+
+        let parts = core.list_order_parts(&admin(), 2).await?;
+        assert_eq!(
+            parts
+                .parts
+                .iter()
+                .map(|p| (p.name.as_str(), p.sum, p.legacy))
+                .collect::<Vec<_>>(),
+            [
+                ("Дисплей", Money::from_rubles(2500), true),
+                (
+                    "ТЕЛЕФОН АККУМУЛЯТОР XIAOMI REDMI 9  (ОРИГИНАЛ)",
+                    Money::from_kopecks(120_050),
+                    true
+                ),
+            ],
+            "{label}"
+        );
+        assert_eq!(
+            core.get_order(&admin(), 2).await?.extra_costs,
+            Money::from_kopecks(29_950),
+            "{label}"
+        );
+        assert_eq!(
+            legacy_target(&core, "Stock", "3").await,
+            Some(("stock_items".to_owned(), 3))
+        );
+        assert_eq!(
+            legacy_target(&core, "StockMap", "3").await,
+            Some(("orders".to_owned(), 5))
+        );
+        assert_eq!(legacy_target(&core, "StockMap", "4").await, None);
+        assert_eq!(
+            (
+                r.count(WarningCode::StockPreserved),
+                r.count(WarningCode::StockImported)
+            ),
+            (0, 1),
+            "{label}"
+        );
+        assert!(r.summary_text().contains("позиций склада — 4"));
     }
     Ok(())
 }

@@ -4,7 +4,8 @@ use std::collections::{HashMap, HashSet};
 
 use mw_db::entity::{
     attachment, audit_log, client, client_phone, dictionary_item, legacy_import, legacy_row, order,
-    order_comment, order_tracking, role, service_point, session, setting, status, user,
+    order_comment, order_part, order_tracking, role, service_point, session, setting, status,
+    stock_item, user,
 };
 use mw_db::ids::{IdTable, set_next_id};
 use mw_domain::dictionary::{DEFAULT_DICTIONARY, DictionaryKind};
@@ -12,6 +13,7 @@ use mw_domain::permission::Permission;
 use mw_domain::phone::{normalize_phone, phone_key};
 use mw_domain::search::normalize_search;
 use mw_domain::status::StatusKind;
+use mw_domain::stock::{MAX_STOCK_PRICE, MAX_STOCK_QUANTITY};
 use mw_domain::validation::FieldError;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait, NotSet,
@@ -27,7 +29,7 @@ use crate::auth::PasswordScheme;
 use crate::clients::validate_client;
 use crate::orders::warranty_columns;
 use crate::search_index::{
-    SEARCH_INDEX_VERSION, client_search_text, order_search_text, set_order_keys,
+    SEARCH_INDEX_VERSION, client_search_text, order_search_text, set_order_keys, set_stock_keys,
 };
 use crate::settings::{self, AppSettings, put};
 use crate::{Actor, Core, CoreError};
@@ -164,6 +166,8 @@ fn validate_bundle(b: &ImportBundle) -> Result<(), CoreError> {
         }
     }
 
+    let item_ids = validate_stock(b, &order_ids)?;
+
     for row in &b.legacy_rows {
         let ok = match &row.target {
             None => true,
@@ -171,6 +175,7 @@ fn validate_bundle(b: &ImportBundle) -> Result<(), CoreError> {
             Some(LegacyTarget::Client(id)) => client_ids.contains(id),
             Some(LegacyTarget::Role(name)) => role_names.contains(name.as_str()),
             Some(LegacyTarget::User(login)) => b.users.iter().any(|u| &u.login == login),
+            Some(LegacyTarget::StockItem(id)) => item_ids.contains(id),
         };
         if !ok {
             return Err(bad(format!(
@@ -207,6 +212,52 @@ fn validate_bundle(b: &ImportBundle) -> Result<(), CoreError> {
     Ok(())
 }
 
+/// Склад пакета: номера позиций больше нуля и не повторяются, количества и цены — в пределах
+/// позиции склада, запчасти — к заказам и позициям пакета, следующий номер позиции (не меньше 1)
+/// больше наибольшего. Возвращает номера позиций.
+fn validate_stock(b: &ImportBundle, order_ids: &HashSet<i64>) -> Result<HashSet<i64>, CoreError> {
+    let quantity_ok = |q: i64| (0..=MAX_STOCK_QUANTITY).contains(&q);
+    let price_ok =
+        |p: mw_domain::money::Money| (0..=MAX_STOCK_PRICE.kopecks()).contains(&p.kopecks());
+    let mut item_ids = HashSet::new();
+    for i in &b.stock.items {
+        if i.id <= 0 || !item_ids.insert(i.id) {
+            return Err(bad(format!(
+                "номер позиции склада {} неверен или повторяется",
+                i.id
+            )));
+        }
+        if !quantity_ok(i.quantity) || !quantity_ok(i.restock_threshold) || !price_ok(i.price) {
+            return Err(bad(format!(
+                "позиция склада №{}: количество, порог или цена вне пределов",
+                i.id
+            )));
+        }
+    }
+    for p in &b.stock.parts {
+        if !order_ids.contains(&p.order_id) {
+            return Err(bad(format!("запчасть: нет заказа №{}", p.order_id)));
+        }
+        if p.stock_item_id.is_some_and(|id| !item_ids.contains(&id)) {
+            return Err(bad(format!(
+                "запчасть заказа №{}: нет позиции склада",
+                p.order_id
+            )));
+        }
+        if !quantity_ok(p.quantity) || !price_ok(p.price) {
+            return Err(bad(format!(
+                "запчасть заказа №{}: количество или цена вне пределов",
+                p.order_id
+            )));
+        }
+    }
+    // Склад по умолчанию (`ImportedStock::default()`) — номер 0: позиции начнутся с 1.
+    if b.stock.next_stock_item_id.max(1) <= item_ids.iter().copied().max().unwrap_or(0) {
+        return Err(bad("следующий номер позиции склада не больше наибольшего"));
+    }
+    Ok(item_ids)
+}
+
 /// Состояние приёмника: сколько в нём клиентов, заказов, пользователей и записей журнала.
 async fn target_state(conn: &impl ConnectionTrait) -> Result<ImportTarget, CoreError> {
     Ok(ImportTarget {
@@ -214,6 +265,7 @@ async fn target_state(conn: &impl ConnectionTrait) -> Result<ImportTarget, CoreE
         orders: order::Entity::find().count(conn).await?,
         users: user::Entity::find().count(conn).await?,
         audit_entries: audit_log::Entity::find().count(conn).await?,
+        stock_items: stock_item::Entity::find().count(conn).await?,
     })
 }
 
@@ -247,7 +299,10 @@ async fn wipe(conn: &impl ConnectionTrait) -> Result<(), CoreError> {
     order_tracking::Entity::delete_many().exec(conn).await?;
     audit_log::Entity::delete_many().exec(conn).await?;
     order_comment::Entity::delete_many().exec(conn).await?;
+    // Запчасти держат заказы и позиции внешними ключами: они стираются раньше.
+    order_part::Entity::delete_many().exec(conn).await?;
     order::Entity::delete_many().exec(conn).await?;
+    stock_item::Entity::delete_many().exec(conn).await?;
     client_phone::Entity::delete_many().exec(conn).await?;
     client::Entity::delete_many().exec(conn).await?;
     user::Entity::delete_many().exec(conn).await?;
@@ -553,6 +608,64 @@ async fn write_settings(
     Ok(())
 }
 
+/// Склад: позиции со своими номерами и ключами поиска, затем запчасти заказов — перенесённые,
+/// без автора; время — время импорта.
+async fn write_stock(
+    conn: &impl ConnectionTrait,
+    b: &ImportBundle,
+    now: chrono::NaiveDateTime,
+) -> Result<(), CoreError> {
+    let items = b
+        .stock
+        .items
+        .iter()
+        .map(|i| {
+            let mut m = stock_item::Model {
+                id: i.id,
+                name: i.name.clone(),
+                device_type: i.device_type.clone(),
+                part_type: i.part_type.clone(),
+                brand: i.brand.clone(),
+                model: i.model.clone(),
+                color: i.color.clone(),
+                note: i.note.clone(),
+                quantity: i.quantity,
+                price: i.price.kopecks(),
+                restock_threshold: i.restock_threshold,
+                search_text: String::new(),
+                name_key: String::new(),
+                created_at: now,
+                updated_at: now,
+                deleted_at: None,
+                version: 1,
+            };
+            set_stock_keys(&mut m);
+            stock_item::ActiveModel::from(m).reset_all()
+        })
+        .collect();
+    insert_chunked::<stock_item::Entity>(conn, items).await?;
+    let parts = b
+        .stock
+        .parts
+        .iter()
+        .map(|p| order_part::ActiveModel {
+            id: NotSet,
+            order_id: Set(p.order_id),
+            stock_item_id: Set(p.stock_item_id),
+            name: Set(p.name.clone()),
+            price: Set(p.price.kopecks()),
+            quantity: Set(p.quantity),
+            added_by_id: Set(None),
+            added_by_name: Set(String::new()),
+            added_at: Set(now),
+            legacy: Set(true),
+            request_key: Set(None),
+        })
+        .collect();
+    insert_chunked::<order_part::Entity>(conn, parts).await?;
+    Ok(())
+}
+
 /// Строки таблицы должны совпасть с пакетом.
 async fn expect_count<E: EntityTrait>(
     conn: &impl ConnectionTrait,
@@ -660,6 +773,7 @@ impl Core {
         let tracking_count = write_orders(tx, b, &status_ids, &point_ids).await?;
 
         let now = self.now();
+        write_stock(tx, b, now).await?;
         // Мастера — пользователи: имена из файла мастеров, мастер по умолчанию и имена из заказов.
         let default_master = b.settings.default_master.clone().unwrap_or_default();
         let mut master_names = b.masters.clone();
@@ -731,6 +845,7 @@ impl Core {
                     Some(LegacyTarget::Client(id)) => (Some("clients"), Some(*id)),
                     Some(LegacyTarget::Role(name)) => (Some("roles"), Some(role_ids[name])),
                     Some(LegacyTarget::User(login)) => (Some("users"), Some(user_ids[login])),
+                    Some(LegacyTarget::StockItem(id)) => (Some("stock_items"), Some(*id)),
                 };
                 legacy_row::ActiveModel {
                     id: NotSet,
@@ -745,6 +860,7 @@ impl Core {
             .collect();
         insert_chunked::<legacy_row::Entity>(tx, rows).await?;
         mw_db::backfill::legacy_client_files(tx).await?;
+        mw_db::backfill::legacy_stock_photos(tx).await?;
 
         write_settings(
             tx,
@@ -767,6 +883,10 @@ impl Core {
         expect_count::<client_phone::Entity>(tx, "телефоны", phone_count).await?;
         expect_count::<order::Entity>(tx, "заказы", b.orders.len() as u64).await?;
         expect_count::<order_tracking::Entity>(tx, "трек-номера", tracking_count).await?;
+        let stock_items = b.stock.items.len() as u64;
+        let order_parts = b.stock.parts.len() as u64;
+        expect_count::<stock_item::Entity>(tx, "позиции склада", stock_items).await?;
+        expect_count::<order_part::Entity>(tx, "запчасти заказов", order_parts).await?;
         expect_count::<audit_log::Entity>(tx, "журнал", b.history.len() as u64 + 1).await?;
         expect_count::<legacy_row::Entity>(tx, "следы", b.legacy_rows.len() as u64).await?;
         expect_count::<legacy_import::Entity>(tx, "импорты", 1).await?;
@@ -789,6 +909,8 @@ impl Core {
             next_client_id: b.next_client_id,
             masters_created: masters.created.len() as u64,
             masters_marked: masters.marked.len() as u64,
+            stock_items,
+            order_parts,
         };
         // Сводка записанного — в отчёт импорта: по ней строится список прошлых импортов.
         let mut report = b.report.clone();
@@ -807,6 +929,7 @@ impl Core {
         // Последним: `setval` в PostgreSQL не откатывается вместе с транзакцией.
         set_next_id(tx, IdTable::Orders, b.next_order_id).await?;
         set_next_id(tx, IdTable::Clients, b.next_client_id).await?;
+        set_next_id(tx, IdTable::StockItems, b.stock.next_stock_item_id.max(1)).await?;
         Ok(summary)
     }
 }

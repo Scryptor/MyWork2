@@ -196,7 +196,8 @@ impl Catalogs {
     }
 }
 
-fn is_placeholder(line: &str) -> bool {
+/// Строка-подсказка стартового файла MyWork 2 («Этот текст можно», «поменять в файле», путь файла).
+pub(crate) fn is_placeholder(line: &str) -> bool {
     let line = line.trim();
     let lower = line.to_lowercase();
     line == "Этот текст можно"

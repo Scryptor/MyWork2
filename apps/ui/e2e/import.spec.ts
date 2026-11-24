@@ -116,6 +116,10 @@ test('transfer: what was found, the progress, sign-in as a user of MyWork 2, the
 	await expect(totals.getByRole('listitem').filter({ hasText: 'Заказов' })).toContainText(
 		String(found.orders)
 	);
+	// The stock of the synthetic folder: four items.
+	await expect(totals.getByRole('listitem').filter({ hasText: 'Позиций склада' })).toContainText(
+		'4'
+	);
 	await expect(page.getByRole('heading', { name: 'Требует внимания' })).toBeVisible();
 	const dates = page.getByRole('button', { name: /^Не разобрана дата/ });
 	await expect(dates).toHaveAttribute('aria-expanded', 'false');

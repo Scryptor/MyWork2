@@ -49,9 +49,10 @@ pub use dictionaries::{
 pub use document_templates::{DocumentField, DocumentTemplate, DocumentTemplateInfo, TemplateSave};
 pub use error::CoreError;
 pub use import::{
-    DatabaseKind, ImportBundle, ImportMode, ImportSummary, ImportTarget, ImportedClient,
-    ImportedHistory, ImportedLegacyRow, ImportedOrder, ImportedSettings, ImportedUser,
-    LegacyImportMode, LegacyImportRecord, LegacyTarget,
+    DatabaseKind, ExtraCostsChange, ImportBundle, ImportMode, ImportSummary, ImportTarget,
+    ImportedClient, ImportedHistory, ImportedLegacyRow, ImportedOrder, ImportedOrderPart,
+    ImportedSettings, ImportedStock, ImportedStockItem, ImportedUser, LegacyImportMode,
+    LegacyImportRecord, LegacyTarget,
 };
 pub use legacy_templates::LegacyTemplate;
 pub use orders::{

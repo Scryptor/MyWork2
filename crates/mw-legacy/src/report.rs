@@ -81,6 +81,11 @@ warning_codes! {
     UnknownTable => ("unknown_table", Warning, "Неизвестная таблица старой базы"),
     FileMissing => ("file_missing", Warning, "Файл не найден"),
     FileUnreadable => ("file_unreadable", Warning, "Файл не прочитан"),
+    QuantityUnparsed => ("quantity_unparsed", Warning, "Не разобрано количество"),
+    StockRowSkipped => ("stock_row_skipped", Warning, "Позиция склада не перенесена"),
+    StockPartOrphan => ("stock_part_orphan", Warning, "Запчасть заказа без позиции склада"),
+    StockPartWithoutOrder => ("stock_part_without_order", Warning, "Списание со склада без заказа"),
+    ExtraCostsKept => ("extra_costs_kept", Warning, "Расходы заказа оставлены как есть"),
     StatusRenamed => ("status_renamed", Info, "Статус переименован"),
     StatusCustom => ("status_custom", Info, "Добавлен статус из старой базы"),
     PhoneSplit => ("phone_split", Info, "Телефоны разложены по номерам"),
@@ -97,6 +102,7 @@ warning_codes! {
     SettingPreserved => ("setting_preserved", Info, "Настройка сохранена до появления в программе"),
     StockPreserved => ("stock_preserved", Info, "Склад сохранён до модуля склада"),
     ClientFilesOrphan => ("client_files_orphan", Info, "Файлы без заказа"),
+    StockImported => ("stock_imported", Info, "Склад перенесён"),
     NextNumber => ("next_number", Info, "Следующий номер заказа"),
 }
 
@@ -104,7 +110,8 @@ warning_codes! {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Warning {
     pub code: WarningCode,
-    /// `Catalog`, `ClientsMap`, `StatesMap`, `HistoryBD`, `Users`, `GroupDostup`, `Stock`, `Config.ini`, `file`.
+    /// `Catalog`, `ClientsMap`, `StatesMap`, `HistoryBD`, `Users`, `GroupDostup`, `Stock`, `StockMap`,
+    /// `Config.ini`, `file`, `dictionary`.
     pub source: String,
     pub key: String,
     pub field: String,
@@ -138,6 +145,14 @@ impl Warnings {
 
     pub(crate) fn list(&self) -> &[Warning] {
         &self.0
+    }
+
+    /// Последнее предупреждение кода с этим ключом — чтобы дополнить его.
+    pub(crate) fn find_mut(&mut self, code: WarningCode, key: &str) -> Option<&mut Warning> {
+        self.0
+            .iter_mut()
+            .rev()
+            .find(|w| w.code == code && w.key == key)
     }
 }
 
@@ -224,7 +239,7 @@ impl ImportReport {
         let mut out = String::from("Импорт из MyWork 2 завершён.\n");
         out.push_str(&format!("Версия базы: {}", self.schema.version_text()));
         out.push_str("\n\nПеренесено:\n");
-        let lines: [(&str, u64); 13] = [
+        let lines: [(&str, u64); 15] = [
             ("заказов", m.orders),
             ("из них удалённых", m.deleted_orders),
             ("клиентов", m.clients),
@@ -238,6 +253,8 @@ impl ImportReport {
             ("пользователей", m.users),
             ("мастеров создано", m.masters_created),
             ("пользователей отмечено «Мастер»", m.masters_marked),
+            ("позиций склада", m.stock_items),
+            ("запчастей в заказах", m.order_parts),
         ];
         for (title, n) in lines {
             out.push_str(&format!("  {title} — {n}\n"));
@@ -333,8 +350,10 @@ mod tests {
             assert!(seen.insert(code.as_str()), "{}", code.as_str());
             assert!(!code.title_ru().is_empty());
         }
-        assert_eq!(WarningCode::ALL.len(), 44);
+        assert_eq!(WarningCode::ALL.len(), 50);
         assert_eq!(WarningCode::FileUnreadable.severity(), Severity::Warning);
+        assert_eq!(WarningCode::ExtraCostsKept.severity(), Severity::Warning);
+        assert_eq!(WarningCode::StockImported.severity(), Severity::Info);
         assert_eq!(WarningCode::StatusRenamed.severity(), Severity::Info);
         assert_eq!(WarningCode::NextNumber.severity(), Severity::Info);
     }

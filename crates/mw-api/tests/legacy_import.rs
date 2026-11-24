@@ -90,7 +90,7 @@ async fn import_runs_in_the_background_and_its_report_is_listed() {
                 &check.body["orders"],
                 &check.body["files"]
             ),
-            (&json!(true), &json!(11), &json!(6)),
+            (&json!(true), &json!(11), &json!(9)),
             "{}",
             check.body
         );
@@ -128,7 +128,7 @@ async fn import_runs_in_the_background_and_its_report_is_listed() {
                 &item["orders"],
                 &item["warnings"]
             ),
-            (&json!(id), &json!("into_empty"), &json!(11), &json!(27)),
+            (&json!(id), &json!("into_empty"), &json!(11), &json!(33)),
             "{item}"
         );
         assert_eq!(item["source_path"], json!(path_of(&src)));
@@ -136,11 +136,11 @@ async fn import_runs_in_the_background_and_its_report_is_listed() {
         let report = t.get(&format!("{LIST}/{id}"), Some(&token)).await;
         assert_eq!(report.status, 200, "{}: {}", t.label, report.body);
         let r = &report.body;
-        assert_eq!(r["orders"], 11);
+        assert_eq!((&r["orders"], &r["stock_items"]), (&json!(11), &json!(4)));
         assert_eq!(r["files_pending"], json!(false), "{}", t.label);
         assert_eq!(
             (&r["files"]["copied"], &r["files"]["missing"]),
-            (&json!(6), &json!(1))
+            (&json!(9), &json!(1))
         );
         let groups = r["groups"].as_array().unwrap();
         let dates = groups

@@ -423,7 +423,8 @@ mod tests {
             (None, None)
         );
         assert_eq!(rows.iter().filter(|r| r.source == "Config.ini").count(), 16);
-        assert_eq!(rows.iter().filter(|r| r.source == "file").count(), 15);
+        // Среди файлов — четыре списка склада (`settings/Stock/*.txt`).
+        assert_eq!(rows.iter().filter(|r| r.source == "file").count(), 18);
         let template = rows
             .iter()
             .find(|r| r.source == "file" && r.source_key == "Shablon_Act_Priema.htm")

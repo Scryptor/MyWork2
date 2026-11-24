@@ -47,7 +47,10 @@ export interface Tile {
 
 const count = (n: number) => groupDigits(String(n));
 
-/** The totals: orders, clients, users, files with their size, files not found, warnings to look at. */
+/**
+ * The totals: orders, clients, users, the items of the stock (when there were any), files with their size, files
+ * not found, warnings to look at.
+ */
 export function reportTiles(r: ImportReportView): Tile[] {
 	const attention = r.groups
 		.filter((g) => g.severity === 'warning')
@@ -56,6 +59,7 @@ export function reportTiles(r: ImportReportView): Tile[] {
 		{ label: t.orders, value: count(r.orders) },
 		{ label: t.clients, value: count(r.clients) },
 		{ label: t.users, value: count(r.users) },
+		...(r.stock_items > 0 ? [{ label: t.stockItems, value: count(r.stock_items) }] : []),
 		{ label: t.files, value: count(r.files.copied), hint: formatBytes(r.files.bytes) },
 		...(r.files.missing > 0
 			? [{ label: t.missing, value: count(r.files.missing), tone: 'warning' as const }]
@@ -107,6 +111,9 @@ export function entryWhere(e: ReportEntry, code?: WarningCode): string {
 		keyUsed = true;
 	} else if (!keyUsed && isNumber(key) && source === 'ClientsMap') {
 		head = rr.clientNumber(key);
+		keyUsed = true;
+	} else if (!keyUsed && isNumber(key) && source === 'Stock') {
+		head = rr.stockNumber(key);
 		keyUsed = true;
 	}
 	const label = Object.hasOwn(rr.fields, field) ? rr.fields[field] : field;

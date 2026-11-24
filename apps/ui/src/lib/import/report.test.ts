@@ -31,6 +31,7 @@ const view = (over: Partial<ImportReportView> = {}): ImportReportView => ({
 	orders: 11,
 	clients: 7,
 	users: 4,
+	stock_items: 0,
 	files: { copied: 6, bytes: 2048, missing: 0 },
 	groups: [],
 	warnings_text: 'Отчёт',
@@ -75,6 +76,15 @@ describe('reportTiles', () => {
 			{ label: 'Файлов', value: '6', hint: '3 МБ' },
 			{ label: 'Требуют внимания', value: '5', tone: 'warning' }
 		]);
+	});
+
+	it('the items of the stock are a tile after the users, only when there were any', () => {
+		const tiles = reportTiles(view({ stock_items: 1204 }));
+		expect(tiles.slice(2, 4)).toEqual([
+			{ label: 'Пользователей', value: '4' },
+			{ label: 'Позиций склада', value: '1\u202f204' }
+		]);
+		expect(reportTiles(view()).map((t) => t.label)).not.toContain('Позиций склада');
 	});
 
 	it('files not found are a tile of their own; nothing to look at is not a warning', () => {
@@ -154,6 +164,17 @@ describe('entryWhere', () => {
 		expect(entryWhere(dup, 'barcode_duplicate')).toBe('Заказ · 123456789012 · Штрихкод');
 		// A barcode not in UPC-A or made anew is of one order: its key is that order's number.
 		expect(entryWhere({ ...e, field: 'Barcode' }, 'barcode_invalid')).toBe('Заказ № 5 · Штрихкод');
+	});
+	it('the stock: an item by its number, a write-off by its row, the fields in the words of the program', () => {
+		const item = { source: 'Stock', key: '2', field: 'CountOf', value: 'два', message: '' };
+		expect(entryWhere(item)).toBe('Позиция склада № 2 · Остаток');
+		expect(entryWhere({ ...item, key: '-2', field: 'id', value: '-2' })).toBe('Склад · Номер');
+		expect(
+			entryWhere({ source: 'StockMap', key: '3', field: 'ZIPId', value: '99', message: '' })
+		).toBe('Списание со склада · 3 · Позиция склада');
+		expect(
+			entryWhere({ source: 'Stock', key: '', field: '', value: 'позиций 4', message: '' })
+		).toBe('Склад');
 	});
 	it('next_number has no «Catalog · Catalog»', () => {
 		expect(

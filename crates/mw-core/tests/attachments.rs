@@ -96,6 +96,77 @@ async fn legacy_client_files_become_attachments() -> Result<(), CoreError> {
     Ok(())
 }
 
+fn legacy_stock_photo(key: &str, raw: serde_json::Value) -> ImportedLegacyRow {
+    ImportedLegacyRow {
+        source: "Stock.Photo".into(),
+        source_key: key.into(),
+        target: Some(mw_core::LegacyTarget::StockItem(1)),
+        raw,
+    }
+}
+
+/// Фото склада MyWork 2 — фото позиции (не заказа). Имя без точки (MyWork 2 брала последние
+/// четыре знака имени за расширение: «p3jpeg») — всё равно фото; след без `stored_as` пропускается;
+/// повторный запуск ничего не дублирует.
+#[tokio::test]
+async fn legacy_stock_photos_become_item_photos() -> Result<(), CoreError> {
+    for t in cores().await {
+        let dir = tempfile::tempdir().unwrap();
+        let core = t
+            .core
+            .clone()
+            .with_attachments_dir(dir.path().to_path_buf());
+        let photo = jpeg_bytes(400, 300);
+        put(dir.path(), "attachments/stock/1/p1.jpg", &photo);
+        put(dir.path(), "attachments/stock/1/p3jpeg", &photo);
+        let mut bundle = sample_bundle();
+        let file = |path: &str| json!({ "stored_as": path, "size": photo.len(), "sha256": "00" });
+        bundle.legacy_rows.extend([
+            legacy_stock_photo("1/Photo", file("attachments/stock/1/p1.jpg")),
+            legacy_stock_photo("1/Photo3", file("attachments/stock/1/p3jpeg")),
+            legacy_stock_photo("1/Photo2", json!({ "something": "else" })),
+        ]);
+        core.import_bundle(&admin(), bundle, ImportMode::IntoEmpty)
+            .await
+            .unwrap();
+        let photos = core.list_stock_photos(&admin(), 1).await?;
+        let got: Vec<_> = photos
+            .iter()
+            .map(|a| {
+                (
+                    a.kind,
+                    a.name.as_str(),
+                    a.stock_item_id,
+                    a.order_id,
+                    a.legacy,
+                    a.missing,
+                )
+            })
+            .collect();
+        assert_eq!(
+            got,
+            vec![
+                (AttachmentKind::Photo, "p1.jpg", Some(1), None, true, false),
+                (AttachmentKind::Photo, "p3jpeg", Some(1), None, true, false),
+            ],
+            "{}",
+            t.label
+        );
+        assert_eq!(photos[0].content_type, "image/jpeg");
+        assert_eq!(photos[0].size, i64::try_from(photo.len()).unwrap());
+        let read = core
+            .attachment_file(&admin(), photos[0].id, AttachmentVariant::Full)
+            .await?;
+        assert_eq!(std::fs::read(read.path).unwrap(), photo);
+        assert!(core.list_order_attachments(&admin(), 5).await?.is_empty());
+        let added = mw_db::backfill::legacy_stock_photos(core.db())
+            .await
+            .unwrap();
+        assert_eq!(added, 0, "{}", t.label);
+    }
+    Ok(())
+}
+
 #[tokio::test]
 async fn missing_file_reads_as_not_found() -> Result<(), CoreError> {
     for t in cores().await {

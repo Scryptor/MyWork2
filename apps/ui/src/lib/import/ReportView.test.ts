@@ -37,6 +37,7 @@ const view = (groups: ReportGroup[]): ImportReportView => ({
 	orders: 11,
 	clients: 7,
 	users: 4,
+	stock_items: 0,
 	files: { copied: 6, bytes: 2048, missing: 0 },
 	groups,
 	warnings_text: 'Отчёт',
@@ -153,9 +154,9 @@ describe('ReportView groups', () => {
 });
 
 describe('explanations', () => {
-	it('all 44 codes have a text with what was, what the transfer did and what to do', () => {
+	it('all 50 codes have a text with what was, what the transfer did and what to do', () => {
 		const codes = Object.keys(ru.importReport.explain);
-		expect(codes).toHaveLength(44);
+		expect(codes).toHaveLength(50);
 		for (const code of codes) {
 			const text = ru.importReport.explain[code as keyof typeof ru.importReport.explain];
 			expect(text.length, code).toBeGreaterThanOrEqual(3);
@@ -168,6 +169,12 @@ describe('explanations', () => {
 		expect(text).not.toMatch(/регистром или точкой в конце/);
 		expect(text).toContain('у пунктов полей-списков — ещё и знаком препинания в конце');
 		expect(text).toContain('сколько таких не попало');
+	});
+
+	it('the stock kept raw by an old import points to the button that transfers it', () => {
+		expect(ru.importReport.explain.stock_preserved.slice(1).join(' ')).toBe(
+			'Склад был сохранён в исходном виде, когда модуля склада ещё не было. Перенести его — кнопкой «Перенести склад из прошлого импорта» на странице «Импорт» в настройках.'
+		);
 	});
 
 	it('users: the screen of users is there; a lost password of the admins is named', () => {

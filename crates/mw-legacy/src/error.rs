@@ -23,8 +23,9 @@ pub enum LegacyError {
     #[error(transparent)]
     Core(#[from] CoreError),
     #[error(
-        "В базе MyWork 3 уже есть данные (клиенты: {}, заказы: {}, пользователи: {}, записи журнала: {})",
-        .0.clients, .0.orders, .0.users, .0.audit_entries
+        "В базе MyWork 3 уже есть данные (клиенты: {}, заказы: {}, пользователи: {}, записи журнала: {}, \
+         позиции склада: {})",
+        .0.clients, .0.orders, .0.users, .0.audit_entries, .0.stock_items
     )]
     TargetNotEmpty(ImportTarget),
     #[error("Папка вложений не пуста: {0}")]

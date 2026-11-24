@@ -75,6 +75,8 @@ pub struct ImportReportView {
     pub clients: u64,
     /// Перенесено пользователей.
     pub users: u64,
+    /// Перенесено позиций склада (в отчётах импортов до плана 8.1 — 0).
+    pub stock_items: u64,
     /// Файлы: скопировано, байт, не найдено.
     pub files: FileStats,
     /// Группы по кодам: сначала «требуют внимания», затем сведения, в порядке таблицы кодов.
@@ -193,6 +195,7 @@ pub fn report_view(
         orders: report.summary.orders,
         clients: report.summary.clients,
         users: report.summary.users,
+        stock_items: report.summary.stock_items,
         files: report.files,
         groups,
         warnings_text: report.full_text(),
@@ -352,7 +355,13 @@ mod tests {
                 warning(WarningCode::DateUnparsed, "Catalog", "2", "y"),
                 warning(WarningCode::DateUnparsed, "Catalog", "9", "z"),
             ],
-            "summary": ImportSummary { orders: 4, clients: 2, users: 1, ..Default::default() },
+            "summary": ImportSummary {
+                orders: 4,
+                clients: 2,
+                users: 1,
+                stock_items: 5,
+                ..Default::default()
+            },
         }));
         let view = report_view(&r, None);
         assert_eq!(
@@ -378,7 +387,10 @@ mod tests {
                 },
             ]
         );
-        assert_eq!((view.orders, view.clients, view.users), (4, 2, 1));
+        assert_eq!(
+            (view.orders, view.clients, view.users, view.stock_items),
+            (4, 2, 1, 5)
+        );
         assert_eq!(view.mode, LegacyImportMode::Replace);
         let item = import_item(&r);
         assert_eq!((item.orders, item.warnings), (4, 3));
@@ -410,7 +422,10 @@ mod tests {
     fn old_or_broken_reports_are_read_with_zeros() {
         for report in [json!({ "warnings": [] }), json!(null), json!("x")] {
             let view = report_view(&record(report), None);
-            assert_eq!((view.orders, view.groups.len()), (0, 0));
+            assert_eq!(
+                (view.orders, view.stock_items, view.groups.len()),
+                (0, 0, 0)
+            );
             assert!(view.warnings_text.contains("Перенесено"));
             assert_eq!(import_item(&record(json!(null))).warnings, 0);
         }

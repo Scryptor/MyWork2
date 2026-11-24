@@ -41,6 +41,56 @@ pub fn classify_file(name: &str) -> (&'static str, String) {
 /// Вызывается из выпущенной миграции, поэтому не зависит от набора колонок сущностей:
 /// читает и пишет только перечисленные здесь колонки.
 pub async fn legacy_client_files(conn: &impl ConnectionTrait) -> Result<u64, DbErr> {
+    legacy_files(
+        conn,
+        "ClientFiles",
+        "orders",
+        "order_id",
+        None,
+        classify_file,
+    )
+    .await
+}
+
+/// Фото позиций склада по следам файлов старой программы (`legacy_rows`: `Stock.Photo` →
+/// `stock_items`), как `legacy_client_files`; позиция должна существовать. У позиции — только фото:
+/// вид всегда «фото», даже если имя без расширения (MyWork 2 брала последние четыре знака имени
+/// за расширение: «фотоjpeg»); тип содержимого — по имени.
+pub async fn legacy_stock_photos(conn: &impl ConnectionTrait) -> Result<u64, DbErr> {
+    use sea_orm::{EntityTrait, QuerySelect};
+
+    use crate::entity::stock_item;
+
+    let items: std::collections::HashSet<i64> = stock_item::Entity::find()
+        .select_only()
+        .column(stock_item::Column::Id)
+        .into_tuple::<i64>()
+        .all(conn)
+        .await?
+        .into_iter()
+        .collect();
+    let photo = |name: &str| ("photo", classify_file(name).1);
+    legacy_files(
+        conn,
+        "Stock.Photo",
+        "stock_items",
+        "stock_item_id",
+        Some(&items),
+        photo,
+    )
+    .await
+}
+
+/// Вложения по следам `source` с целью `target_table`: владелец (номер цели) — в колонке `owner`;
+/// `owners` — какие номера есть (`None` — не проверять); `kind_of` — вид и тип по имени файла.
+async fn legacy_files(
+    conn: &impl ConnectionTrait,
+    source: &str,
+    target_table: &str,
+    owner: &str,
+    owners: Option<&std::collections::HashSet<i64>>,
+    kind_of: impl Fn(&str) -> (&'static str, String),
+) -> Result<u64, DbErr> {
     use std::collections::{HashMap, HashSet};
 
     use sea_orm::sea_query::{Alias, Query};
@@ -54,8 +104,8 @@ pub async fn legacy_client_files(conn: &impl ConnectionTrait) -> Result<u64, DbE
         .column(legacy_row::Column::ImportId)
         .column(legacy_row::Column::TargetId)
         .column(legacy_row::Column::Raw)
-        .filter(legacy_row::Column::Source.eq("ClientFiles"))
-        .filter(legacy_row::Column::TargetTable.eq("orders"))
+        .filter(legacy_row::Column::Source.eq(source))
+        .filter(legacy_row::Column::TargetTable.eq(target_table))
         .order_by_asc(legacy_row::Column::Id)
         .into_tuple()
         .all(conn)
@@ -84,9 +134,12 @@ pub async fn legacy_client_files(conn: &impl ConnectionTrait) -> Result<u64, DbE
 
     let mut pending: Vec<[sea_orm::sea_query::SimpleExpr; 9]> = Vec::new();
     for (import_id, target_id, raw) in rows {
-        let (Some(order_id), Some(at)) = (target_id, imported_at.get(&import_id)) else {
+        let (Some(owner_id), Some(at)) = (target_id, imported_at.get(&import_id)) else {
             continue;
         };
+        if owners.is_some_and(|ids| !ids.contains(&owner_id)) {
+            continue;
+        }
         let Ok(raw) = serde_json::from_str::<serde_json::Value>(&raw) else {
             continue;
         };
@@ -97,9 +150,9 @@ pub async fn legacy_client_files(conn: &impl ConnectionTrait) -> Result<u64, DbE
             continue;
         }
         let name = path.rsplit('/').next().unwrap_or(path).to_owned();
-        let (kind, content_type) = classify_file(&name);
+        let (kind, content_type) = kind_of(&name);
         pending.push([
-            order_id.into(),
+            owner_id.into(),
             kind.into(),
             name.into(),
             "".into(),
@@ -114,7 +167,7 @@ pub async fn legacy_client_files(conn: &impl ConnectionTrait) -> Result<u64, DbE
     for chunk in pending.chunks(500) {
         let mut insert = Query::insert();
         insert.into_table(Alias::new("attachments")).columns([
-            Alias::new("order_id"),
+            Alias::new(owner),
             Alias::new("kind"),
             Alias::new("name"),
             Alias::new("caption"),

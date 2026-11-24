@@ -6,7 +6,7 @@
 //! Исходная база открывается только на чтение; на PostgreSQL своя схема удаляется в конце.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::print_stdout)]
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
@@ -29,7 +29,11 @@ struct Expected {
     blacklisted: u64,
     history: u64,
     next_order_id: i64,
-    /// `estimate_from`, `prepayment`, `final_price`, `extra_costs`, `discount`.
+    /// Строк `Stock` и `StockMap`.
+    stock_rows: u64,
+    stock_map_rows: u64,
+    /// `estimate_from`, `prepayment`, `final_price`, `extra_costs`, `discount`; затраты — как в
+    /// MyWork 2, с запчастями склада.
     money: [i64; 5],
     /// Поля-списки: (колонка `orders`, номер заказа → текст ячейки без краёв).
     lists: Vec<(&'static str, HashMap<i64, String>)>,
@@ -51,6 +55,8 @@ const DICTIONARY_LINE_WORDS: &[&str] = &[
     "с",
     "переписанным",
     "полем",
+    "со",
+    "склада",
 ];
 
 /// Строка справочника печатается, только если название — справочник программы, а в числах нет
@@ -212,6 +218,8 @@ async fn expected(db_file: &Path) -> Expected {
         blacklisted: count_text(&blist, TRUE_VALUES),
         history: count_rows(c, "StatesMap").await + count_rows(c, "HistoryBD").await,
         next_order_id: sequence.max(ids.iter().copied().max().unwrap_or(0)) + 1,
+        stock_rows: count_rows(c, "Stock").await,
+        stock_map_rows: count_rows(c, "StockMap").await,
         money,
         lists,
     };
@@ -280,6 +288,32 @@ async fn check_backend(
         out
     };
     let without_client = report.count(WarningCode::OrderWithoutClient);
+    // Запчасти, вычтенные из затрат: по заказам без «расходы оставлены как есть».
+    let kept: HashSet<i64> = report
+        .warnings
+        .iter()
+        .filter(|w| w.code == WarningCode::ExtraCostsKept)
+        .filter_map(|w| w.key.parse().ok())
+        .collect();
+    let split: i64 = {
+        let db = core.db();
+        db.query_all_raw(Statement::from_string(
+            db.get_database_backend(),
+            "SELECT order_id, CAST(SUM(price * quantity) AS BIGINT) AS n FROM order_parts \
+             GROUP BY order_id",
+        ))
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|row| {
+            let order: i64 = row.try_get_by_index(0).unwrap();
+            let sum: i64 = row.try_get_by_index(1).unwrap();
+            (order, sum)
+        })
+        .filter(|(order, _)| !kept.contains(order))
+        .map(|(_, sum)| sum)
+        .sum()
+    };
 
     println!("[{label}] заказов — {}", s.orders);
     println!("[{label}] удалённых — {}", s.deleted_orders);
@@ -297,6 +331,10 @@ async fn check_backend(
     println!("[{label}] в чёрном списке — {blacklisted}");
     println!("[{label}] следующий номер — {}", s.next_order_id);
     println!("[{label}] строк legacy_rows — {}", s.legacy_rows);
+    println!("[{label}] позиций склада — {}", s.stock_items);
+    println!("[{label}] запчастей в заказах — {}", s.order_parts);
+    println!("[{label}] вычтено из затрат запчастей, коп. — {split}");
+    println!("[{label}] затраты оставлены как есть — {}", kept.len());
     println!("[{label}] деньги, коп. (оценка, предоплата, итог, затраты, скидка) — {money:?}");
     println!(
         "[{label}] файлов: скопировано {}, не найдено {}",
@@ -383,8 +421,26 @@ async fn check_backend(
     .into_iter()
     .enumerate()
     {
-        eq(name, money[i].into(), want.money[i].into());
+        // Затраты MyWork 2 = расходы MyWork 3 + вычтенные из них запчасти.
+        let got = if name == "extra_costs" {
+            money[i] + split
+        } else {
+            money[i]
+        };
+        eq(name, got.into(), want.money[i].into());
     }
+    let skipped = report.count(WarningCode::StockRowSkipped) as u64;
+    let without_order = report.count(WarningCode::StockPartWithoutOrder) as u64;
+    eq(
+        "позиций склада и пропущенных строк",
+        (s.stock_items + skipped).into(),
+        want.stock_rows.into(),
+    );
+    eq(
+        "запчастей и списаний без заказа",
+        (s.order_parts + without_order).into(),
+        want.stock_map_rows.into(),
+    );
     if s.clients < want.clients_map {
         bad.push(format!(
             "{label}: клиентов {} меньше строк ClientsMap {}",
@@ -403,6 +459,10 @@ fn a_dictionary_line_with_other_words_is_not_printed() {
     assert!(dictionary_line_is_safe(
         "Откуда узнали",
         "из клиентов — 1, стандартных — 4, значений у одного клиента — 7"
+    ));
+    assert!(dictionary_line_is_safe(
+        "Типы запчастей",
+        "из файла — 12, со склада — 3"
     ));
     assert!(!dictionary_line_is_safe(
         "Бренды",

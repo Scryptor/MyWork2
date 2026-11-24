@@ -40,12 +40,19 @@ pub struct ImportTarget {
     pub orders: u64,
     pub users: u64,
     pub audit_entries: u64,
+    /// Позиции склада, и удалённые тоже: их номера заняты.
+    pub stock_items: u64,
 }
 
 impl ImportTarget {
-    /// База считается пустой, если в ней нет ни клиентов, ни заказов, ни пользователей, ни журнала.
+    /// База считается пустой, если в ней нет ни клиентов, ни заказов, ни пользователей, ни журнала,
+    /// ни позиций склада.
     pub fn is_empty(&self) -> bool {
-        self.clients == 0 && self.orders == 0 && self.users == 0 && self.audit_entries == 0
+        self.clients == 0
+            && self.orders == 0
+            && self.users == 0
+            && self.audit_entries == 0
+            && self.stock_items == 0
     }
 }
 
@@ -158,6 +165,53 @@ pub struct ImportedHistory {
     pub details: Option<serde_json::Value>,
 }
 
+/// Позиция склада со своим номером (`Stock.id`). Тексты — как в MyWork 2, без пробелов по краям;
+/// `created_at` и `updated_at` — время импорта.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImportedStockItem {
+    pub id: i64,
+    pub name: String,
+    pub device_type: String,
+    pub part_type: String,
+    pub brand: String,
+    pub model: String,
+    pub color: String,
+    pub note: String,
+    pub quantity: i64,
+    pub price: Money,
+    pub restock_threshold: i64,
+}
+
+/// Запчасть заказа из MyWork 2 (`StockMap`): уже списанное, остаток позиции не меняет.
+/// `stock_item_id` — `None`, если позиции не было уже в MyWork 2; `name` — снимок выводимого
+/// наименования; время — время импорта, автора нет.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImportedOrderPart {
+    pub order_id: i64,
+    pub stock_item_id: Option<i64>,
+    pub name: String,
+    pub price: Money,
+    pub quantity: i64,
+}
+
+/// Склад пакета: позиции, запчасти заказов и следующий номер позиции (больше наибольшего;
+/// пустой склад — не меньше 1).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ImportedStock {
+    pub items: Vec<ImportedStockItem>,
+    pub parts: Vec<ImportedOrderPart>,
+    pub next_stock_item_id: i64,
+}
+
+/// «Расходы» заказа после выделения запчастей склада: `from` — затраты MyWork 2 (с запчастями),
+/// `to` — без них.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExtraCostsChange {
+    pub order_id: i64,
+    pub from: Money,
+    pub to: Money,
+}
+
 /// Куда попала исходная строка; роль и пользователь — по названию и логину.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LegacyTarget {
@@ -165,6 +219,8 @@ pub enum LegacyTarget {
     Client(i64),
     Role(String),
     User(String),
+    /// Позиция склада (`stock_items`).
+    StockItem(i64),
 }
 
 /// След исходной строки: откуда, куда, полное исходное значение.
@@ -200,6 +256,8 @@ pub struct ImportBundle {
     pub legacy_rows: Vec<ImportedLegacyRow>,
     pub next_order_id: i64,
     pub next_client_id: i64,
+    /// Склад: позиции и запчасти заказов.
+    pub stock: ImportedStock,
     /// Пишется в `legacy_imports.report`; объект получает ещё ключ `summary` — `ImportSummary` записанного.
     pub report: serde_json::Value,
 }
@@ -231,4 +289,10 @@ pub struct ImportSummary {
     /// Пользователей MyWork 2, отмеченных «Мастер».
     #[serde(default)]
     pub masters_marked: u64,
+    /// Позиций склада. В отчётах импортов до плана 8.1 этих чисел нет — читаются нулём.
+    #[serde(default)]
+    pub stock_items: u64,
+    /// Запчастей заказов (списаний со склада MyWork 2).
+    #[serde(default)]
+    pub order_parts: u64,
 }

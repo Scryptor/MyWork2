@@ -7470,6 +7470,7 @@
           "orders",
           "clients",
           "users",
+          "stock_items",
           "files",
           "groups",
           "warnings_text",
@@ -7516,6 +7517,12 @@
           },
           "source_path": {
             "type": "string"
+          },
+          "stock_items": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Перенесено позиций склада (в отчётах импортов до плана 8.1 — 0).",
+            "minimum": 0
           },
           "users": {
             "type": "integer",
@@ -10154,6 +10161,11 @@
           "unknown_table",
           "file_missing",
           "file_unreadable",
+          "quantity_unparsed",
+          "stock_row_skipped",
+          "stock_part_orphan",
+          "stock_part_without_order",
+          "extra_costs_kept",
           "status_renamed",
           "status_custom",
           "phone_split",
@@ -10170,6 +10182,7 @@
           "setting_preserved",
           "stock_preserved",
           "client_files_orphan",
+          "stock_imported",
           "next_number"
         ]
       },
