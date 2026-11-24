@@ -238,3 +238,36 @@ async fn concurrent_intakes_with_one_key_make_one_order() -> Result<(), CoreErro
     }
     Ok(())
 }
+
+#[tokio::test]
+async fn a_new_order_keeps_its_pattern_key() -> Result<(), CoreError> {
+    for t in cores().await {
+        let o = t
+            .core
+            .create_order(
+                &admin(),
+                NewOrder {
+                    device_pattern: " 1596 ".into(),
+                    ..sample_new_order()
+                },
+            )
+            .await?;
+        assert_eq!(o.device_pattern, "1596", "{}", t.label);
+        assert_eq!(
+            t.core.get_order(&admin(), o.id).await?.device_pattern,
+            "1596",
+            "{}",
+            t.label
+        );
+        // Приём без ключа: пустой ключ.
+        let o = t.core.create_order(&admin(), sample_new_order()).await?;
+        assert_eq!(o.device_pattern, "", "{}", t.label);
+    }
+    // Тело приёма без поля ключа читается с пустым ключом.
+    let mut body = serde_json::to_value(sample_new_order()).unwrap();
+    let removed = body.as_object_mut().unwrap().remove("device_pattern");
+    assert_eq!(removed, Some(serde_json::json!("")));
+    let read: NewOrder = serde_json::from_value(body).unwrap();
+    assert_eq!(read.device_pattern, "");
+    Ok(())
+}

@@ -86,6 +86,116 @@ async fn patch_bumps_version_audits_diff_and_masks_password() -> Result<(), Core
 }
 
 #[tokio::test]
+async fn the_pattern_key_is_saved_and_masked_in_history() -> Result<(), CoreError> {
+    for t in cores().await {
+        let o = t.core.create_order(&admin(), sample_new_order()).await?;
+        let u = t
+            .core
+            .update_order(
+                &admin(),
+                o.id,
+                o.version,
+                OrderPatch {
+                    device_pattern: Some("15963".into()),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        assert_eq!(u.device_pattern, "15963", "{}", t.label);
+        assert_eq!(
+            t.core.get_order(&admin(), o.id).await?.device_pattern,
+            "15963"
+        );
+        let last = last_audit(&t.core, o.id).await;
+        assert_eq!(last.action, "order.updated", "{}", t.label);
+        assert_eq!(last.summary, "Изменено: графический ключ", "{}", t.label);
+        let details = last.details.unwrap();
+        assert_eq!(details["changes"]["device_pattern"], json!(["***", "***"]));
+        assert!(
+            !serde_json::to_string(&details).unwrap().contains("15963"),
+            "{}: {details}",
+            t.label
+        );
+
+        // Тот же ключ — правки нет; очистка — снова запись с маской.
+        let same = t
+            .core
+            .update_order(
+                &admin(),
+                o.id,
+                u.version,
+                OrderPatch {
+                    device_pattern: Some("15963".into()),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        assert_eq!(same.version, u.version, "{}", t.label);
+        let cleared = t
+            .core
+            .update_order(
+                &admin(),
+                o.id,
+                u.version,
+                OrderPatch {
+                    device_pattern: Some(String::new()),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        assert_eq!(cleared.device_pattern, "", "{}", t.label);
+        let last = last_audit(&t.core, o.id).await;
+        assert_eq!(last.summary, "Изменено: графический ключ", "{}", t.label);
+        assert_eq!(
+            last.details.unwrap()["changes"]["device_pattern"],
+            json!(["***", "***"])
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_short_pattern_is_rejected() -> Result<(), CoreError> {
+    for t in cores().await {
+        let o = t.core.create_order(&admin(), sample_new_order()).await?;
+        assert_validation(
+            t.core
+                .update_order(
+                    &admin(),
+                    o.id,
+                    o.version,
+                    OrderPatch {
+                        device_pattern: Some("158".into()),
+                        ..Default::default()
+                    },
+                )
+                .await,
+            &[("device_pattern", "invalid")],
+        );
+        assert_eq!(t.core.get_order(&admin(), o.id).await?, o, "{}", t.label);
+        assert_validation(
+            t.core
+                .create_order(
+                    &admin(),
+                    NewOrder {
+                        device_pattern: "158".into(),
+                        ..sample_new_order()
+                    },
+                )
+                .await,
+            &[("device_pattern", "invalid")],
+        );
+        assert_eq!(
+            count_audit(&t.core, "order.created").await,
+            1,
+            "{}",
+            t.label
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test]
 async fn issue_requires_the_default_set_and_keeps_first_issue_date() -> Result<(), CoreError> {
     for t in cores().await {
         let o = t.core.create_order(&admin(), sample_new_order()).await?;

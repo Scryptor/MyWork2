@@ -204,6 +204,7 @@ describe('toNewOrder', () => {
 			color: 'Чёрный',
 			// A password may have spaces of its own.
 			device_password: ' 12 34 ',
+			device_pattern: '',
 			completeness: 'Чехол, Зарядка',
 			device_condition: 'Царапины',
 			malfunction: 'Не включается, Залит, после падения',

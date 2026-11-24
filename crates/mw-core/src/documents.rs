@@ -17,6 +17,7 @@ use mw_docs::{
 use mw_domain::document_template::Template;
 use mw_domain::documents::DocumentKind;
 use mw_domain::money::{Money, doc_text, format_money_doc};
+use mw_domain::pattern::pattern_text;
 use mw_domain::permission::Permission;
 use mw_domain::phone::format_phone;
 use mw_domain::validation::FieldError;
@@ -740,6 +741,8 @@ fn order_data(
             ("order.brand", order.brand.clone()),
             ("order.model", order.model.clone()),
             ("order.serial", order.serial.clone()),
+            ("order.password", order.device_password.clone()),
+            ("order.pattern", pattern_text(&order.device_pattern)),
             ("order.color", order.color.clone()),
             ("order.completeness", order.completeness.clone()),
             ("order.condition", order.device_condition.clone()),
@@ -1190,6 +1193,8 @@ mod tests {
                 model: "Galaxy A52".into(),
                 serial: "R58R00000AB".into(),
                 color: "Чёрный".into(),
+                device_password: "0000".into(),
+                device_pattern: "1236".into(),
                 completeness: "Чехол".into(),
                 device_condition: "Царапины".into(),
                 malfunction: "Не включается".into(),
@@ -1266,6 +1271,54 @@ mod tests {
             }
             assert_eq!(data.barcode.as_deref(), Some(order.barcode.as_str()));
             assert!(!data.blank, "{label}");
+        }
+    }
+
+    /// Пароль устройства — как записан, графический ключ — точками через «·».
+    #[tokio::test]
+    async fn password_and_pattern_reach_the_document_data() {
+        for (label, db) in mw_db::testing::all_backends().await {
+            let core = core_on_22_november(db).await;
+            let device = NewOrder {
+                device_type: "Смартфон".into(),
+                brand: "Samsung".into(),
+                model: "Galaxy A52".into(),
+                malfunction: "Не включается".into(),
+                ..Default::default()
+            };
+            let new = NewOrder {
+                client: ClientRef::New(NewClient {
+                    full_name: "Петров Пётр".into(),
+                    ..Default::default()
+                }),
+                device_password: "0000".into(),
+                device_pattern: "1236".into(),
+                ..device.clone()
+            };
+            let order = core.create_order(&admin(), new).await.unwrap();
+            for kind in [DocumentKind::IntakeAct, DocumentKind::IssueAct] {
+                let data = core
+                    .document_data(&admin(), &request(kind, Some(order.id)))
+                    .await
+                    .unwrap();
+                assert_eq!(data.values["order.password"], "0000", "{label}: {kind:?}");
+                assert_eq!(
+                    data.values["order.pattern"], "1 · 2 · 3 · 6",
+                    "{label}: {kind:?}"
+                );
+            }
+            // Без пароля и ключа — пусто.
+            let new = NewOrder {
+                client: ClientRef::Existing(order.client_id),
+                ..device
+            };
+            let bare = core.create_order(&admin(), new).await.unwrap();
+            let data = core
+                .document_data(&admin(), &request(DocumentKind::IntakeAct, Some(bare.id)))
+                .await
+                .unwrap();
+            assert_eq!(data.values["order.password"], "", "{label}");
+            assert_eq!(data.values["order.pattern"], "", "{label}");
         }
     }
 

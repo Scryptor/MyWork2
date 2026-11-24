@@ -8010,6 +8010,7 @@
           "serial",
           "color",
           "device_password",
+          "device_pattern",
           "completeness",
           "device_condition",
           "malfunction",
@@ -8055,6 +8056,10 @@
           "device_password": {
             "type": "string",
             "description": "Пароль устройства."
+          },
+          "device_pattern": {
+            "type": "string",
+            "description": "Графический ключ: точки сетки 3 × 3 (1–9 слева направо, сверху вниз) строкой цифр в порядке\nввода, от 4 до 9 без повторов; пусто — нет ключа. Тело без поля читается с пустым ключом."
           },
           "device_type": {
             "type": "string",
@@ -8402,6 +8407,7 @@
           "serial",
           "color",
           "device_password",
+          "device_pattern",
           "completeness",
           "device_condition",
           "malfunction",
@@ -8467,6 +8473,10 @@
           "device_password": {
             "type": "string",
             "description": "Пароль устройства."
+          },
+          "device_pattern": {
+            "type": "string",
+            "description": "Графический ключ: точки сетки 3 × 3 (1–9 слева направо, сверху вниз) строкой цифр в порядке\nввода; пусто — нет ключа."
           },
           "device_type": {
             "type": "string",
@@ -8982,6 +8992,10 @@
           "device_password": {
             "type": "string",
             "description": "Пароль устройства."
+          },
+          "device_pattern": {
+            "type": "string",
+            "description": "Графический ключ: от 4 до 9 точек 1–9 без повторов; пустая строка — снять ключ."
           },
           "device_type": {
             "type": "string",

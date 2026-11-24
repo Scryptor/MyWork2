@@ -37,7 +37,7 @@ const NOT_SET: &str = "Не указан";
 /// Keys of the firm-link fields, in the order of the menu.
 pub const FIRM_LINKS: [&str; 3] = ["firm.telegram", "firm.google_maps", "firm.yandex_maps"];
 
-static FIELDS: [FieldDef; 36] = [
+static FIELDS: [FieldDef; 38] = [
     field("order.number", "заказ.номер", "Номер заказа", "1234", ""),
     field(
         "order.barcode",
@@ -82,6 +82,21 @@ static FIELDS: [FieldDef; 36] = [
         "Серийный номер",
         "R58R00000AB",
         NOT_SET,
+    ),
+    // Пароль и ключ стандартные акты не печатают (акт отдают клиенту): мастерская ставит их в свой.
+    field(
+        "order.password",
+        "заказ.пароль",
+        "Пароль устройства",
+        "1234",
+        "",
+    ),
+    field(
+        "order.pattern",
+        "заказ.графический_ключ",
+        "Графический ключ",
+        "1 · 5 · 8 · 9 · 6 · 3",
+        "",
     ),
     field("order.color", "заказ.цвет", "Цвет", "Чёрный", ""),
     field(
@@ -303,7 +318,7 @@ mod tests {
         assert_eq!(key("фирма.телеграм"), Some("firm.telegram"));
         assert_eq!(key("фирма.гугл_карты"), Some("firm.google_maps"));
         assert_eq!(key("Фирма.Яндекс_Карты"), Some("firm.yandex_maps"));
-        assert_eq!(FIELDS.len(), 36);
+        assert_eq!(FIELDS.len(), 38);
         let at = FIELDS.iter().position(|f| f.key == "firm.legal").unwrap();
         let next: Vec<_> = FIELDS[at + 1..at + 4].iter().map(|f| f.key).collect();
         assert_eq!(next, FIRM_LINKS);
@@ -325,6 +340,38 @@ mod tests {
             sample("firm.yandex_maps"),
             Some(("https://yandex.ru/maps/?text=example", ""))
         );
+    }
+
+    /// Пароль и графический ключ — сразу после серийного номера; пустые не печатаются ничем.
+    #[test]
+    fn password_and_pattern_follow_the_serial() {
+        let at = FIELDS.iter().position(|f| f.key == "order.serial").unwrap();
+        let next: Vec<_> = FIELDS[at + 1..at + 3]
+            .iter()
+            .map(|f| (f.key, f.placeholder, f.label, f.sample, f.empty))
+            .collect();
+        assert_eq!(
+            next,
+            [
+                (
+                    "order.password",
+                    "заказ.пароль",
+                    "Пароль устройства",
+                    "1234",
+                    ""
+                ),
+                (
+                    "order.pattern",
+                    "заказ.графический_ключ",
+                    "Графический ключ",
+                    "1 · 5 · 8 · 9 · 6 · 3",
+                    ""
+                ),
+            ]
+        );
+        let key = |name| field_by_placeholder(name).map(|f| f.key);
+        assert_eq!(key("Заказ.Пароль"), Some("order.password"));
+        assert_eq!(key("заказ.графический_ключ"), Some("order.pattern"));
     }
 
     #[test]

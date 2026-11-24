@@ -382,6 +382,72 @@ async fn issue_act_prints_an_order_not_issued_yet_without_the_issue_date() -> Re
     Ok(())
 }
 
+/// Пароль и графический ключ — поля шаблона: стандартные документы заказа их не печатают (акт
+/// отдают клиенту), шаблон мастерской, где они написаны, — печатает.
+#[tokio::test]
+async fn standard_acts_do_not_print_password_or_pattern() -> Result<(), CoreError> {
+    use mw_domain::document_template::{Align, Block, BlockBody, CopyFilter};
+    for t in cores().await {
+        let order = t
+            .core
+            .create_order(
+                &admin(),
+                NewOrder {
+                    device_password: "Zx-0000-pw".into(),
+                    device_pattern: "1236".into(),
+                    ..sample_new_order()
+                },
+            )
+            .await?;
+        for kind in [
+            DocumentKind::IntakeAct,
+            DocumentKind::IssueAct,
+            DocumentKind::WarrantyIntakeAct,
+            DocumentKind::WarrantyIssueAct,
+            DocumentKind::Sticker,
+        ] {
+            let out = text(&t, request(kind, Some(order.id))).await;
+            assert!(out.contains("Samsung"), "{}: {kind:?}: {out:?}", t.label);
+            for secret in ["Zx-0000-pw", "1 · 2 · 3 · 6", "1236"] {
+                assert!(
+                    !out.contains(secret),
+                    "{}: {kind:?}: {secret} в {out:?}",
+                    t.label
+                );
+            }
+        }
+
+        let mut own = mw_docs::standard_template(DocumentKind::IntakeAct);
+        own.blocks.push(Block {
+            copies: CopyFilter::Both,
+            body: BlockBody::Text {
+                text: "Пароль: {заказ.пароль}. Ключ: {заказ.графический_ключ}.".into(),
+                size_pt: None,
+                bold: false,
+                align: Align::Left,
+                one_line: false,
+            },
+        });
+        t.core
+            .save_document_template(
+                &admin(),
+                DocumentKind::IntakeAct,
+                mw_core::TemplateSave {
+                    template: own,
+                    version: 0,
+                },
+            )
+            .await?;
+        let out = text(&t, request(DocumentKind::IntakeAct, Some(order.id))).await;
+        assert_twice(
+            t.label,
+            &out,
+            &["Пароль: Zx-0000-pw. Ключ: 1 · 2 · 3 · 6.".into()],
+        );
+    }
+    Ok(())
+}
+
 #[tokio::test]
 async fn order_documents_need_an_order_or_the_sample() -> Result<(), CoreError> {
     for t in cores().await {

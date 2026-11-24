@@ -59,6 +59,11 @@ color: string,
  */
 device_password: string, 
 /**
+ * Графический ключ: точки сетки 3 × 3 (1–9 слева направо, сверху вниз) строкой цифр в порядке
+ * ввода; пусто — нет ключа.
+ */
+device_pattern: string, 
+/**
  * Комплектность.
  */
 completeness: string, 

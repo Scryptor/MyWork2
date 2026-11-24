@@ -56,6 +56,7 @@ pub mod document_template;
 pub mod documents;
 pub mod issue;
 pub mod money;
+pub mod pattern;
 pub mod permission;
 pub mod phone;
 pub mod search;

@@ -53,6 +53,7 @@ export function order(id: number, over: Partial<Order> = {}): Order {
 		serial: '',
 		color: '',
 		device_password: '',
+		device_pattern: '',
 		completeness: '',
 		device_condition: '',
 		malfunction: 'Не включается',

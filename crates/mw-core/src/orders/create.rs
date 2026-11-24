@@ -1,6 +1,7 @@
 use mw_db::entity::{attachment, order, service_point, status};
 use mw_domain::barcode::order_barcode;
 use mw_domain::money::Money;
+use mw_domain::pattern::validate_pattern;
 use mw_domain::permission::Permission;
 use mw_domain::status::StatusKind;
 use mw_domain::validation::FieldError;
@@ -107,6 +108,7 @@ impl Core {
         let brand = trimmed(&new.brand);
         let model = trimmed(&new.model);
         let malfunction = trimmed(&new.malfunction);
+        let device_pattern = trimmed(&new.device_pattern);
 
         let tx = self.begin_write().await?;
         let mut errors: Vec<FieldError> = Vec::new();
@@ -135,6 +137,13 @@ impl Core {
             && from > to
         {
             errors.push(FieldError::new("estimate_to", "estimate_range"));
+        }
+        if let Err(message) = validate_pattern(&device_pattern) {
+            errors.push(FieldError::with_message(
+                "device_pattern",
+                "invalid",
+                message,
+            ));
         }
         match &new.client {
             ClientRef::Existing(id) => {
@@ -208,6 +217,7 @@ impl Core {
             serial: Set(trimmed(&new.serial)),
             color: Set(trimmed(&new.color)),
             device_password: Set(trimmed(&new.device_password)),
+            device_pattern: Set(device_pattern),
             completeness: Set(trimmed(&new.completeness)),
             device_condition: Set(trimmed(&new.device_condition)),
             malfunction: Set(malfunction),

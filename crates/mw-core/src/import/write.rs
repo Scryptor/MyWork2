@@ -495,6 +495,8 @@ async fn write_orders(
             serial: o.serial.clone(),
             color: o.color.clone(),
             device_password: String::new(),
+            // В MyWork 2 графического ключа не было.
+            device_pattern: String::new(),
             completeness: o.completeness.clone(),
             device_condition: o.device_condition.clone(),
             malfunction: o.malfunction.clone(),

@@ -428,6 +428,7 @@ export function toNewOrder(d: IntakeDraft, pointId: number | null, photos = fals
 		serial: d.serial.trim(),
 		color: d.color.trim(),
 		device_password: d.password,
+		device_pattern: '',
 		completeness: joinChips(d.completeness),
 		device_condition: joinChips(d.condition),
 		malfunction: joinChips([...d.malfunctionChips, d.malfunction]),

@@ -49,6 +49,8 @@ pub struct Model {
     /// Мастер заказа — пользователь с отметкой «Мастер»; имя текстом — в `master` (снимок на
     /// момент выбора, у старых заказов — как было записано).
     pub master_user_id: Option<i64>,
+    /// Графический ключ: точки сетки 3 × 3 строкой цифр 1–9 в порядке ввода; пусто — нет ключа.
+    pub device_pattern: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

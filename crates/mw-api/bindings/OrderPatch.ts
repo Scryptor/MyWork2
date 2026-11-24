@@ -46,6 +46,10 @@ color?: string,
  */
 device_password?: string, 
 /**
+ * Графический ключ: от 4 до 9 точек 1–9 без повторов; пустая строка — снять ключ.
+ */
+device_pattern?: string, 
+/**
  * Комплектность.
  */
 completeness?: string, 

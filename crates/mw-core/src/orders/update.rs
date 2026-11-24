@@ -1,6 +1,7 @@
 use chrono::{NaiveDateTime, SubsecRound};
 use mw_db::entity::{order, service_point, status};
 use mw_domain::issue::IssueRequirement;
+use mw_domain::pattern::validate_pattern;
 use mw_domain::permission::Permission;
 use mw_domain::status::StatusKind;
 use mw_domain::validation::FieldError;
@@ -161,6 +162,18 @@ impl Core {
                 json!(MASK),
             );
             m.device_password = new;
+        }
+        // Графический ключ — так же: в журнале маска.
+        if let Some(new) = trimmed(patch.device_pattern)
+            && new != m.device_pattern
+        {
+            d.note(
+                "device_pattern",
+                "графический ключ",
+                json!(MASK),
+                json!(MASK),
+            );
+            m.device_pattern = new;
         }
         apply!(
             d,
@@ -324,6 +337,15 @@ impl Core {
         {
             errors.push(FieldError::new("estimate_to", "estimate_range"));
         }
+        if d.changes.contains_key("device_pattern")
+            && let Err(message) = validate_pattern(&m.device_pattern)
+        {
+            errors.push(FieldError::with_message(
+                "device_pattern",
+                "invalid",
+                message,
+            ));
+        }
         if !errors.is_empty() {
             return Err(CoreError::Validation(errors));
         }
@@ -359,6 +381,10 @@ impl Core {
             .col_expr(
                 order::Column::DevicePassword,
                 Expr::value(m.device_password.clone()),
+            )
+            .col_expr(
+                order::Column::DevicePattern,
+                Expr::value(m.device_pattern.clone()),
             )
             .col_expr(
                 order::Column::Completeness,

@@ -334,6 +334,24 @@ async fn legacy_import_migration_backfills_phones_and_warranty_text() {
     }
 }
 
+/// Миграций до графического ключа (`m20261124_000003_device_pattern`).
+const BEFORE_DEVICE_PATTERN: u32 = 15;
+
+#[tokio::test]
+async fn orders_taken_before_the_pattern_key_get_an_empty_one() {
+    for (label, db) in mw_db::testing::all_backends_up_to(BEFORE_DEVICE_PATTERN).await {
+        let client = insert_client_row(&db, None).await;
+        let id = insert_order_row_with_warranty(&db, client, None).await;
+        mw_db::migrate(&db).await.unwrap();
+        let row = order::Entity::find_by_id(id).one(&db).await.unwrap();
+        assert_eq!(
+            row.map(|o| o.device_pattern),
+            Some(String::new()),
+            "{label}"
+        );
+    }
+}
+
 #[tokio::test]
 async fn legacy_rows_are_unique_per_source_row() {
     for (label, db) in mw_db::testing::all_backends().await {

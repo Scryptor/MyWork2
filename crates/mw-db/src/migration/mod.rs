@@ -19,6 +19,7 @@ mod m20261121_000001_order_comments;
 mod m20261123_000001_document_templates;
 mod m20261124_000001_stock;
 mod m20261124_000002_stock_data;
+mod m20261124_000003_device_pattern;
 
 pub struct Migrator;
 
@@ -41,6 +42,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261123_000001_document_templates::Migration),
             Box::new(m20261124_000001_stock::Migration),
             Box::new(m20261124_000002_stock_data::Migration),
+            Box::new(m20261124_000003_device_pattern::Migration),
         ]
     }
 }

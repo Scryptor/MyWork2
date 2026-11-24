@@ -59,6 +59,11 @@ pub struct NewOrder {
     pub color: String,
     /// Пароль устройства.
     pub device_password: String,
+    /// Графический ключ: точки сетки 3 × 3 (1–9 слева направо, сверху вниз) строкой цифр в порядке
+    /// ввода, от 4 до 9 без повторов; пусто — нет ключа. Тело без поля читается с пустым ключом.
+    #[serde(default)]
+    #[schema(required = true)]
+    pub device_pattern: String,
     /// Комплектность.
     pub completeness: String,
     /// Внешнее состояние устройства.
@@ -141,6 +146,10 @@ pub struct OrderPatch {
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub device_password: Option<String>,
+    /// Графический ключ: от 4 до 9 точек 1–9 без повторов; пустая строка — снять ключ.
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
+    pub device_pattern: Option<String>,
     /// Комплектность.
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
@@ -232,6 +241,9 @@ pub struct Order {
     pub color: String,
     /// Пароль устройства.
     pub device_password: String,
+    /// Графический ключ: точки сетки 3 × 3 (1–9 слева направо, сверху вниз) строкой цифр в порядке
+    /// ввода; пусто — нет ключа.
+    pub device_pattern: String,
     /// Комплектность.
     pub completeness: String,
     /// Внешнее состояние устройства.
@@ -303,6 +315,7 @@ impl From<order::Model> for Order {
             serial: m.serial,
             color: m.color,
             device_password: m.device_password,
+            device_pattern: m.device_pattern,
             completeness: m.completeness,
             device_condition: m.device_condition,
             malfunction: m.malfunction,
@@ -329,7 +342,7 @@ impl From<order::Model> for Order {
     }
 }
 
-/// Пароль устройства в логи не попадает.
+/// Пароль устройства и графический ключ в логи не попадают.
 impl std::fmt::Debug for NewOrder {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("NewOrder")
@@ -342,6 +355,7 @@ impl std::fmt::Debug for NewOrder {
             .field("serial", &self.serial)
             .field("color", &self.color)
             .field("device_password", &"***")
+            .field("device_pattern", &"***")
             .field("completeness", &self.completeness)
             .field("device_condition", &self.device_condition)
             .field("malfunction", &self.malfunction)
@@ -357,7 +371,7 @@ impl std::fmt::Debug for NewOrder {
     }
 }
 
-/// Пароль устройства в логи не попадает.
+/// Пароль устройства и графический ключ в логи не попадают.
 impl std::fmt::Debug for OrderPatch {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("OrderPatch")
@@ -373,6 +387,10 @@ impl std::fmt::Debug for OrderPatch {
             .field(
                 "device_password",
                 &self.device_password.as_ref().map(|_| "***"),
+            )
+            .field(
+                "device_pattern",
+                &self.device_pattern.as_ref().map(|_| "***"),
             )
             .field("completeness", &self.completeness)
             .field("device_condition", &self.device_condition)
@@ -393,7 +411,7 @@ impl std::fmt::Debug for OrderPatch {
     }
 }
 
-/// Пароль устройства в логи не попадает.
+/// Пароль устройства и графический ключ в логи не попадают.
 impl std::fmt::Debug for Order {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Order")
@@ -410,6 +428,7 @@ impl std::fmt::Debug for Order {
             .field("serial", &self.serial)
             .field("color", &self.color)
             .field("device_password", &"***")
+            .field("device_pattern", &"***")
             .field("completeness", &self.completeness)
             .field("device_condition", &self.device_condition)
             .field("malfunction", &self.malfunction)
@@ -468,19 +487,9 @@ mod tests {
 
     const SECRET: &str = "s3cr3t-pass-9137";
 
-    #[test]
-    fn debug_output_masks_device_password() {
-        let new = NewOrder {
-            device_password: SECRET.into(),
-            brand: "Samsung".into(),
-            ..Default::default()
-        };
-        let patch = OrderPatch {
-            device_password: Some(SECRET.into()),
-            brand: Some("Apple".into()),
-            ..Default::default()
-        };
-        let order = Order::from(order::Model {
+    /// Заказ «Nokia» с этими паролем и ключом.
+    fn order_with(password: &str, pattern: &str) -> Order {
+        Order::from(order::Model {
             id: 1,
             client_id: 1,
             service_point_id: None,
@@ -493,7 +502,8 @@ mod tests {
             model: String::new(),
             serial: String::new(),
             color: String::new(),
-            device_password: SECRET.into(),
+            device_password: password.into(),
+            device_pattern: pattern.into(),
             completeness: String::new(),
             device_condition: String::new(),
             malfunction: String::new(),
@@ -524,7 +534,22 @@ mod tests {
             master_key: String::new(),
             request_key: None,
             master_user_id: None,
-        });
+        })
+    }
+
+    #[test]
+    fn debug_output_masks_device_password() {
+        let new = NewOrder {
+            device_password: SECRET.into(),
+            brand: "Samsung".into(),
+            ..Default::default()
+        };
+        let patch = OrderPatch {
+            device_password: Some(SECRET.into()),
+            brand: Some("Apple".into()),
+            ..Default::default()
+        };
+        let order = order_with(SECRET, "");
         for (text, brand) in [
             (format!("{new:?}"), "Samsung"),
             (format!("{patch:?}"), "Apple"),
@@ -532,6 +557,35 @@ mod tests {
         ] {
             assert!(!text.contains(SECRET), "пароль попал в Debug: {text}");
             assert!(text.contains("\"***\""), "{text}");
+            assert!(text.contains(brand), "{text}");
+        }
+    }
+
+    #[test]
+    fn debug_output_masks_device_pattern() {
+        const PATTERN: &str = "75319";
+        let new = NewOrder {
+            device_pattern: PATTERN.into(),
+            brand: "Samsung".into(),
+            ..Default::default()
+        };
+        let patch = OrderPatch {
+            device_pattern: Some(PATTERN.into()),
+            brand: Some("Apple".into()),
+            ..Default::default()
+        };
+        let order = order_with("", PATTERN);
+        for (text, brand, mask) in [
+            (format!("{new:?}"), "Samsung", "device_pattern: \"***\""),
+            (
+                format!("{patch:?}"),
+                "Apple",
+                "device_pattern: Some(\"***\")",
+            ),
+            (format!("{order:?}"), "Nokia", "device_pattern: \"***\""),
+        ] {
+            assert!(!text.contains(PATTERN), "ключ попал в Debug: {text}");
+            assert!(text.contains(mask), "{text}");
             assert!(text.contains(brand), "{text}");
         }
     }
