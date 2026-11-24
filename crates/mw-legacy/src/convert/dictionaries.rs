@@ -101,7 +101,7 @@ fn is_value(kind: DictionaryKind, text: &str) -> bool {
 }
 
 /// Тексты вида справочника по записям MyWork 3 (как `usage_target`); `None` — мастера (они
-/// пользователи).
+/// пользователи). Типы запчастей — со склада, в заказах и у клиентов их нет.
 fn texts<'a>(
     kind: DictionaryKind,
     orders: &[&'a ImportedOrder],
@@ -118,6 +118,7 @@ fn texts<'a>(
         DictionaryKind::Malfunction => of(|o| &o.malfunction),
         DictionaryKind::WorkDone => of(|o| &o.work_done),
         DictionaryKind::ClientSource => clients.iter().map(|c| c.source.as_str()).collect(),
+        DictionaryKind::PartType => Vec::new(),
         DictionaryKind::Master => return None,
     })
 }

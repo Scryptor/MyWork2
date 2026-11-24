@@ -220,6 +220,7 @@ impl Core {
                 thumb_path: Set(None),
                 legacy: Set(false),
                 created_at: Set(now),
+                stock_item_id: Set(None),
             }
             .insert(&tx)
             .await?;

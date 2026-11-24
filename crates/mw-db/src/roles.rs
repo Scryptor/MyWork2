@@ -1,9 +1,9 @@
 //! Готовые роли «Мастер» и «Приёмщик» — один список для всего, что пишет роли не миграцией: импорт
 //! MyWork 2 стирает роли базы и после ролей пакета добавляет отсюда те, которых нет.
 //!
-//! Миграция `m20261120_000002_builtin_roles` держит свой замороженный литерал: смена набора или
-//! прав — новая миграция данных и правка этого списка. Права «Мастера» — те же литералы, что у
-//! правила «мастера → пользователи» (`crate::masters`).
+//! Миграции готовых ролей (`m20261120_000002_builtin_roles`, `m20261124_000002_stock_data`) держат
+//! свои замороженные литералы: смена набора или прав — новая миграция данных и правка этого списка.
+//! Права здесь — в порядке `Permission`, такие же, как у ролей новой базы.
 
 use mw_domain::search::normalize_search;
 use sea_orm::sea_query::{Alias, Query};
@@ -13,9 +13,8 @@ use crate::masters::{MASTER_ROLE, MASTER_ROLE_PERMISSIONS};
 
 /// Готовая роль приёмщика.
 pub const RECEPTIONIST_ROLE: &str = "Приёмщик";
-/// Права роли «Приёмщик» в JSON.
-pub const RECEPTIONIST_ROLE_PERMISSIONS: &str =
-    r#"["orders_create","orders_edit","clients_view","clients_create","clients_edit"]"#;
+/// Права роли «Приёмщик» в JSON, в порядке `Permission`.
+pub const RECEPTIONIST_ROLE_PERMISSIONS: &str = r#"["orders_create","orders_edit","stock_view","clients_view","clients_create","clients_edit"]"#;
 
 /// (название, права в JSON) готовых ролей. «Администратор» (все права) сюда не входит: он есть в
 /// пакете импорта и в начальной настройке.
@@ -54,4 +53,26 @@ pub async fn ensure_builtin_roles(conn: &impl ConnectionTrait) -> Result<Vec<&'s
         added.push(name);
     }
     Ok(added)
+}
+
+#[cfg(test)]
+mod tests {
+    use mw_domain::permission::{Permission, PermissionSet};
+
+    use super::*;
+
+    /// Права готовых ролей — в порядке `Permission` (как их записывает правка роли) и с просмотром
+    /// склада: мастер списывает запчасти, приёмщик отвечает, есть ли запчасть на складе.
+    #[test]
+    fn builtin_roles_list_permissions_in_order_with_stock_view() {
+        for (name, permissions) in BUILTIN_ROLES {
+            let parsed: PermissionSet = serde_json::from_str(permissions).unwrap();
+            assert_eq!(
+                serde_json::to_string(&parsed).unwrap(),
+                permissions,
+                "{name}"
+            );
+            assert!(parsed.contains(Permission::StockView), "{name}");
+        }
+    }
 }

@@ -1,6 +1,7 @@
 use sea_orm::entity::prelude::*;
 
-/// Вложение заказа: фото или файл. `path` и `thumb_path` — относительно папки данных.
+/// Вложение заказа (фото или файл) или фото позиции склада (`stock_item_id`). `path` и
+/// `thumb_path` — относительно папки данных.
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
 #[sea_orm(table_name = "attachments")]
 pub struct Model {
@@ -19,6 +20,7 @@ pub struct Model {
     pub thumb_path: Option<String>,
     pub legacy: bool,
     pub created_at: DateTime,
+    pub stock_item_id: Option<i64>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

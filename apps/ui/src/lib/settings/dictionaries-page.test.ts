@@ -159,6 +159,26 @@ describe('«Справочники» for an administrator', () => {
 		expect(screen.queryByRole('link', { name: 'Пользователи' })).not.toBeInTheDocument();
 	});
 
+	it('«Типы запчастей» count the items of the stock and change them «на складе»', async () => {
+		nav.kind = 'part_type';
+		api.listDictionary.mockResolvedValue([item(1, 'Дисплей'), item(2, 'Шлейф')]);
+		api.dictionaryUsage.mockResolvedValue([{ id: 1, count: 2 }]);
+		render(Page);
+		expect(await screen.findByText('в 2 позициях склада')).toBeInTheDocument();
+		expect(screen.queryAllByText(/^в \d+ заказ/)).toHaveLength(0);
+		expect(api.listDictionary.mock.calls[0]?.[0]).toBe('part_type');
+		expect(screen.getByRole('button', { name: 'Типы запчастей' })).toHaveAttribute(
+			'aria-current',
+			'page'
+		);
+		for (const name of ['Дисплей', 'Шлейф']) {
+			await userEvent.click(screen.getByRole('checkbox', { name: `Выбрать „${name}“` }));
+		}
+		await userEvent.click(screen.getByRole('button', { name: 'Объединить выбранные' }));
+		const dialog = await screen.findByRole('dialog', { name: 'Объединить значения' });
+		expect(within(dialog).getByRole('checkbox', { name: 'Заменить и на складе' })).toBeChecked();
+	});
+
 	it('a brand is not a default: nothing more is read', async () => {
 		api.listDictionary.mockResolvedValue([item(1, 'Alpha')]);
 		api.updateDictionaryItem.mockResolvedValue(item(1, 'Omega'));

@@ -29,11 +29,17 @@ use sea_orm::{ConnectionTrait, DbErr};
 
 use crate::entity::user::no_login_key;
 
-/// Готовая роль мастера: название и права (как в миграции готовых ролей; общий список готовых
-/// ролей — `crate::roles`).
+/// Готовая роль мастера: название и права (общий список готовых ролей — `crate::roles`).
 pub const MASTER_ROLE: &str = "Мастер";
-/// Права роли «Мастер» в JSON; заморожено литералом.
-pub const MASTER_ROLE_PERMISSIONS: &str = r#"["orders_edit","clients_view"]"#;
+/// Права роли «Мастер» в JSON, в порядке `Permission`: их получает роль, которую добавляет импорт
+/// MyWork 2 (`crate::roles::ensure_builtin_roles`). На новой базе роль с теми же правами — из
+/// миграций готовых ролей и склада; смена набора — новая миграция данных и правка литерала.
+pub const MASTER_ROLE_PERMISSIONS: &str = r#"["orders_edit","stock_view","clients_view"]"#;
+/// Права роли «Мастер» до склада — литерал `m20261120_000002_builtin_roles`. Заморожен: с ним
+/// добавляет недостающую роль `ensure_master_role`, а её вызывает выпущенная миграция
+/// `m20261120_000004_masters_to_users`. Право «Просмотр склада» такая роль получает миграцией
+/// `m20261124_000002_stock_data`.
+pub const MASTER_ROLE_PERMISSIONS_V1: &str = r#"["orders_edit","clients_view"]"#;
 
 /// Сколько номеров заказов в одном `IN (…)`.
 const LINK_CHUNK: usize = 1000;
@@ -169,8 +175,8 @@ impl UserKeys {
     }
 }
 
-/// Номер роли «Мастер» (без учёта регистра); нет такой — добавляется с готовыми правами.
-/// Второе значение — роль добавлена.
+/// Номер роли «Мастер» (без учёта регистра); нет такой — добавляется с правами
+/// `MASTER_ROLE_PERMISSIONS_V1`. Второе значение — роль добавлена.
 pub async fn ensure_master_role(conn: &impl ConnectionTrait) -> Result<(i64, bool), DbErr> {
     let mut select = Query::select();
     select
@@ -190,7 +196,7 @@ pub async fn ensure_master_role(conn: &impl ConnectionTrait) -> Result<(i64, boo
         .columns([a("name"), a("permissions"), a("version")])
         .values([
             MASTER_ROLE.into(),
-            MASTER_ROLE_PERMISSIONS.into(),
+            MASTER_ROLE_PERMISSIONS_V1.into(),
             1_i64.into(),
         ])
         .map_err(|e| DbErr::Custom(format!("роль «{MASTER_ROLE}»: {e}")))?

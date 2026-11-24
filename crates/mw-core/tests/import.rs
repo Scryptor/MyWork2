@@ -492,7 +492,7 @@ async fn import_turns_master_names_into_master_users() {
         let master_role = roles.iter().find(|r| r.name == "Мастер").unwrap();
         assert_eq!(
             master_role.permissions,
-            PermissionSet::from_codes(["orders_edit", "clients_view"])
+            PermissionSet::from_codes(["orders_edit", "stock_view", "clients_view"])
         );
         for id in [5, 6, 10] {
             let o = t.core.get_order(&admin(), id).await.unwrap();
@@ -569,6 +569,7 @@ async fn import_keeps_the_builtin_roles() {
                 &PermissionSet::from_codes([
                     "orders_create",
                     "orders_edit",
+                    "stock_view",
                     "clients_view",
                     "clients_create",
                     "clients_edit"
@@ -581,7 +582,7 @@ async fn import_keeps_the_builtin_roles() {
         assert_eq!(master.len(), 1, "{}", t.label);
         assert_eq!(
             master[0].permissions,
-            PermissionSet::from_codes(["orders_edit", "clients_view"])
+            PermissionSet::from_codes(["orders_edit", "stock_view", "clients_view"])
         );
         assert_eq!(roles.len(), 4);
     }

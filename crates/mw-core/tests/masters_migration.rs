@@ -430,9 +430,13 @@ async fn a_missing_master_role_is_added_and_an_existing_one_is_kept() {
             )
         })
         .collect();
+        // Роль добавлена с правами до склада, затем миграция склада дала ей просмотр склада.
         assert_eq!(
             roles,
-            [("Мастер".into(), r#"["orders_edit","clients_view"]"#.into())],
+            [(
+                "Мастер".into(),
+                r#"["orders_edit","stock_view","clients_view"]"#.into()
+            )],
             "{label}"
         );
         assert_eq!(user_named(&users(&db).await, "Иванов").3, "Мастер");

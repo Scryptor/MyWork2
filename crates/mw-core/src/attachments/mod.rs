@@ -421,6 +421,7 @@ impl Written {
             thumb_path: Set(self.thumb_path),
             legacy: Set(false),
             created_at: Set(created_at),
+            stock_item_id: Set(None),
         }
     }
 }

@@ -418,6 +418,7 @@ async fn builtin_roles_stay_next_to_the_legacy_groups() -> Res {
             PermissionSet::from_codes([
                 "orders_create",
                 "orders_edit",
+                "stock_view",
                 "clients_view",
                 "clients_create",
                 "clients_edit"
@@ -605,7 +606,12 @@ async fn dictionaries_are_written_in_the_order_of_use() -> Res {
             "{}",
             t.label
         );
-        assert_eq!(r.count(WarningCode::DictionaryFromOrders), 9, "{}", t.label);
+        assert_eq!(
+            r.count(WarningCode::DictionaryFromOrders),
+            10,
+            "{}",
+            t.label
+        );
         let text = r.full_text();
         assert!(
             text.contains(

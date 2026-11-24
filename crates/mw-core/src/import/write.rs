@@ -694,6 +694,7 @@ impl Core {
                 client_id: Set(h.client_id),
                 summary: Set(h.summary.clone()),
                 details: Set(h.details.as_ref().map(Value::to_string)),
+                stock_item_id: Set(None),
             })
             .collect();
         // Пользователь `actor` мог быть стёрт заменой: тогда ссылки на него нет.
@@ -715,6 +716,7 @@ impl Core {
                 b.clients.len()
             )),
             details: Set(Some(json!({ "import_id": import_id }).to_string())),
+            stock_item_id: Set(None),
         });
         insert_chunked::<audit_log::Entity>(tx, entries).await?;
         mw_db::backfill::status_changed_at(tx).await?;

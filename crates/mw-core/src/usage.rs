@@ -16,7 +16,8 @@ use crate::{Actor, Core, CoreError};
 pub struct CatalogUsage {
     /// Номер значения, статуса или точки обслуживания.
     pub id: i64,
-    /// Сколько заказов (для источника клиента — клиентов) его используют.
+    /// Сколько заказов (для источника клиента — клиентов, для типа запчасти — позиций склада) его
+    /// используют.
     #[ts(type = "number")]
     pub count: u64,
 }
@@ -96,6 +97,7 @@ pub(crate) fn usage_target(kind: DictionaryKind) -> UsageTarget {
         DictionaryKind::Malfunction => ("orders", "malfunction", true),
         DictionaryKind::WorkDone => ("orders", "work_done", true),
         DictionaryKind::ClientSource => ("clients", "source", false),
+        DictionaryKind::PartType => ("stock_items", "part_type", false),
     };
     UsageTarget {
         table,
@@ -139,7 +141,7 @@ fn sorted(map: HashMap<i64, u64>) -> Vec<CatalogUsage> {
 }
 
 impl Core {
-    /// Сколько заказов (клиентов) используют каждое значение справочника.
+    /// Сколько заказов (клиентов, позиций склада) используют каждое значение справочника.
     pub async fn dictionary_usage(
         &self,
         actor: &Actor,

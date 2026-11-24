@@ -14,6 +14,7 @@ pub struct Model {
     pub summary: String,
     /// JSON.
     pub details: Option<String>,
+    pub stock_item_id: Option<i64>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

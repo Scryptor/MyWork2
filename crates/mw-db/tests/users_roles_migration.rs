@@ -11,9 +11,10 @@ const BEFORE_USER_FLAGS: u32 = 7;
 /// Миграций до готовых ролей.
 const BEFORE_BUILTIN_ROLES: u32 = 8;
 
-const MASTER_PERMISSIONS: &str = r#"["orders_edit","clients_view"]"#;
-const CLERK_PERMISSIONS: &str =
-    r#"["orders_create","orders_edit","clients_view","clients_create","clients_edit"]"#;
+/// Права готовых ролей на новой базе — те же, что добавляет импорт (`mw_db::roles`); с
+/// `m20261124_000002_stock_data` — с просмотром склада, поэтому версия 2.
+const MASTER_PERMISSIONS: &str = mw_db::masters::MASTER_ROLE_PERMISSIONS;
+const CLERK_PERMISSIONS: &str = mw_db::roles::RECEPTIONIST_ROLE_PERMISSIONS;
 
 async fn exec(db: &DatabaseConnection, sql: &str) {
     db.execute_raw(Statement::from_string(db.get_database_backend(), sql))
@@ -51,12 +52,12 @@ async fn new_base_has_builtin_master_and_clerk_roles() {
         );
         assert_eq!(
             roles["Мастер"],
-            (MASTER_PERMISSIONS.to_owned(), 1),
+            (MASTER_PERMISSIONS.to_owned(), 2),
             "{label}"
         );
         assert_eq!(
             roles["Приёмщик"],
-            (CLERK_PERMISSIONS.to_owned(), 1),
+            (CLERK_PERMISSIONS.to_owned(), 2),
             "{label}"
         );
     }
@@ -102,7 +103,7 @@ async fn existing_role_with_the_same_name_is_neither_doubled_nor_changed() {
         assert_eq!(roles["Мастер"], ("[]".to_owned(), 1), "{label}");
         assert_eq!(
             roles["Приёмщик"],
-            (CLERK_PERMISSIONS.to_owned(), 1),
+            (CLERK_PERMISSIONS.to_owned(), 2),
             "{label}"
         );
     }

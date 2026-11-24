@@ -135,6 +135,7 @@ const DICTIONARY_FILES: &[(DictionaryKind, &str)] = &[
     (DictionaryKind::WorkDone, "vipolnRaboti.txt"),
     (DictionaryKind::ClientSource, "aboutUs.txt"),
     (DictionaryKind::Warranty, "Garanty.txt"),
+    (DictionaryKind::PartType, "Stock/TypeOvZIP.txt"),
 ];
 
 /// Файл имён мастеров.

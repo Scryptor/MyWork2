@@ -170,6 +170,7 @@ pub(crate) async fn write_audit(
         client_id: Set(e.client_id),
         summary: Set(e.summary),
         details: Set(e.details.map(|d| d.to_string())),
+        stock_item_id: Set(None),
     }
     .insert(conn)
     .await?;

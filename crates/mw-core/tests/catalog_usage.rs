@@ -280,6 +280,43 @@ async fn warranty_usage_uses_warranty_text() -> Result<(), CoreError> {
     Ok(())
 }
 
+/// Типы запчастей считаются по живым позициям склада, без учёта регистра.
+#[tokio::test]
+async fn part_type_usage_counts_live_stock_items() -> Result<(), CoreError> {
+    use mw_db::entity::stock_item;
+    use sea_orm::{ActiveModelTrait, Set};
+    for t in cores().await {
+        let at = t.core.now();
+        for (part_type, deleted) in [("Дисплей", false), ("дисплей", false), ("Дисплей", true)]
+        {
+            stock_item::ActiveModel {
+                part_type: Set(part_type.to_owned()),
+                created_at: Set(at),
+                updated_at: Set(at),
+                deleted_at: Set(deleted.then_some(at)),
+                ..Default::default()
+            }
+            .insert(t.core.db())
+            .await
+            .unwrap();
+        }
+        let display = item_id(&t.core, DictionaryKind::PartType, "Дисплей").await;
+        let got = t
+            .core
+            .dictionary_usage(&admin(), DictionaryKind::PartType)
+            .await?;
+        assert_eq!(usage(&got), vec![(display, 2)], "{}", t.label);
+        // Заказы типы запчастей не используют.
+        order_with(&t.core, |o| o.device_type = "Дисплей".into()).await;
+        let got = t
+            .core
+            .dictionary_usage(&admin(), DictionaryKind::PartType)
+            .await?;
+        assert_eq!(usage(&got), vec![(display, 2)], "{}", t.label);
+    }
+    Ok(())
+}
+
 #[tokio::test]
 async fn status_and_service_point_usage() -> Result<(), CoreError> {
     for t in cores().await {

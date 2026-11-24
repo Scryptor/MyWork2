@@ -1571,6 +1571,7 @@ export const ru = {
 			device_type: 'Типы устройств',
 			brand: 'Бренды',
 			color: 'Цвета',
+			part_type: 'Типы запчастей',
 			completeness: 'Комплектность',
 			condition: 'Состояние',
 			malfunction: 'Неисправности',
@@ -1600,6 +1601,8 @@ export const ru = {
 		pick: (label: string) => `Выбрать „${label}“`,
 		/** «в 1 заказе», «в 2 заказах». */
 		inOrders: ['заказе', 'заказах', 'заказах'],
+		/** «в 1 позиции склада», «в 2 позициях склада» (a part type counts stock items). */
+		inStock: ['позиции склада', 'позициях склада', 'позициях склада'],
 		/** «у 1 клиента», «у 2 клиентов» (the source of a client counts clients). */
 		atClients: ['клиента', 'клиентов', 'клиентов'],
 		countIn: (n: string) => `в ${n}`,
@@ -1607,6 +1610,7 @@ export const ru = {
 		/** «изменено 2 заказа», «изменено 1 клиент». */
 		changedOrders: ['заказ', 'заказа', 'заказов'],
 		changedClients: ['клиент', 'клиента', 'клиентов'],
+		changedStock: ['позиция склада', 'позиции склада', 'позиций склада'],
 		removeTitle: (label: string) => `Удалить „${label}“?`,
 		removeText: 'Значение нигде не используется. Это нельзя отменить.',
 		removed: 'Значение удалено',
@@ -1629,14 +1633,16 @@ export const ru = {
 		reordered: 'Порядок изменён',
 		loadFailed: 'Не удалось загрузить справочник',
 		inOrdersWhere: 'в заказах',
-		atClientsWhere: 'у клиентов'
+		atClientsWhere: 'у клиентов',
+		inStockWhere: 'на складе'
 	},
 	/** The titles of the columns of statuses, points and dictionaries. */
 	catalogRows: {
 		name: 'Название',
 		value: 'Значение',
 		orders: 'Заказов',
-		clients: 'Клиентов'
+		clients: 'Клиентов',
+		stock: 'Позиций'
 	},
 	statuses: {
 		add: 'Название нового статуса',

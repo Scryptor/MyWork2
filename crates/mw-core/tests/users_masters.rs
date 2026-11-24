@@ -349,7 +349,20 @@ async fn unused_role_is_deleted_and_role_with_users_is_kept() -> Result<(), Core
                 },
             )
             .await?;
-        match t.core.delete_role(&admin(), master_role, 1).await {
+        // Версия готовой роли — не 1: миграция склада дала ей просмотр склада.
+        let master_version = t
+            .core
+            .list_roles(&admin())
+            .await?
+            .into_iter()
+            .find(|r| r.id == master_role)
+            .map(|r| r.version)
+            .unwrap();
+        match t
+            .core
+            .delete_role(&admin(), master_role, master_version)
+            .await
+        {
             Err(CoreError::InUse(message)) => {
                 assert_eq!(message, "В роли есть пользователи: 2", "{}", t.label)
             }

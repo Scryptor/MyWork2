@@ -977,6 +977,8 @@ mod tests {
         // «Устройство N», «ЦВЕТ N» — у каждого заказа своё: только стандартные значения.
         assert_eq!(dictionary(&c, DeviceType), standard(DeviceType));
         assert_eq!(dictionary(&c, Color), standard(Color));
+        // Типы запчастей — список склада: без `Stock/TypeOvZIP.txt` стандартные.
+        assert_eq!(dictionary(&c, PartType), standard(PartType));
         assert!(dictionary(&c, Master).is_empty());
 
         // «Значений из одного заказа» — только не попавшие в справочник: «apple» (бренд), «Не
@@ -1003,6 +1005,10 @@ mod tests {
                 (
                     "Цвета",
                     "из заказов — 0, стандартных — 8, значений из одного заказа — 10"
+                ),
+                (
+                    "Типы запчастей",
+                    "из заказов — 0, стандартных — 11, значений из одного заказа — 0"
                 ),
                 (
                     "Комплектность",

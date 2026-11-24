@@ -516,7 +516,9 @@ fn order_field(o: &Order, kind: DictionaryKind) -> &str {
         DictionaryKind::Malfunction => &o.malfunction,
         DictionaryKind::WorkDone => &o.work_done,
         DictionaryKind::Warranty => &o.warranty,
-        DictionaryKind::Master | DictionaryKind::ClientSource => unreachable!(),
+        DictionaryKind::Master | DictionaryKind::ClientSource | DictionaryKind::PartType => {
+            unreachable!()
+        }
     }
 }
 

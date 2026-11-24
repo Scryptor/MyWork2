@@ -4,4 +4,4 @@
  * Вид справочника. `master` закрыт: мастера — пользователи с отметкой «Мастер»; прежние
  * значения хранятся в архиве (их можно удалить, но не добавить, не переименовать и не вернуть).
  */
-export type DictionaryKind = "device_type" | "brand" | "color" | "completeness" | "condition" | "malfunction" | "work_done" | "master" | "client_source" | "warranty";
+export type DictionaryKind = "device_type" | "brand" | "color" | "part_type" | "completeness" | "condition" | "malfunction" | "work_done" | "master" | "client_source" | "warranty";

@@ -1,4 +1,5 @@
-//! Нумерация: номер заказа = `orders.id`, поэтому «следующий номер» — это последовательность таблицы.
+//! Нумерация: номер заказа = `orders.id` (номер позиции склада — `stock_items.id`), поэтому
+//! «следующий номер» — это последовательность таблицы.
 
 use sea_orm::{ConnectionTrait, DatabaseBackend, DbErr, Statement};
 
@@ -7,6 +8,7 @@ use sea_orm::{ConnectionTrait, DatabaseBackend, DbErr, Statement};
 pub enum IdTable {
     Orders,
     Clients,
+    StockItems,
 }
 
 impl IdTable {
@@ -14,6 +16,7 @@ impl IdTable {
         match self {
             Self::Orders => "orders",
             Self::Clients => "clients",
+            Self::StockItems => "stock_items",
         }
     }
 }

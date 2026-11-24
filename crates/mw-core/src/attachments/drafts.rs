@@ -415,6 +415,7 @@ mod tests {
             thumb_path: thumb.map(str::to_owned),
             legacy: false,
             created_at: chrono::NaiveDateTime::default(),
+            stock_item_id: None,
         }
     }
 

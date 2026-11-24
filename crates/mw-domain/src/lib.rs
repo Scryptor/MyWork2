@@ -61,5 +61,6 @@ pub mod phone;
 pub mod search;
 pub mod spelling;
 pub mod status;
+pub mod stock;
 pub mod validation;
 pub mod warranty;

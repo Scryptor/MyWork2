@@ -138,7 +138,7 @@ enum FieldPatch {
 }
 
 /// То же поле, что читает `usage_target(kind)`. Мастер заказа — пользователь: справочник «Мастера»
-/// заказы не меняет (`None`).
+/// заказы не меняет (`None`). Правки позиций склада ещё нет — типы запчастей тоже `None`.
 fn field_patch(kind: DictionaryKind, value: String) -> Option<FieldPatch> {
     let v = Some(value);
     let order = |p: OrderPatch| FieldPatch::Order(Box::new(p));
@@ -171,7 +171,7 @@ fn field_patch(kind: DictionaryKind, value: String) -> Option<FieldPatch> {
             work_done: v,
             ..Default::default()
         }),
-        DictionaryKind::Master => return None,
+        DictionaryKind::Master | DictionaryKind::PartType => return None,
         DictionaryKind::Warranty => order(OrderPatch {
             warranty: v,
             ..Default::default()

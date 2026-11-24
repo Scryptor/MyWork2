@@ -5744,7 +5744,7 @@
           "count": {
             "type": "integer",
             "format": "int64",
-            "description": "Сколько заказов (для источника клиента — клиентов) его используют.",
+            "description": "Сколько заказов (для источника клиента — клиентов, для типа запчасти — позиций склада) его\nиспользуют.",
             "minimum": 0
           },
           "id": {
@@ -6162,6 +6162,7 @@
           "device_type",
           "brand",
           "color",
+          "part_type",
           "completeness",
           "condition",
           "malfunction",

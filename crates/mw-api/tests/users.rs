@@ -182,10 +182,19 @@ async fn masters_without_sign_in_and_role_deletion_over_http() {
         );
         assert_eq!(t.get("/api/v1/masters", None).await.status, 401);
 
+        // Версия готовой роли — не 1: миграция склада дала ей просмотр склада.
+        let roles = t.get("/api/v1/roles", Some(&admin)).await.body;
+        let version = roles
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["id"] == json!(master_role))
+            .unwrap()["version"]
+            .clone();
         let r = t
             .send(
                 Method::DELETE,
-                &format!("/api/v1/roles/{master_role}?version=1"),
+                &format!("/api/v1/roles/{master_role}?version={version}"),
                 Some(&admin),
                 None,
             )

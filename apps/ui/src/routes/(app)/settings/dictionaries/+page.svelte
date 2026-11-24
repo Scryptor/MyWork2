@@ -1,5 +1,6 @@
-<!-- «Справочники» (spec 6.8): the nine dictionaries of the intake form. The kind is in the address (`?kind=`);
-     the values are searched, added, dragged, renamed in place, archived, deleted and merged. -->
+<!-- «Справочники» (spec 6.8): the nine dictionaries of the intake form and the part types of the stock. The
+     kind is in the address (`?kind=`); the values are searched, added, dragged, renamed in place, archived,
+     deleted and merged. -->
 <script lang="ts">
 	import Merge from '@lucide/svelte/icons/merge';
 	import Search from '@lucide/svelte/icons/search';
@@ -37,10 +38,15 @@
 		const raw = page.url.searchParams.get('kind');
 		return KINDS.find((k) => k === raw) ?? KINDS[0]!;
 	});
-	/** The source of a client counts clients, every other dictionary counts orders. */
-	const ofClients = $derived(kind === 'client_source');
+	/** What the values are counted in: the source of a client — clients, a part type — stock items, every
+	 * other dictionary — orders. */
+	const counted = $derived<'clients' | 'stock' | 'orders'>(
+		kind === 'client_source' ? 'clients' : kind === 'part_type' ? 'stock' : 'orders'
+	);
 	const countLabel = (n: number) =>
-		ofClients ? t.countAt(countOf(n, t.atClients)) : t.countIn(countOf(n, t.inOrders));
+		counted === 'clients'
+			? t.countAt(countOf(n, t.atClients))
+			: t.countIn(countOf(n, counted === 'stock' ? t.inStock : t.inOrders));
 	const readonly = $derived(!app.can('settings_manage'));
 
 	let selected = $state<number[]>([]);
@@ -65,8 +71,12 @@
 	const rows = $derived([...catalog.active, ...catalog.archived]);
 	const picked = $derived(catalog.all.filter((r) => selected.includes(r.id) && !r.archived));
 	const nothing = $derived(!catalog.loading && !catalog.loadError && rows.length === 0);
-	const where = $derived(ofClients ? t.atClientsWhere : t.inOrdersWhere);
-	const changedForms = $derived(ofClients ? t.changedClients : t.changedOrders);
+	const where = $derived(
+		{ clients: t.atClientsWhere, stock: t.inStockWhere, orders: t.inOrdersWhere }[counted]
+	);
+	const changedForms = $derived(
+		{ clients: t.changedClients, stock: t.changedStock, orders: t.changedOrders }[counted]
+	);
 	/** «Гарантия» is also the default of a new order: it follows a rename and a merge. */
 	const followsDefaults = $derived(kind === 'warranty');
 
@@ -257,7 +267,7 @@
 					{rows}
 					{countLabel}
 					nameTitle={ru.catalogRows.value}
-					countTitle={ofClients ? ru.catalogRows.clients : ru.catalogRows.orders}
+					countTitle={ru.catalogRows[counted]}
 					selectable
 					bind:selected
 					{readonly}
