@@ -280,6 +280,74 @@ async fn search_ignores_case_and_yo() -> Result<(), CoreError> {
 }
 
 #[tokio::test]
+async fn number_query_skips_deleted_and_keeps_restock_filter() -> Result<(), CoreError> {
+    for t in cores().await {
+        // В наименованиях нет цифр: номер находит позицию только как номер, не как текст.
+        let low = create(
+            &t,
+            NewStockItem {
+                quantity: 1,
+                restock_threshold: 5,
+                ..named("Дисплей")
+            },
+        )
+        .await;
+        let enough = create(
+            &t,
+            NewStockItem {
+                quantity: 5,
+                restock_threshold: 2,
+                ..named("Шлейф")
+            },
+        )
+        .await;
+        let gone = create(
+            &t,
+            NewStockItem {
+                quantity: 0,
+                restock_threshold: 3,
+                ..named("Стекло")
+            },
+        )
+        .await;
+        t.core
+            .delete_stock_item(&admin(), gone.id, gone.version)
+            .await?;
+        let number = |id: i64, restock: bool| StockFilter {
+            query: id.to_string(),
+            restock,
+            ..Default::default()
+        };
+
+        // Удалённая не возвращается и по номеру — ни в общем списке, ни в «Докупить».
+        assert!(
+            listed(&t, number(gone.id, false)).await.is_empty(),
+            "{}",
+            t.label
+        );
+        assert!(listed(&t, number(gone.id, true)).await.is_empty());
+        assert_eq!(listed(&t, number(low.id, false)).await, vec![low.id]);
+        assert_eq!(listed(&t, number(enough.id, false)).await, vec![enough.id]);
+        // «Докупить» с номером: позиция — только если её надо докупить.
+        assert_eq!(
+            listed(&t, number(low.id, true)).await,
+            vec![low.id],
+            "{}",
+            t.label
+        );
+        assert!(listed(&t, number(enough.id, true)).await.is_empty());
+        assert_eq!(
+            t.core
+                .list_stock(&admin(), &number(enough.id, true), 50, 0)
+                .await?
+                .total,
+            0
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test]
 async fn restock_filter_and_summary() -> Result<(), CoreError> {
     for t in cores().await {
         let mut made = Vec::new();
@@ -423,7 +491,7 @@ async fn stale_version_conflicts_and_delete_hides() -> Result<(), CoreError> {
             matches!(
                 t.core.update_stock_item(&admin(), it.id, 1, patch(4)).await,
                 Err(CoreError::Conflict {
-                    entity: "stock_item",
+                    entity: "позиция склада",
                     current_version: 2,
                     ..
                 })
@@ -443,7 +511,7 @@ async fn stale_version_conflicts_and_delete_hides() -> Result<(), CoreError> {
         assert!(matches!(
             t.core.get_stock_item(&admin(), it.id).await,
             Err(CoreError::NotFound {
-                entity: "stock_item",
+                entity: "позиция склада",
                 ..
             })
         ));

@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::CoreError;
 
 /// Название сущности в ошибках «не найдено» и «изменена другим пользователем».
-const ENTITY: &str = "stock_item";
+const ENTITY: &str = "позиция склада";
 
 /// Наибольшая длина наименования и каждого из пяти полей позиции, знаков.
 const MAX_TEXT_CHARS: usize = 200;
@@ -213,21 +213,13 @@ fn deleted_error() -> CoreError {
     CoreError::Validation(vec![FieldError::new("id", "deleted")])
 }
 
-/// Поля наименования: если все пусты, позицию не назвать.
-const NAME_FIELDS: [&str; 6] = [
-    "name",
-    "device_type",
-    "part_type",
-    "brand",
-    "model",
-    "color",
-];
-
 /// Проверяет позицию: только поля, для которых `checked(поле)` — правка не мешает старым значениям
 /// вне пределов, если их не трогает. Наименование обязательно, если тронуто хоть одно его поле.
 fn validate(m: &stock_item::Model, checked: impl Fn(&str) -> bool) -> Result<(), CoreError> {
     let mut errors = Vec::new();
-    let texts = [
+    // Поля наименования: если все пусты, позицию не назвать. Один список — и для
+    // обязательности, и для длины.
+    let name_fields = [
         ("name", &m.name),
         ("device_type", &m.device_type),
         ("part_type", &m.part_type),
@@ -235,14 +227,16 @@ fn validate(m: &stock_item::Model, checked: impl Fn(&str) -> bool) -> Result<(),
         ("model", &m.model),
         ("color", &m.color),
     ];
-    if NAME_FIELDS.iter().any(|f| checked(f)) && texts.iter().all(|(_, v)| v.trim().is_empty()) {
+    if name_fields.iter().any(|(f, _)| checked(f))
+        && name_fields.iter().all(|(_, v)| v.trim().is_empty())
+    {
         errors.push(FieldError::required("name"));
     }
-    for (field, value, max) in texts.iter().map(|(f, v)| (*f, *v, MAX_TEXT_CHARS)).chain([(
-        "note",
-        &m.note,
-        MAX_NOTE_CHARS,
-    )]) {
+    for (field, value, max) in name_fields
+        .iter()
+        .map(|(f, v)| (*f, *v, MAX_TEXT_CHARS))
+        .chain([("note", &m.note, MAX_NOTE_CHARS)])
+    {
         if checked(field) && value.chars().count() > max {
             errors.push(FieldError::new(field, "too_long"));
         }

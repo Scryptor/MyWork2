@@ -155,8 +155,20 @@ async fn stock_item_endpoints() {
         );
         let r = patch(Some(1), json!({ "quantity": 6 })).await;
         assert_eq!(
-            (r.status, &r.body["code"], &r.body["current_version"]),
-            (409, &json!("conflict"), &json!(2)),
+            (
+                r.status,
+                &r.body["code"],
+                &r.body["current_version"],
+                &r.body["message"]
+            ),
+            (
+                409,
+                &json!("conflict"),
+                &json!(2),
+                &json!(format!(
+                    "Запись изменена другим пользователем: позиция склада № {display}. Обновите данные"
+                ))
+            ),
             "{}",
             t.label
         );
@@ -230,8 +242,12 @@ async fn stock_item_endpoints() {
             .get(&format!("/api/v1/stock/{display}"), Some(&token))
             .await;
         assert_eq!(
-            (r.status, &r.body["code"]),
-            (404, &json!("not_found")),
+            (r.status, &r.body["code"], &r.body["message"]),
+            (
+                404,
+                &json!("not_found"),
+                &json!(format!("Не найдено: позиция склада № {display}"))
+            ),
             "{}",
             t.label
         );
