@@ -126,3 +126,15 @@ test.describe('navigation', () => {
 		await expect(page.getByRole('dialog', { name: 'Клавиши' })).toBeVisible();
 	});
 });
+
+test('390: «Склад» is in «Ещё» of the bottom navigation', async ({ page }) => {
+	await page.setViewportSize({ width: 390, height: 800 });
+	await page.goto('/orders');
+	await page
+		.getByRole('navigation', { name: 'Основная навигация' })
+		.getByRole('button', { name: 'Ещё' })
+		.click();
+	await page.getByRole('dialog', { name: 'Ещё' }).getByRole('link', { name: 'Склад' }).click();
+	await expect(page).toHaveURL(/\/stock/);
+	await expect(page.getByRole('searchbox', { name: 'Фильтр списка' })).toBeVisible();
+});

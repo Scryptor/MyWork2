@@ -88,9 +88,7 @@ describe('«Роли»', () => {
 		render(Page);
 		const dialog = await open(ui, 'Мастер');
 		await ui.click(within(dialog).getByRole('button', { name: 'Что такое «Просмотр склада»' }));
-		expect(
-			await screen.findByText(/Пока ничего не открывает: склада в программе ещё нет/)
-		).toBeInTheDocument();
+		expect(await screen.findByText(/Открывать раздел «Склад»/)).toBeInTheDocument();
 	});
 
 	it('shows the server text when the last «Пользователи и права» is taken off and puts the box back', async () => {

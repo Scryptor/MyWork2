@@ -15,6 +15,7 @@
 	import ZoomIn from '@lucide/svelte/icons/zoom-in';
 	import ZoomOut from '@lucide/svelte/icons/zoom-out';
 	import Users from '@lucide/svelte/icons/users';
+	import Warehouse from '@lucide/svelte/icons/warehouse';
 	import Wrench from '@lucide/svelte/icons/wrench';
 	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
@@ -61,6 +62,7 @@
 	import { intake } from '#lib/intake/intake.svelte.js';
 	import IntakeSheet from '#lib/intake/IntakeSheet.svelte';
 	import { onOrderChanged } from '#lib/orders/events.js';
+	import { stockCount } from '#lib/stock/summary.svelte.js';
 	import DisputeDialog from '#lib/orders/DisputeDialog.svelte';
 	import OrderPanel from '#lib/orders/OrderPanel.svelte';
 	import { orderPanel } from '#lib/orders/panel.svelte.js';
@@ -177,6 +179,10 @@
 	// Counts of the sidebar (and of the quick filters): at the start, for another point, after edits.
 	$effect(() => summary.refresh(app.point));
 	$effect(() => onOrderChanged(() => summary.refresh(app.point)));
+	// «Склад» of the sidebar counts what is to be bought; it is the same for every point.
+	$effect(() => {
+		if (app.can('stock_view')) stockCount.refresh();
+	});
 
 	// Ctrl K (spec 6.10).
 	let paletteOpen = $state(false);
@@ -352,7 +358,7 @@
 	];
 	let helpOpen = $state(false);
 
-	// Phone (spec 5.6): «Заказы», «Клиенты», «＋», «Ещё» with the settings and the user's actions.
+	// Phone (spec 5.6): «Заказы», «Клиенты», «＋», «Ещё» with the stock, the settings and the user's actions.
 	let moreOpen = $state(false);
 	const canSeeClients = $derived(app.can('clients_view') || app.can('orders_create'));
 	const BOTTOM = $derived<NavItem[]>([
@@ -362,6 +368,7 @@
 			: []),
 		{ id: 'more', label: ru.common.more, icon: Ellipsis }
 	]);
+	const canSeeStock = $derived(app.can('stock_view'));
 	const bottomActive = $derived(
 		page.url.pathname === resolve('orders') || page.url.pathname.startsWith(`${resolve('orders')}/`)
 			? 'orders'
@@ -448,6 +455,11 @@
 					(v) => (app.point = v === null || v === ALL_POINTS ? null : v)
 				}
 			/>
+		{/if}
+		{#if canSeeStock}
+			<Button icon={Warehouse} href={resolve('stock')} onclick={() => (moreOpen = false)}
+				>{ru.app.stock}</Button
+			>
 		{/if}
 		<Button icon={Settings} href={resolve('settings')} onclick={() => (moreOpen = false)}
 			>{ru.app.settings}</Button

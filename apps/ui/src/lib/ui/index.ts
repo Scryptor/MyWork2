@@ -29,6 +29,7 @@ export { default as ListCard } from './ListCard.svelte';
 export { default as MoneyInput } from './MoneyInput.svelte';
 export { default as OptionCard } from './OptionCard.svelte';
 export { default as PhoneInput } from './PhoneInput.svelte';
+export { default as QuantityInput } from './QuantityInput.svelte';
 export { default as PhotoStrip } from './PhotoStrip.svelte';
 export { default as PhotoViewer } from './PhotoViewer.svelte';
 export { default as Popover } from './Popover.svelte';

@@ -1,5 +1,5 @@
-<!-- Sidebar of the program (spec 5.1, 6.1): «Заказы», «Клиенты», «Требуют внимания», «Мои виды». Sections
-     that have no screen yet (Склад, Отчёты) come with their plans. -->
+<!-- Sidebar of the program (spec 5.1, 6.1): «Заказы», «Клиенты», «Склад», «Требуют внимания», «Мои виды». Sections
+     that have no screen yet (Отчёты) come with their plans. -->
 <script lang="ts" module>
 	import CalendarClock from '@lucide/svelte/icons/calendar-clock';
 	import Clock from '@lucide/svelte/icons/clock';
@@ -22,12 +22,14 @@
 	import CircleCheck from '@lucide/svelte/icons/circle-check';
 	import Settings from '@lucide/svelte/icons/settings';
 	import Users from '@lucide/svelte/icons/users';
+	import Warehouse from '@lucide/svelte/icons/warehouse';
 	import Wrench from '@lucide/svelte/icons/wrench';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { ru } from '#lib/i18n/ru.js';
 	import { savedViews } from '#lib/orders/saved-views.svelte.js';
 	import { viewFromSearch, viewToSearch } from '#lib/orders/view.js';
+	import { stockCount } from '#lib/stock/summary.svelte.js';
 	import type { NavItem, NavSection } from '#lib/ui/shell/nav.js';
 	import SidebarNav from '#lib/ui/shell/SidebarNav.svelte';
 	import { app } from './context.svelte.js';
@@ -35,6 +37,7 @@
 
 	const ORDERS = resolve('orders');
 	const CLIENTS = resolve('clients');
+	const STOCK = resolve('stock');
 	const SETTINGS = resolve('settings');
 
 	// «Мои виды»: views of the orders list saved on this device (the «Фильтры ▾» menu saves them).
@@ -71,6 +74,10 @@
 	// «Клиенты» needs the right to see the list (the server's rule for `GET /clients`).
 	const canSeeClients = $derived(app.can('clients_view') || app.can('orders_create'));
 
+	// «Склад» needs the right to see the stock; its counter is the number of positions to be bought.
+	const canSeeStock = $derived(app.can('stock_view'));
+	const restockCount = $derived(stockCount.restock);
+
 	const sections = $derived<NavSection[]>([
 		{
 			items: [
@@ -83,6 +90,17 @@
 				},
 				...(canSeeClients
 					? [{ id: 'clients', label: ru.app.clients, icon: Users, href: CLIENTS }]
+					: []),
+				...(canSeeStock
+					? [
+							{
+								id: 'stock',
+								label: ru.app.stock,
+								icon: Warehouse,
+								href: STOCK,
+								count: restockCount !== null && restockCount > 0 ? restockCount : undefined
+							}
+						]
 					: [])
 			]
 		},
@@ -106,6 +124,7 @@
 
 	const active = $derived.by(() => {
 		if (page.url.pathname === CLIENTS) return 'clients';
+		if (page.url.pathname === STOCK) return 'stock';
 		// The template editor is opened from «Документы и реквизиты»: it belongs to «Настройки» too.
 		if (page.url.pathname.startsWith(SETTINGS) || page.route.id?.startsWith('/(app)/templates/'))
 			return 'settings';

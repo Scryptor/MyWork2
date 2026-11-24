@@ -9,6 +9,7 @@
 		HelpHint,
 		MoneyInput,
 		PhoneInput,
+		QuantityInput,
 		SegmentedControl,
 		Section,
 		Select,
@@ -51,6 +52,9 @@
 	let moneyErr = $state<number | null>(null);
 	let moneyOff = $state<number | null>(120050);
 	let moneySm = $state<number | null>(null);
+	let qty = $state(3);
+	let qtyErr = $state(0);
+	let qtyOff = $state(12);
 	let phone = $state('70000000001');
 	let phoneErr = $state('');
 	let phoneOff = $state('70000000002');
@@ -146,6 +150,18 @@
 	<PhoneInput bind:value={phoneOff} label="Телефон отключённый" disabled />
 	<PhoneInput bind:value={phoneSm} label="Телефон с подсказкой" hint="Любой формат" />
 </div>
+
+<h3>Количество</h3>
+<div class="grid">
+	<QuantityInput bind:value={qty} label="Количество" hint="От 0 до 1 000 000" />
+	<QuantityInput
+		bind:value={qtyErr}
+		label="Количество с ошибкой"
+		error="Количество — от 0 до 1 000 000"
+	/>
+	<QuantityInput bind:value={qtyOff} label="Количество отключённое" disabled />
+</div>
+<p class="muted">Количество: {qty}</p>
 
 <h3>Переключатели</h3>
 <div class="grid">

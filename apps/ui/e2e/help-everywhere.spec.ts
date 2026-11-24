@@ -122,6 +122,12 @@ test('«Клиенты» explains «Похожие», the client panel the black
 	}
 });
 
+test('«Склад» explains «Докупить»', async ({ page }) => {
+	await page.goto('/stock');
+	await expect(page.getByRole('grid', { name: 'Склад' })).toBeVisible();
+	await expectHint(page, page.getByRole('main'), 'Докупить', 'порог');
+});
+
 test('the settings explain the density, the replacement, the statuses and the data folder', async ({
 	page
 }) => {
@@ -172,6 +178,7 @@ test('the first run explains the choice and the first point', async ({ page }) =
 for (const path of [
 	'/orders',
 	'/clients',
+	'/stock',
 	'/settings/statuses',
 	'/settings/import',
 	'/settings/about'

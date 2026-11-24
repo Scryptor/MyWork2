@@ -2,12 +2,14 @@
 	import DateInput from './DateInput.svelte';
 	import MoneyInput from './MoneyInput.svelte';
 	import PhoneInput from './PhoneInput.svelte';
+	import QuantityInput from './QuantityInput.svelte';
 	import ChipGroup from './ChipGroup.svelte';
 	import Switch from './Switch.svelte';
 
 	let {
 		kind,
 		money = null,
+		quantity = 0,
 		nullable = true,
 		phone = '',
 		date = null,
@@ -18,8 +20,9 @@
 		oncreate,
 		onwrite
 	}: {
-		kind: 'money' | 'phone' | 'date' | 'chips' | 'switch';
+		kind: 'money' | 'phone' | 'date' | 'chips' | 'switch' | 'quantity';
 		money?: number | null;
+		quantity?: number;
 		nullable?: boolean;
 		phone?: string;
 		date?: string | null;
@@ -36,6 +39,7 @@
 	let m = $derived(money);
 	let p = $derived(phone);
 	let d = $derived(date);
+	let q = $derived(quantity);
 	let invalid = $state(false);
 	/* svelte-ignore state_referenced_locally */
 	let s = $state(selected);
@@ -58,6 +62,18 @@
 	/>
 	<output data-testid="out">{JSON.stringify(m)}</output>
 	<output data-testid="invalid">{invalid}</output>
+{:else if kind === 'quantity'}
+	<QuantityInput
+		bind:value={
+			() => q,
+			(v) => {
+				onwrite?.(v);
+				q = v;
+			}
+		}
+		label="Количество"
+	/>
+	<output data-testid="out">{q}</output>
 {:else if kind === 'phone'}
 	<PhoneInput
 		bind:value={
