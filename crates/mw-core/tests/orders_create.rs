@@ -263,11 +263,10 @@ async fn a_new_order_keeps_its_pattern_key() -> Result<(), CoreError> {
         let o = t.core.create_order(&admin(), sample_new_order()).await?;
         assert_eq!(o.device_pattern, "", "{}", t.label);
     }
-    // Тело приёма без поля ключа читается с пустым ключом.
+    // Поле ключа в теле приёма обязательно, как остальные: тело без него не читается.
     let mut body = serde_json::to_value(sample_new_order()).unwrap();
     let removed = body.as_object_mut().unwrap().remove("device_pattern");
     assert_eq!(removed, Some(serde_json::json!("")));
-    let read: NewOrder = serde_json::from_value(body).unwrap();
-    assert_eq!(read.device_pattern, "");
+    assert!(serde_json::from_value::<NewOrder>(body).is_err());
     Ok(())
 }

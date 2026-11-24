@@ -244,15 +244,6 @@ fn check_new<T>(complete: serde_json::Value)
 where
     T: DeserializeOwned + TS + utoipa::ToSchema,
 {
-    check_new_with::<T>(complete, &[]);
-}
-
-/// То же, но поля `lenient` serde читает и без них (значением по умолчанию): их добавили в тело
-/// позже, и прежние вызовы API не должны ломаться. В TS и OpenAPI они всё равно обязательны.
-fn check_new_with<T>(complete: serde_json::Value, lenient: &[&str])
-where
-    T: DeserializeOwned + TS + utoipa::ToSchema,
-{
     let name = <T as utoipa::ToSchema>::name();
     let schema = serde_json::to_value(<T as utoipa::PartialSchema>::schema()).unwrap();
     let props: std::collections::BTreeSet<String> = schema["properties"]
@@ -277,18 +268,10 @@ where
     for field in body.keys() {
         let mut partial = body.clone();
         partial.remove(field);
-        let read = serde_json::from_value::<T>(serde_json::Value::Object(partial));
-        if lenient.contains(&field.as_str()) {
-            assert!(
-                read.is_ok(),
-                "{name}.{field}: serde не принял тело без поля"
-            );
-        } else {
-            assert!(read.is_err(), "{name}.{field}: serde принял тело без поля");
-        }
-    }
-    for field in lenient {
-        assert!(body.contains_key(*field), "{name}.{field}: нет в теле");
+        assert!(
+            serde_json::from_value::<T>(serde_json::Value::Object(partial)).is_err(),
+            "{name}.{field}: serde принял тело без поля"
+        );
     }
 }
 
@@ -306,19 +289,15 @@ fn request_bodies_require_every_field() {
     check_new::<NewRole>(json!({ "name": "А", "permissions": ["orders_create"] }));
     check_new::<DictionaryRename>(json!({ "value": "А", "in_orders": true }));
     check_new::<DictionaryMerge>(json!({ "target_id": 1, "source_ids": [2], "in_orders": false }));
-    // Графический ключ появился в 8.2: тело без него читается с пустым ключом.
-    check_new_with::<NewOrder>(
-        json!({
-            "client": { "existing": 1 }, "service_point_id": null, "status_id": null,
-            "device_type": "", "brand": "", "model": "", "serial": "", "color": "",
-            "device_password": "", "device_pattern": "", "completeness": "",
-            "device_condition": "", "malfunction": "", "internal_comment": "",
-            "master_user_id": null, "estimate_from": null, "estimate_to": null, "prepayment": 0,
-            "warranty": "30 дней", "need_call": false, "need_parts": false,
-            "attachment_draft": null, "request_key": null
-        }),
-        &["device_pattern"],
-    );
+    check_new::<NewOrder>(json!({
+        "client": { "existing": 1 }, "service_point_id": null, "status_id": null,
+        "device_type": "", "brand": "", "model": "", "serial": "", "color": "",
+        "device_password": "", "device_pattern": "", "completeness": "", "device_condition": "",
+        "malfunction": "", "internal_comment": "", "master_user_id": null, "estimate_from": null,
+        "estimate_to": null,
+        "prepayment": 0, "warranty": "30 дней", "need_call": false, "need_parts": false,
+        "attachment_draft": null, "request_key": null
+    }));
 }
 
 /// Коды перечисления одинаковы в serde, TypeScript и OpenAPI, в порядке объявления.
