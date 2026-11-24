@@ -360,6 +360,35 @@ test('status change shows a toast and undo restores it', async ({ page, request 
 	expect((await fetchOrder(request, o.id)).status_id).toBe(diag);
 });
 
+test('prepayment of an order in work can be changed and «К оплате» follows', async ({
+	page,
+	request
+}) => {
+	const m = uniq('M');
+	const o = await createOrder(request, { model: m });
+	await patchOrder(request, o.id, { final_price: 300000 });
+	await openPanel(page, m, o.id);
+	const panel = panelOf(page, o.id);
+	const field = panel.getByRole('textbox', { name: 'Предоплата' });
+	await field.fill('1000');
+	await expect(panel.getByText('К оплате 2 000 ₽')).toBeVisible();
+	await expect(panel.getByText('✓ Сохранено')).toBeVisible();
+	expect((await fetchOrder(request, o.id)).prepayment).toBe(100000);
+
+	await page.reload();
+	await rowOf(page, o.id).getByRole('gridcell').nth(3).click();
+	await expect(panelOf(page, o.id).getByRole('textbox', { name: 'Предоплата' })).toHaveValue(
+		/^1\s000$/
+	);
+	await expect(panelOf(page, o.id).getByText('Изменено: предоплата')).toBeVisible();
+
+	const again = panelOf(page, o.id).getByRole('textbox', { name: 'Предоплата' });
+	await again.fill('5000');
+	await expect(panelOf(page, o.id).getByText('Скидка и предоплата больше итога')).toBeVisible();
+	await expect(panelOf(page, o.id).getByText('✓ Сохранено')).toBeVisible();
+	expect((await fetchOrder(request, o.id)).prepayment).toBe(500000);
+});
+
 test('Alt+↓ moves to the next order and money typed does not leak into it', async ({
 	page,
 	request

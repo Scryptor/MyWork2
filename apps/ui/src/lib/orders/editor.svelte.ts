@@ -31,6 +31,7 @@ export const ORDER_FIELDS = [
 	'master_user_id',
 	'service_point_id',
 	'final_price',
+	'prepayment',
 	'discount',
 	'extra_costs',
 	'warranty',

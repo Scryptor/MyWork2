@@ -385,7 +385,7 @@ test.describe('server settings', () => {
 		await expect(row).toContainText(/3\s500\s\$/);
 		await row.getByRole('gridcell').nth(3).click();
 		const panel = page.getByRole('dialog', { name: new RegExp(`^№ ${o.id}(?!\\d)`) });
-		await expect(panel).toContainText(/Предоплата\s+500\s\$/);
+		await expect(panel.getByRole('textbox', { name: 'Предоплата' })).toHaveValue('500');
 		await expect(panel.getByText(/^К оплате/)).toHaveText(/^К оплате\s3\s000\s\$$/);
 		await expect(panel.getByText('$', { exact: true }).first()).toBeVisible();
 		await expect(panel.getByText('₽')).toHaveCount(0);

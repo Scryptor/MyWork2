@@ -98,6 +98,7 @@
 		master_user_id: t.master,
 		service_point_id: t.point,
 		final_price: t.finalPrice,
+		prepayment: t.prepayment,
 		discount: t.discount,
 		extra_costs: t.extraCosts,
 		warranty: t.warrantyTerm,
@@ -124,6 +125,7 @@
 	/** «Что это?» of the fields whose meaning the label does not tell. */
 	const HELP: Partial<Record<OrderField, readonly string[]>> = {
 		final_price: ru.help.order.finalPrice,
+		prepayment: ru.help.order.prepayment,
 		extra_costs: ru.help.order.extraCosts,
 		warranty: ru.help.order.warranty,
 		need_call: ru.help.order.needCall,
@@ -167,10 +169,11 @@
 
 	// Money: an amount goes as it is typed; while the text is not an amount nothing is sent and the field
 	// keeps the last amount it wrote, so leaving it shows the error instead of the old sum.
-	type MoneyField = 'final_price' | 'discount' | 'extra_costs';
-	const MONEY: MoneyField[] = ['final_price', 'discount', 'extra_costs'];
+	type MoneyField = 'final_price' | 'prepayment' | 'discount' | 'extra_costs';
+	const MONEY: MoneyField[] = ['final_price', 'prepayment', 'discount', 'extra_costs'];
 	let invalid = $state<Record<MoneyField, boolean>>({
 		final_price: false,
+		prepayment: false,
 		discount: false,
 		extra_costs: false
 	});
@@ -192,7 +195,7 @@
 			? null
 			: toPay({
 					final_price: money('final_price'),
-					prepayment: order.prepayment,
+					prepayment: money('prepayment') ?? 0,
 					discount: money('discount') ?? 0
 				})
 	);
@@ -361,12 +364,6 @@
 	<Section title={t.money}>
 		<p class="line muted num">
 			{estimate ? `${t.estimate} ${estimate}` : t.noEstimate}
-			{#if order.prepayment > 0}
-				· {t.prepayment}
-				{formatMoney(order.prepayment)}{order.prepaid_at
-					? ` (${formatRelative(order.prepaid_at, serverClock.now())})`
-					: ''}
-			{/if}
 		</p>
 		<div class="money">
 			{#each MONEY as f (f)}
@@ -381,6 +378,11 @@
 						bind:value={() => money(f), (v) => setMoney(f, v)}
 					/>
 					{@render dispute(f)}
+					{#if f === 'prepayment' && (money(f) ?? 0) > 0 && order.prepaid_at && !invalid[f]}
+						<p class="cost num">
+							{t.prepaidAt(formatRelative(order.prepaid_at, serverClock.now()))}
+						</p>
+					{/if}
 					{#if f === 'extra_costs' && partsTotal > 0 && !invalid[f]}
 						{@const extra = money(f) ?? 0}
 						<p class="cost num">
