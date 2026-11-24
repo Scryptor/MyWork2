@@ -711,6 +711,12 @@ export const ru = {
 		malfunction: 'Неисправность',
 		workDone: 'Выполненные работы',
 		master: 'Мастер',
+		point: 'Точка',
+		noPoint: 'Без точки',
+		/** The point of an order that went to the archive since: it stays, a new choice cannot take it. */
+		pointArchived: (name: string) => `${name} (в архиве)`,
+		/** A point this screen does not know yet (added on another computer). */
+		pointNumber: (id: number) => `Точка № ${id}`,
 		money: 'Деньги',
 		estimate: 'Оценка',
 		noEstimate: 'Без оценки',

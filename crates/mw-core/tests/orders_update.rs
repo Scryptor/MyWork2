@@ -581,3 +581,160 @@ async fn issued_to_issued_is_checked_like_any_move_into_issued() -> Result<(), C
     }
     Ok(())
 }
+
+/// Точки «Центр» и «Север» и заказ в «Центре».
+async fn order_in_center(t: &TestCore) -> Result<(mw_core::Order, i64, i64), CoreError> {
+    let center = t.core.create_service_point(&admin(), "Центр").await?.id;
+    let north = t.core.create_service_point(&admin(), "Север").await?.id;
+    let o = create_order_with(t, |n| n.service_point_id = Some(center)).await;
+    Ok((o, center, north))
+}
+
+fn move_to(point: Option<i64>) -> OrderPatch {
+    OrderPatch {
+        service_point_id: Some(point),
+        ..Default::default()
+    }
+}
+
+#[tokio::test]
+async fn moving_an_order_writes_its_own_history_entry() -> Result<(), CoreError> {
+    for t in cores().await {
+        let (o, center, north) = order_in_center(&t).await?;
+        let before = audit_entries(&t.core, o.id).await;
+        let moved = t
+            .core
+            .update_order(&admin(), o.id, o.version, move_to(Some(north)))
+            .await?;
+        assert_eq!(
+            (moved.service_point_id, moved.version),
+            (Some(north), o.version + 1),
+            "{}",
+            t.label
+        );
+        let last = last_audit(&t.core, o.id).await;
+        assert_eq!(last.action, "order.moved", "{}", t.label);
+        assert_eq!(last.summary, "Перемещён: «Центр» → «Север»");
+        assert_eq!(last.details, Some(json!({ "from": center, "to": north })));
+        let after = audit_entries(&t.core, o.id).await;
+        assert_eq!(after.len(), before.len() + 1, "{}: {after:?}", t.label);
+        assert!(
+            !after[before.len()..]
+                .iter()
+                .any(|(a, _)| a == "order.updated")
+        );
+
+        // Архивная точка в записи — тоже по имени.
+        t.core
+            .update_service_point(
+                &admin(),
+                north,
+                mw_core::ServicePointPatch {
+                    archived: Some(true),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        let back = t
+            .core
+            .update_order(&admin(), o.id, moved.version, move_to(Some(center)))
+            .await?;
+        assert_eq!(
+            last_audit(&t.core, o.id).await.summary,
+            "Перемещён: «Север» → «Центр»"
+        );
+
+        // В архивную или несуществующую точку не переместить, и журнал не пишется.
+        let entries = audit_entries(&t.core, o.id).await;
+        for to in [north, 999_999] {
+            assert_validation(
+                t.core
+                    .update_order(&admin(), o.id, back.version, move_to(Some(to)))
+                    .await,
+                &[("service_point_id", "invalid")],
+            );
+        }
+        assert_eq!(audit_entries(&t.core, o.id).await, entries, "{}", t.label);
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn moving_and_editing_together_writes_both_entries() -> Result<(), CoreError> {
+    for t in cores().await {
+        let (o, center, north) = order_in_center(&t).await?;
+        let before = audit_entries(&t.core, o.id).await;
+        let u = t
+            .core
+            .update_order(
+                &admin(),
+                o.id,
+                o.version,
+                OrderPatch {
+                    service_point_id: Some(Some(north)),
+                    brand: Some("Apple".into()),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        assert_eq!(u.version, o.version + 1, "{}", t.label);
+        let after = audit_entries(&t.core, o.id).await;
+        assert_eq!(
+            after[before.len()..],
+            [
+                ("order.updated".to_owned(), "Изменено: бренд".to_owned()),
+                (
+                    "order.moved".to_owned(),
+                    "Перемещён: «Центр» → «Север»".to_owned()
+                ),
+            ],
+            "{}",
+            t.label
+        );
+        assert_eq!(
+            last_audit(&t.core, o.id).await.details,
+            Some(json!({ "from": center, "to": north }))
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn clearing_the_point_says_without_point() -> Result<(), CoreError> {
+    for t in cores().await {
+        let (o, center, _) = order_in_center(&t).await?;
+        let u = t
+            .core
+            .update_order(&admin(), o.id, o.version, move_to(None))
+            .await?;
+        assert_eq!(u.service_point_id, None, "{}", t.label);
+        let last = last_audit(&t.core, o.id).await;
+        assert_eq!(last.action, "order.moved", "{}", t.label);
+        assert_eq!(last.summary, "Перемещён: «Центр» → без точки");
+        assert_eq!(last.details, Some(json!({ "from": center, "to": null })));
+        t.core
+            .update_order(&admin(), o.id, u.version, move_to(Some(center)))
+            .await?;
+        assert_eq!(
+            last_audit(&t.core, o.id).await.summary,
+            "Перемещён: без точки → «Центр»"
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn setting_the_same_point_changes_nothing() -> Result<(), CoreError> {
+    for t in cores().await {
+        let (o, center, _) = order_in_center(&t).await?;
+        let before = audit_entries(&t.core, o.id).await;
+        // Устаревшая версия в правке без изменений не даёт 409.
+        let same = t
+            .core
+            .update_order(&admin(), o.id, o.version + 5, move_to(Some(center)))
+            .await?;
+        assert_eq!(same.version, o.version, "{}", t.label);
+        assert_eq!(audit_entries(&t.core, o.id).await, before, "{}", t.label);
+    }
+    Ok(())
+}

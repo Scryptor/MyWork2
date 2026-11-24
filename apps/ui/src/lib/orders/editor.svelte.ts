@@ -29,6 +29,7 @@ export const ORDER_FIELDS = [
 	'malfunction',
 	'work_done',
 	'master_user_id',
+	'service_point_id',
 	'final_price',
 	'discount',
 	'extra_costs',

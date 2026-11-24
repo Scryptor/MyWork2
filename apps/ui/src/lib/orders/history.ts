@@ -1,9 +1,17 @@
+import MapPin from '@lucide/svelte/icons/map-pin';
 import Warehouse from '@lucide/svelte/icons/warehouse';
 import type { Component } from 'svelte';
 import type { AuditEntry } from '$api/AuditEntry';
 
 /** Entries that move things between the stock and an order: they carry the warehouse icon. */
 const STOCK_ACTIONS = ['order.part_added', 'order.part_returned', 'order.costs_split'];
+
+function actionIcon(action: string): Component | undefined {
+	if (STOCK_ACTIONS.includes(action)) return Warehouse;
+	// The order went to another service point.
+	if (action === 'order.moved') return MapPin;
+	return undefined;
+}
 
 /** History lines for `Timeline`: the server writes the text of each entry in Russian. */
 export function historyItems(entries: readonly AuditEntry[]): {
@@ -13,13 +21,10 @@ export function historyItems(entries: readonly AuditEntry[]): {
 	text: string;
 	icon?: Component;
 }[] {
-	return entries.map((e) => ({
-		id: e.id,
-		at: e.at,
-		who: e.user_name,
-		text: e.summary,
-		...(STOCK_ACTIONS.includes(e.action) ? { icon: Warehouse } : {})
-	}));
+	return entries.map((e) => {
+		const icon = actionIcon(e.action);
+		return { id: e.id, at: e.at, who: e.user_name, text: e.summary, ...(icon ? { icon } : {}) };
+	});
 }
 
 function statusMove(e: AuditEntry): { from: number; to: number } | null {

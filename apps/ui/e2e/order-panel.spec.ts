@@ -1,5 +1,6 @@
 import { expect, test, type APIRequestContext, type Page, type Route } from '@playwright/test';
 import type { Order } from '$api/Order';
+import type { ServicePoint } from '$api/ServicePoint';
 import { createOrder, deleteOrder, masterId, patchOrder, statusId, uniq } from './support/api';
 
 // The order panel on the server of 4173 (open mode: every permission). Each test makes its own orders
@@ -57,6 +58,40 @@ test('edits save by themselves and survive a reload', async ({ page, request }) 
 	await expect(panelOf(page, o.id).getByRole('textbox', { name: 'Неисправность' })).toHaveValue(
 		'Не включается!'
 	);
+});
+
+test('the point of an order changes from the panel and history says where it went', async ({
+	page,
+	request
+}) => {
+	const tag = uniq();
+	const point = async (name: string) => {
+		const created = await request.post('/api/v1/service-points', { data: { name } });
+		expect(created.ok(), await created.text()).toBe(true);
+		return (await created.json()) as ServicePoint;
+	};
+	const center = await point(`Центр ${tag}`);
+	const north = await point(`Север ${tag}`);
+	const m = uniq('M');
+	const o = await createOrder(request, { model: m, service_point_id: center.id });
+	await openPanel(page, m, o.id);
+	const panel = panelOf(page, o.id);
+	const select = panel.getByRole('combobox', { name: 'Точка', exact: true });
+	await expect(select).toHaveText(center.name);
+
+	await select.click();
+	await page.getByRole('option', { name: north.name, exact: true }).click();
+	await expect(select).toHaveText(north.name);
+	// The line under the title: «принят … · <точка>».
+	await expect(panel.getByText(new RegExp(`^принят .*${north.name}`))).toBeVisible();
+	await expect(panel.getByText(`Перемещён: «${center.name}» → «${north.name}»`)).toBeVisible();
+	expect((await fetchOrder(request, o.id)).service_point_id).toBe(north.id);
+
+	await page.reload();
+	await rowOf(page, o.id).getByRole('gridcell').nth(3).click();
+	await expect(
+		panelOf(page, o.id).getByRole('combobox', { name: 'Точка', exact: true })
+	).toHaveText(north.name);
 });
 
 test('typing during a slow save keeps the text', async ({ page, request }) => {

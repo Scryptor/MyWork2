@@ -183,6 +183,19 @@ pub async fn audit_summaries(core: &Core, order_id: i64) -> Vec<String> {
         .collect()
 }
 
+/// Действия и сводки журнала заказа, старые сверху.
+pub async fn audit_entries(core: &Core, order_id: i64) -> Vec<(String, String)> {
+    audit_log::Entity::find()
+        .filter(audit_log::Column::OrderId.eq(order_id))
+        .order_by_asc(audit_log::Column::Id)
+        .all(core.db())
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|r| (r.action, r.summary))
+        .collect()
+}
+
 pub async fn status_id_by_name(core: &Core, name: &str) -> i64 {
     status::Entity::find()
         .filter(status::Column::Name.eq(name))

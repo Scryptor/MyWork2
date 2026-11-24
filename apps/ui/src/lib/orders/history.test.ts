@@ -1,4 +1,5 @@
 import type { AuditEntry } from '$api/AuditEntry';
+import MapPin from '@lucide/svelte/icons/map-pin';
 import Warehouse from '@lucide/svelte/icons/warehouse';
 import { describe, expect, it } from 'vitest';
 import {
@@ -69,6 +70,18 @@ describe('stock actions', () => {
 
 	it('other actions have no icon', () => {
 		expect(historyItems([entry(3, 'order.updated')])[0]?.icon).toBeUndefined();
+	});
+});
+
+describe('moves between points', () => {
+	it('show the text of the entry as is with the map pin', () => {
+		const moved = {
+			...entry(3, 'order.moved', { from: 1, to: 2 }),
+			summary: 'Перемещён: «Центр» → «Север»'
+		};
+		const [line] = historyItems([moved]);
+		expect(line?.text).toBe('Перемещён: «Центр» → «Север»');
+		expect(line?.icon).toBe(MapPin);
 	});
 });
 

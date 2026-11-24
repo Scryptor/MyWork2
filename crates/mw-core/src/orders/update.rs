@@ -1,5 +1,5 @@
 use chrono::{NaiveDateTime, SubsecRound};
-use mw_db::entity::{order, status};
+use mw_db::entity::{order, service_point, status};
 use mw_domain::issue::IssueRequirement;
 use mw_domain::permission::Permission;
 use mw_domain::status::StatusKind;
@@ -72,6 +72,17 @@ fn trimmed(v: Option<String>) -> Option<String> {
     v.map(|s| s.trim().to_owned())
 }
 
+/// Точка в записи о перемещении: имя в кавычках (архивная — тоже), без точки — «без точки».
+async fn point_label(tx: &DatabaseTransaction, id: Option<i64>) -> Result<String, CoreError> {
+    let Some(id) = id else {
+        return Ok("без точки".to_owned());
+    };
+    Ok(service_point::Entity::find_by_id(id)
+        .one(tx)
+        .await?
+        .map_or_else(|| format!("№ {id}"), |p| format!("«{}»", p.name)))
+}
+
 impl Core {
     /// Частичная правка заказа с оптимистической блокировкой и точным журналом различий.
     pub async fn update_order(
@@ -119,7 +130,13 @@ impl Core {
         let mut m = current.clone();
         let mut d = Diff::default();
         apply!(d, m, client_id, "клиент", patch.client_id);
-        apply!(d, m, service_point_id, "точка", patch.service_point_id);
+        // Точка: перемещение пишется своей записью `order.moved`, среди меток «Изменено» его нет.
+        let moved = match patch.service_point_id {
+            Some(new) if new != m.service_point_id => {
+                Some((std::mem::replace(&mut m.service_point_id, new), new))
+            }
+            _ => None,
+        };
         apply!(d, m, received_at, "дата приёма", patch.received_at);
         apply!(d, m, issued_at, "дата выдачи", patch.issued_at);
         apply!(
@@ -261,7 +278,7 @@ impl Core {
         apply!(d, m, need_call, "нужно позвонить", patch.need_call);
         apply!(d, m, need_parts, "требует заказа", patch.need_parts);
 
-        if d.changes.is_empty() {
+        if d.changes.is_empty() && moved.is_none() {
             return Ok((current.into(), false));
         }
         if current.version != expected_version {
@@ -279,10 +296,8 @@ impl Core {
         if m.client_id != current.client_id && find_live(tx, m.client_id).await?.is_none() {
             errors.push(FieldError::new("client_id", "invalid"));
         }
-        if m.service_point_id != current.service_point_id
-            && let Some(sp) = m.service_point_id
-        {
-            let ok = mw_db::entity::service_point::Entity::find_by_id(sp)
+        if let Some((_, Some(sp))) = moved {
+            let ok = service_point::Entity::find_by_id(sp)
                 .one(tx)
                 .await?
                 .is_some_and(|p| !p.archived);
@@ -404,26 +419,49 @@ impl Core {
             .await?;
         check_affected(tx, res.rows_affected, id).await?;
 
-        let mut summary = format!("Изменено: {}", d.labels.join(", "));
-        let details = json!({ "changes": d.changes });
-        // Пометка «из справочника» — только в тексте записи, не среди полей правки.
-        if let Some(via) = via {
-            summary.push_str(via.suffix_ru());
+        if !d.changes.is_empty() {
+            let mut summary = format!("Изменено: {}", d.labels.join(", "));
+            let details = json!({ "changes": d.changes });
+            // Пометка «из справочника» — только в тексте записи, не среди полей правки.
+            if let Some(via) = via {
+                summary.push_str(via.suffix_ru());
+            }
+            write_audit(
+                tx,
+                now,
+                actor,
+                NewAuditEntry {
+                    action: "order.updated",
+                    order_id: Some(id),
+                    client_id: Some(m.client_id),
+                    stock_item_id: None,
+                    summary,
+                    details: Some(details),
+                },
+            )
+            .await?;
         }
-        write_audit(
-            tx,
-            now,
-            actor,
-            NewAuditEntry {
-                action: "order.updated",
-                order_id: Some(id),
-                client_id: Some(m.client_id),
-                stock_item_id: None,
-                summary,
-                details: Some(details),
-            },
-        )
-        .await?;
+        if let Some((from, to)) = moved {
+            let summary = format!(
+                "Перемещён: {} → {}",
+                point_label(tx, from).await?,
+                point_label(tx, to).await?
+            );
+            write_audit(
+                tx,
+                now,
+                actor,
+                NewAuditEntry {
+                    action: "order.moved",
+                    order_id: Some(id),
+                    client_id: Some(m.client_id),
+                    stock_item_id: None,
+                    summary,
+                    details: Some(json!({ "from": from, "to": to })),
+                },
+            )
+            .await?;
+        }
         Ok((load(tx, id).await?.into(), true))
     }
 

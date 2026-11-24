@@ -96,6 +96,7 @@
 		malfunction: t.malfunction,
 		work_done: t.workDone,
 		master_user_id: t.master,
+		service_point_id: t.point,
 		final_price: t.finalPrice,
 		discount: t.discount,
 		extra_costs: t.extraCosts,
@@ -142,6 +143,24 @@
 		masterChoices(dictionaries.masters, order.master_user_id, order.master)
 	);
 	const warrantyItems = $derived(dictionaries.warranty.map((value) => ({ value })));
+
+	/** «Без точки» in the select of points: selects take numbers, an order takes `null` (ids start at 1). */
+	const NO_POINT = 0;
+	const pointLabel = (id: number) => app.points.find((p) => p.id === id)?.name ?? t.pointNumber(id);
+	/** «Без точки» and the points not in the archive; the order's own archived point stays, not choosable. */
+	const pointOptions = $derived.by(() => {
+		const items: { value: number; label: string; disabled?: boolean }[] = [
+			{ value: NO_POINT, label: t.noPoint },
+			...app.activePoints.map((p) => ({ value: p.id, label: p.name }))
+		];
+		const current = order.service_point_id;
+		if (current !== null && !items.some((i) => i.value === current)) {
+			const known = app.points.find((p) => p.id === current);
+			const label = known ? t.pointArchived(known.name) : t.pointNumber(current);
+			items.push({ value: current, label, disabled: true });
+		}
+		return items;
+	});
 
 	/** What the field shows: own unsaved value, or the order's. */
 	const shown = <K extends OrderField>(f: K): OrderValues[K] => autosave.value(f, order[f]);
@@ -204,6 +223,7 @@
 	}
 
 	function asText(f: OrderField, v: unknown): string {
+		if (f === 'service_point_id') return typeof v === 'number' ? pointLabel(v) : t.noPoint;
 		if (typeof v === 'boolean') return v ? t.yes : t.no;
 		if (v === null || v === '') return t.empty;
 		if (f === 'master_user_id' && typeof v === 'number') {
@@ -297,22 +317,43 @@
 				/>
 				{@render dispute('work_done')}
 			</div>
-			<div
-				class="flashable"
-				class:flash={flash(['master_user_id'])}
-				onanimationend={() => endFlash(['master_user_id'])}
-			>
-				<Select
-					id={idOf('master_user_id')}
-					label={t.master}
-					items={masterOptions}
-					disabled={readonly}
-					bind:value={
-						() => masterValue(shown('master_user_id')),
-						(v) => autosave.commit('master_user_id', masterOf(v))
-					}
-				/>
-				{@render dispute('master_user_id')}
+			<div class="side">
+				<div
+					class="flashable"
+					class:flash={flash(['master_user_id'])}
+					onanimationend={() => endFlash(['master_user_id'])}
+				>
+					<Select
+						id={idOf('master_user_id')}
+						label={t.master}
+						items={masterOptions}
+						disabled={readonly}
+						bind:value={
+							() => masterValue(shown('master_user_id')),
+							(v) => autosave.commit('master_user_id', masterOf(v))
+						}
+					/>
+					{@render dispute('master_user_id')}
+				</div>
+				{#if app.points.length > 0}
+					<div
+						class="flashable"
+						class:flash={flash(['service_point_id'])}
+						onanimationend={() => endFlash(['service_point_id'])}
+					>
+						<Select
+							id={idOf('service_point_id')}
+							label={t.point}
+							items={pointOptions}
+							disabled={readonly}
+							bind:value={
+								() => shown('service_point_id') ?? NO_POINT,
+								(v) => autosave.commit('service_point_id', v === null || v === NO_POINT ? null : v)
+							}
+						/>
+						{@render dispute('service_point_id')}
+					</div>
+				{/if}
 			</div>
 		</div>
 	</Section>
@@ -552,6 +593,12 @@
 		grid-template-columns: minmax(0, 1fr) minmax(0, 11rem);
 		align-items: start;
 		gap: var(--space-3);
+	}
+	.side {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-3);
+		min-width: 0;
 	}
 	.device {
 		display: grid;

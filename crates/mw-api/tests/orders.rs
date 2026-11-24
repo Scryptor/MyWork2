@@ -408,6 +408,60 @@ async fn history_needs_only_login_and_pages_newest_first() {
 }
 
 #[tokio::test]
+async fn patching_the_point_moves_the_order() {
+    for t in apis(Listen::Network).await {
+        let token = t.admin_token().await;
+        let point = async |name: &str| {
+            let r = t
+                .send(
+                    Method::POST,
+                    "/api/v1/service-points",
+                    Some(&token),
+                    Some(json!({ "name": name })),
+                )
+                .await;
+            assert_eq!(r.status, 201, "{}: {}", t.label, r.body);
+            r.body["id"].as_i64().unwrap()
+        };
+        let center = point("Центр").await;
+        let north = point("Север").await;
+        let mut body = new_order("Анна", "", "Samsung", "A52");
+        body["service_point_id"] = json!(center);
+        let id = create_order(&t, &token, body).await["id"].as_i64().unwrap();
+        let r = t
+            .send(
+                Method::PATCH,
+                &format!("/api/v1/orders/{id}?version=1"),
+                Some(&token),
+                Some(json!({ "service_point_id": north })),
+            )
+            .await;
+        assert_eq!(
+            (r.status, &r.body["service_point_id"], &r.body["version"]),
+            (200, &json!(north), &json!(2)),
+            "{}: {}",
+            t.label,
+            r.body
+        );
+        let h = t
+            .get(&format!("/api/v1/orders/{id}/history"), Some(&token))
+            .await;
+        let first = &h.body["items"][0];
+        assert_eq!(
+            (&first["action"], &first["summary"], &first["details"]),
+            (
+                &json!("order.moved"),
+                &json!("Перемещён: «Центр» → «Север»"),
+                &json!({ "from": center, "to": north })
+            ),
+            "{}: {}",
+            t.label,
+            h.body
+        );
+    }
+}
+
+#[tokio::test]
 async fn warranty_case_and_unstamped_issue() {
     for t in apis(Listen::Network).await {
         let token = t.admin_token().await;
