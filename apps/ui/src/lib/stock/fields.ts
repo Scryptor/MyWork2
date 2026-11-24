@@ -1,6 +1,7 @@
 // The fields of a stock position: their labels and the words for the server's refusals. The add dialog
 // and the panel both show them.
 import { ApiError } from '#lib/api/client.js';
+import { currencySymbol } from '#lib/format/currency.svelte.js';
 import { ru } from '#lib/i18n/ru.js';
 
 /** The keys of `NewStockItem` / `StockItemPatch` and what they are called on screen. */
@@ -36,7 +37,9 @@ export function stockFieldMessage(field: string, code: string): string {
 		case 'too_long':
 			return t.tooLong(label(field), field === 'note' ? MAX_NOTE_CHARS : MAX_TEXT_CHARS);
 		case 'out_of_range':
-			return field === 'price' ? t.priceRange(label(field)) : t.quantityRange(label(field));
+			return field === 'price'
+				? t.priceRange(label(field), currencySymbol())
+				: t.quantityRange(label(field));
 		case 'deleted':
 			return t.deleted;
 		default:

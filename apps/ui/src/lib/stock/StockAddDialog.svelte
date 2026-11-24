@@ -17,7 +17,7 @@
 	import Textarea from '#lib/ui/Textarea.svelte';
 	import TextInput from '#lib/ui/TextInput.svelte';
 	import { toast } from '#lib/ui/toast/toast.svelte.js';
-	import { STOCK_FIELDS, stockFieldErrors } from './fields.js';
+	import { MAX_STOCK_QUANTITY, STOCK_FIELDS, stockFieldErrors } from './fields.js';
 	import { stockCount } from './summary.svelte.js';
 
 	let {
@@ -170,6 +170,7 @@
 		</div>
 		<div class="grid">
 			<QuantityInput
+				max={MAX_STOCK_QUANTITY}
 				label={STOCK_FIELDS.quantity}
 				error={errors.quantity}
 				bind:value={form.quantity}
@@ -183,6 +184,7 @@
 			/>
 			<QuantityInput
 				label={STOCK_FIELDS.restock_threshold}
+				max={MAX_STOCK_QUANTITY}
 				help={ru.help.stock.threshold}
 				error={errors.restock_threshold}
 				bind:value={form.restock_threshold}

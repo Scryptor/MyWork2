@@ -51,4 +51,10 @@ describe('QuantityInput', () => {
 		expect(out()).toBe('0');
 		expect(input).toHaveValue('0');
 	});
+
+	it('«Больше» is off at the maximum', async () => {
+		render(Harness, { kind: 'quantity', quantity: 5, max: 5 });
+		expect(screen.getByRole('button', { name: 'Больше' })).toBeDisabled();
+		expect(screen.getByRole('button', { name: 'Меньше' })).toBeEnabled();
+	});
 });

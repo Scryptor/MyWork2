@@ -11,7 +11,7 @@
 	import { page } from '$app/state';
 	import type { StockItem } from '$api/StockItem';
 	import { app } from '#lib/app/context.svelte.js';
-	import { registerHotkey } from '#lib/design/hotkeys.svelte.js';
+	import { createListFilter } from '#lib/app/list-filter.svelte.js';
 	import { countLabel, formatMoney } from '#lib/format/index.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import { stockColumns } from '#lib/stock/columns.js';
@@ -42,8 +42,6 @@
 	import { toast } from '#lib/ui/toast/toast.svelte.js';
 
 	const t = ru.stock;
-	/** The list filter asks the server once typing pauses for this long. */
-	const FILTER_MS = 250;
 
 	const canView = $derived(app.can('stock_view'));
 	const canCreate = $derived(app.can('stock_create'));
@@ -51,28 +49,10 @@
 	const openId = $derived(openStockItemId(page.url.searchParams));
 
 	// The list filter: its text is ahead of the address while the user types.
-	let text = $state(untrack(() => view.query));
-	let filterEl = $state<HTMLInputElement | null>(null);
-	let typing: ReturnType<typeof setTimeout> | undefined;
-	/** The text sent last from typing; its arrival in the address does not touch the field. */
-	let sent: string | null = null;
-	const viewQuery = $derived(view.query);
-	$effect(() => {
-		const q = viewQuery;
-		untrack(() => {
-			if (q === sent) {
-				sent = null;
-				return;
-			}
-			sent = null;
-			if (q !== text) {
-				clearTimeout(typing);
-				text = q;
-			}
-		});
+	const filter = createListFilter({
+		query: () => view.query,
+		send: (value) => navigate({ ...view, query: value }, openId, true)
 	});
-	$effect(() => () => clearTimeout(typing));
-	$effect(() => registerHotkey('/', () => filterEl?.focus()));
 
 	/** The view and the position open go to the address; focus and scroll stay where they are. */
 	function navigate(next: StockView, itemId: number | null, replace: boolean) {
@@ -82,16 +62,8 @@
 	}
 	/** A chip, a column: a new entry of the history, with the text as typed. */
 	function change(fn: (v: StockView) => StockView) {
-		clearTimeout(typing);
-		navigate(fn({ ...view, query: text }), openId, false);
-	}
-	function typed(value: string) {
-		clearTimeout(typing);
-		typing = setTimeout(() => {
-			if (value === view.query) return;
-			sent = value;
-			navigate({ ...view, query: value }, openId, true);
-		}, FILTER_MS);
+		filter.cancel();
+		navigate(fn({ ...view, query: filter.text }), openId, false);
 	}
 
 	// The rows: a new view loads anew. Without the right to see the stock nothing is asked.
@@ -124,15 +96,15 @@
 	});
 	function openItem(id: number | null) {
 		if (id === openId) return;
-		clearTimeout(typing);
-		navigate({ ...view, query: text }, id, true);
+		filter.cancel();
+		navigate({ ...view, query: filter.text }, id, true);
 	}
 
 	let adding = $state(false);
 	function created(item: StockItem) {
 		list.load(query);
-		clearTimeout(typing);
-		navigate({ ...view, query: text }, item.id, false);
+		filter.cancel();
+		navigate({ ...view, query: filter.text }, item.id, false);
 	}
 
 	const itemId = (s: StockItem) => s.id;
@@ -188,7 +160,7 @@
 				<Button
 					size="sm"
 					onclick={() => {
-						text = '';
+						filter.text = '';
 						change(() => ({ ...defaultStockView(), sort: { ...view.sort } }));
 					}}>{t.resetFilter}</Button
 				>
@@ -206,9 +178,9 @@
 			ariaLabel={t.filter}
 			placeholder={t.filterPlaceholder}
 			autocomplete="off"
-			bind:value={text}
-			bind:ref={filterEl}
-			oninput={typed}
+			bind:value={filter.text}
+			bind:ref={filter.ref}
+			oninput={filter.typed}
 		>
 			{#snippet prefix()}<Search size={16} aria-hidden="true" />{/snippet}
 			{#snippet suffix()}<Kbd shortcut="/" />{/snippet}

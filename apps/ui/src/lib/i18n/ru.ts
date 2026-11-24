@@ -577,7 +577,7 @@ export const ru = {
 		errors: {
 			nameRequired: 'Укажите наименование или заполните хотя бы одно поле позиции',
 			tooLong: (field: string, max: number) => `${field} — не длиннее ${max} знаков`,
-			priceRange: (field: string) => `${field} — от 0 до 10 000 000 ₽`,
+			priceRange: (field: string, currency: string) => `${field} — от 0 до 10 000 000 ${currency}`,
 			quantityRange: (field: string) => `${field} — от 0 до 1 000 000`,
 			deleted: 'Позиция удалена',
 			invalid: (field: string) => `${field}: недопустимое значение`

@@ -10,6 +10,7 @@
 		kind,
 		money = null,
 		quantity = 0,
+		max,
 		nullable = true,
 		phone = '',
 		date = null,
@@ -23,6 +24,7 @@
 		kind: 'money' | 'phone' | 'date' | 'chips' | 'switch' | 'quantity';
 		money?: number | null;
 		quantity?: number;
+		max?: number;
 		nullable?: boolean;
 		phone?: string;
 		date?: string | null;
@@ -71,6 +73,7 @@
 				q = v;
 			}
 		}
+		{max}
 		label="Количество"
 	/>
 	<output data-testid="out">{q}</output>

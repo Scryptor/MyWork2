@@ -25,7 +25,7 @@
 		withChips,
 		type ClientsView
 	} from '#lib/clients/view.js';
-	import { registerHotkey } from '#lib/design/hotkeys.svelte.js';
+	import { createListFilter } from '#lib/app/list-filter.svelte.js';
 	import { countLabel, displayName, formatFull, formatRelative } from '#lib/format/index.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import { onOrderChanged } from '#lib/orders/events.js';
@@ -44,35 +44,15 @@
 	import { toast } from '#lib/ui/toast/toast.svelte.js';
 
 	const t = ru.clients;
-	/** The list filter asks the server once typing pauses for this long. */
-	const FILTER_MS = 250;
 
 	const view = $derived(clientsViewFromSearch(page.url.searchParams));
 	const openId = $derived(openClientId(page.url.searchParams));
 
 	// The list filter: its text is ahead of the address while the user types.
-	let text = $state(untrack(() => view.query));
-	let filterEl = $state<HTMLInputElement | null>(null);
-	let typing: ReturnType<typeof setTimeout> | undefined;
-	/** The text sent last from typing; its arrival in the address does not touch the field. */
-	let sent: string | null = null;
-	const viewQuery = $derived(view.query);
-	$effect(() => {
-		const q = viewQuery;
-		untrack(() => {
-			if (q === sent) {
-				sent = null;
-				return;
-			}
-			sent = null;
-			if (q !== text) {
-				clearTimeout(typing);
-				text = q;
-			}
-		});
+	const filter = createListFilter({
+		query: () => view.query,
+		send: (value) => navigate({ ...view, query: value }, openId, true)
 	});
-	$effect(() => () => clearTimeout(typing));
-	$effect(() => registerHotkey('/', () => filterEl?.focus()));
 
 	/** The view and the client open go to the address; focus and scroll stay where they are. */
 	function navigate(next: ClientsView, clientId: number | null, replace: boolean) {
@@ -85,16 +65,8 @@
 	}
 	/** A chip, a column: a new entry of the history, with the text as typed. */
 	function change(fn: (v: ClientsView) => ClientsView) {
-		clearTimeout(typing);
-		navigate(fn({ ...view, query: text }), openId, false);
-	}
-	function typed(value: string) {
-		clearTimeout(typing);
-		typing = setTimeout(() => {
-			if (value === view.query) return;
-			sent = value;
-			navigate({ ...view, query: value }, openId, true);
-		}, FILTER_MS);
+		filter.cancel();
+		navigate(fn({ ...view, query: filter.text }), openId, false);
 	}
 
 	// The rows: a new view loads anew and drops the selection.
@@ -142,8 +114,8 @@
 			if (openId !== null) activeId = openId;
 			return;
 		}
-		clearTimeout(typing);
-		navigate({ ...view, query: text }, id, true);
+		filter.cancel();
+		navigate({ ...view, query: filter.text }, id, true);
 	}
 
 	// The merge: the clients are read afresh by the dialog; the panel's own edits are saved before.
@@ -227,7 +199,7 @@
 				<Button
 					size="sm"
 					onclick={() => {
-						text = '';
+						filter.text = '';
 						change(() => ({ ...defaultClientsView(), sort: { ...view.sort } }));
 					}}>{t.resetFilter}</Button
 				>
@@ -245,9 +217,9 @@
 			ariaLabel={t.filter}
 			placeholder={t.filterPlaceholder}
 			autocomplete="off"
-			bind:value={text}
-			bind:ref={filterEl}
-			oninput={typed}
+			bind:value={filter.text}
+			bind:ref={filter.ref}
+			oninput={filter.typed}
 		>
 			{#snippet prefix()}<Search size={16} aria-hidden="true" />{/snippet}
 			{#snippet suffix()}<Kbd shortcut="/" />{/snippet}
@@ -344,8 +316,8 @@
 	clientId={openId}
 	{orderBack}
 	onclose={() => {
-		clearTimeout(typing);
-		navigate({ ...view, query: text }, null, true);
+		filter.cancel();
+		navigate({ ...view, query: filter.text }, null, true);
 	}}
 	onopenclient={(id) => void openClient(id)}
 	onchanged={(c) => list.replace(c)}
