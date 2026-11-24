@@ -197,6 +197,39 @@ test('the card edits the device and opens from Ctrl K with Ctrl/⌘+Enter', asyn
 	await expect(panel.getByRole('textbox', { name: 'Комплектность' })).toHaveCount(0);
 });
 
+test('the card sets the pattern key with «Готово»; closing without it changes nothing', async ({
+	page,
+	request
+}) => {
+	const o = await createOrder(request, { model: uniq('M'), device_pattern: '1596' });
+	await openCard(page, o.id);
+	const field = cardOf(page).getByRole('button', { name: 'Графический ключ', exact: true });
+	await expect(field).toHaveText('Задан, 4 точки');
+	const popover = page.getByRole('dialog', { name: 'Графический ключ', exact: true });
+	const point = (n: number) => popover.getByRole('button', { name: `Точка ${n}`, exact: true });
+
+	// Esc drops what was pressed.
+	await field.click();
+	await expect(popover).toContainText('1 · 5 · 9 · 6');
+	await popover.getByRole('button', { name: 'Сбросить' }).click();
+	await point(3).click();
+	await page.keyboard.press('Escape');
+	await expect(popover).toBeHidden();
+	await expect(field).toHaveText('Задан, 4 точки');
+
+	await field.click();
+	await popover.getByRole('button', { name: 'Сбросить' }).click();
+	for (const n of [7, 5, 3, 6, 9]) await point(n).click();
+	await popover.getByRole('button', { name: 'Готово' }).click();
+	await expect(popover).toBeHidden();
+	await expect(field).toHaveText('Задан, 5 точек');
+	await expect.poll(async () => (await fetchOrder(request, o.id)).device_pattern).toBe('75369');
+	// The history says what changed, not the pattern.
+	const history = regionOf(page, 'История изменений');
+	await expect(history).toContainText('Изменено: графический ключ');
+	await expect(history).not.toContainText('75369');
+});
+
 /** PATCH requests of one order. */
 const patchesOf = (id: number) => (url: URL) => url.pathname === `/api/v1/orders/${id}`;
 

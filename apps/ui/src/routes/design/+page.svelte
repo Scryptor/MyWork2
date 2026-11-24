@@ -7,6 +7,7 @@
 	import Layers from './sections/Layers.svelte';
 	import Media from './sections/Media.svelte';
 	import Ordering from './sections/Ordering.svelte';
+	import Pattern from './sections/Pattern.svelte';
 	import Navigation from './sections/Navigation.svelte';
 	import Print from './sections/Print.svelte';
 	import Table from './sections/Table.svelte';
@@ -70,6 +71,11 @@
 	<section id="fields">
 		<h2>Поля</h2>
 		<Fields />
+	</section>
+
+	<section id="pattern">
+		<h2>Графический ключ</h2>
+		<Pattern />
 	</section>
 
 	<section id="layers">

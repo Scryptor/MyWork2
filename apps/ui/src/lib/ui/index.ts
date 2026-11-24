@@ -29,6 +29,8 @@ export { default as KeyValue } from './KeyValue.svelte';
 export { default as ListCard } from './ListCard.svelte';
 export { default as MoneyInput } from './MoneyInput.svelte';
 export { default as OptionCard } from './OptionCard.svelte';
+export { default as PatternField } from './PatternField.svelte';
+export { default as PatternInput } from './PatternInput.svelte';
 export { default as PhoneInput } from './PhoneInput.svelte';
 export { default as QuantityInput } from './QuantityInput.svelte';
 export { default as PhotoStrip } from './PhotoStrip.svelte';

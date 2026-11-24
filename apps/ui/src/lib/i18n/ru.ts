@@ -411,6 +411,23 @@ export const ru = {
 		masterLoading: 'Загрузка…',
 		masterNumber: (id: number) => `Мастер № ${id}`
 	},
+	/** The unlock pattern of a device: the grid of points and its field. */
+	pattern: {
+		points: 'Точки ключа',
+		point: (n: number) => `Точка ${n}`,
+		/** Under the empty grid. */
+		start: 'Нажимайте точки по порядку',
+		ready: 'Ключ готов',
+		/** Fewer points than a pattern needs: «Ещё 3 точки». */
+		more: (points: string) => `Ещё ${points}`,
+		pointForms: ['точка', 'точки', 'точек'],
+		undo: 'Отменить шаг',
+		reset: 'Сбросить',
+		done: 'Готово',
+		notSet: 'Не задан',
+		/** «Задан, 4 точки». */
+		set: (points: string) => `Задан, ${points}`
+	},
 	save: {
 		saving: 'Сохраняю…',
 		saved: 'Сохранено',
@@ -706,7 +723,14 @@ export const ru = {
 		morePhones: 'ещё',
 		device: 'Устройство',
 		serial: 'IMEI/серийный',
-		password: 'пароль',
+		password: 'Пароль',
+		/** The pattern key in the line of the device of the panel: «Ключ ••••». */
+		pattern: 'Ключ',
+		/** One button shows the password and the pattern key, whichever the order has. */
+		showPattern: 'Показать ключ',
+		hidePattern: 'Скрыть ключ',
+		showSecrets: 'Показать пароль и ключ',
+		hideSecrets: 'Скрыть пароль и ключ',
 		work: 'Неисправность и работа',
 		malfunction: 'Неисправность',
 		workDone: 'Выполненные работы',
@@ -772,6 +796,7 @@ export const ru = {
 		model: 'Модель',
 		color: 'Цвет',
 		devicePassword: 'Пароль',
+		devicePattern: 'Графический ключ',
 		completeness: 'Комплектность',
 		condition: 'Внешнее состояние'
 	},
@@ -808,6 +833,7 @@ export const ru = {
 		color: 'Цвет',
 		serial: 'IMEI или серийный номер',
 		password: 'Пароль',
+		pattern: 'Графический ключ',
 		completeness: 'Комплектность',
 		condition: 'Внешнее состояние',
 		malfunction: 'Неисправность',
@@ -1216,6 +1242,7 @@ export const ru = {
 				'Чей это номер или когда по нему звонить: «жена», «рабочий», «после 18».',
 				'Пометка видна рядом с номером: в заказе, в карточке клиента и при приёме.'
 			],
+			pattern: 'Необязательно. Виден сотрудникам в карточке заказа',
 			serial: [
 				'IMEI телефона или серийный номер другого устройства.',
 				'С пятого знака программа ищет прошлые заказы, в номере которых есть эти знаки. Если такие есть, справа появится «Этот IMEI уже был»: когда устройство принимали и выдавали и до какого дня у него гарантия, если она ещё идёт. Нажмите на заказ, чтобы открыть его.'

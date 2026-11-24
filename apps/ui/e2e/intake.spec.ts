@@ -1044,3 +1044,36 @@ test('the master is chosen from the masters and is the same in the accepted orde
 	await toastsOf(page).getByRole('button', { name: 'Открыть' }).click();
 	await expect(panelOf(page, id).getByRole('combobox', { name: 'Мастер' })).toContainText(master);
 });
+
+test('a pattern key from intake is kept on the order', async ({ page, request }) => {
+	await openIntake(page);
+	await phoneOf(page).fill(uniqPhone());
+	await nameOf(page).fill(`Тестов ${uniq('П')}`);
+	await fillDevice(page);
+	await malfunctionOf(page).fill('Не заряжается');
+	const field = sheetOf(page).getByRole('button', { name: 'Графический ключ', exact: true });
+	await expect(field).toHaveText('Не задан');
+	await field.click();
+	const popover = page.getByRole('dialog', { name: 'Графический ключ', exact: true });
+	for (const n of [1, 5, 9, 6])
+		await popover.getByRole('button', { name: `Точка ${n}`, exact: true }).click();
+	await expect(popover).toContainText('1 · 5 · 9 · 6');
+	await expect(popover).toContainText('Ключ готов');
+	await popover.getByRole('button', { name: 'Готово' }).click();
+	await expect(popover).toBeHidden();
+	// The popover closed, the sheet stayed.
+	await expect(field).toHaveText('Задан, 4 точки');
+	await sheetOf(page)
+		.getByRole('button', { name: /^Принять/ })
+		.click();
+	await expect(sheetOf(page)).toBeHidden();
+	const id = await acceptedNumber(page);
+	expect((await fetchOrder(request, id)).device_pattern).toBe('1596');
+
+	await toastsOf(page).getByRole('button', { name: 'Открыть' }).click();
+	const panel = panelOf(page, id);
+	await expect(panel.getByText('Ключ ••••')).toBeVisible();
+	await expect(panel.getByText('1 · 5 · 9 · 6')).toHaveCount(0);
+	await panel.getByRole('button', { name: 'Показать ключ' }).click();
+	await expect(panel.getByText('Ключ 1 · 5 · 9 · 6')).toBeVisible();
+});

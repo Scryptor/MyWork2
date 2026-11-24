@@ -24,6 +24,7 @@ export const ORDER_FIELDS = [
 	'color',
 	'serial',
 	'device_password',
+	'device_pattern',
 	'completeness',
 	'device_condition',
 	'malfunction',

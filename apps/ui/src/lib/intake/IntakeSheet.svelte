@@ -28,6 +28,7 @@
 	import Combobox from '#lib/ui/Combobox.svelte';
 	import HelpHint from '#lib/ui/HelpHint.svelte';
 	import MoneyInput from '#lib/ui/MoneyInput.svelte';
+	import PatternField from '#lib/ui/PatternField.svelte';
 	import Section from '#lib/ui/Section.svelte';
 	import Select from '#lib/ui/Select.svelte';
 	import Sheet from '#lib/ui/Sheet.svelte';
@@ -655,6 +656,12 @@
 						revealable
 						autocomplete="off"
 						bind:value={draft.password}
+					/>
+					<PatternField
+						label={t.pattern}
+						help={ru.help.intake.pattern}
+						value={draft.pattern}
+						onchange={(v) => (draft.pattern = v)}
 					/>
 				</div>
 				<ChipGroup

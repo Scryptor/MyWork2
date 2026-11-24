@@ -25,6 +25,7 @@
 	import FieldDispute from '#lib/ui/FieldDispute.svelte';
 	import Combobox from '#lib/ui/Combobox.svelte';
 	import MoneyInput from '#lib/ui/MoneyInput.svelte';
+	import PatternField from '#lib/ui/PatternField.svelte';
 	import Section from '#lib/ui/Section.svelte';
 	import Select from '#lib/ui/Select.svelte';
 	import Switch from '#lib/ui/Switch.svelte';
@@ -34,6 +35,7 @@
 	import type { Conflict, OrderField, OrderValues } from './editor.svelte.js';
 	import { masterChoices, masterName, masterOf, masterValue, type MasterList } from './masters.js';
 	import { orderCost } from './parts.svelte.js';
+	import { patternText } from './pattern.js';
 	import { estimateText, isNoWarranty, toPay } from './view.js';
 
 	let {
@@ -91,6 +93,7 @@
 		color: t.color,
 		serial: t.serial,
 		device_password: t.devicePassword,
+		device_pattern: t.devicePattern,
 		completeness: t.completeness,
 		device_condition: t.condition,
 		malfunction: t.malfunction,
@@ -113,7 +116,8 @@
 		'model',
 		'color',
 		'serial',
-		'device_password'
+		'device_password',
+		'device_pattern'
 	] as const satisfies readonly OrderField[];
 	/** What came with the device and how it looks: text of any length. */
 	const DEVICE_NOTES = [
@@ -201,7 +205,14 @@
 	);
 	const estimate = $derived(estimateText(order));
 
+	/** The password and the pattern key are shown (one button for both). */
 	let revealed = $state(false);
+	const revealLabel = $derived.by(() => {
+		if (order.device_password && order.device_pattern)
+			return revealed ? t.hideSecrets : t.showSecrets;
+		if (order.device_pattern) return revealed ? t.hidePattern : t.showPattern;
+		return revealed ? ru.fields.hidePassword : ru.fields.showPassword;
+	});
 	let allPhones = $state(false);
 	const phones = $derived(client?.phones ?? []);
 	const mainPhone = $derived(phones[0]);
@@ -233,6 +244,7 @@
 			return masterName(dictionaries.masters, v, String(v));
 		}
 		if (MONEY.includes(f as MoneyField) && typeof v === 'number') return formatMoney(v);
+		if (f === 'device_pattern' && typeof v === 'string') return patternText(v);
 		return String(v);
 	}
 </script>
@@ -416,6 +428,14 @@
 								bind:value={() => shown(f), (v) => autosave.edit(f, v)}
 								onselect={(v) => autosave.commit(f, v)}
 							/>
+						{:else if f === 'device_pattern'}
+							<PatternField
+								id={idOf(f)}
+								label={t.devicePattern}
+								disabled={readonly}
+								value={shown(f)}
+								onchange={(v) => autosave.commit(f, v)}
+							/>
 						{:else}
 							<TextInput
 								id={idOf(f)}
@@ -454,18 +474,25 @@
 		>
 			<Section title={t.device}>
 				{#if deviceLine}<p class="line">{deviceLine}</p>{/if}
-				{#if order.serial || order.device_password}
+				{#if order.serial || order.device_password || order.device_pattern}
 					<p class="line muted num">
 						{#if order.serial}<span>{t.serial} {order.serial}</span>{/if}
-						{#if order.device_password}
-							<span>
-								{t.password}
-								{revealed ? order.device_password : '••••'}
+						{#if order.device_password || order.device_pattern}
+							<span class="secrets">
+								{#if order.device_password}
+									<span>{t.password} {revealed ? order.device_password : '••••'}</span>
+								{/if}
+								{#if order.device_pattern}
+									<span>
+										{t.pattern}
+										{revealed ? patternText(order.device_pattern) : '••••'}
+									</span>
+								{/if}
 								<button
 									type="button"
 									class="reveal"
 									aria-pressed={revealed}
-									aria-label={revealed ? ru.fields.hidePassword : ru.fields.showPassword}
+									aria-label={revealLabel}
 									onclick={() => (revealed = !revealed)}
 								>
 									{#if revealed}
@@ -575,6 +602,12 @@
 	}
 	.link:hover {
 		text-decoration: underline;
+	}
+	.secrets {
+		display: inline-flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--space-2);
 	}
 	.reveal {
 		display: inline-flex;

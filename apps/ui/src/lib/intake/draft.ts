@@ -12,6 +12,7 @@ import { parseLocalDateTime, type LocalDateTime } from '#lib/format/date.js';
 import { removeStorage } from '#lib/design/storage.js';
 import { phoneDigits, phoneKey } from '#lib/format/phone.js';
 import { normalizeSearch } from '#lib/format/search.js';
+import { isPattern } from '#lib/orders/pattern.js';
 import type { IntakePrefill } from './intake.svelte.js';
 
 /**
@@ -54,6 +55,8 @@ export interface IntakeDraft {
 	color: string;
 	serial: string;
 	password: string;
+	/** The unlock pattern: the points in their order, «1596»; empty — none. */
+	pattern: string;
 	completeness: string[];
 	condition: string[];
 	malfunctionChips: string[];
@@ -130,6 +133,7 @@ export function emptyDraft(settings: AppSettings, statuses: readonly Status[]): 
 		color: '',
 		serial: '',
 		password: '',
+		pattern: '',
 		completeness: [],
 		condition: [],
 		malfunctionChips: [],
@@ -252,6 +256,8 @@ export function parseDraft(
 		color: readText(o, 'color'),
 		serial: readText(o, 'serial'),
 		password: readText(o, 'password'),
+		// A pattern the server would not take (three points, a repeat) is none: it is entered again.
+		pattern: isPattern(readText(o, 'pattern')) ? readText(o, 'pattern') : '',
 		completeness: readChips(o, 'completeness'),
 		condition: readChips(o, 'condition'),
 		malfunctionChips: readChips(o, 'malfunctionChips'),
@@ -428,7 +434,7 @@ export function toNewOrder(d: IntakeDraft, pointId: number | null, photos = fals
 		serial: d.serial.trim(),
 		color: d.color.trim(),
 		device_password: d.password,
-		device_pattern: '',
+		device_pattern: d.pattern,
 		completeness: joinChips(d.completeness),
 		device_condition: joinChips(d.condition),
 		malfunction: joinChips([...d.malfunctionChips, d.malfunction]),

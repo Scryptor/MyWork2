@@ -96,6 +96,7 @@ describe('emptyDraft', () => {
 		expect(d.phones).toEqual([{ phone: '', note: '' }]);
 		expect(d.completeness).toEqual([]);
 		expect(d.prepayment).toBeNull();
+		expect(d.pattern).toBe('');
 		expect(d.acceptedAs).toBeNull();
 	});
 
@@ -168,6 +169,7 @@ describe('toNewOrder', () => {
 			color: 'Чёрный',
 			serial: ' 356000000000001 ',
 			password: ' 12 34 ',
+			pattern: '1596',
 			completeness: ['Чехол', 'Зарядка'],
 			condition: ['Царапины'],
 			malfunctionChips: ['Не включается', 'Залит'],
@@ -204,7 +206,7 @@ describe('toNewOrder', () => {
 			color: 'Чёрный',
 			// A password may have spaces of its own.
 			device_password: ' 12 34 ',
-			device_pattern: '',
+			device_pattern: '1596',
 			completeness: 'Чехол, Зарядка',
 			device_condition: 'Царапины',
 			malfunction: 'Не включается, Залит, после падения',
@@ -219,6 +221,11 @@ describe('toNewOrder', () => {
 			attachment_draft: null,
 			request_key: draft.key
 		});
+	});
+
+	it('the pattern key of the draft goes to the order; without one it is empty', () => {
+		expect(toNewOrder(filled({ pattern: '1596' }), null).device_pattern).toBe('1596');
+		expect(toNewOrder(filled(), null).device_pattern).toBe('');
 	});
 
 	it('the key of the draft is the key of the attempt, and of its photos when there are any', () => {
@@ -302,6 +309,7 @@ describe('parseDraft', () => {
 			],
 			source: 'Авито',
 			address: 'ул. Тестовая, 1',
+			pattern: '1596',
 			completeness: ['Чехол'],
 			condition: ['Царапины'],
 			malfunctionChips: ['Залит'],
@@ -386,6 +394,15 @@ describe('parseDraft', () => {
 		});
 		// «Выдан» (4) cannot start an order: the default status instead.
 		expect(d.statusId).toBe(2);
+	});
+
+	it('a pattern the server would not take is not restored: no pattern', () => {
+		const parse = (pattern: unknown) =>
+			parseDraft(JSON.stringify({ pattern }), SETTINGS, STATUS_LIST).pattern;
+		expect(parse('15963')).toBe('15963');
+		// Three points, a repeat, a point off the grid, not text.
+		for (const pattern of ['159', '1559', '1590', 1596, null])
+			expect(parse(pattern), String(pattern)).toBe('');
 	});
 
 	it('the master is a user: a draft of an older version (master as text) gets the default one', () => {
