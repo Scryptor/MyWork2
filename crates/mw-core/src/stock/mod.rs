@@ -1,7 +1,11 @@
-//! Склад: позиции (`items`) — типы API, проверки и выводимое наименование.
+//! Склад: позиции (`items`) — типы API, проверки и выводимое наименование; фото позиций
+//! (`photos`); запчасти заказа — списание и возврат (`parts`).
 
 mod items;
+mod parts;
 mod photos;
+
+pub use parts::{NewOrderPart, OrderPart, OrderParts};
 
 use chrono::NaiveDateTime;
 use mw_db::entity::stock_item;

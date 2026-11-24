@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "MyWork 3 API",
-    "description": "HTTP API учёта сервисного центра MyWork 3.\n\n**Вход.** `POST /api/v1/auth/login` выдаёт токен; дальше он передаётся в заголовке `Authorization: Bearer <токен>`. Если сервер слушает только локальный адрес и в базе нет пользователей, которые могут войти (учётная запись активна, вход разрешён — `can_sign_in` — и задан пароль), вход не нужен (режим без входа): запросы без токена выполняются с полными правами. Узнать это можно по `GET /api/v1/server-info` (`auth_required`).\n\n**Форматы.** Поля JSON — `snake_case`. Деньги — целое число копеек. Даты и время — местное время предприятия без смещения, `YYYY-MM-DDTHH:MM:SS` (в схемах помечены `date-time`, но смещения в них нет).\n\n**Правки.** В теле `PATCH` непереданное поле не меняется; `null` очищает только те поля, которые бывают пустыми; `null` у остальных полей и неизвестные поля — ошибка 400.\n\n**Версия записи.** Изменение заказов, клиентов, позиций склада, пользователей и ролей принимает параметр `version` — версию записи, которую видел клиент; устаревшая даёт 409 с `current_version`. 409 без `current_version` — запись нельзя удалить, пока ею пользуются (например, роль с пользователями); причина — в `message`.\n\n**Тело запроса.** Каждый изменяющий запрос (POST, PUT, PATCH, DELETE) должен нести `Content-Type: application/json`, даже без тела (выход, выдача, удаление), иначе ответ 415. Исключение — загрузка вложений (`POST /orders/{id}/attachments`, `POST /intake-drafts/{key}/attachments`, `POST /stock/{id}/photos`): тело — байты файла, `Content-Type: application/octet-stream`, не больше 25 МБ; и загрузка логотипа (`PUT /settings/logo`): тело — байты картинки, `Content-Type: application/octet-stream`, не больше 5 МБ.\n\n**Ошибки.** Любая ошибка — JSON `ErrorBody` с полями `code`, `message` (по-русски), `fields`, `current_version`, `permission`, `retry_after_secs`, `diagnostics` (ошибки своего Typst-кода шаблона со строкой и знаком; у остальных ошибок пусто). Коды: `bad_request` (400, 405, 413 — тело больше 1 МиБ (файла — больше 25 МБ), 415), `unauthenticated` и `invalid_credentials` (401), `forbidden` (403), `not_found` (404), `conflict` (409), `validation` (422), `too_many_attempts` (429), `unavailable` (503), `internal` (500).",
+    "description": "HTTP API учёта сервисного центра MyWork 3.\n\n**Вход.** `POST /api/v1/auth/login` выдаёт токен; дальше он передаётся в заголовке `Authorization: Bearer <токен>`. Если сервер слушает только локальный адрес и в базе нет пользователей, которые могут войти (учётная запись активна, вход разрешён — `can_sign_in` — и задан пароль), вход не нужен (режим без входа): запросы без токена выполняются с полными правами. Узнать это можно по `GET /api/v1/server-info` (`auth_required`).\n\n**Форматы.** Поля JSON — `snake_case`. Деньги — целое число копеек. Даты и время — местное время предприятия без смещения, `YYYY-MM-DDTHH:MM:SS` (в схемах помечены `date-time`, но смещения в них нет).\n\n**Правки.** В теле `PATCH` непереданное поле не меняется; `null` очищает только те поля, которые бывают пустыми; `null` у остальных полей и неизвестные поля — ошибка 400.\n\n**Версия записи.** Изменение заказов, клиентов, позиций склада, пользователей и ролей принимает параметр `version` — версию записи, которую видел клиент; устаревшая даёт 409 с `current_version`. 409 без `current_version` — запись нельзя удалить, пока ею пользуются (например, роль с пользователями); причина — в `message`. Списание запчасти в заказ и её возврат (`/orders/{id}/parts`) версию заказа не меняют, а версию позиции склада — меняют.\n\n**Тело запроса.** Каждый изменяющий запрос (POST, PUT, PATCH, DELETE) должен нести `Content-Type: application/json`, даже без тела (выход, выдача, удаление), иначе ответ 415. Исключение — загрузка вложений (`POST /orders/{id}/attachments`, `POST /intake-drafts/{key}/attachments`, `POST /stock/{id}/photos`): тело — байты файла, `Content-Type: application/octet-stream`, не больше 25 МБ; и загрузка логотипа (`PUT /settings/logo`): тело — байты картинки, `Content-Type: application/octet-stream`, не больше 5 МБ.\n\n**Ошибки.** Любая ошибка — JSON `ErrorBody` с полями `code`, `message` (по-русски), `fields`, `current_version`, `permission`, `retry_after_secs`, `diagnostics` (ошибки своего Typst-кода шаблона со строкой и знаком; у остальных ошибок пусто). Коды: `bad_request` (400, 405, 413 — тело больше 1 МиБ (файла — больше 25 МБ), 415), `unauthenticated` и `invalid_credentials` (401), `forbidden` (403), `not_found` (404), `conflict` (409), `validation` (422), `too_many_attempts` (429), `unavailable` (503), `internal` (500).",
     "license": {
       "name": "MIT",
       "identifier": "MIT"
@@ -3692,6 +3692,168 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Order"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/orders/{id}/parts": {
+      "get": {
+        "tags": [
+          "Заказы"
+        ],
+        "summary": "Запчасти заказа со склада по времени списания и их сумма (права — как у самого заказа).",
+        "operationId": "order_parts",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер заказа",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Запчасти заказа",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderParts"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Заказы"
+        ],
+        "summary": "Списание позиции склада в заказ (права `orders_edit` и `stock_view`). Нехватка — 422,\nполе `quantity`, код `not_enough_stock`. Повтор с тем же `request_key` и тем же содержимым\nне списывает ещё раз; с другим — 422, поле `request_key`, код `duplicate`. Версия заказа не\nменяется, версия позиции — меняется.",
+        "operationId": "add_order_part",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер заказа",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewOrderPart"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Запчасти заказа после списания",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderParts"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/orders/{id}/parts/{part_id}": {
+      "delete": {
+        "tags": [
+          "Заказы"
+        ],
+        "summary": "Возврат запчасти на склад (права `orders_edit` и `stock_view`): строка снимается, остаток\nживой позиции растёт. Строка другого заказа или уже возвращённая — 404.",
+        "operationId": "return_order_part",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер заказа",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "part_id",
+            "in": "path",
+            "description": "Номер строки запчасти",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Оставшиеся запчасти заказа",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderParts"
                 }
               }
             }
@@ -7886,6 +8048,32 @@
         },
         "additionalProperties": false
       },
+      "NewOrderPart": {
+        "type": "object",
+        "description": "Списание позиции склада в заказ.",
+        "required": [
+          "stock_item_id",
+          "quantity",
+          "request_key"
+        ],
+        "properties": {
+          "quantity": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Сколько штук списать: 1…1 000 000."
+          },
+          "request_key": {
+            "type": "string",
+            "description": "Ключ повтора запроса: от 1 до 64 латинских букв, цифр и дефисов. Повтор с тем же ключом и\nтем же содержимым возвращает запчасти заказа без нового списания."
+          },
+          "stock_item_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Номер позиции склада."
+          }
+        },
+        "additionalProperties": false
+      },
       "NewRole": {
         "type": "object",
         "description": "Данные новой роли.",
@@ -8559,6 +8747,92 @@
             "format": "int64",
             "description": "Сколько заказов подходит всего.",
             "minimum": 0
+          }
+        }
+      },
+      "OrderPart": {
+        "type": "object",
+        "description": "Запчасть заказа: снимок наименования и цены позиции на момент списания.",
+        "required": [
+          "id",
+          "stock_item_id",
+          "item_exists",
+          "name",
+          "price",
+          "quantity",
+          "sum",
+          "added_by_name",
+          "added_at",
+          "legacy"
+        ],
+        "properties": {
+          "added_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Когда списана (местное время предприятия)."
+          },
+          "added_by_name": {
+            "type": "string",
+            "description": "Кто списал (имя на момент списания); у перенесённых из MyWork 2 — пусто."
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Номер строки."
+          },
+          "item_exists": {
+            "type": "boolean",
+            "description": "Позиция есть на складе (не удалена)."
+          },
+          "legacy": {
+            "type": "boolean",
+            "description": "Перенесена из MyWork 2."
+          },
+          "name": {
+            "type": "string",
+            "description": "Наименование позиции на момент списания."
+          },
+          "price": {
+            "$ref": "#/components/schemas/Money",
+            "description": "Цена за штуку на момент списания, в копейках."
+          },
+          "quantity": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Сколько штук списано."
+          },
+          "stock_item_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Позиция склада; пусто — позиции не было уже в MyWork 2."
+          },
+          "sum": {
+            "$ref": "#/components/schemas/Money",
+            "description": "Цена × количество, в копейках."
+          }
+        }
+      },
+      "OrderParts": {
+        "type": "object",
+        "description": "Запчасти заказа по времени списания и сумма всех строк.",
+        "required": [
+          "parts",
+          "total"
+        ],
+        "properties": {
+          "parts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderPart"
+            },
+            "description": "Строки по времени списания, затем по номеру."
+          },
+          "total": {
+            "$ref": "#/components/schemas/Money",
+            "description": "Σ цена × количество, в копейках."
           }
         }
       },

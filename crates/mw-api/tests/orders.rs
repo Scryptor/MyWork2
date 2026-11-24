@@ -730,3 +730,126 @@ async fn order_comments_are_attributed_paged_and_retry_safe() {
         assert_eq!(t.get(&url, Some(&reader)).await.body["total"], 3);
     }
 }
+
+#[tokio::test]
+async fn order_parts_write_off_and_return() {
+    for t in apis(Listen::Network).await {
+        let admin = t.admin_token().await;
+        let master = t
+            .token_with("master", &[Permission::OrdersEdit, Permission::StockView])
+            .await;
+        let reader = t.token_with("reader", &[]).await;
+        let item = t
+            .send(
+                Method::POST,
+                "/api/v1/stock",
+                Some(&admin),
+                Some(json!({ "name": "Дисплей", "quantity": 3, "price": 250_000 })),
+            )
+            .await;
+        assert_eq!(item.status, 201, "{}: {}", t.label, item.body);
+        let item_id = item.body["id"].as_i64().unwrap();
+        let order = create_order(&t, &admin, new_order("Анна", "", "Samsung", "A52")).await;
+        let id = order["id"].as_i64().unwrap();
+        let other = create_order(&t, &admin, new_order("Олег", "", "Apple", "iPhone")).await["id"]
+            .as_i64()
+            .unwrap();
+        let url = format!("/api/v1/orders/{id}/parts");
+        let post = async |token: &str, body: Value| {
+            t.send(Method::POST, &url, Some(token), Some(body)).await
+        };
+
+        let r = post(
+            &master,
+            json!({ "stock_item_id": item_id, "quantity": 2, "request_key": "first" }),
+        )
+        .await;
+        assert_eq!(r.status, 200, "{}: {}", t.label, r.body);
+        let part_id = r.body["parts"][0]["id"].as_i64().unwrap();
+        assert_eq!(
+            r.body,
+            json!({
+                "parts": [{
+                    "id": part_id, "stock_item_id": item_id, "item_exists": true,
+                    "name": "Дисплей", "price": 250_000, "quantity": 2, "sum": 500_000,
+                    "added_by_name": "master", "added_at": order["received_at"], "legacy": false
+                }],
+                "total": 500_000
+            }),
+            "{}",
+            t.label
+        );
+        // Список читает любой вошедший, как сам заказ.
+        assert_eq!(t.get(&url, Some(&reader)).await.body, r.body);
+        assert_eq!(t.get(&url, None).await.status, 401);
+
+        let short = post(
+            &master,
+            json!({ "stock_item_id": item_id, "quantity": 2, "request_key": "second" }),
+        )
+        .await;
+        assert_eq!(
+            (
+                short.status,
+                &short.body["fields"][0]["field"],
+                &short.body["fields"][0]["code"]
+            ),
+            (422, &json!("quantity"), &json!("not_enough_stock")),
+            "{}: {}",
+            t.label,
+            short.body
+        );
+        let typo = post(
+            &master,
+            json!({ "stock_item_id": item_id, "quantity": 1, "request_key": "third", "price": 1 }),
+        )
+        .await;
+        assert_eq!(typo.status, 400, "{}", t.label);
+        let denied = post(
+            &reader,
+            json!({ "stock_item_id": item_id, "quantity": 1, "request_key": "third" }),
+        )
+        .await;
+        assert_eq!(denied.status, 403, "{}", t.label);
+
+        // Строка другого заказа — 404, остаток не меняется.
+        let foreign = t
+            .send(
+                Method::DELETE,
+                &format!("/api/v1/orders/{other}/parts/{part_id}"),
+                Some(&master),
+                None,
+            )
+            .await;
+        assert_eq!(foreign.status, 404, "{}: {}", t.label, foreign.body);
+        let back = t
+            .send(
+                Method::DELETE,
+                &format!("{url}/{part_id}"),
+                Some(&master),
+                None,
+            )
+            .await;
+        assert_eq!(
+            (back.status, &back.body),
+            (200, &json!({ "parts": [], "total": 0 })),
+            "{}",
+            t.label
+        );
+        assert_eq!(
+            t.get(&format!("/api/v1/stock/{item_id}"), Some(&admin))
+                .await
+                .body["quantity"],
+            3
+        );
+        let again = t
+            .send(
+                Method::DELETE,
+                &format!("{url}/{part_id}"),
+                Some(&master),
+                None,
+            )
+            .await;
+        assert_eq!(again.status, 404, "{}", t.label);
+    }
+}

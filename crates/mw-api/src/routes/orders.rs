@@ -3,8 +3,8 @@
 use axum::extract::State;
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use mw_core::{
-    NewOrder, NewOrderComment, NewWarrantyCase, Order, OrderComment, OrderListItem, OrderPatch,
-    OrderSummary, PageRequest,
+    NewOrder, NewOrderComment, NewOrderPart, NewWarrantyCase, Order, OrderComment, OrderListItem,
+    OrderParts, OrderPatch, OrderSummary, PageRequest,
 };
 
 use crate::DEFAULT_PAGE_LIMIT;
@@ -383,5 +383,67 @@ pub(super) async fn add_order_comment(
     Ok((
         StatusCode::CREATED,
         Json(state.core.add_order_comment(&actor, id, new).await?),
+    ))
+}
+
+/// Запчасти заказа со склада по времени списания и их сумма (права — как у самого заказа).
+#[utoipa::path(
+    get,
+    path = "/api/v1/orders/{id}/parts",
+    tag = "Заказы",
+    security(("bearer" = [])),
+    params(("id" = i64, Path, description = "Номер заказа")),
+    responses((status = 200, description = "Запчасти заказа", body = OrderParts))
+)]
+pub(super) async fn order_parts(
+    State(state): State<AppState>,
+    CurrentActor(actor): CurrentActor,
+    Path(id): Path<i64>,
+) -> Result<Json<OrderParts>, ApiError> {
+    Ok(Json(state.core.list_order_parts(&actor, id).await?))
+}
+
+/// Списание позиции склада в заказ (права `orders_edit` и `stock_view`). Нехватка — 422,
+/// поле `quantity`, код `not_enough_stock`. Повтор с тем же `request_key` и тем же содержимым
+/// не списывает ещё раз; с другим — 422, поле `request_key`, код `duplicate`. Версия заказа не
+/// меняется, версия позиции — меняется.
+#[utoipa::path(
+    post,
+    path = "/api/v1/orders/{id}/parts",
+    tag = "Заказы",
+    security(("bearer" = [])),
+    params(("id" = i64, Path, description = "Номер заказа")),
+    request_body = NewOrderPart,
+    responses((status = 200, description = "Запчасти заказа после списания", body = OrderParts))
+)]
+pub(super) async fn add_order_part(
+    State(state): State<AppState>,
+    CurrentActor(actor): CurrentActor,
+    Path(id): Path<i64>,
+    Json(new): Json<NewOrderPart>,
+) -> Result<Json<OrderParts>, ApiError> {
+    Ok(Json(state.core.add_order_part(&actor, id, new).await?))
+}
+
+/// Возврат запчасти на склад (права `orders_edit` и `stock_view`): строка снимается, остаток
+/// живой позиции растёт. Строка другого заказа или уже возвращённая — 404.
+#[utoipa::path(
+    delete,
+    path = "/api/v1/orders/{id}/parts/{part_id}",
+    tag = "Заказы",
+    security(("bearer" = [])),
+    params(
+        ("id" = i64, Path, description = "Номер заказа"),
+        ("part_id" = i64, Path, description = "Номер строки запчасти")
+    ),
+    responses((status = 200, description = "Оставшиеся запчасти заказа", body = OrderParts))
+)]
+pub(super) async fn return_order_part(
+    State(state): State<AppState>,
+    CurrentActor(actor): CurrentActor,
+    Path((id, part_id)): Path<(i64, i64)>,
+) -> Result<Json<OrderParts>, ApiError> {
+    Ok(Json(
+        state.core.return_order_part(&actor, id, part_id).await?,
     ))
 }

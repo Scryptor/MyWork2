@@ -3,7 +3,8 @@ use serde::{Deserialize, Serialize};
 /// Ошибка валидации поля: имя поля и машинный код (`required`, `invalid`, `too_short`,
 /// `duplicate`, `out_of_range`, `estimate_range`, `deleted`, `last_admin`, `last_issued_status`,
 /// `comma`, `changes_term`, `stale`, `closed`, `too_many`, `too_long`, `too_large`, `no_room`, `text_budget`, `code_budget`, `typst_error`, `code_timeout`, `code_crashed`, `too_slow`, `code_unavailable`, `too_many_pages`, `too_many_pixels`, `requires_a4`,
-/// `not_allowed`, `nested_columns`, `fill_in_columns`, `unsupported`, `mismatch`, `not_editable`).
+/// `not_allowed`, `nested_columns`, `fill_in_columns`, `unsupported`, `mismatch`, `not_editable`,
+/// `not_enough_stock`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
 pub struct FieldError {
     /// Имя поля запроса.
@@ -98,6 +99,7 @@ impl FieldError {
             "unsupported" => "Файл сделан в более новой версии программы",
             "mismatch" => "Шаблон другого документа",
             "not_editable" => "Этот документ не настраивается",
+            "not_enough_stock" => "На складе столько нет",
             _ => "Недопустимое значение",
         }
     }
@@ -106,6 +108,14 @@ impl FieldError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn not_enough_stock_has_its_own_message() {
+        assert_eq!(
+            FieldError::new("quantity", "not_enough_stock").message_ru(),
+            "На складе столько нет"
+        );
+    }
 
     #[test]
     fn import_codes_have_russian_messages() {

@@ -114,6 +114,8 @@ pub(crate) fn api_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(orders::issue_order))
         .routes(routes!(orders::order_history))
         .routes(routes!(orders::order_comments, orders::add_order_comment))
+        .routes(routes!(orders::order_parts, orders::add_order_part))
+        .routes(routes!(orders::return_order_part))
         .routes(routes!(orders::accept_warranty_case))
         .routes(routes!(documents::order_document))
         .routes(routes!(documents::sample_document))
