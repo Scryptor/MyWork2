@@ -11,11 +11,13 @@ import {
 	uploadOrderAttachment
 } from '#lib/api/attachments.js';
 import { ApiError, errorMessage } from '#lib/api/client.js';
+import { listStockPhotos, uploadStockPhoto } from '#lib/api/stock.js';
 import { trackQueue } from '#lib/app/session-reset.js';
 import { undo } from '#lib/app/undo.svelte.js';
 import { countLabel } from '#lib/format/plural.js';
 import { ru } from '#lib/i18n/ru.js';
 import { toast } from '#lib/ui/toast/toast.svelte.js';
+import { MAX_STOCK_PHOTOS } from '#lib/stock/fields.js';
 
 /** Pictures taken or chosen in one go. */
 export const MAX_PHOTOS_PER_ADD = 10;
@@ -39,6 +41,13 @@ const orderApi: MediaApi<number> = {
 const draftApi: MediaApi<string> = {
 	list: listDraftAttachments,
 	upload: uploadDraftAttachment,
+	caption: updateAttachmentCaption,
+	remove: deleteAttachment
+};
+
+const stockApi: MediaApi<number> = {
+	list: listStockPhotos,
+	upload: uploadStockPhoto,
 	caption: updateAttachmentCaption,
 	remove: deleteAttachment
 };
@@ -247,8 +256,24 @@ function createMedia<K>(owner: K, api: MediaApi<K>, left?: Detached, guard?: Dra
 		return Promise.all([listing, tail]).then(() => {});
 	}
 
+	/**
+	 * The files that there is room for under the guard's limit (the photos there and on their way count);
+	 * the rest are skipped with a toast. Files that are not pictures are not counted.
+	 */
+	function fitting(list: File[]): File[] {
+		if (!guard) return list;
+		let room =
+			guard.max -
+			attachments.filter((a) => a.kind === 'photo').length -
+			pending.filter((p) => p.photo).length;
+		const fit = list.filter((f) => !f.type.startsWith('image/') || room-- > 0);
+		if (fit.length < list.length) toast.show({ message: guard.limitMessage });
+		return fit;
+	}
+
 	/** Uploads the files one by one; resolves when all of them are done or have failed. */
-	function add(list: File[]): Promise<void> {
+	function add(files: File[]): Promise<void> {
+		const list = fitting(files);
 		if (list.length === 0) return Promise.resolve();
 		const batch = list.map((file) => ({
 			file,
@@ -395,4 +420,17 @@ export function createDraftMedia(
 	guard?: DraftGuard
 ): Media {
 	return createMedia(key, api, undefined, guard);
+}
+
+/** The photos of a stock position: at most `MAX_STOCK_PHOTOS`, the server keeps the same limit. */
+export function createStockMedia(
+	itemId: number,
+	api: MediaApi<number> = stockApi,
+	guard: DraftGuard = {
+		max: MAX_STOCK_PHOTOS,
+		limitMessage: ru.stock.photoLimit,
+		locked: () => null
+	}
+): Media {
+	return createMedia(itemId, api, undefined, guard);
 }

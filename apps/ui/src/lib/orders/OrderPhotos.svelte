@@ -14,7 +14,16 @@
 	import PhotoViewer from '#lib/ui/PhotoViewer.svelte';
 	import { limitPhotos, MAX_PHOTOS_PER_ADD, type OrderMedia } from './photos.svelte.js';
 
-	let { media, readonly = false }: { media: OrderMedia; readonly?: boolean } = $props();
+	let {
+		media,
+		readonly = false,
+		max = null
+	}: {
+		media: OrderMedia;
+		readonly?: boolean;
+		/** The most photos there may be (a stock position has three); null: no limit. */
+		max?: number | null;
+	} = $props();
 
 	let drop = $state<{ open: () => void } | null>(null);
 	let viewerOpen = $state(false);
@@ -26,6 +35,13 @@
 	$effect(() => {
 		if (cameraOpen) untrack(() => (shots = 0));
 	});
+
+	/** Room left under `max`: the photos there and those on their way count. */
+	const room = $derived(
+		max === null
+			? Infinity
+			: max - media.photos.length - media.pending.filter((p) => p.photo).length
+	);
 
 	const previewCount = 4;
 	let expandedMedia = $state.raw<OrderMedia | null>(null);
@@ -53,7 +69,7 @@
 {#snippet strips()}
 	<PhotoStrip
 		photos={expanded ? strip : strip.slice(0, previewCount)}
-		max={null}
+		{max}
 		label={ru.media.photoSection}
 		pending={media.pending.filter((p) => p.photo)}
 		image={picture}
@@ -83,7 +99,7 @@
 	</FileDrop>
 	<CameraDialog
 		bind:open={cameraOpen}
-		max={MAX_PHOTOS_PER_ADD - shots}
+		max={Math.max(0, Math.min(MAX_PHOTOS_PER_ADD - shots, room))}
 		oncapture={(file) => {
 			shots += 1;
 			void media.add([file]);

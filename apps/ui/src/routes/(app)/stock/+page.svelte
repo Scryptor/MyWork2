@@ -17,7 +17,7 @@
 	import { stockColumns } from '#lib/stock/columns.js';
 	import { createStockList } from '#lib/stock/list.svelte.js';
 	import StockAddDialog from '#lib/stock/StockAddDialog.svelte';
-	import StockItemPanel from '#lib/stock/StockItemPanel.svelte';
+	import StockPanel from '#lib/stock/StockPanel.svelte';
 	import {
 		defaultStockView,
 		openStockItemId,
@@ -272,7 +272,12 @@
 		{/if}
 	</div>
 
-	<StockItemPanel itemId={openId} onclose={() => openItem(null)} />
+	<StockPanel
+		itemId={openId}
+		onclose={() => openItem(null)}
+		onchanged={(item) => list.update(item.id, () => item)}
+		ondeleted={() => list.load(query)}
+	/>
 	{#if canCreate}<StockAddDialog bind:open={adding} oncreated={created} />{/if}
 {/if}
 

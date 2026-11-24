@@ -7,6 +7,7 @@ import { toast } from '#lib/ui/toast/toast.svelte.js';
 import {
 	createDraftMedia,
 	createOrderMedia,
+	createStockMedia,
 	type DraftGuard,
 	limitPhotos,
 	MAX_PHOTOS_PER_ADD,
@@ -543,5 +544,53 @@ describe('«Повторить» of a failed upload to a draft', () => {
 		m.retire();
 		await retry?.run();
 		expect(upload).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('createStockMedia', () => {
+	function stockApi(over: Partial<MediaApi> = {}): MediaApi {
+		let next = 500;
+		return {
+			list: vi.fn(async () => []),
+			upload: vi.fn(async (_id: number, f: File) =>
+				attachment(next++, { order_id: null, stock_item_id: 9, name: f.name })
+			),
+			caption: vi.fn(),
+			remove: vi.fn(async () => undefined),
+			...over
+		};
+	}
+
+	it('sends three photos and not the fourth, and says why', async () => {
+		const api = stockApi();
+		const m = createStockMedia(9, api);
+		await m.reload();
+		await m.add([file('a.png'), file('b.png'), file('c.png'), file('d.png')]);
+		expect(api.upload).toHaveBeenCalledTimes(3);
+		expect(m.photos.map((a) => a.name)).toEqual(['a.png', 'b.png', 'c.png']);
+		expect(messages()).toContain('У позиции не больше 3 фото');
+	});
+
+	it('counts the photos already there', async () => {
+		const api = stockApi({
+			list: vi.fn(async () => [attachment(1), attachment(2)])
+		});
+		const m = createStockMedia(9, api);
+		await m.reload();
+		await m.add([file('a.png'), file('b.png')]);
+		expect(api.upload).toHaveBeenCalledTimes(1);
+		expect(m.photos).toHaveLength(3);
+		expect(messages()).toContain('У позиции не больше 3 фото');
+	});
+
+	it('with the position full nothing is sent', async () => {
+		const api = stockApi({
+			list: vi.fn(async () => [attachment(1), attachment(2), attachment(3)])
+		});
+		const m = createStockMedia(9, api);
+		await m.reload();
+		await m.add([file('a.png')]);
+		expect(api.upload).not.toHaveBeenCalled();
+		expect(messages()).toContain('У позиции не больше 3 фото');
 	});
 });

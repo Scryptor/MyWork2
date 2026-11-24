@@ -21,6 +21,8 @@ export const STOCK_FIELDS = {
 export type StockField = keyof typeof STOCK_FIELDS;
 
 /** Limits of the server (`mw_domain::stock`): shown in the words of the refusals. */
+/** Photos of one position (`mw_domain::stock::MAX_STOCK_PHOTOS`). */
+export const MAX_STOCK_PHOTOS = 3;
 export const MAX_STOCK_QUANTITY = 1_000_000;
 const MAX_TEXT_CHARS = 200;
 const MAX_NOTE_CHARS = 2000;
