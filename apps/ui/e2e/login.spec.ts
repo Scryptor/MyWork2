@@ -1,6 +1,6 @@
 import {
 	expect,
-	test,
+	test as base,
 	type BrowserContext,
 	type Page,
 	type PlaywrightWorkerArgs
@@ -12,9 +12,17 @@ import {
 	sessionToken,
 	uniq
 } from './support/api';
+import { adminOrigin } from './support/fresh';
 
-// The server on 4174 has an administrator: every screen of the program asks to sign in first.
-test.use({ baseURL: 'http://127.0.0.1:4174' });
+// A server with an administrator, of this spec's own per engine (e2e/support/fresh.ts): every screen of the
+// program asks to sign in first. Not the shared one on 4174: the limiter of attempts counts an attempt when
+// it is admitted and gives it back only after a success, so the wrong passwords of the tests here and the
+// sign-ins of the other specs running at the same time (the same account, the same address) would add up
+// to «Слишком много попыток» and a sign-in would fail.
+const test = base.extend({
+	baseURL: async ({ browserName }, use) => use(adminOrigin('login', browserName))
+});
+const origin = () => adminOrigin('login', test.info().project.name);
 
 /** The modifier the app reads as Mod: ⌘ where navigator.platform says Mac, Ctrl elsewhere. */
 async function mod(page: Page): Promise<'Meta' | 'Control'> {
@@ -84,7 +92,7 @@ test('password change: a wrong current password is shown at the field; success a
 test('a link to another site in next is not followed', async ({ page }) => {
 	await page.goto('/login?next=//example.com/');
 	await signIn(page);
-	await expect(page).toHaveURL(/127\.0\.0\.1:4174\/orders$/);
+	await expect(page).toHaveURL(/127\.0\.0\.1:\d+\/orders$/);
 });
 
 /**
@@ -101,7 +109,7 @@ async function cardWithUnsavedEdit(
 	await expect(page).toHaveURL(/\/orders$/);
 	const token = await sessionToken(page);
 	const api = await playwright.request.newContext({
-		baseURL: 'http://127.0.0.1:4174',
+		baseURL: origin(),
 		extraHTTPHeaders: { Authorization: `Bearer ${token}` }
 	});
 	const o = await createOrder(api, { model: uniq('M') });
@@ -170,7 +178,7 @@ const SECOND_PASSWORD = 'e2e-second-password';
 /** A user with order rights, made through the API by the administrator; the login and the shown name. */
 async function makeSecondUser(playwright: PlaywrightWorkerArgs['playwright'], adminToken: string) {
 	const admin = await playwright.request.newContext({
-		baseURL: 'http://127.0.0.1:4174',
+		baseURL: origin(),
 		extraHTTPHeaders: { Authorization: `Bearer ${adminToken}` }
 	});
 	try {
@@ -217,7 +225,7 @@ test('an edit goes out before signing out, and the next user sees nothing of the
 	const token = (await sessionToken(page)) as string;
 	const second = await makeSecondUser(playwright, token);
 	const api = await playwright.request.newContext({
-		baseURL: 'http://127.0.0.1:4174',
+		baseURL: origin(),
 		extraHTTPHeaders: { Authorization: `Bearer ${token}` }
 	});
 	const o = await createOrder(api, { model: uniq('M') });
@@ -233,7 +241,7 @@ test('an edit goes out before signing out, and the next user sees nothing of the
 
 	// It was sent as the administrator, before the token went (that token is closed now: a new one).
 	await api.dispose();
-	const anonymous = await playwright.request.newContext({ baseURL: 'http://127.0.0.1:4174' });
+	const anonymous = await playwright.request.newContext({ baseURL: origin() });
 	const fresh = (await (
 		await anonymous.post('/api/v1/auth/login', {
 			data: { login: E2E_ADMIN_LOGIN, password: E2E_ADMIN_PASSWORD, device_label: '' }
@@ -241,7 +249,7 @@ test('an edit goes out before signing out, and the next user sees nothing of the
 	).json()) as { token: string };
 	await anonymous.dispose();
 	const reader = await playwright.request.newContext({
-		baseURL: 'http://127.0.0.1:4174',
+		baseURL: origin(),
 		extraHTTPHeaders: { Authorization: `Bearer ${fresh.token}` }
 	});
 	const saved = (await (await reader.get(`/api/v1/orders/${o.id}`)).json()) as {
@@ -286,7 +294,7 @@ async function otherTabWithPendingEdit(
 	await expect(page).toHaveURL(/\/orders$/);
 	const token = (await sessionToken(page)) as string;
 	const api = await playwright.request.newContext({
-		baseURL: 'http://127.0.0.1:4174',
+		baseURL: origin(),
 		extraHTTPHeaders: { Authorization: `Bearer ${token}` }
 	});
 	const o = await createOrder(api, { model: uniq('M') });
@@ -318,7 +326,7 @@ async function readOrder(
 	id: number
 ) {
 	const reader = await playwright.request.newContext({
-		baseURL: 'http://127.0.0.1:4174',
+		baseURL: origin(),
 		extraHTTPHeaders: { Authorization: `Bearer ${token}` }
 	});
 	try {
@@ -424,7 +432,7 @@ async function meStatus(
 	token: string
 ): Promise<number> {
 	const api = await playwright.request.newContext({
-		baseURL: 'http://127.0.0.1:4174',
+		baseURL: origin(),
 		extraHTTPHeaders: { Authorization: `Bearer ${token}` }
 	});
 	try {
@@ -449,7 +457,7 @@ test('a session that expired in one tab: the other tab says it expired, not that
 
 	// The server closes the session (as its expiry would); this tab finds out at its next load.
 	const api = await playwright.request.newContext({
-		baseURL: 'http://127.0.0.1:4174',
+		baseURL: origin(),
 		extraHTTPHeaders: { Authorization: `Bearer ${token}` }
 	});
 	expect((await api.post('/api/v1/auth/logout', { data: {} })).status()).toBe(204);

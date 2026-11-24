@@ -36,3 +36,21 @@ export function ownOrigin(kind: OwnKind, browserName: string): string {
 	if (port === undefined) throw new Error(`no own server for ${browserName}`);
 	return `http://127.0.0.1:${port}`;
 }
+
+// Servers with an administrator (`--admin`, as 4174) that belong to one spec each: the limiter of sign-in
+// attempts counts an attempt when it is admitted, by account and by address, and the shared server on 4174
+// has every spec that signs in; a spec that makes wrong attempts on purpose has a server of its own.
+export const ADMIN_PORTS = {
+	/** `login.spec.ts`: wrong passwords, repeated sign-ins of the same account. */
+	login: { chromium: 4183, webkit: 4184 }
+} as const;
+
+export type AdminKind = keyof typeof ADMIN_PORTS;
+
+/** The origin of the server with an administrator of `kind` for this engine. */
+export function adminOrigin(kind: AdminKind, browserName: string): string {
+	const ports: Record<string, number> = ADMIN_PORTS[kind];
+	const port = ports[browserName];
+	if (port === undefined) throw new Error(`no admin server for ${browserName}`);
+	return `http://127.0.0.1:${port}`;
+}

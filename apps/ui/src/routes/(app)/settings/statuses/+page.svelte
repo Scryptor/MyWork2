@@ -108,22 +108,37 @@
 	let nameError = $state<string | undefined>();
 	let adding = $state(false);
 
+	/** Enter while the previous one is still being added: sent as soon as that one is done. */
+	let again = false;
+
 	async function add() {
 		const value = name.trim();
-		if (readonly || adding) return;
+		if (readonly) return;
+		if (adding) {
+			again = true;
+			return;
+		}
 		if (!value) {
 			nameError = ru.settings.required;
 			return;
 		}
 		adding = true;
+		const sent = { kind, color };
 		const error = await catalog.add({ name: value, kind, color });
 		adding = false;
 		if (error) nameError = error;
 		else {
-			name = '';
-			kind = 'open';
-			color = 'gray';
-			nameError = undefined;
+			// What was typed meanwhile (the next name) stays: only what was sent is cleared.
+			if (name.trim() === value) {
+				name = '';
+				nameError = undefined;
+			}
+			if (kind === sent.kind) kind = 'open';
+			if (color === sent.color) color = 'gray';
+		}
+		if (again) {
+			again = false;
+			if (!error) await add();
 		}
 	}
 
@@ -179,9 +194,18 @@
 		<span class="cell" class:end={display.narrow} style:grid-area="actions">
 			<!-- Words alone fit the column of «В архив»; on a phone, where they do not, the icon alone. -->
 			{#if display.phone}
-				<Button type="submit" size="sm" icon={Plus} busy={adding} aria-label={t.addButton} />
+				<Button
+					type="submit"
+					size="sm"
+					icon={Plus}
+					busy={adding}
+					disabled={adding}
+					aria-label={t.addButton}
+				/>
 			{:else}
-				<Button type="submit" size="sm" busy={adding} aria-label={t.addButton}>{t.addShort}</Button>
+				<Button type="submit" size="sm" busy={adding} disabled={adding} aria-label={t.addButton}
+					>{t.addShort}</Button
+				>
 			{/if}
 		</span>
 	</form>
