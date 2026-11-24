@@ -208,6 +208,32 @@ describe('«Справочники» for an administrator', () => {
 		);
 	});
 
+	it.each([
+		['part_type', 'на складе', 'Дисплей', '2 позиции склада'],
+		['client_source', 'у клиентов', 'Интернет', '2 клиента']
+	])(
+		'%s: «Привести написание %s» changes the records the value is counted in',
+		async (kind, where, value, changed) => {
+			nav.kind = kind;
+			api.listDictionary.mockResolvedValue([item(1, value), item(2, 'Другое')]);
+			api.dictionaryUsage.mockResolvedValue([{ id: 1, count: 3 }]);
+			api.renameDictionaryItem.mockResolvedValue({ item: item(1, value), records_changed: 2 });
+			render(Page);
+			const align = await screen.findAllByRole('button', { name: `Привести написание ${where}` });
+			expect(align).toHaveLength(1);
+			expect(
+				screen.queryByRole('button', { name: 'Привести написание в заказах' })
+			).not.toBeInTheDocument();
+			await userEvent.click(align[0]!);
+			await waitFor(() =>
+				expect(api.renameDictionaryItem).toHaveBeenCalledWith(1, { value, in_orders: true })
+			);
+			await waitFor(() =>
+				expect(toast.items.map((x) => x.message)).toContain(`Приведено: изменено ${changed}`)
+			);
+		}
+	);
+
 	it('merges what the dialog shows: a value archived meanwhile stays out', async () => {
 		api.listDictionary.mockResolvedValue([item(1, 'Alpha'), item(2, 'Beta'), item(3, 'Gamma')]);
 		api.updateDictionaryItem.mockResolvedValue(item(2, 'Beta 2'));

@@ -1620,7 +1620,8 @@ export const ru = {
 		rename: 'Переименовать',
 		renamed: (changed: string) => `Переименовано, изменено ${changed}`,
 		renamedPlain: 'Переименовано',
-		align: 'Привести написание в заказах',
+		/** «Привести написание в заказах» / «у клиентов» / «на складе»: where the value is counted. */
+		align: (where: string) => `Привести написание ${where}`,
 		aligned: (changed: string) => `Приведено: изменено ${changed}`,
 		mergeSelected: 'Объединить выбранные',
 		mergeTitle: 'Объединить значения',

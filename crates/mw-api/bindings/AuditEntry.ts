@@ -34,6 +34,10 @@ order_id: number | null,
  */
 client_id: number | null, 
 /**
+ * Номер позиции склада, к которой относится запись.
+ */
+stock_item_id: number | null, 
+/**
  * Краткое описание.
  */
 summary: string, 

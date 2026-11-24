@@ -32,6 +32,9 @@ pub struct AuditEntry {
     /// Номер клиента, к которому относится запись.
     #[schema(required = true)]
     pub client_id: Option<i64>,
+    /// Номер позиции склада, к которой относится запись.
+    #[schema(required = true)]
+    pub stock_item_id: Option<i64>,
     /// Краткое описание.
     pub summary: String,
     /// Подробности в JSON; пусто, если их нет.
@@ -44,6 +47,7 @@ pub struct AuditEntry {
 pub struct AuditFilter {
     pub order_id: Option<i64>,
     pub client_id: Option<i64>,
+    pub stock_item_id: Option<i64>,
     pub user_id: Option<i64>,
     pub action_prefix: Option<String>,
     pub from: Option<NaiveDateTime>,
@@ -69,6 +73,7 @@ impl From<audit_log::Model> for AuditEntry {
             action: m.action,
             order_id: m.order_id,
             client_id: m.client_id,
+            stock_item_id: m.stock_item_id,
             summary: m.summary,
             details,
         }
@@ -77,7 +82,8 @@ impl From<audit_log::Model> for AuditEntry {
 
 impl Core {
     /// Журнал: новые сверху. С `order_id` или `client_id` доступен любому (история в карточке),
-    /// иначе нужно право `audit_view`.
+    /// с `stock_item_id` — с правом `stock_view` (история позиции склада), иначе нужно право
+    /// `audit_view`.
     pub async fn list_audit(
         &self,
         actor: &Actor,
@@ -86,7 +92,11 @@ impl Core {
         offset: u64,
     ) -> Result<Page<AuditEntry>, CoreError> {
         if filter.order_id.is_none() && filter.client_id.is_none() {
-            actor.require(Permission::AuditView)?;
+            if filter.stock_item_id.is_some() {
+                actor.require_any(&[Permission::StockView, Permission::AuditView])?;
+            } else {
+                actor.require(Permission::AuditView)?;
+            }
         }
         validate_page(limit, offset)?;
         let mut select = audit_log::Entity::find();
@@ -95,6 +105,9 @@ impl Core {
         }
         if let Some(id) = filter.client_id {
             select = select.filter(audit_log::Column::ClientId.eq(id));
+        }
+        if let Some(id) = filter.stock_item_id {
+            select = select.filter(audit_log::Column::StockItemId.eq(id));
         }
         if let Some(id) = filter.user_id {
             select = select.filter(audit_log::Column::UserId.eq(id));
@@ -131,13 +144,14 @@ pub(crate) struct NewAuditEntry {
     pub action: &'static str,
     pub order_id: Option<i64>,
     pub client_id: Option<i64>,
+    pub stock_item_id: Option<i64>,
     pub summary: String,
     pub details: Option<serde_json::Value>,
 }
 
 /// Откуда пришла правка записи, если не из неё самой: приписка к сводке записи журнала, чтобы в
-/// истории было видно, что заказ или клиента изменил не человек в карточке. В `details` пометки нет:
-/// там лежит карта полей правки.
+/// истории было видно, что заказ, клиента или позицию склада изменил не человек в карточке. В
+/// `details` пометки нет: там лежит карта полей правки.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum EditVia {
     /// Переименование или объединение значения справочника.
@@ -170,7 +184,7 @@ pub(crate) async fn write_audit(
         client_id: Set(e.client_id),
         summary: Set(e.summary),
         details: Set(e.details.map(|d| d.to_string())),
-        stock_item_id: Set(None),
+        stock_item_id: Set(e.stock_item_id),
     }
     .insert(conn)
     .await?;

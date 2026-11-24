@@ -134,7 +134,7 @@
 		return null;
 	}
 
-	/** The value is renamed to itself: the orders whose spelling differs get the one of the dictionary. */
+	/** The value is renamed to itself: the records whose spelling differs get the one of the dictionary. */
 	async function align(id: number) {
 		const row = catalog.all.find((r) => r.id === id);
 		if (!row) return;
@@ -274,6 +274,7 @@
 					onrename={(id, label) => void rename(id, label)}
 					onarchive={(id, a) => void archive(id, a)}
 					onalign={(id) => void align(id)}
+					alignLabel={t.align(where)}
 					ondelete={(id) => {
 						removing = id;
 						removeOpen = true;

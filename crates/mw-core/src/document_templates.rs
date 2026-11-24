@@ -232,6 +232,7 @@ impl Core {
                 action: "document_template.updated",
                 order_id: None,
                 client_id: None,
+                stock_item_id: None,
                 summary,
                 details: Some(json!({ "kind": kind.as_str() })),
             },

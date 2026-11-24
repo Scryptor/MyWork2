@@ -211,6 +211,59 @@ impl ClientListQuery {
     }
 }
 
+/// Параметры списка и поиска склада.
+#[derive(Debug, Clone, Default, Deserialize, TS, IntoParams)]
+#[serde(deny_unknown_fields)]
+#[ts(optional_fields)]
+#[into_params(parameter_in = Query)]
+pub struct StockListQuery {
+    /// Слова поиска по наименованию и полям позиции (все должны найтись); без учёта регистра и
+    /// «ё». Одно целое число находит ещё позицию с этим номером. Пусто — все позиции.
+    pub query: Option<String>,
+    /// Только «Докупить»: остаток ниже порога «Докупить при»; по умолчанию `false`.
+    pub restock: Option<bool>,
+    /// Поле сортировки; по умолчанию наименование.
+    pub sort: Option<mw_core::StockSortField>,
+    /// Обратный порядок; по умолчанию `false`.
+    pub descending: Option<bool>,
+    /// Размер страницы, 1..=500; по умолчанию 50.
+    pub limit: Option<u64>,
+    /// Сколько записей пропустить; по умолчанию 0.
+    pub offset: Option<u64>,
+}
+
+impl StockListQuery {
+    /// Условия списка для ядра.
+    pub fn filter(&self) -> mw_core::StockFilter {
+        mw_core::StockFilter {
+            query: self.query.clone().unwrap_or_default(),
+            restock: self.restock.unwrap_or(false),
+            sort: mw_core::StockSort {
+                field: self.sort.unwrap_or_default(),
+                descending: self.descending.unwrap_or(false),
+            },
+        }
+    }
+}
+
+/// Страница склада.
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
+pub struct StockPage {
+    /// Позиции страницы.
+    pub items: Vec<mw_core::StockItem>,
+    /// Сколько позиций подходит всего.
+    pub total: u64,
+}
+
+impl From<mw_core::Page<mw_core::StockItem>> for StockPage {
+    fn from(p: mw_core::Page<mw_core::StockItem>) -> Self {
+        Self {
+            items: p.items,
+            total: p.total,
+        }
+    }
+}
+
 /// Телефон для поиска клиентов; в любом написании.
 #[derive(Debug, Clone, Deserialize, TS, IntoParams)]
 #[serde(deny_unknown_fields)]
@@ -496,6 +549,8 @@ pub struct AuditListQuery {
     pub order_id: Option<i64>,
     /// Только записи этого клиента.
     pub client_id: Option<i64>,
+    /// Только записи этой позиции склада.
+    pub stock_item_id: Option<i64>,
     /// Только действия этого пользователя.
     pub user_id: Option<i64>,
     /// Только действия, код которых начинается с этой строки, например `order.`.
@@ -515,6 +570,7 @@ impl From<AuditListQuery> for mw_core::AuditFilter {
         Self {
             order_id: q.order_id,
             client_id: q.client_id,
+            stock_item_id: q.stock_item_id,
             user_id: q.user_id,
             action_prefix: q.action_prefix,
             from: q.from,

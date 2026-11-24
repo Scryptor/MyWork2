@@ -18,6 +18,7 @@ function entry(id: number, action: string, details: AuditEntry['details'] = null
 		action,
 		order_id: 7,
 		client_id: 3,
+		stock_item_id: null,
 		summary: `Запись ${id}`,
 		details
 	};

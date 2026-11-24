@@ -19,6 +19,7 @@ mod logo;
 mod meta;
 mod orders;
 mod setup;
+mod stock;
 mod users;
 
 pub(crate) fn api_routes() -> OpenApiRouter<AppState> {
@@ -86,6 +87,14 @@ pub(crate) fn api_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(clients::merge_clients))
         .routes(routes!(clients::similar_clients))
         .routes(routes!(clients::get_client, clients::update_client))
+        .routes(routes!(stock::list_stock, stock::create_stock_item))
+        .routes(routes!(stock::stock_summary))
+        .routes(routes!(
+            stock::get_stock_item,
+            stock::update_stock_item,
+            stock::delete_stock_item
+        ))
+        .routes(routes!(stock::stock_item_history))
         .routes(routes!(orders::list_orders, orders::create_order))
         .routes(routes!(orders::order_summary))
         .routes(routes!(orders::order_values))

@@ -270,6 +270,7 @@ impl Core {
                 action: "order.created",
                 order_id: Some(model.id),
                 client_id: Some(client_id),
+                stock_item_id: None,
                 summary: format!("Заказ № {} принят", model.id),
                 details: Some(json!({ "order_id": model.id, "client_id": client_id })),
             },

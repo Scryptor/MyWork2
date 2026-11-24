@@ -9,8 +9,9 @@ use crate::error::ApiError;
 use crate::extract::{Json, Query};
 use crate::state::AppState;
 
-/// Журнал, новые записи сверху. Без `order_id` и `client_id` нужно право `audit_view`;
-/// история заказа или клиента доступна любому вошедшему.
+/// Журнал, новые записи сверху. Без `order_id`, `client_id` и `stock_item_id` нужно право
+/// `audit_view`; история заказа или клиента доступна любому вошедшему, история позиции склада — с
+/// правом `stock_view`.
 #[utoipa::path(
     get,
     path = "/api/v1/audit",

@@ -36,6 +36,7 @@
 		onarchive,
 		ondelete,
 		onalign,
+		alignLabel = ru.dictionaries.align(ru.dictionaries.inOrdersWhere),
 		onreorder,
 		extra,
 		add
@@ -56,6 +57,8 @@
 		ondelete?: (id: number) => void;
 		/** Offered for a value that records use: their spelling is made the one of the dictionary. */
 		onalign?: (id: number) => void;
+		/** The name of that button: where the records are («Привести написание на складе»). */
+		alignLabel?: string;
 		onreorder: (ids: number[]) => void;
 		/**
 		 * The cells of `columns` in a row, each with `style:grid-area` of its column. In two lines (a narrow
@@ -206,7 +209,7 @@
 		<span class="actions">
 			{@render archiveButton(r)}
 			{#if onalign && r.count !== null && r.count > 0}
-				<IconButton size="sm" label={t.align} icon={SpellCheck} onclick={() => onalign(r.id)} />
+				<IconButton size="sm" label={alignLabel} icon={SpellCheck} onclick={() => onalign(r.id)} />
 			{/if}
 			{#if ondelete && r.count === 0}
 				<IconButton size="sm" label={t.remove} icon={Trash2} onclick={() => ondelete(r.id)} />

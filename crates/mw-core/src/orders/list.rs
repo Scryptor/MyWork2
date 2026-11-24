@@ -505,6 +505,7 @@ impl Core {
                 action: "orders.next_number_set",
                 order_id: None,
                 client_id: None,
+                stock_item_id: None,
                 summary: format!("Следующий номер заказа: {next}"),
                 details: Some(json!({ "next": next })),
             },

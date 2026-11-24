@@ -129,6 +129,7 @@ impl Core {
                 action: "order.comment",
                 order_id: Some(id),
                 client_id: Some(order.client_id),
+                stock_item_id: None,
                 summary: "Добавлен комментарий к заказу".to_owned(),
                 details: Some(serde_json::json!({"comment_id":row.id})),
             },

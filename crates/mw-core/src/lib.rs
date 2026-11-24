@@ -25,6 +25,7 @@ mod settings;
 mod setup;
 mod sql;
 mod statuses;
+mod stock;
 mod usage;
 
 pub use actor::Actor;
@@ -64,6 +65,9 @@ pub use service_points::{ServicePoint, ServicePointPatch};
 pub use settings::{AppSettings, SettingsPatch};
 pub use setup::SetupRequest;
 pub use statuses::{NewStatus, Status, StatusPatch};
+pub use stock::{
+    NewStockItem, StockFilter, StockItem, StockItemPatch, StockSort, StockSortField, StockSummary,
+};
 pub use usage::CatalogUsage;
 
 pub(crate) use audit::{EditVia, NewAuditEntry, write_audit};

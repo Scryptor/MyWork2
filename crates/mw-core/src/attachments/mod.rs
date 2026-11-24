@@ -280,6 +280,7 @@ impl Core {
                 action: "attachment.caption",
                 order_id: current.order_id,
                 client_id: None,
+                stock_item_id: None,
                 summary: format!("Подпись к файлу «{}»: {caption}", current.name),
                 details: Some(serde_json::json!({
                     "name": current.name,
@@ -315,6 +316,7 @@ impl Core {
                 action: "attachment.deleted",
                 order_id: current.order_id,
                 client_id: None,
+                stock_item_id: None,
                 summary: format!("Удалён файл «{}»", current.name),
                 details: Some(serde_json::json!({
                     "name": current.name,
@@ -470,6 +472,7 @@ impl Core {
                     action: "attachment.added",
                     order_id: Some(order_id),
                     client_id: None,
+                    stock_item_id: None,
                     summary: format!("Добавлен файл «{}»", model.name),
                     details: Some(serde_json::json!({
                         "name": model.name,

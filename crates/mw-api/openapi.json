@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "MyWork 3 API",
-    "description": "HTTP API учёта сервисного центра MyWork 3.\n\n**Вход.** `POST /api/v1/auth/login` выдаёт токен; дальше он передаётся в заголовке `Authorization: Bearer <токен>`. Если сервер слушает только локальный адрес и в базе нет пользователей, которые могут войти (учётная запись активна, вход разрешён — `can_sign_in` — и задан пароль), вход не нужен (режим без входа): запросы без токена выполняются с полными правами. Узнать это можно по `GET /api/v1/server-info` (`auth_required`).\n\n**Форматы.** Поля JSON — `snake_case`. Деньги — целое число копеек. Даты и время — местное время предприятия без смещения, `YYYY-MM-DDTHH:MM:SS` (в схемах помечены `date-time`, но смещения в них нет).\n\n**Правки.** В теле `PATCH` непереданное поле не меняется; `null` очищает только те поля, которые бывают пустыми; `null` у остальных полей и неизвестные поля — ошибка 400.\n\n**Версия записи.** Изменение заказов, клиентов, пользователей и ролей принимает параметр `version` — версию записи, которую видел клиент; устаревшая даёт 409 с `current_version`. 409 без `current_version` — запись нельзя удалить, пока ею пользуются (например, роль с пользователями); причина — в `message`.\n\n**Тело запроса.** Каждый изменяющий запрос (POST, PUT, PATCH, DELETE) должен нести `Content-Type: application/json`, даже без тела (выход, выдача, удаление), иначе ответ 415. Исключение — загрузка вложений (`POST /orders/{id}/attachments`, `POST /intake-drafts/{key}/attachments`): тело — байты файла, `Content-Type: application/octet-stream`, не больше 25 МБ; и загрузка логотипа (`PUT /settings/logo`): тело — байты картинки, `Content-Type: application/octet-stream`, не больше 5 МБ.\n\n**Ошибки.** Любая ошибка — JSON `ErrorBody` с полями `code`, `message` (по-русски), `fields`, `current_version`, `permission`, `retry_after_secs`, `diagnostics` (ошибки своего Typst-кода шаблона со строкой и знаком; у остальных ошибок пусто). Коды: `bad_request` (400, 405, 413 — тело больше 1 МиБ (файла — больше 25 МБ), 415), `unauthenticated` и `invalid_credentials` (401), `forbidden` (403), `not_found` (404), `conflict` (409), `validation` (422), `too_many_attempts` (429), `unavailable` (503), `internal` (500).",
+    "description": "HTTP API учёта сервисного центра MyWork 3.\n\n**Вход.** `POST /api/v1/auth/login` выдаёт токен; дальше он передаётся в заголовке `Authorization: Bearer <токен>`. Если сервер слушает только локальный адрес и в базе нет пользователей, которые могут войти (учётная запись активна, вход разрешён — `can_sign_in` — и задан пароль), вход не нужен (режим без входа): запросы без токена выполняются с полными правами. Узнать это можно по `GET /api/v1/server-info` (`auth_required`).\n\n**Форматы.** Поля JSON — `snake_case`. Деньги — целое число копеек. Даты и время — местное время предприятия без смещения, `YYYY-MM-DDTHH:MM:SS` (в схемах помечены `date-time`, но смещения в них нет).\n\n**Правки.** В теле `PATCH` непереданное поле не меняется; `null` очищает только те поля, которые бывают пустыми; `null` у остальных полей и неизвестные поля — ошибка 400.\n\n**Версия записи.** Изменение заказов, клиентов, позиций склада, пользователей и ролей принимает параметр `version` — версию записи, которую видел клиент; устаревшая даёт 409 с `current_version`. 409 без `current_version` — запись нельзя удалить, пока ею пользуются (например, роль с пользователями); причина — в `message`.\n\n**Тело запроса.** Каждый изменяющий запрос (POST, PUT, PATCH, DELETE) должен нести `Content-Type: application/json`, даже без тела (выход, выдача, удаление), иначе ответ 415. Исключение — загрузка вложений (`POST /orders/{id}/attachments`, `POST /intake-drafts/{key}/attachments`): тело — байты файла, `Content-Type: application/octet-stream`, не больше 25 МБ; и загрузка логотипа (`PUT /settings/logo`): тело — байты картинки, `Content-Type: application/octet-stream`, не больше 5 МБ.\n\n**Ошибки.** Любая ошибка — JSON `ErrorBody` с полями `code`, `message` (по-русски), `fields`, `current_version`, `permission`, `retry_after_secs`, `diagnostics` (ошибки своего Typst-кода шаблона со строкой и знаком; у остальных ошибок пусто). Коды: `bad_request` (400, 405, 413 — тело больше 1 МиБ (файла — больше 25 МБ), 415), `unauthenticated` и `invalid_credentials` (401), `forbidden` (403), `not_found` (404), `conflict` (409), `validation` (422), `too_many_attempts` (429), `unavailable` (503), `internal` (500).",
     "license": {
       "name": "MIT",
       "identifier": "MIT"
@@ -254,7 +254,7 @@
         "tags": [
           "Журнал"
         ],
-        "summary": "Журнал, новые записи сверху. Без `order_id` и `client_id` нужно право `audit_view`;\nистория заказа или клиента доступна любому вошедшему.",
+        "summary": "Журнал, новые записи сверху. Без `order_id`, `client_id` и `stock_item_id` нужно право\n`audit_view`; история заказа или клиента доступна любому вошедшему, история позиции склада — с\nправом `stock_view`.",
         "operationId": "list_audit",
         "parameters": [
           {
@@ -271,6 +271,16 @@
             "name": "client_id",
             "in": "query",
             "description": "Только записи этого клиента.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "stock_item_id",
+            "in": "query",
+            "description": "Только записи этой позиции склада.",
             "required": false,
             "schema": {
               "type": "integer",
@@ -4813,6 +4823,415 @@
         ]
       }
     },
+    "/api/v1/stock": {
+      "get": {
+        "tags": [
+          "Склад"
+        ],
+        "summary": "Список и поиск склада (право `stock_view`).",
+        "operationId": "list_stock",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "description": "Слова поиска по наименованию и полям позиции (все должны найтись); без учёта регистра и\n«ё». Одно целое число находит ещё позицию с этим номером. Пусто — все позиции.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "restock",
+            "in": "query",
+            "description": "Только «Докупить»: остаток ниже порога «Докупить при»; по умолчанию `false`.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "description": "Поле сортировки; по умолчанию наименование.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/StockSortField"
+            }
+          },
+          {
+            "name": "descending",
+            "in": "query",
+            "description": "Обратный порядок; по умолчанию `false`.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Размер страницы, 1..=500; по умолчанию 50.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Сколько записей пропустить; по умолчанию 0.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Страница склада",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StockPage"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Склад"
+        ],
+        "summary": "Новая позиция склада (право `stock_create`). Не переданное поле — пустое (ноль).",
+        "operationId": "create_stock_item",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewStockItem"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Позиция добавлена",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StockItem"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/stock/summary": {
+      "get": {
+        "tags": [
+          "Склад"
+        ],
+        "summary": "Сводка склада: сколько позиций надо докупить (право `stock_view`).",
+        "operationId": "stock_summary",
+        "responses": {
+          "200": {
+            "description": "Сводка склада",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StockSummary"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/stock/{id}": {
+      "get": {
+        "tags": [
+          "Склад"
+        ],
+        "summary": "Позиция склада (право `stock_view`); удалённая — 404.",
+        "operationId": "get_stock_item",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер позиции",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Позиция склада",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StockItem"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Склад"
+        ],
+        "summary": "Удаление позиции по версии записи (право `stock_delete`): из списка пропадает, запчасти\nзаказов остаются.",
+        "operationId": "delete_stock_item",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер позиции",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "description": "Версия записи, которую правит клиент.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Позиция удалена"
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "Склад"
+        ],
+        "summary": "Изменение позиции по версии записи (право `stock_edit`). Правка без различий успешна и версию\nне проверяет.",
+        "operationId": "update_stock_item",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер позиции",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "description": "Версия записи, которую правит клиент.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StockItemPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Позиция после изменения",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StockItem"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/stock/{id}/history": {
+      "get": {
+        "tags": [
+          "Склад"
+        ],
+        "summary": "История позиции, новые записи сверху (право `stock_view`, без права на весь журнал).",
+        "operationId": "stock_item_history",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер позиции",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Размер страницы, 1..=500; по умолчанию 50.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Сколько записей пропустить; по умолчанию 0.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Страница истории",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditPage"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/users": {
       "get": {
         "tags": [
@@ -5284,6 +5703,7 @@
           "action",
           "order_id",
           "client_id",
+          "stock_item_id",
           "summary",
           "details"
         ],
@@ -5320,6 +5740,14 @@
             ],
             "format": "int64",
             "description": "Номер заказа, к которому относится запись."
+          },
+          "stock_item_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Номер позиции склада, к которой относится запись."
           },
           "summary": {
             "type": "string",
@@ -7385,6 +7813,65 @@
         },
         "additionalProperties": false
       },
+      "NewStockItem": {
+        "type": "object",
+        "description": "Новая позиция склада. Не переданное поле — пустое (ноль).",
+        "properties": {
+          "brand": {
+            "type": "string",
+            "description": "Бренд.",
+            "default": ""
+          },
+          "color": {
+            "type": "string",
+            "description": "Цвет.",
+            "default": ""
+          },
+          "device_type": {
+            "type": "string",
+            "description": "Тип устройства.",
+            "default": ""
+          },
+          "model": {
+            "type": "string",
+            "description": "Модель.",
+            "default": ""
+          },
+          "name": {
+            "type": "string",
+            "description": "Наименование; пусто — выводится из полей позиции.",
+            "default": ""
+          },
+          "note": {
+            "type": "string",
+            "description": "Примечание.",
+            "default": ""
+          },
+          "part_type": {
+            "type": "string",
+            "description": "Тип запчасти.",
+            "default": ""
+          },
+          "price": {
+            "$ref": "#/components/schemas/Money",
+            "description": "Цена за штуку, в копейках: 0…10 000 000 ₽.",
+            "default": 0
+          },
+          "quantity": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Остаток, штук: 0…1 000 000.",
+            "default": 0
+          },
+          "restock_threshold": {
+            "type": "integer",
+            "format": "int64",
+            "description": "«Докупить при»: 0…1 000 000; 0 — не напоминать.",
+            "default": 0
+          }
+        },
+        "additionalProperties": false
+      },
       "NewUser": {
         "type": "object",
         "description": "Данные нового пользователя; пароль в логи не попадает.",
@@ -8775,6 +9262,197 @@
           }
         },
         "additionalProperties": false
+      },
+      "StockItem": {
+        "type": "object",
+        "description": "Позиция склада.",
+        "required": [
+          "id",
+          "name",
+          "display_name",
+          "device_type",
+          "part_type",
+          "brand",
+          "model",
+          "color",
+          "note",
+          "quantity",
+          "price",
+          "restock_threshold",
+          "needs_restock",
+          "created_at",
+          "updated_at",
+          "version"
+        ],
+        "properties": {
+          "brand": {
+            "type": "string",
+            "description": "Бренд."
+          },
+          "color": {
+            "type": "string",
+            "description": "Цвет."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Когда добавлена (местное время предприятия)."
+          },
+          "device_type": {
+            "type": "string",
+            "description": "Тип устройства."
+          },
+          "display_name": {
+            "type": "string",
+            "description": "Наименование для показа: введённое, иначе «тип запчасти, тип устройства, бренд, модель,\nцвет», иначе «Позиция №…»."
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Номер позиции («Арт.»)."
+          },
+          "model": {
+            "type": "string",
+            "description": "Модель."
+          },
+          "name": {
+            "type": "string",
+            "description": "Наименование, как его ввели; пусто — выводится из полей позиции."
+          },
+          "needs_restock": {
+            "type": "boolean",
+            "description": "Остаток ниже порога «Докупить при»."
+          },
+          "note": {
+            "type": "string",
+            "description": "Примечание."
+          },
+          "part_type": {
+            "type": "string",
+            "description": "Тип запчасти."
+          },
+          "price": {
+            "$ref": "#/components/schemas/Money",
+            "description": "Цена за штуку («сколько стоит вам»), в копейках."
+          },
+          "quantity": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Остаток, штук."
+          },
+          "restock_threshold": {
+            "type": "integer",
+            "format": "int64",
+            "description": "«Докупить при»: порог остатка; 0 — не напоминать."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Когда изменена (местное время предприятия)."
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Версия записи для проверки конфликтов правок."
+          }
+        }
+      },
+      "StockItemPatch": {
+        "type": "object",
+        "description": "Частичная правка позиции склада; отсутствующее поле не меняется.",
+        "properties": {
+          "brand": {
+            "type": "string",
+            "description": "Бренд."
+          },
+          "color": {
+            "type": "string",
+            "description": "Цвет."
+          },
+          "device_type": {
+            "type": "string",
+            "description": "Тип устройства."
+          },
+          "model": {
+            "type": "string",
+            "description": "Модель."
+          },
+          "name": {
+            "type": "string",
+            "description": "Наименование; пустая строка — выводить из полей позиции."
+          },
+          "note": {
+            "type": "string",
+            "description": "Примечание."
+          },
+          "part_type": {
+            "type": "string",
+            "description": "Тип запчасти."
+          },
+          "price": {
+            "$ref": "#/components/schemas/Money",
+            "description": "Цена за штуку, в копейках: 0…10 000 000 ₽."
+          },
+          "quantity": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Остаток, штук: 0…1 000 000."
+          },
+          "restock_threshold": {
+            "type": "integer",
+            "format": "int64",
+            "description": "«Докупить при»: 0…1 000 000; 0 — не напоминать."
+          }
+        },
+        "additionalProperties": false
+      },
+      "StockPage": {
+        "type": "object",
+        "description": "Страница склада.",
+        "required": [
+          "items",
+          "total"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StockItem"
+            },
+            "description": "Позиции страницы."
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Сколько позиций подходит всего.",
+            "minimum": 0
+          }
+        }
+      },
+      "StockSortField": {
+        "type": "string",
+        "description": "Поле сортировки списка склада.",
+        "enum": [
+          "id",
+          "name",
+          "quantity",
+          "price"
+        ]
+      },
+      "StockSummary": {
+        "type": "object",
+        "description": "Сводка склада.",
+        "required": [
+          "restock"
+        ],
+        "properties": {
+          "restock": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Сколько позиций надо докупить (остаток ниже порога «Докупить при»).",
+            "minimum": 0
+          }
+        }
       },
       "Template": {
         "type": "object",

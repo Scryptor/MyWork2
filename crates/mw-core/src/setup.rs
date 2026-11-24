@@ -67,6 +67,7 @@ impl Core {
                 action: "setup.assumed",
                 order_id: None,
                 client_id: None,
+                stock_item_id: None,
                 summary: "Отмечено: программа настроена (запуск для тестов)".to_owned(),
                 details: None,
             },
@@ -140,6 +141,7 @@ impl Core {
                 action: "setup.completed",
                 order_id: None,
                 client_id: None,
+                stock_item_id: None,
                 summary: "Выполнена начальная настройка".to_owned(),
                 details: Some(json!({
                     "firm_name": firm_name,

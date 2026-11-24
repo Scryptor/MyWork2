@@ -253,6 +253,7 @@ impl Core {
                 action: "dictionary.added",
                 order_id: None,
                 client_id: None,
+                stock_item_id: None,
                 summary: format!("Справочник «{}»: добавлено «{value}»", kind.label_ru()),
                 details: Some(json!({ "id": model.id, "kind": kind.as_str(), "value": value })),
             },
@@ -321,6 +322,7 @@ impl Core {
                     action: "dictionary.renamed",
                     order_id: None,
                     client_id: None,
+                    stock_item_id: None,
                     summary: format!(
                         "Справочник «{}»: «{old}» переименовано в «{value}»",
                         kind.label_ru()
@@ -345,6 +347,7 @@ impl Core {
                     },
                     order_id: None,
                     client_id: None,
+                    stock_item_id: None,
                     summary: format!(
                         "Справочник «{}»: «{}» {}",
                         kind.label_ru(),
@@ -426,6 +429,7 @@ impl Core {
                 action: "dictionary.renamed",
                 order_id: None,
                 client_id: None,
+                stock_item_id: None,
                 summary,
                 details: Some(json!({
                     "id": id,
@@ -522,6 +526,7 @@ impl Core {
                 action: "dictionary.merged",
                 order_id: None,
                 client_id: None,
+                stock_item_id: None,
                 summary,
                 details: Some(json!({
                     "kind": kind.as_str(),
@@ -554,6 +559,7 @@ impl Core {
                 action: "dictionary.deleted",
                 order_id: None,
                 client_id: None,
+                stock_item_id: None,
                 summary: format!(
                     "Справочник «{}»: удалено «{}»",
                     kind.label_ru(),
@@ -604,6 +610,7 @@ impl Core {
                 action: "dictionary.reordered",
                 order_id: None,
                 client_id: None,
+                stock_item_id: None,
                 summary: format!("Изменён порядок справочника «{}»", kind.label_ru()),
                 details: Some(json!({ "kind": kind.as_str(), "ordered_ids": ordered_ids })),
             },

@@ -13,6 +13,10 @@ order_id?: number,
  */
 client_id?: number, 
 /**
+ * Только записи этой позиции склада.
+ */
+stock_item_id?: number, 
+/**
  * Только действия этого пользователя.
  */
 user_id?: number, 

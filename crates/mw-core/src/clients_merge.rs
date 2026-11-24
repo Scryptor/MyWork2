@@ -238,6 +238,7 @@ impl Core {
                 action: "client.merged",
                 order_id: None,
                 client_id: Some(target.id),
+                stock_item_id: None,
                 summary: format!("Объединены клиенты: {}", names.join(", ")),
                 details: Some(json!({ "sources": snapshots, "moved_orders": moved })),
             },

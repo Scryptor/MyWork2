@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 
-use mw_db::entity::{client, client_phone, order, setting};
+use mw_db::entity::{client, client_phone, order, setting, stock_item};
 use mw_domain::permission::Permission;
 use mw_domain::search::{index_text, normalize_search};
 use sea_orm::sea_query::Expr;
@@ -18,8 +18,8 @@ use crate::{Actor, Core, CoreError, NewAuditEntry, write_audit};
 
 /// Версия правил построения индекса: 1 — планы 1–2 (без NFC, один телефон клиента),
 /// 2 — NFC и все телефоны клиента, 3 — ключи сортировки и фильтров заказа,
-/// 4 — ключ имени клиента (`name_key`).
-pub const SEARCH_INDEX_VERSION: i64 = 4;
+/// 4 — ключ имени клиента (`name_key`), 5 — позиции склада.
+pub const SEARCH_INDEX_VERSION: i64 = 5;
 
 /// Ключ настройки с версией сохранённого индекса (не входит в `AppSettings`).
 const VERSION_KEY: &str = "search_index_version";
@@ -29,6 +29,7 @@ const VERSION_KEY: &str = "search_index_version";
 pub struct ReindexStats {
     pub clients: u64,
     pub orders: u64,
+    pub stock_items: u64,
 }
 
 /// Текст для поиска по клиенту: ФИО и все номера.
@@ -60,7 +61,30 @@ pub(crate) fn set_order_keys(m: &mut order::Model) {
     m.master_key = normalize_search(&m.master);
 }
 
-/// Пересчитывает `search_text` всех клиентов и заказов, пишет только отличающиеся строки.
+/// Текст для поиска по позиции склада: выводимое наименование (`crate::stock::display_name`
+/// входит в построитель), введённое наименование и все поля позиции.
+pub(crate) fn stock_search_text(m: &stock_item::Model) -> String {
+    index_text(&[
+        &crate::stock::display_name(m),
+        &m.name,
+        &m.part_type,
+        &m.device_type,
+        &m.brand,
+        &m.model,
+        &m.color,
+        &m.note,
+    ])
+}
+
+/// Заполняет индекс поиска и ключ сортировки позиции склада (`normalize_search` выводимого
+/// наименования).
+pub(crate) fn set_stock_keys(m: &mut stock_item::Model) {
+    m.search_text = stock_search_text(m);
+    m.name_key = normalize_search(&crate::stock::display_name(m));
+}
+
+/// Пересчитывает `search_text` всех клиентов, заказов и позиций склада, пишет только отличающиеся
+/// строки.
 pub(crate) async fn reindex_all(conn: &impl ConnectionTrait) -> Result<ReindexStats, CoreError> {
     let mut phones: HashMap<i64, Vec<String>> = HashMap::new();
     let rows = client_phone::Entity::find()
@@ -75,6 +99,7 @@ pub(crate) async fn reindex_all(conn: &impl ConnectionTrait) -> Result<ReindexSt
     let mut stats = ReindexStats {
         clients: 0,
         orders: 0,
+        stock_items: 0,
     };
     for c in client::Entity::find().all(conn).await? {
         let list = phones.get(&c.id).map(Vec::as_slice).unwrap_or(&[]);
@@ -108,6 +133,22 @@ pub(crate) async fn reindex_all(conn: &impl ConnectionTrait) -> Result<ReindexSt
                 .exec(conn)
                 .await?;
             stats.orders += 1;
+        }
+    }
+    for item in stock_item::Entity::find().all(conn).await? {
+        let mut fresh = item.clone();
+        set_stock_keys(&mut fresh);
+        if fresh != item {
+            stock_item::Entity::update_many()
+                .col_expr(
+                    stock_item::Column::SearchText,
+                    Expr::value(fresh.search_text),
+                )
+                .col_expr(stock_item::Column::NameKey, Expr::value(fresh.name_key))
+                .filter(stock_item::Column::Id.eq(item.id))
+                .exec(conn)
+                .await?;
+            stats.stock_items += 1;
         }
     }
     Ok(stats)
@@ -145,11 +186,16 @@ impl Core {
                 action: "search.reindexed",
                 order_id: None,
                 client_id: None,
+                stock_item_id: None,
                 summary: format!(
-                    "Поиск переиндексирован: клиентов {}, заказов {}",
-                    stats.clients, stats.orders
+                    "Поиск переиндексирован: клиентов {}, заказов {}, позиций склада {}",
+                    stats.clients, stats.orders, stats.stock_items
                 ),
-                details: Some(json!({ "clients": stats.clients, "orders": stats.orders })),
+                details: Some(json!({
+                    "clients": stats.clients,
+                    "orders": stats.orders,
+                    "stock_items": stats.stock_items,
+                })),
             },
         )
         .await?;

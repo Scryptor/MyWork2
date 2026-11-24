@@ -138,6 +138,7 @@ impl Core {
                 action: "role.created",
                 order_id: None,
                 client_id: None,
+                stock_item_id: None,
                 summary: format!("Создана роль «{name}»"),
                 details: Some(json!({ "id": model.id, "permissions": new.permissions })),
             },
@@ -231,6 +232,7 @@ impl Core {
                 action: "role.updated",
                 order_id: None,
                 client_id: None,
+                stock_item_id: None,
                 summary: format!("Изменена роль «{name}»"),
                 details: Some(json!({ "id": id, "changed": changed })),
             },
@@ -289,6 +291,7 @@ impl Core {
                 action: "role.deleted",
                 order_id: None,
                 client_id: None,
+                stock_item_id: None,
                 summary: format!("Удалена роль «{}»", current.name),
                 details: Some(json!({
                     "id": id,

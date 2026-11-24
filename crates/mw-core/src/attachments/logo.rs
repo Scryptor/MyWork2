@@ -257,6 +257,7 @@ impl Core {
                     action: "settings.logo_updated",
                     order_id: None,
                     client_id: None,
+                    stock_item_id: None,
                     summary: "Загружен логотип фирмы".to_owned(),
                     details: Some(serde_json::json!({
                         "width": processed.width,
@@ -309,6 +310,7 @@ impl Core {
                 action: "settings.logo_removed",
                 order_id: None,
                 client_id: None,
+                stock_item_id: None,
                 summary: "Удалён логотип фирмы".to_owned(),
                 details: None,
             },

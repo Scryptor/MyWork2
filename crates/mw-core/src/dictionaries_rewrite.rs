@@ -1,9 +1,9 @@
-//! Замена значения справочника в заказах и клиентах.
+//! Замена значения справочника в заказах, клиентах и позициях склада.
 //!
-//! Каждая изменённая запись проходит обычную правку (`update_order_in` / `update_client_in`):
-//! версия, `updated_at`, `search_text`, ключи, срок гарантии и журнал — те же, что при правке руками,
-//! с пометкой «из справочника». Срок гарантии заказа при этом не меняется: замена, которая дала бы
-//! другой срок, отклоняется целиком.
+//! Каждая изменённая запись проходит обычную правку (`update_order_in` / `update_client_in` /
+//! `update_stock_item_in`): версия, `updated_at`, `search_text`, ключи, срок гарантии и журнал — те
+//! же, что при правке руками, с пометкой «из справочника». Срок гарантии заказа при этом не
+//! меняется: замена, которая дала бы другой срок, отклоняется целиком.
 
 use std::collections::HashSet;
 
@@ -17,7 +17,7 @@ use sea_orm::{ConnectionTrait, DatabaseTransaction, Statement};
 use crate::usage::{
     legacy_multiline_keys, multiline, multiline_key, multiline_lines, usage_target,
 };
-use crate::{Actor, ClientPatch, Core, CoreError, EditVia, OrderPatch};
+use crate::{Actor, ClientPatch, Core, CoreError, EditVia, OrderPatch, StockItemPatch};
 
 /// Новый текст поля, если в нём есть значение с ключом из `from`; иначе `None`.
 ///
@@ -135,10 +135,11 @@ pub(crate) fn replacement<'a>(
 enum FieldPatch {
     Order(Box<OrderPatch>),
     Client(ClientPatch),
+    Stock(StockItemPatch),
 }
 
 /// То же поле, что читает `usage_target(kind)`. Мастер заказа — пользователь: справочник «Мастера»
-/// заказы не меняет (`None`). Правки позиций склада ещё нет — типы запчастей тоже `None`.
+/// заказы не меняет (`None`).
 fn field_patch(kind: DictionaryKind, value: String) -> Option<FieldPatch> {
     let v = Some(value);
     let order = |p: OrderPatch| FieldPatch::Order(Box::new(p));
@@ -171,7 +172,11 @@ fn field_patch(kind: DictionaryKind, value: String) -> Option<FieldPatch> {
             work_done: v,
             ..Default::default()
         }),
-        DictionaryKind::Master | DictionaryKind::PartType => return None,
+        DictionaryKind::Master => return None,
+        DictionaryKind::PartType => FieldPatch::Stock(StockItemPatch {
+            part_type: v,
+            ..Default::default()
+        }),
         DictionaryKind::Warranty => order(OrderPatch {
             warranty: v,
             ..Default::default()
@@ -183,10 +188,11 @@ fn field_patch(kind: DictionaryKind, value: String) -> Option<FieldPatch> {
     })
 }
 
-/// «заказов» или «клиентов» — что меняет справочник этого вида.
+/// «заказов», «клиентов» или «позиций склада» — что меняет справочник этого вида.
 pub(crate) fn records_word(kind: DictionaryKind) -> &'static str {
     match kind {
         DictionaryKind::ClientSource => "клиентов",
+        DictionaryKind::PartType => "позиций склада",
         _ => "заказов",
     }
 }
@@ -246,6 +252,11 @@ impl Core {
                 }
                 FieldPatch::Client(patch) => {
                     self.update_client_in(tx, actor, id, version, patch, via)
+                        .await?
+                        .1
+                }
+                FieldPatch::Stock(patch) => {
+                    self.update_stock_item_in(tx, actor, id, version, patch, via)
                         .await?
                         .1
                 }
@@ -319,6 +330,7 @@ mod tests {
     #[test]
     fn records_word_names_clients_for_source() {
         assert_eq!(records_word(DictionaryKind::ClientSource), "клиентов");
+        assert_eq!(records_word(DictionaryKind::PartType), "позиций склада");
         assert_eq!(records_word(DictionaryKind::Brand), "заказов");
     }
 }

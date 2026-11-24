@@ -21,6 +21,7 @@ function entry(id: number): AuditEntry {
 		action: id === 1 ? 'order.created' : 'order.updated',
 		order_id: 7,
 		client_id: 3,
+		stock_item_id: null,
 		summary: `Запись ${id}`,
 		details: null
 	};

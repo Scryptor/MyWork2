@@ -2,10 +2,11 @@ mod common;
 
 use common::*;
 use mw_core::{
-    ClientPatch, CoreError, NewClient, NewRole, NewUser, RolePatch, ServicePointPatch,
-    SettingsPatch, StatusPatch, UserPatch,
+    ClientPatch, CoreError, NewClient, NewRole, NewStockItem, NewUser, RolePatch,
+    ServicePointPatch, SettingsPatch, StatusPatch, StockItemPatch, UserPatch,
 };
 use mw_domain::dictionary::DictionaryKind;
+use mw_domain::money::Money;
 use mw_domain::permission::PermissionSet;
 use serde_json::json;
 
@@ -289,6 +290,64 @@ async fn only_changed_fields_reach_the_journal() -> Result<(), CoreError> {
         assert_eq!(
             audit_details(&t.core, "settings.updated").await,
             vec![json!({ "master_percent": 40 })]
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn stock_noop_edit_keeps_version_and_journal() -> Result<(), CoreError> {
+    for t in cores().await {
+        let it = t
+            .core
+            .create_stock_item(
+                &admin(),
+                NewStockItem {
+                    name: "Дисплей".into(),
+                    price: Money::from_rubles(2500),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        let edited = t
+            .core
+            .update_stock_item(
+                &admin(),
+                it.id,
+                1,
+                StockItemPatch {
+                    quantity: Some(2),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        // Та же цена и то же имя (с пробелами) по устаревшей версии: ни 409, ни новой версии.
+        let same = t
+            .core
+            .update_stock_item(
+                &admin(),
+                it.id,
+                1,
+                StockItemPatch {
+                    name: Some(" Дисплей ".into()),
+                    price: Some(Money::from_rubles(2500)),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        assert_eq!(same, edited, "{}", t.label);
+        assert_eq!(same.version, 2);
+        assert_eq!(
+            t.core
+                .update_stock_item(&admin(), it.id, 2, StockItemPatch::default())
+                .await?,
+            edited
+        );
+        assert_eq!(
+            count_audit(&t.core, "stock.updated").await,
+            1,
+            "{}",
+            t.label
         );
     }
     Ok(())

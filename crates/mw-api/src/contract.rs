@@ -10,7 +10,8 @@ use crate::{
     DictionaryValue, DocumentPages, DocumentQuery, ErrorBody, HistoryQuery, IncludeArchived,
     LegacyImportCheck, LegacyImportStart, LoginRequest, LoginResponse, NewServicePoint,
     NextOrderNumber, OrderListQuery, OrderPage, OrderSummaryQuery, OrderValuesQuery, PageQuery,
-    PhoneQuery, ReorderRequest, ServerInfo, SetPasswordRequest, StatusChange, VersionParam,
+    PhoneQuery, ReorderRequest, ServerInfo, SetPasswordRequest, StatusChange, StockListQuery,
+    StockPage, VersionParam,
 };
 
 /// Выгружает в `dir` TS-типы всех корневых типов API вместе с зависимостями
@@ -66,6 +67,13 @@ pub fn export_typescript(dir: &Path) -> Result<(), ts_rs::ExportError> {
     mw_core::NewClient::export_all(&cfg)?;
     mw_core::ClientPatch::export_all(&cfg)?;
     mw_core::MergeClients::export_all(&cfg)?;
+    StockListQuery::export_all(&cfg)?;
+    StockPage::export_all(&cfg)?;
+    mw_core::StockItem::export_all(&cfg)?;
+    mw_core::NewStockItem::export_all(&cfg)?;
+    mw_core::StockItemPatch::export_all(&cfg)?;
+    mw_core::StockSortField::export_all(&cfg)?;
+    mw_core::StockSummary::export_all(&cfg)?;
     SetPasswordRequest::export_all(&cfg)?;
     AuditListQuery::export_all(&cfg)?;
     AuditPage::export_all(&cfg)?;

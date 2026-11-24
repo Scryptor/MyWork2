@@ -8,8 +8,8 @@ use common::{
     list_ids, phones, sample_new_order, setting_value, sorted,
 };
 use mw_core::{
-    Core, CoreError, DictionaryMerge, DictionaryRename, NewClient, NewOrder, Order, OrderFilter,
-    OrderPatch, PageRequest, SettingsPatch,
+    Core, CoreError, DictionaryMerge, DictionaryRename, NewClient, NewOrder, NewStockItem, Order,
+    OrderFilter, OrderPatch, PageRequest, SettingsPatch, StockFilter,
 };
 use mw_db::entity::dictionary_item;
 use mw_domain::dictionary::DictionaryKind;
@@ -1167,6 +1167,110 @@ async fn multiline_legacy_label_remains_a_single_comma_delimited_item() -> Resul
             reload(&t, &order).await.work_done,
             "Другое, Обслуживание, Диагностика\nЗамена дисплея"
         );
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn part_type_rename_everywhere_rewrites_stock_items() -> Result<(), CoreError> {
+    for t in cores().await {
+        let make = async |part_type: &str| {
+            t.core
+                .create_stock_item(
+                    &admin(),
+                    NewStockItem {
+                        part_type: part_type.into(),
+                        model: "A52".into(),
+                        ..Default::default()
+                    },
+                )
+                .await
+                .unwrap()
+        };
+        let upper = make("Дисплей").await;
+        let lower = make("дисплей").await;
+        let other = make("Аккумулятор").await;
+        let gone = make("Дисплей").await;
+        t.core
+            .delete_stock_item(&admin(), gone.id, gone.version)
+            .await?;
+        // Заказ с тем же текстом в типе устройства тип запчасти не трогает.
+        let order = order_with(&t, |o| o.device_type = "Дисплей".into()).await;
+
+        let display = item_id(&t.core, DictionaryKind::PartType, "Дисплей").await;
+        let r = t
+            .core
+            .rename_dictionary_item_everywhere(&admin(), display, rename("Экран", true))
+            .await?;
+        assert_eq!(
+            (r.item.value.as_str(), r.records_changed),
+            ("Экран", 2),
+            "{}",
+            t.label
+        );
+        let mut got = Vec::new();
+        for it in [&upper, &lower, &other] {
+            let now = t.core.get_stock_item(&admin(), it.id).await?;
+            got.push((now.part_type, now.display_name, now.version));
+        }
+        assert_eq!(
+            got,
+            [
+                ("Экран".to_owned(), "Экран A52".to_owned(), 2),
+                ("Экран".to_owned(), "Экран A52".to_owned(), 2),
+                ("Аккумулятор".to_owned(), "Аккумулятор A52".to_owned(), 1),
+            ],
+            "{}",
+            t.label
+        );
+        assert_eq!(reload(&t, &order).await.version, order.version);
+        let history = t
+            .core
+            .stock_item_history(&admin(), lower.id, PageRequest::default())
+            .await?;
+        let entry = &history.items[0];
+        assert_eq!(
+            (entry.action.as_str(), entry.summary.as_str()),
+            ("stock.updated", "Изменено: тип запчасти (из справочника)"),
+            "{}",
+            t.label
+        );
+        assert_eq!(
+            entry.details.as_ref().unwrap()["changes"],
+            json!({ "part_type": ["дисплей", "Экран"] })
+        );
+        assert_eq!(count_audit(&t.core, "stock.updated").await, 2);
+        let renamed = audit_details(&t.core, "dictionary.renamed").await;
+        assert_eq!(renamed[0]["records_changed"], json!(2));
+        let summary = common::audit_json(&t.core, "dictionary.renamed").await;
+        assert!(
+            summary.starts_with(
+                "Справочник «Типы запчастей»: «Дисплей» переименовано в «Экран», изменено позиций склада: 2"
+            ),
+            "{summary}"
+        );
+        // Поиск и сортировка — по новому наименованию.
+        let found = t
+            .core
+            .list_stock(
+                &admin(),
+                &StockFilter {
+                    query: "экран".into(),
+                    ..Default::default()
+                },
+                50,
+                0,
+            )
+            .await?;
+        assert_eq!(
+            found.items.iter().map(|i| i.id).collect::<Vec<_>>(),
+            vec![upper.id, lower.id]
+        );
+        let usage = t
+            .core
+            .dictionary_usage(&admin(), DictionaryKind::PartType)
+            .await?;
+        assert!(usage.iter().any(|u| u.id == display && u.count == 2));
     }
     Ok(())
 }

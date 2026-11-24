@@ -34,7 +34,7 @@ pub use dto::{
     LegacyImportStart, LoginRequest, LoginResponse, NewServicePoint, NextOrderNumber,
     OrderCommentPage, OrderCommentQuery, OrderListQuery, OrderPage, OrderSummaryQuery,
     OrderValuesQuery, PageQuery, PhoneQuery, ReorderRequest, ServerInfo, SetPasswordRequest,
-    StatusChange, TemplatePreview, VersionParam,
+    StatusChange, StockListQuery, StockPage, TemplatePreview, VersionParam,
 };
 pub use error::{ErrorBody, ErrorCode, ErrorField};
 pub use state::ApiConfig;
@@ -69,7 +69,7 @@ HTTP API учёта сервисного центра MyWork 3.
 **Правки.** В теле `PATCH` непереданное поле не меняется; `null` очищает только те поля, \
 которые бывают пустыми; `null` у остальных полей и неизвестные поля — ошибка 400.
 
-**Версия записи.** Изменение заказов, клиентов, пользователей и ролей принимает параметр \
+**Версия записи.** Изменение заказов, клиентов, позиций склада, пользователей и ролей принимает параметр \
 `version` — версию записи, которую видел клиент; устаревшая даёт 409 с `current_version`. \
 409 без `current_version` — запись нельзя удалить, пока ею пользуются (например, роль с \
 пользователями); причина — в `message`.
@@ -155,6 +155,7 @@ impl Modify for CommonDoc {
     mw_core::IssuedFilter,
     mw_core::OrderSortField,
     mw_core::ClientSortField,
+    mw_core::StockSortField,
     mw_core::OrderValueField,
     mw_domain::documents::DocumentKind,
     dto::DocumentFormat
