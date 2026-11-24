@@ -88,6 +88,15 @@
 		flex-direction: column;
 		gap: var(--space-0-5);
 	}
+	/* Wide window only: the menu stays in view while a long page scrolls (what scrolls is the shell's
+	   <main>); if it is taller than the visible part, it scrolls by itself. */
+	.settings:not(.narrow) .sections {
+		position: sticky;
+		top: var(--space-4);
+		align-self: start;
+		max-height: calc(100dvh - var(--topbar-height) - 2 * var(--space-4));
+		overflow-y: auto;
+	}
 	.narrow:not(.phone) .sections {
 		flex-flow: row wrap;
 	}

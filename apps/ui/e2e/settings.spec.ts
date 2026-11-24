@@ -502,3 +502,19 @@ test.describe('signed in as the administrator', () => {
 		await expect(page.getByRole('textbox', { name: 'Долгая диагностика, дней' })).toBeEnabled();
 	});
 });
+
+test('the section menu stays in view while a long settings page scrolls', async ({ page }) => {
+	await page.goto('/settings/documents');
+	await expect(page.getByRole('link', { name: 'Документы и реквизиты' })).toBeVisible();
+	await page.locator('main').evaluate((el) => el.scrollTo(0, el.scrollHeight));
+	await expect.poll(() => page.locator('main').evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+	await expect(page.getByRole('link', { name: 'Документы и реквизиты' })).toBeInViewport();
+});
+
+test('on a phone the section menu scrolls with the page', async ({ page }) => {
+	await page.setViewportSize({ width: 375, height: 812 });
+	await page.goto('/settings');
+	const nav = page.getByRole('navigation', { name: 'Разделы настроек' });
+	await expect(nav).toBeVisible();
+	await expect(nav).not.toHaveCSS('position', 'sticky');
+});
