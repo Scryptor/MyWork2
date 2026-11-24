@@ -23,10 +23,8 @@ use mw_domain::validation::FieldError;
 use sea_orm::EntityTrait;
 
 use crate::core::CodeRenderer;
+use crate::money_text::currency_symbol;
 use crate::{Actor, AppSettings, Client, Core, CoreError, Order};
-
-/// Знак валюты, когда в настройках он пустой (как `DEFAULT_CURRENCY` интерфейса).
-const DEFAULT_CURRENCY: &str = "₽";
 
 /// Сколько документов строится одновременно; остальные ждут своей очереди.
 pub(crate) const MAX_CONCURRENT_RENDERS: usize = 2;
@@ -707,10 +705,7 @@ fn order_data(
     today: NaiveDate,
 ) -> DocumentData {
     // Как в интерфейсе (`setCurrencySymbol`): знак без пробелов по краям, пустой — «₽».
-    let symbol = match settings.currency_symbol.trim() {
-        "" => DEFAULT_CURRENCY,
-        symbol => symbol,
-    };
+    let symbol = currency_symbol(settings);
     let money = |m: Money| format_money_doc(m, symbol);
     let positive = |m: Money| {
         if m > Money::ZERO {

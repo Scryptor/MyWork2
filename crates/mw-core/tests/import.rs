@@ -7,7 +7,8 @@ use std::sync::Arc;
 use chrono::{TimeZone, Utc};
 use common::*;
 use mw_core::{
-    AuditFilter, ClientPhone, Core, CoreError, FixedClock, ImportMode, NewClient, SystemClock,
+    AuditFilter, ClientPhone, Core, CoreError, FixedClock, ImportMode, LegacyTarget, NewClient,
+    SystemClock,
 };
 use mw_domain::money::Money;
 use mw_domain::permission::Permission;
@@ -436,6 +437,34 @@ async fn broken_bundle_rolls_back_everything() {
                 // Следующий номер позиции не больше занятого.
                 let mut b = sample_bundle();
                 b.stock.next_stock_item_id = 1;
+                b
+            },
+            {
+                // Номер позиции не больше нуля; запчасть и след указывают на неё же, чтобы отказал
+                // именно номер.
+                let mut b = sample_bundle();
+                b.stock.items[0].id = 0;
+                b.stock.parts[0].stock_item_id = Some(0);
+                for row in &mut b.legacy_rows {
+                    if row.target == Some(LegacyTarget::StockItem(1)) {
+                        row.target = Some(LegacyTarget::StockItem(0));
+                    }
+                }
+                b
+            },
+            {
+                let mut b = sample_bundle();
+                b.stock.items[0].restock_threshold = MAX_STOCK_QUANTITY + 1;
+                b
+            },
+            {
+                // След строки `Stock` — к позиции, которой нет в пакете.
+                let mut b = sample_bundle();
+                for row in &mut b.legacy_rows {
+                    if row.target == Some(LegacyTarget::StockItem(1)) {
+                        row.target = Some(LegacyTarget::StockItem(2));
+                    }
+                }
                 b
             },
         ];

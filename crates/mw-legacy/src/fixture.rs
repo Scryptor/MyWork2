@@ -945,19 +945,34 @@ fn put(dir: &Path, relative: &str, bytes: &[u8]) -> std::io::Result<()> {
     std::fs::write(path, bytes)
 }
 
-/// Испорченный склад (`add_stock_oddities`): в примечании позиции 2 — байт не UTF-8, номер заказа
-/// списания 3 — «5» с символом NUL, у `Stock` — колонка, которой MyWork 2 не создаёт (`Garantiya`,
-/// заполнена у позиции 3).
-const STOCK_ODDITIES: [&str; 4] = [
+/// Испорченный склад (`add_stock_oddities`):
+/// - в примечании позиции 2 — байт не UTF-8, номер заказа списания 3 — «5» с символом NUL;
+/// - у `Stock` — колонка, которой MyWork 2 не создаёт (`Garantiya`, заполнена у позиции 3), у
+///   `StockMap` — тоже (`Mesto`, у списания 1 в ней байт не UTF-8);
+/// - списание 7 в заказ 6 с пустым `ZIPId` (и пустой ценой);
+/// - счётчик `Stock` в `sqlite_sequence` (20) больше наибольшего номера позиции (4): позиции 5–20
+///   удалены ещё в MyWork 2;
+/// - фото позиции 4 — имя без точки (`p4jpeg`: MyWork 2 брала последние четыре знака имени за
+///   расширение), файл лежит в папке фото.
+const STOCK_ODDITIES: [&str; 9] = [
     "UPDATE Stock SET Primechanie = CAST(X'C0' AS TEXT) WHERE id = 2",
     "UPDATE StockMap SET clientId = '5' || char(0) WHERE id = 3",
     "ALTER TABLE Stock ADD COLUMN Garantiya",
     "UPDATE Stock SET Garantiya = '6 мес.' WHERE id = 3",
+    "INSERT INTO StockMap (id, clientId, ZIPId, countOfZIP, priceOfZIP) VALUES (7, '6', '', '1', '')",
+    "ALTER TABLE StockMap ADD COLUMN Mesto",
+    "UPDATE StockMap SET Mesto = CAST(X'C0' AS TEXT) WHERE id = 1",
+    "UPDATE sqlite_sequence SET seq = 20 WHERE name = 'Stock'",
+    "UPDATE Stock SET Photo = 'settings\\Stock\\Photos\\p4jpeg' WHERE id = 4",
 ];
 
+/// Файл фото без точки в имени (`STOCK_ODDITIES`, позиция 4).
+const STOCK_PHOTO_WITHOUT_DOT: &str = "settings/Stock/Photos/p4jpeg";
+
 /// Портит склад готовой папки V30 и новее (`STOCK_ODDITIES`): ячейки, которые разбор склада не может
-/// прочитать как есть, и неизвестная колонка — для тестов переноса склада из прошлого импорта. Общая
-/// фикстура не меняется: на её числа опираются другие тесты.
+/// прочитать как есть, неизвестные колонки, пустой номер позиции у списания, счётчик выше
+/// наибольшего номера и фото без точки в имени — для тестов переноса склада из прошлого импорта.
+/// Общая фикстура не меняется: на её числа опираются другие тесты.
 pub async fn add_stock_oddities(dir: &Path) -> std::io::Result<()> {
     let connect = SqliteConnectOptions::new()
         .filename(dir.join("baza.sqlite"))
@@ -973,7 +988,8 @@ pub async fn add_stock_oddities(dir: &Path) -> std::io::Result<()> {
         }
     }
     conn.close().await.map_err(db_error)?;
-    result
+    result?;
+    put(dir, STOCK_PHOTO_WITHOUT_DOT, b"stock-p4jpeg")
 }
 
 /// Собирает папку старой программы: `baza.sqlite`, `Config.ini`, `settings/…`, `ClientFiles/…`.

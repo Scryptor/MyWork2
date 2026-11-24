@@ -115,34 +115,55 @@ impl Money {
             .ok_or(MoneyParseError::Overflow)
     }
 
-    /// Сумма без знака: тысячи через `separator`, запятая перед копейками, если они есть.
-    fn unsigned_text(self, separator: char) -> String {
+    /// Сумма без знака: тысячи через `separator`, копейки после запятой — по правилу `kopecks`.
+    fn unsigned_text(self, separator: char, kopecks: Kopecks) -> String {
         let abs = self.0.unsigned_abs();
-        let (rubles, kopecks) = (abs / 100, abs % 100);
-        let digits = rubles.to_string();
+        let (rubles, cents) = (abs / 100, abs % 100);
+        let mut out = group_digits(&rubles.to_string(), separator);
+        if kopecks == Kopecks::Always || cents != 0 {
+            out.push_str(&format!(",{cents:02}"));
+        }
+        out
+    }
+
+    /// Сумма текстом: «-» у отрицательной, тысячи через `separator`, копейки после запятой — по
+    /// правилу `kopecks` («4 000,00» или «4 000»).
+    pub fn grouped(self, separator: char, kopecks: Kopecks) -> String {
         let mut out = String::new();
-        for (i, ch) in digits.chars().enumerate() {
-            if i > 0 && (digits.len() - i) % 3 == 0 {
-                out.push(separator);
-            }
-            out.push(ch);
+        if self.0 < 0 {
+            out.push('-');
         }
-        if kopecks != 0 {
-            out.push_str(&format!(",{kopecks:02}"));
-        }
+        out.push_str(&self.unsigned_text(separator, kopecks));
         out
     }
 
     /// Форматирует для показа: тысячи через неразрывный пробел, запятая
     /// перед копейками; копейки опускаются, если их нет.
     pub fn format_ru(self) -> String {
-        let mut out = String::new();
-        if self.0 < 0 {
-            out.push('-');
-        }
-        out.push_str(&self.unsigned_text('\u{a0}'));
-        out
+        self.grouped('\u{a0}', Kopecks::IfAny)
     }
+}
+
+/// Копейки в тексте суммы.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Kopecks {
+    /// Только если они есть: «6 500», «6 500,50».
+    IfAny,
+    /// Всегда: «6 500,00».
+    Always,
+}
+
+/// Цифры `digits` группами по три справа через `separator`: «1 000 000». Отдельно от `Money` — для
+/// сумм, которые считаются шире `i64` (сумма запчастей заказа при переносе склада).
+pub fn group_digits(digits: &str, separator: char) -> String {
+    let mut out = String::with_capacity(digits.len() + digits.len() / 3 * separator.len_utf8());
+    for (i, ch) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
+            out.push(separator);
+        }
+        out.push(ch);
+    }
+    out
 }
 
 /// Знаки валют, которых нет в шрифте документов, и чем они печатаются (тест покрытия шрифта — в
@@ -178,7 +199,7 @@ pub fn format_money_doc(m: Money, symbol: &str) -> String {
     if m.kopecks() < 0 {
         text.push('\u{2212}');
     }
-    text.push_str(&m.unsigned_text('\u{202f}'));
+    text.push_str(&m.unsigned_text('\u{202f}', Kopecks::IfAny));
     if !symbol.is_empty() {
         text.push('\u{a0}');
         text.push_str(&doc_text(symbol));
@@ -233,6 +254,41 @@ mod tests {
         assert_eq!(
             Money::from_kopecks(12_345_678_900).format_ru(),
             "123\u{a0}456\u{a0}789"
+        );
+    }
+
+    #[test]
+    fn grouped_takes_the_separator_and_the_kopecks_rule() {
+        let m = |k| Money::from_kopecks(k);
+        assert_eq!(m(400_000).grouped(' ', Kopecks::Always), "4 000,00");
+        assert_eq!(m(29_950).grouped(' ', Kopecks::Always), "299,50");
+        assert_eq!(m(5).grouped(' ', Kopecks::Always), "0,05");
+        assert_eq!(m(0).grouped(' ', Kopecks::Always), "0,00");
+        assert_eq!(
+            m(-123_456_700).grouped(' ', Kopecks::Always),
+            "-1 234 567,00"
+        );
+        assert_eq!(m(400_000).grouped('\u{a0}', Kopecks::IfAny), "4\u{a0}000");
+        assert_eq!(
+            m(400_010).grouped('\u{a0}', Kopecks::IfAny),
+            "4\u{a0}000,10"
+        );
+        assert_eq!(m(-50_000).grouped(' ', Kopecks::IfAny), "-500");
+        for k in [0, 5, 650_050, -650_000, 12_345_678_900] {
+            assert_eq!(m(k).format_ru(), m(k).grouped('\u{a0}', Kopecks::IfAny));
+        }
+    }
+
+    #[test]
+    fn group_digits_counts_groups_from_the_right() {
+        assert_eq!(group_digits("", ' '), "");
+        assert_eq!(group_digits("7", ' '), "7");
+        assert_eq!(group_digits("999", ' '), "999");
+        assert_eq!(group_digits("1000", ' '), "1 000");
+        assert_eq!(group_digits("1234567", '\u{a0}'), "1\u{a0}234\u{a0}567");
+        assert_eq!(
+            group_digits("170141183460469231731687303715884105727", ' '),
+            "170 141 183 460 469 231 731 687 303 715 884 105 727"
         );
     }
 

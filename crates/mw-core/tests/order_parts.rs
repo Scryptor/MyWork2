@@ -6,7 +6,7 @@ mod common;
 use common::{TestCore, actor_with, admin, assert_validation, cores, sample_new_order};
 use mw_core::{
     Actor, AuditEntry, AuditFilter, CoreError, NewOrderPart, NewStockItem, Order, OrderParts,
-    OrderPatch, StockItem, StockItemPatch,
+    OrderPatch, SettingsPatch, StockItem, StockItemPatch,
 };
 use mw_db::entity::{order_part, stock_item};
 use mw_domain::money::Money;
@@ -169,6 +169,66 @@ async fn write_off_takes_from_stock_with_snapshot() -> Result<(), CoreError> {
             )
             .await?;
         assert_eq!(t.core.list_order_parts(&admin(), o.id).await?, parts);
+    }
+    Ok(())
+}
+
+/// Суммы в журнале — со знаком валюты из настроек (без пробелов по краям), копейки — только если
+/// они есть: тот же помощник, что у записи «Из расходов выделены …» переноса склада.
+#[tokio::test]
+async fn journal_sums_use_the_currency_setting() -> Result<(), CoreError> {
+    for t in cores().await {
+        t.core
+            .update_settings(
+                &admin(),
+                SettingsPatch {
+                    currency_symbol: Some(" € ".into()),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        let it = t
+            .core
+            .create_stock_item(
+                &admin(),
+                NewStockItem {
+                    name: "Шлейф".into(),
+                    quantity: 5,
+                    price: Money::from_kopecks(123_455),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        let o = order(&t).await;
+        let parts = t
+            .core
+            .add_order_part(&admin(), o.id, part(it.id, 2, "eur"))
+            .await?;
+        t.core
+            .return_order_part(&admin(), o.id, parts.parts[0].id)
+            .await?;
+        let summaries = |action| {
+            let t = &t;
+            async move {
+                item_journal(t, it.id, action)
+                    .await
+                    .into_iter()
+                    .map(|e| e.summary)
+                    .collect::<Vec<_>>()
+            }
+        };
+        assert_eq!(
+            summaries("order.part_added").await,
+            ["Списано со склада: Шлейф × 2 — 2\u{a0}469,10\u{a0}€"],
+            "{}",
+            t.label
+        );
+        assert_eq!(
+            summaries("order.part_returned").await,
+            ["Возвращено на склад: Шлейф × 2 — 2\u{a0}469,10\u{a0}€"],
+            "{}",
+            t.label
+        );
     }
     Ok(())
 }

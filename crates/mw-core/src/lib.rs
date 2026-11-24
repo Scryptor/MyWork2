@@ -16,6 +16,7 @@ mod error;
 mod gate;
 mod import;
 mod legacy_templates;
+mod money_text;
 mod orders;
 mod page;
 mod patch;

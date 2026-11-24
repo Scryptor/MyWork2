@@ -170,7 +170,9 @@ pub(super) async fn get_legacy_import(
 }
 
 /// Можно ли перенести склад MyWork 2 из прошлого импорта: последний импорт сохранил склад только
-/// следами, а позиций склада и запчастей заказов в базе нет (права `settings_manage` и `users_manage`).
+/// следами, а позиций склада и запчастей заказов в базе нет; `blocked_by_stock` — склад уже начат
+/// вручную, и перенос закрыт (права `settings_manage` и `users_manage` или `stock_view`: «Склад»
+/// предупреждает до первой позиции).
 #[utoipa::path(
     get,
     path = "/api/v1/legacy-import/stock",

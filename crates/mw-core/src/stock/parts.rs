@@ -24,14 +24,13 @@ use serde_json::json;
 
 use super::{ENTITY, deleted_error, display_name};
 use crate::attachments::valid_key;
+use crate::money_text::MoneyText;
 use crate::{Actor, Core, CoreError, NewAuditEntry, write_audit};
 
 /// Название заказа в ошибке «не найдено» (как в `orders`).
 const ORDER_ENTITY: &str = "заказ";
 /// Название строки запчасти в ошибке «не найдено».
 const PART_ENTITY: &str = "запчасть заказа";
-/// Знак валюты, если в настройках он пуст (как в документах).
-const DEFAULT_CURRENCY: &str = "₽";
 
 /// Запчасть заказа: снимок наименования и цены позиции на момент списания.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
@@ -274,7 +273,7 @@ impl Core {
                 summary: format!(
                     "Списано со склада: {name} × {} — {}",
                     new.quantity,
-                    self.money_text(sum)
+                    self.money_text(sum, MoneyText::Short)
                 ),
                 details: Some(json!({
                     "part_id": row.id,
@@ -336,7 +335,12 @@ impl Core {
         };
 
         let sum = part_sum(Money::from_kopecks(row.price), row.quantity).ok_or_else(overflow)?;
-        let what = format!("{} × {} — {}", row.name, row.quantity, self.money_text(sum));
+        let what = format!(
+            "{} × {} — {}",
+            row.name,
+            row.quantity,
+            self.money_text(sum, MoneyText::Short)
+        );
         let summary = if restocked {
             format!("Возвращено на склад: {what}")
         } else {
@@ -364,15 +368,5 @@ impl Core {
         let parts = order_parts(&tx, order_id).await?;
         tx.commit().await?;
         Ok(parts)
-    }
-
-    /// Сумма для записи журнала: «5 000 ₽» со знаком валюты из настроек.
-    fn money_text(&self, sum: Money) -> String {
-        let settings = self.settings();
-        let symbol = match settings.currency_symbol.trim() {
-            "" => DEFAULT_CURRENCY,
-            symbol => symbol,
-        };
-        format!("{}\u{a0}{symbol}", sum.format_ru())
     }
 }

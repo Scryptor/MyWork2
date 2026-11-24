@@ -7,8 +7,8 @@ use std::path::Path;
 
 use common::*;
 use mw_core::{
-    Actor, AuditFilter, Core, CoreError, LegacyStockState, NewStockItem, OrderPatch, StockFilter,
-    StockImportSummary,
+    Actor, AttachmentKind, AuditFilter, Core, CoreError, LegacyStockState, NewStockItem,
+    OrderPatch, SettingsPatch, StockFilter, StockImportSummary,
 };
 use mw_db::entity::{legacy_row, order, order_part};
 use mw_domain::dictionary::{DEFAULT_DICTIONARY, DictionaryKind};
@@ -168,6 +168,7 @@ async fn state_offers_migration_only_when_stock_is_empty() -> Res {
                 stock_rows: 0,
                 stock_map_rows: 0,
                 available: false,
+                blocked_by_stock: false,
             },
             "{label}"
         );
@@ -188,34 +189,55 @@ async fn state_offers_migration_only_when_stock_is_empty() -> Res {
                 stock_rows: 4,
                 stock_map_rows: 6,
                 available: true,
+                blocked_by_stock: false,
             },
             "{label}"
         );
         migrate_stock(&core, &admin()).await?;
         let after = core.legacy_stock_state(&admin()).await?;
         assert_eq!(
-            (after.import_id, after.stock_rows, after.available),
-            (Some(id), 4, false),
-            "{label}"
+            (
+                after.import_id,
+                after.stock_rows,
+                after.available,
+                after.blocked_by_stock
+            ),
+            (Some(id), 4, false, false),
+            "{label}: перенесённый склад ничего не закрывает"
         );
 
-        // Склад уже заводили руками: перенос не предлагается, и сам перенос отказывает.
+        // Склад уже заводили руками: перенос не предлагается, и сам перенос отказывает; состояние
+        // говорит, почему (страница «Импорт» объясняет, куда делась кнопка).
         let data = tempfile::tempdir()?;
         let core = with_data(&other.core, &data);
         import_like_before_stock(&core, data.path()).await?;
-        core.create_stock_item(
-            &admin(),
-            NewStockItem {
-                name: "Дисплей".into(),
-                ..Default::default()
-            },
-        )
-        .await?;
+        let item = core
+            .create_stock_item(
+                &admin(),
+                NewStockItem {
+                    name: "Дисплей".into(),
+                    ..Default::default()
+                },
+            )
+            .await?;
         let state = core.legacy_stock_state(&admin()).await?;
-        assert_eq!((state.stock_rows, state.available), (4, false), "{label}");
+        assert_eq!(
+            (state.stock_rows, state.available, state.blocked_by_stock),
+            (4, false, true),
+            "{label}"
+        );
         assert_eq!(
             field_error(&migrate_stock(&core, &admin()).await),
             stock_error("not_empty"),
+            "{label}"
+        );
+        // Удалённая позиция тоже закрывает перенос: перенесённые позиции берут номера MyWork 2.
+        core.delete_stock_item(&admin(), item.id, item.version)
+            .await?;
+        let state = core.legacy_stock_state(&admin()).await?;
+        assert_eq!(
+            (state.available, state.blocked_by_stock),
+            (false, true),
             "{label}"
         );
     }
@@ -263,7 +285,7 @@ async fn migration_matches_fresh_import() -> Res {
             StockImportSummary {
                 import_id,
                 stock_items: 4,
-                order_parts: 5,
+                order_parts: 6,
                 orders_changed: 2,
             },
             "{label}"
@@ -307,6 +329,23 @@ async fn migration_matches_fresh_import() -> Res {
             3,
             "{label}"
         );
+        // Фото без точки в имени — всё равно фото; тип — по имени (`classify_file`): неизвестен.
+        let no_dot: Vec<_> = migrated
+            .list_stock_photos(&admin(), 4)
+            .await?
+            .into_iter()
+            .map(|p| (p.name, p.kind, p.content_type, p.legacy))
+            .collect();
+        assert_eq!(
+            no_dot,
+            [(
+                "p4jpeg".to_owned(),
+                AttachmentKind::Photo,
+                "application/octet-stream".to_owned(),
+                true
+            )],
+            "{label}"
+        );
 
         let ids = order_ids(&migrated).await;
         assert_eq!(ids, order_ids(&fresh).await);
@@ -335,6 +374,25 @@ async fn migration_matches_fresh_import() -> Res {
         assert_eq!(
             migrated.list_order_parts(&admin(), 5).await?.parts.len(),
             1,
+            "{label}"
+        );
+        // Пустой `ZIPId` списания 7: запчасть заказа 6 без позиции.
+        let order6: Vec<_> = migrated
+            .list_order_parts(&admin(), 6)
+            .await?
+            .parts
+            .into_iter()
+            .map(|p| (p.stock_item_id, p.name, p.price, p.quantity, p.legacy))
+            .collect();
+        assert_eq!(
+            order6,
+            [(
+                None,
+                "Позиция (нет на складе)".to_owned(),
+                Money::ZERO,
+                1,
+                true
+            )],
             "{label}"
         );
 
@@ -376,15 +434,25 @@ async fn migration_matches_fresh_import() -> Res {
             Some(("stock_items".to_owned(), 3))
         );
         assert_eq!(legacy_target(&migrated, "StockMap", "4").await, None);
+        assert_eq!(
+            legacy_target(&migrated, "StockMap", "7").await,
+            Some(("orders".to_owned(), 6))
+        );
 
+        // Знак валюты — из настроек, перенесённых из `Config.ini` фикстуры (`valuta=руб.`), как у
+        // записей «Списано со склада …» того же заказа.
         assert_eq!(
             audit_summaries(&migrated, 2, "order.costs_split").await,
-            ["Из расходов выделены запчасти со склада MyWork 2: было 4 000,00 ₽, стало 299,50 ₽"],
+            [
+                "Из расходов выделены запчасти со склада MyWork 2: было 4 000,00 руб., стало 299,50 руб."
+            ],
             "{label}"
         );
         assert_eq!(
             audit_summaries(&migrated, 5, "order.costs_split").await,
-            ["Из расходов выделены запчасти со склада MyWork 2: было 500,00 ₽, стало 200,00 ₽"],
+            [
+                "Из расходов выделены запчасти со склада MyWork 2: было 500,00 руб., стало 200,00 руб."
+            ],
             "{label}"
         );
         assert!(
@@ -400,7 +468,7 @@ async fn migration_matches_fresh_import() -> Res {
                 &record.report["summary"]["stock_items"],
                 &record.report["summary"]["order_parts"]
             ),
-            (&serde_json::json!(4), &serde_json::json!(5)),
+            (&serde_json::json!(4), &serde_json::json!(6)),
             "{label}"
         );
         let warnings = stored_warnings(&migrated, import_id).await;
@@ -412,14 +480,18 @@ async fn migration_matches_fresh_import() -> Res {
         );
         assert!(
             warnings.iter().any(|w| w.code.as_str() == "stock_imported"
-                && w.value == "позиций 4, запчастей 5"),
+                && w.value == "позиций 4, запчастей 6"),
             "{label}"
         );
-        // Испорченные ячейки и неизвестная колонка склада — в отчёте, по одному разу.
+        // Испорченные ячейки и неизвестные колонки склада — в отчёте, по одному разу; списание с
+        // пустым `ZIPId` — запчасть без позиции.
         for (code, source, key, field) in [
             ("text_invalid_utf8", "Stock", "2", "Primechanie"),
             ("text_invalid_utf8", "StockMap", "3", "clientId"),
+            ("text_invalid_utf8", "StockMap", "1", "Mesto"),
             ("unknown_column", "Stock", "Garantiya", "Garantiya"),
+            ("unknown_column", "StockMap", "Mesto", "Mesto"),
+            ("stock_part_orphan", "StockMap", "7", "ZIPId"),
         ] {
             let found = warnings
                 .iter()
@@ -434,6 +506,17 @@ async fn migration_matches_fresh_import() -> Res {
                 .count();
             assert_eq!(found, 1, "{label}: {code} {source} {key}");
         }
+        // Строка о списании называет заказ: ключ строки `StockMap` человеку ничего не говорит.
+        let orphan: Vec<_> = warnings
+            .iter()
+            .filter(|w| w.code.as_str() == "stock_part_orphan" && w.key == "7")
+            .map(|w| w.message.as_str())
+            .collect();
+        assert_eq!(
+            orphan,
+            ["Заказ № 6: номер позиции склада не указан — запчасть перенесена без позиции."],
+            "{label}"
+        );
         // «Типы запчастей»: строки отчёта у старой базы не было — перенос её заводит.
         let line: Vec<_> = warnings.iter().filter(|w| part_type_line(w)).collect();
         assert_eq!(line.len(), 1, "{label}");
@@ -448,7 +531,7 @@ async fn migration_matches_fresh_import() -> Res {
         let view = mw_legacy::report_view(&record, None);
         assert_eq!(view.stock_items, 4, "{label}");
 
-        // Следующая позиция — после перенесённых.
+        // Следующая позиция — после счётчика `Stock` (20), а не после наибольшего номера (4).
         let next = |core: Core| async move {
             core.create_stock_item(
                 &admin(),
@@ -461,8 +544,8 @@ async fn migration_matches_fresh_import() -> Res {
             .unwrap()
             .id
         };
-        assert_eq!(next(migrated.clone()).await, 5, "{label}");
-        assert_eq!(next(fresh.clone()).await, 5, "{label}");
+        assert_eq!(next(migrated.clone()).await, 21, "{label}");
+        assert_eq!(next(fresh.clone()).await, 21, "{label}");
     }
     Ok(())
 }
@@ -520,6 +603,38 @@ async fn costs_changed_after_import_are_kept() -> Res {
             ],
             "{label}"
         );
+    }
+    Ok(())
+}
+
+/// Запись журнала о «Расходах» пишет сумму со знаком валюты из настроек, как записи о запчастях:
+/// у мастерской в тенге — тенге, а не рубли рядом с «Списано со склада … ₸». Вид суммы прежний:
+/// простые пробелы и всегда копейки.
+#[tokio::test]
+async fn costs_split_text_uses_the_currency_setting() -> Res {
+    for (symbol, shown) in [(" ₸ ", "₸"), ("₽", "₽")] {
+        for t in cores().await {
+            let label = t.label;
+            let data = tempfile::tempdir()?;
+            let core = with_data(&t.core, &data);
+            import_like_before_stock(&core, data.path()).await?;
+            core.update_settings(
+                &admin(),
+                SettingsPatch {
+                    currency_symbol: Some(symbol.into()),
+                    ..Default::default()
+                },
+            )
+            .await?;
+            migrate_stock(&core, &admin()).await?;
+            assert_eq!(
+                audit_summaries(&core, 2, "order.costs_split").await,
+                [format!(
+                    "Из расходов выделены запчасти со склада MyWork 2: было 4 000,00 {shown}, стало 299,50 {shown}"
+                )],
+                "{label}"
+            );
+        }
     }
     Ok(())
 }
@@ -615,7 +730,11 @@ async fn migration_that_moved_nothing_is_not_repeated() -> Res {
             "{label}"
         );
         let state = core.legacy_stock_state(&admin()).await?;
-        assert_eq!((state.stock_rows, state.available), (4, false), "{label}");
+        assert_eq!(
+            (state.stock_rows, state.available, state.blocked_by_stock),
+            (4, false, false),
+            "{label}"
+        );
         assert_eq!(
             field_error(&migrate_stock(&core, &admin()).await),
             stock_error("not_available"),
@@ -660,9 +779,25 @@ async fn rights() -> Res {
             ),
             "{label}"
         );
+        // Состояние переноса читают и те, кто видит склад: «Склад» предупреждает их до первой позиции.
+        assert!(core.legacy_stock_state(&weak).await?.available, "{label}");
+        let viewer = Actor::for_tests(None, "Тест", PermissionSet::from_codes(["stock_view"]));
+        assert!(core.legacy_stock_state(&viewer).await?.available, "{label}");
         assert!(
             matches!(
-                core.legacy_stock_state(&weak).await,
+                migrate_stock(&core, &viewer).await,
+                Err(LegacyError::Core(CoreError::Forbidden(
+                    Permission::SettingsManage
+                )))
+            ),
+            "{label}"
+        );
+        let mut blind = PermissionSet::empty();
+        blind.insert(Permission::SettingsManage);
+        let blind = Actor::for_tests(None, "Тест", blind);
+        assert!(
+            matches!(
+                core.legacy_stock_state(&blind).await,
                 Err(CoreError::Forbidden(Permission::UsersManage))
             ),
             "{label}"

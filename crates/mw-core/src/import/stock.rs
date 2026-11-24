@@ -12,6 +12,7 @@ use mw_db::entity::{dictionary_item, legacy_import, legacy_row, order, order_par
 use mw_db::ids::{IdTable, set_next_id};
 use mw_domain::dictionary::DictionaryKind;
 use mw_domain::money::Money;
+use mw_domain::permission::Permission;
 use mw_domain::search::normalize_search;
 use mw_domain::validation::FieldError;
 use sea_orm::sea_query::{Expr, ExprTrait};
@@ -24,6 +25,7 @@ use serde_json::{Value, json};
 
 use super::write::{bad, expect_count, insert_chunked, validate_stock, write_stock};
 use super::{ExtraCostsChange, ImportedStock};
+use crate::money_text::MoneyText;
 use crate::{Actor, Core, CoreError, NewAuditEntry, write_audit};
 
 const STOCK: &str = "Stock";
@@ -50,8 +52,13 @@ pub struct LegacyStockState {
     /// Строк `StockMap` (списаний со склада в заказы) в следах последнего импорта.
     pub stock_map_rows: u64,
     /// Перенос доступен: у последнего импорта есть строки `Stock`, в его отчёте ещё есть отметка
-    /// `stock_preserved` (склад не переносили), а позиций склада и запчастей заказов в базе нет.
+    /// `stock_preserved` (склад не переносили), а позиций склада (и удалённых) и запчастей заказов в
+    /// базе нет.
     pub available: bool,
+    /// Перенос закрыт складом, заведённым вручную: у последнего импорта есть строки `Stock` и отметка
+    /// `stock_preserved`, но позиции склада (хотя бы удалённые) или запчасти заказов уже есть. Старый
+    /// склад остаётся в следах и отчёте импорта; перенести его — только повторным импортом.
+    pub blocked_by_stock: bool,
 }
 
 /// Итог переноса склада из прошлого импорта.
@@ -111,27 +118,33 @@ pub struct StockImport {
 }
 
 impl Core {
-    /// Можно ли перенести склад из прошлого импорта (права `settings_manage` и `users_manage`).
+    /// Можно ли перенести склад из прошлого импорта. Читают те, кто может перенести (права
+    /// `settings_manage` и `users_manage`), и те, кто видит склад (`stock_view`): «Склад» до переноса
+    /// предупреждает, что первая позиция его закроет. Сам перенос — только с правами импорта.
     pub async fn legacy_stock_state(&self, actor: &Actor) -> Result<LegacyStockState, CoreError> {
-        self.check_import_rights(actor)?;
+        if !actor.permissions().contains(Permission::StockView) {
+            self.check_import_rights(actor)?;
+        }
         let Some(import_id) = latest_import(&self.db).await? else {
             return Ok(LegacyStockState {
                 import_id: None,
                 stock_rows: 0,
                 stock_map_rows: 0,
                 available: false,
+                blocked_by_stock: false,
             });
         };
         let stock_rows = trace_count(&self.db, import_id, STOCK).await?;
         let stock_map_rows = trace_count(&self.db, import_id, STOCK_MAP).await?;
-        let available = stock_rows > 0
-            && stock_is_empty(&self.db).await?
-            && stock_preserved(&self.db, import_id).await?;
+        let preserved = stock_rows > 0 && stock_preserved(&self.db, import_id).await?;
+        // Склад не переносили, а позиции или запчасти уже заведены вручную.
+        let started = preserved && !stock_is_empty(&self.db).await?;
         Ok(LegacyStockState {
             import_id: Some(import_id),
             stock_rows,
             stock_map_rows,
-            available,
+            available: preserved && !started,
+            blocked_by_stock: started,
         })
     }
 
@@ -311,8 +324,8 @@ impl Core {
                     stock_item_id: None,
                     summary: format!(
                         "Из расходов выделены запчасти со склада MyWork 2: было {}, стало {}",
-                        rub_text(c.from),
-                        rub_text(c.to)
+                        self.money_text(c.from, MoneyText::Exact),
+                        self.money_text(c.to, MoneyText::Exact)
                     ),
                     details: Some(json!({
                         "from": c.from.kopecks(),
@@ -390,23 +403,6 @@ fn not_empty() -> CoreError {
         "not_empty",
         "На складе или в заказах уже есть запчасти: перенос склада не нужен",
     )])
-}
-
-/// Сумма в журнале: «4 000,00 ₽» (простые пробелы, всегда копейки).
-fn rub_text(m: Money) -> String {
-    let abs = m.kopecks().unsigned_abs();
-    let rubles = (abs / 100).to_string();
-    let mut out = String::new();
-    if m.kopecks() < 0 {
-        out.push('-');
-    }
-    for (i, ch) in rubles.chars().enumerate() {
-        if i > 0 && (rubles.len() - i).is_multiple_of(3) {
-            out.push(' ');
-        }
-        out.push(ch);
-    }
-    format!("{out},{:02} ₽", abs % 100)
 }
 
 fn parse_raw(source: &str, key: &str, raw: &str) -> Result<Value, CoreError> {

@@ -618,12 +618,21 @@ async fn stock_of_a_past_import_is_migrated_once() {
 
         let state = t.get(STOCK, Some(&token)).await;
         assert_eq!(state.status, 200, "{}: {}", t.label, state.body);
-        assert_eq!(
-            state.body,
-            json!({ "import_id": id, "stock_rows": 4, "stock_map_rows": 6, "available": true }),
-            "{}",
-            t.label
-        );
+        let offered = json!({
+            "import_id": id,
+            "stock_rows": 4,
+            "stock_map_rows": 6,
+            "available": true,
+            "blocked_by_stock": false
+        });
+        assert_eq!(state.body, offered, "{}", t.label);
+        // «Склад» предупреждает и тех, кто склад только видит: состояние им читается, перенос — нет.
+        let viewer = t.token_with("viewer", &[Permission::StockView]).await;
+        let seen = t.get(STOCK, Some(&viewer)).await;
+        assert_eq!((seen.status, &seen.body), (200, &offered), "{}", t.label);
+        let refused = t.send(Method::POST, STOCK, Some(&viewer), None).await;
+        assert_eq!(refused.status, 403, "{}: {}", t.label, refused.body);
+        assert_eq!(refused.body["permission"], "settings_manage", "{}", t.label);
 
         let done = t.send(Method::POST, STOCK, Some(&token), None).await;
         assert_eq!(done.status, 200, "{}: {}", t.label, done.body);

@@ -13,7 +13,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use mw_core::{ExtraCostsChange, ImportedOrderPart, ImportedStock, ImportedStockItem};
 use mw_domain::dictionary::DictionaryKind;
-use mw_domain::money::Money;
+use mw_domain::money::{Money, group_digits};
 use mw_domain::search::normalize_search;
 use mw_domain::spelling::{has_letter, tidy};
 use mw_domain::stock::{MAX_STOCK_PRICE, MAX_STOCK_QUANTITY, StockNameParts, display_name};
@@ -103,23 +103,43 @@ pub(crate) fn parse_quantity(raw: &str) -> Option<i64> {
         .filter(|n| *n <= MAX_STOCK_QUANTITY)
 }
 
-/// Одна ячейка склада: где она и что в ней.
+/// Одна ячейка склада: где она и что в ней; у списания (`StockMap`) — ещё и заказ: строка отчёта
+/// называет его, ключ строки списания человеку ничего не говорит.
 struct Cell<'a> {
     source: &'a str,
     key: &'a str,
     field: &'a str,
     raw: String,
+    order_id: Option<i64>,
+}
+
+/// Пояснение к списанию, цена или количество которого не разобраны: запчасть считается по нулю, а
+/// из «Расходов» вычитаются только разобранные суммы — её цена там и осталась. Цену запчасти (снимок
+/// на момент списания) не поправить, да и не нужно.
+const PART_COST_KEPT: &str = "Её стоимость не вычтена из «Расходов» заказа (в MyWork 2 она входила в «Затраты»): делать ничего не нужно.";
+
+/// Текст строки отчёта о ячейке: у позиции — `item`, у списания — «Заказ № N: `part`» и пояснение.
+fn cell_message(cell: &Cell<'_>, item: &str, part: &str) -> String {
+    match cell.order_id {
+        Some(id) => format!("Заказ № {id}: {part} {PART_COST_KEPT}"),
+        None => item.to_owned(),
+    }
 }
 
 fn quantity(w: &mut Warnings, cell: &Cell<'_>) -> i64 {
     parse_quantity(&cell.raw).unwrap_or_else(|| {
+        let message = cell_message(
+            cell,
+            "Количество не разобрано: записан ноль.",
+            "количество запчасти не разобрано — записан ноль.",
+        );
         w.push(
             WarningCode::QuantityUnparsed,
             cell.source,
             cell.key,
             cell.field,
             &cell.raw,
-            "Количество не разобрано: записан ноль.",
+            &message,
         );
         0
     })
@@ -129,10 +149,16 @@ fn price(w: &mut Warnings, cell: &Cell<'_>) -> Money {
     let message = match parse_money(&cell.raw) {
         MoneyValue::Empty => return Money::ZERO,
         MoneyValue::Parsed(m) if m.kopecks() <= MAX_STOCK_PRICE.kopecks() => return m,
-        MoneyValue::Parsed(_) => {
-            "Цена больше 10 000 000 ₽ — больше, чем бывает на складе: записан ноль."
-        }
-        MoneyValue::Invalid => "Сумма не разобрана: записан ноль.",
+        MoneyValue::Parsed(_) => cell_message(
+            cell,
+            "Цена больше 10 000 000 ₽ — больше, чем бывает на складе: записан ноль.",
+            "цена запчасти больше 10 000 000 ₽ — больше, чем бывает на складе: записан ноль.",
+        ),
+        MoneyValue::Invalid => cell_message(
+            cell,
+            "Сумма не разобрана: записан ноль.",
+            "цена запчасти не разобрана — записан ноль.",
+        ),
     };
     w.push(
         WarningCode::MoneyUnparsed,
@@ -140,7 +166,7 @@ fn price(w: &mut Warnings, cell: &Cell<'_>) -> Money {
         cell.key,
         cell.field,
         &cell.raw,
-        message,
+        &message,
     );
     Money::ZERO
 }
@@ -175,6 +201,7 @@ fn convert_items(table: &LegacyTable, w: &mut Warnings) -> Vec<ImportedStockItem
             key: &key,
             field,
             raw: table.text(row, field),
+            order_id: None,
         };
         items.push(ImportedStockItem {
             id,
@@ -242,20 +269,26 @@ fn convert_parts(
         let (stock_item_id, name) = match item {
             Some((id, name)) => (Some(*id), name.clone()),
             None => {
+                let shown = raw_item.trim();
+                let (name, why) = if shown.is_empty() {
+                    (
+                        "Позиция (нет на складе)".to_owned(),
+                        "номер позиции склада не указан",
+                    )
+                } else {
+                    (
+                        format!("Позиция №{shown} (нет на складе)"),
+                        "позиции склада с таким номером нет",
+                    )
+                };
                 w.push(
                     WarningCode::StockPartOrphan,
                     "StockMap",
                     &key,
                     "ZIPId",
                     &raw_item,
-                    "Позиции склада с таким номером нет: запчасть перенесена без позиции.",
+                    &format!("Заказ № {order_id}: {why} — запчасть перенесена без позиции."),
                 );
-                let shown = raw_item.trim();
-                let name = if shown.is_empty() {
-                    "Позиция (нет на складе)".to_owned()
-                } else {
-                    format!("Позиция №{shown} (нет на складе)")
-                };
                 (None, name)
             }
         };
@@ -264,6 +297,7 @@ fn convert_parts(
             key: &key,
             field,
             raw: table.text(row, field),
+            order_id: Some(order_id),
         };
         parts.push(ImportedOrderPart {
             order_id,
@@ -282,19 +316,14 @@ pub(crate) fn order_number(client_id: &str) -> Option<i64> {
     client_id.trim().parse().ok()
 }
 
-/// Сумма для отчёта: «1 000,00» (простые пробелы, всегда копейки).
+/// Сумма для отчёта: «1 000,00» (простые пробелы, всегда копейки, без знака валюты: отчёт не
+/// зависит от настроек). Сумма запчастей заказа считается в i128 и в `Money` может не уместиться,
+/// поэтому цифры группирует `group_digits` — тот же, что у `Money`.
 fn amount_text(kopecks: i128) -> String {
     let sign = if kopecks < 0 { "-" } else { "" };
     let abs = kopecks.unsigned_abs();
-    let rubles = (abs / 100).to_string();
-    let mut grouped = String::new();
-    for (i, ch) in rubles.chars().enumerate() {
-        if i > 0 && (rubles.len() - i).is_multiple_of(3) {
-            grouped.push(' ');
-        }
-        grouped.push(ch);
-    }
-    format!("{sign}{grouped},{:02}", abs % 100)
+    let rubles = group_digits(&(abs / 100).to_string(), ' ');
+    format!("{sign}{rubles},{:02}", abs % 100)
 }
 
 /// «Расходы» без запчастей: по заказам с запчастями на ненулевую сумму.
@@ -455,6 +484,20 @@ mod tests {
             })
             .collect()
     }
+
+    /// Текст единственного предупреждения кода у строки `source`/`key`.
+    fn message<'a>(ws: &'a [Warning], code: &str, source: &str, key: &str) -> &'a str {
+        let found: Vec<&Warning> = ws
+            .iter()
+            .filter(|w| w.code.as_str() == code && w.source == source && w.key == key)
+            .collect();
+        assert_eq!(found.len(), 1, "{code} {source}/{key}: {found:?}");
+        &found[0].message
+    }
+
+    /// Пояснение к списанию, цена или количество которого не разобраны (текст закреплён здесь, а не
+    /// взят из кода).
+    const PART_COST_KEPT_TEXT: &str = "Её стоимость не вычтена из «Расходов» заказа (в MyWork 2 она входила в «Затраты»): делать ничего не нужно.";
 
     fn target(c: &Conversion, source: &str, key: &str) -> Option<LegacyTarget> {
         c.bundle
@@ -670,6 +713,17 @@ mod tests {
             [("StockMap", "4", "clientId", "404")]
         );
         assert!(warned(ws, "quantity_unparsed").contains(&("StockMap", "5", "countOfZIP", "два")));
+        // Строки отчёта о списаниях называют заказ: ключ строки `StockMap` человеку ничего не говорит.
+        assert_eq!(
+            message(ws, "quantity_unparsed", "StockMap", "5"),
+            format!(
+                "Заказ № 3: количество запчасти не разобрано — записан ноль. {PART_COST_KEPT_TEXT}"
+            )
+        );
+        assert_eq!(
+            message(ws, "stock_part_orphan", "StockMap", "3"),
+            "Заказ № 5: позиции склада с таким номером нет — запчасть перенесена без позиции."
+        );
         // Следы `StockMap` — у заказа запчасти; без заказа — без цели.
         assert_eq!(target(&c, "StockMap", "1"), Some(LegacyTarget::Order(2)));
         assert_eq!(target(&c, "StockMap", "3"), Some(LegacyTarget::Order(5)));
@@ -868,9 +922,67 @@ mod tests {
                 ("StockMap", "6", "priceOfZIP", "20 000 000"),
             ]
         );
+        // Цена позиции — как раньше; цена списания называет заказ и что делать.
+        assert_eq!(
+            message(ws, "money_unparsed", "Stock", "3"),
+            "Цена больше 10 000 000 ₽ — больше, чем бывает на складе: записан ноль."
+        );
+        assert_eq!(
+            message(ws, "money_unparsed", "StockMap", "6"),
+            format!(
+                "Заказ № 4: цена запчасти больше 10 000 000 ₽ — больше, чем бывает на складе: записан ноль. {PART_COST_KEPT_TEXT}"
+            )
+        );
         // Позиции 2 больше нет: её списание — без позиции.
         assert!(warned(ws, "stock_part_orphan").contains(&("StockMap", "5", "ZIPId", "2")));
         let p6 = c.bundle.stock.parts.last().unwrap();
         assert_eq!((p6.order_id, p6.price, p6.quantity), (4, Money::ZERO, 2));
+    }
+
+    /// Цена списания не разобрана: запчасть — по нулю, а её цена остаётся в «Расходах» (вычитаются
+    /// только разобранные суммы); строка отчёта называет заказ. Пустой `ZIPId` — запчасть без
+    /// позиции «Позиция (нет на складе)».
+    #[tokio::test]
+    async fn stock_map_rows_name_their_order() {
+        let c = conversion_with_sql(
+            V32,
+            &[
+                "UPDATE StockMap SET priceOfZIP = 'abc' WHERE id = 1",
+                "UPDATE StockMap SET ZIPId = '' WHERE id = 2",
+            ],
+        )
+        .await;
+        let ws = c.warnings.list();
+        assert_eq!(
+            message(ws, "money_unparsed", "StockMap", "1"),
+            format!("Заказ № 2: цена запчасти не разобрана — записан ноль. {PART_COST_KEPT_TEXT}")
+        );
+        assert_eq!(
+            message(ws, "stock_part_orphan", "StockMap", "2"),
+            "Заказ № 2: номер позиции склада не указан — запчасть перенесена без позиции."
+        );
+        assert_eq!(
+            warned(ws, "stock_part_orphan")
+                .into_iter()
+                .find(|w| w.1 == "2"),
+            Some(("StockMap", "2", "ZIPId", ""))
+        );
+        let parts: Vec<_> = c
+            .bundle
+            .stock
+            .parts
+            .iter()
+            .filter(|p| p.order_id == 2)
+            .map(|p| (p.stock_item_id, p.name.as_str(), p.price, p.quantity))
+            .collect();
+        assert_eq!(
+            parts,
+            [
+                (Some(1), "Дисплей", Money::ZERO, 1),
+                (None, "Позиция (нет на складе)", kop(120_050), 1),
+            ]
+        );
+        // 4 000 − 1 200,50: цена 2 500 непрочитанного списания в «Расходах» осталась.
+        assert_eq!(order(&c.bundle, 2).extra_costs, kop(279_950));
     }
 }
