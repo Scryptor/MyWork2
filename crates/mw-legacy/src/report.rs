@@ -157,7 +157,9 @@ impl Warnings {
         self.0
     }
 
-    /// Оставляет только предупреждения, для которых `keep` — да.
+    /// Оставляет только предупреждения, для которых `keep` — да (импорт «как до плана 8.1» в
+    /// `crate::testing`).
+    #[cfg(feature = "testing")]
     pub(crate) fn retain(&mut self, keep: impl FnMut(&Warning) -> bool) {
         self.0.retain(keep);
     }
