@@ -3,6 +3,7 @@ import {
 	ApiError,
 	apiUrl,
 	errorMessage,
+	errorReason,
 	fileNameOf,
 	request,
 	requestFile,
@@ -291,5 +292,36 @@ describe('the name of a file the server sends', () => {
 		const file = await requestFile('/orders/7/documents/issue_act', { query: { format: 'pdf' } });
 		expect(file.filename).toBe('akt-vydachi-7.pdf');
 		expect(await file.blob.text()).toBe('%PDF');
+	});
+});
+
+// What the server sends for a refusal of the data: the top line is general, the reason is in the field.
+const VALIDATION_BODY = {
+	code: 'validation' as const,
+	message: 'Проверьте введённые данные',
+	fields: [
+		{
+			field: 'rows',
+			code: 'too_many_rows',
+			message: 'Слишком много строк для одного файла — не больше 50 000, сузьте выборку'
+		}
+	],
+	current_version: null,
+	permission: null,
+	retry_after_secs: null,
+	diagnostics: []
+};
+
+describe('errorReason', () => {
+	it('is the text of the first field of a refusal, not the general line', () => {
+		const e = new ApiError(422, 'validation', VALIDATION_BODY.message, VALIDATION_BODY);
+		expect(errorReason(e)).toBe(VALIDATION_BODY.fields[0]!.message);
+	});
+
+	it('is the message of any other error', () => {
+		expect(errorReason(new ApiError(0, 'network', 'Нет связи с сервером', null))).toBe(
+			'Нет связи с сервером'
+		);
+		expect(errorReason(new Error('x'))).toBe(errorMessage(new Error('x')));
 	});
 });

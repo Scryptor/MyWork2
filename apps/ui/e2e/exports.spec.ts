@@ -55,8 +55,12 @@ test("a refusal of the server is a toast with the server's words", async ({ page
 			contentType: 'application/json',
 			body: JSON.stringify({
 				code: 'validation',
-				message: words,
-				fields: [{ field: 'rows', code: 'too_many_rows', message: words }]
+				message: 'Проверьте введённые данные',
+				fields: [{ field: 'rows', code: 'too_many_rows', message: words }],
+				current_version: null,
+				permission: null,
+				retry_after_secs: null,
+				diagnostics: []
 			})
 		})
 	);

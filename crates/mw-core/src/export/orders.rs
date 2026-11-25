@@ -10,11 +10,10 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
 use super::xlsx::{Cell, Column, Sheet, workbook};
 use super::{EXPORT_ROWS_MAX, ExportFile, XLSX_CONTENT_TYPE, dmy, ensure_rows};
+use crate::sql::ID_CHUNK;
 use crate::{Actor, Core, CoreError, OrderFilter, OrderListItem, OrderSort};
 
 const ASCII_NAME: &str = "orders.xlsx";
-/// Сколько заказов читается из БД одним запросом `IN (…)`.
-const CHUNK: usize = 500;
 
 const COLUMNS: [&str; 24] = [
     "№ заказа",
@@ -59,7 +58,7 @@ impl Core {
     /// Стоимость запчастей (цена × количество) по заказам из списка.
     async fn parts_cost(&self, ids: &[i64]) -> Result<HashMap<i64, i64>, CoreError> {
         let mut sums: HashMap<i64, i64> = HashMap::new();
-        for chunk in ids.chunks(CHUNK) {
+        for chunk in ids.chunks(ID_CHUNK) {
             for p in order_part::Entity::find()
                 .filter(order_part::Column::OrderId.is_in(chunk.iter().copied()))
                 .all(&self.db)
@@ -76,7 +75,7 @@ impl Core {
     /// Остальные поля заказов, которых нет в строке списка.
     async fn order_models(&self, ids: &[i64]) -> Result<HashMap<i64, order::Model>, CoreError> {
         let mut map = HashMap::new();
-        for chunk in ids.chunks(CHUNK) {
+        for chunk in ids.chunks(ID_CHUNK) {
             for m in order::Entity::find()
                 .filter(order::Column::Id.is_in(chunk.iter().copied()))
                 .all(&self.db)

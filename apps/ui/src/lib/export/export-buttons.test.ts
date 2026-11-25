@@ -35,16 +35,22 @@ describe('«В Excel» of the orders', () => {
 		expect(screen.queryByRole('button', { name: 'В Excel' })).toBeNull();
 	});
 
-	it("tells the server's refusal", async () => {
-		api.downloadOrders.mockRejectedValue(
-			new ApiError(422, 'validation', 'Слишком много строк', null)
-		);
+	it("tells the server's reason from the field, as the server sends it", async () => {
+		const reason = 'Слишком много строк для одного файла — не больше 50 000, сузьте выборку';
+		const body = {
+			code: 'validation' as const,
+			message: 'Проверьте введённые данные',
+			fields: [{ field: 'rows', code: 'too_many_rows', message: reason }],
+			current_version: null,
+			permission: null,
+			retry_after_secs: null,
+			diagnostics: []
+		};
+		api.downloadOrders.mockRejectedValue(new ApiError(422, 'validation', body.message, body));
 		render(ExportOrdersButton, { query: {} });
 		await userEvent.click(screen.getByRole('button', { name: 'В Excel' }));
 		await waitFor(() =>
-			expect(toast.items.map((t) => t.message)).toEqual([
-				'Не удалось выгрузить файл: Слишком много строк'
-			])
+			expect(toast.items.map((t) => t.message)).toEqual([`Не удалось выгрузить файл: ${reason}`])
 		);
 	});
 });

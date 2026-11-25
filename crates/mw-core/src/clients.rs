@@ -17,7 +17,7 @@ use serde_json::{Map, Value, json};
 
 use crate::page::validate_page;
 use crate::search_index::client_search_text;
-use crate::sql::text_sort;
+use crate::sql::{ID_CHUNK, text_sort};
 use crate::{Actor, Core, CoreError, EditVia, NewAuditEntry, Page, write_audit};
 
 const ENTITY: &str = "клиент";
@@ -187,17 +187,19 @@ pub(crate) async fn load_phones(
     if ids.is_empty() {
         return Ok(map);
     }
-    let rows = client_phone::Entity::find()
-        .filter(client_phone::Column::ClientId.is_in(ids.iter().copied()))
-        .order_by_asc(client_phone::Column::ClientId)
-        .order_by_asc(client_phone::Column::Position)
-        .all(conn)
-        .await?;
-    for r in rows {
-        map.entry(r.client_id).or_default().push(ClientPhone {
-            phone: r.phone,
-            note: r.note,
-        });
+    for chunk in ids.chunks(ID_CHUNK) {
+        let rows = client_phone::Entity::find()
+            .filter(client_phone::Column::ClientId.is_in(chunk.iter().copied()))
+            .order_by_asc(client_phone::Column::ClientId)
+            .order_by_asc(client_phone::Column::Position)
+            .all(conn)
+            .await?;
+        for r in rows {
+            map.entry(r.client_id).or_default().push(ClientPhone {
+                phone: r.phone,
+                note: r.note,
+            });
+        }
     }
     Ok(map)
 }
@@ -347,19 +349,21 @@ async fn order_stats(
     if ids.is_empty() {
         return Ok(map);
     }
-    let rows = order::Entity::find()
-        .select_only()
-        .column(order::Column::ClientId)
-        .expr_as(Expr::col(order::Column::Id).count(), "n")
-        .expr_as(Expr::col(order::Column::ReceivedAt).max(), "last")
-        .filter(order::Column::ClientId.is_in(ids.iter().copied()))
-        .filter(order::Column::DeletedAt.is_null())
-        .group_by(order::Column::ClientId)
-        .into_tuple::<(i64, i64, Option<NaiveDateTime>)>()
-        .all(conn)
-        .await?;
-    for (id, n, last) in rows {
-        map.insert(id, (n as u64, last));
+    for chunk in ids.chunks(ID_CHUNK) {
+        let rows = order::Entity::find()
+            .select_only()
+            .column(order::Column::ClientId)
+            .expr_as(Expr::col(order::Column::Id).count(), "n")
+            .expr_as(Expr::col(order::Column::ReceivedAt).max(), "last")
+            .filter(order::Column::ClientId.is_in(chunk.iter().copied()))
+            .filter(order::Column::DeletedAt.is_null())
+            .group_by(order::Column::ClientId)
+            .into_tuple::<(i64, i64, Option<NaiveDateTime>)>()
+            .all(conn)
+            .await?;
+        for (id, n, last) in rows {
+            map.insert(id, (n as u64, last));
+        }
     }
     Ok(map)
 }
@@ -772,7 +776,53 @@ mod tests {
     #![allow(clippy::unwrap_used)]
     use sea_orm::{ConnectionTrait, DbBackend, Statement};
 
-    use super::HAS_SIMILAR_SQL;
+    use super::{HAS_SIMILAR_SQL, load_phones, order_stats};
+    use chrono::NaiveDate;
+    use mw_db::entity::{client, client_phone};
+    use sea_orm::{ActiveModelTrait, Set};
+
+    /// Номера и счёт заказов для десятков тысяч номеров клиентов: SQLite принимает в одном запросе
+    /// не больше 32 766 переменных, а выгрузка берёт до 50 000 клиентов. Нужные клиенты — в начале и
+    /// в конце списка, то есть в разных частях запроса.
+    #[tokio::test]
+    async fn phones_and_order_stats_take_more_ids_than_sqlite_binds() {
+        let db = mw_db::testing::sqlite_memory().await;
+        let at = NaiveDate::from_ymd_opt(2026, 11, 25)
+            .and_then(|d| d.and_hms_opt(10, 0, 0))
+            .unwrap();
+        let mut real = Vec::new();
+        for name in ["Первый", "Последний"] {
+            let c = client::ActiveModel {
+                full_name: Set(name.to_owned()),
+                created_at: Set(at),
+                updated_at: Set(at),
+                ..Default::default()
+            }
+            .insert(&db)
+            .await
+            .unwrap();
+            client_phone::ActiveModel {
+                client_id: Set(c.id),
+                position: Set(0),
+                phone: Set("79211234567".to_owned()),
+                phone_key: Set("9211234567".to_owned()),
+                note: Set(String::new()),
+                ..Default::default()
+            }
+            .insert(&db)
+            .await
+            .unwrap();
+            real.push(c.id);
+        }
+        let mut ids: Vec<i64> = (1_000..41_000).collect();
+        ids[0] = real[0];
+        let last = ids.len() - 1;
+        ids[last] = real[1];
+        let phones = load_phones(&db, &ids).await.unwrap();
+        assert_eq!(phones.len(), 2);
+        assert_eq!(phones[&real[1]][0].phone, "79211234567");
+        assert!(order_stats(&db, &ids).await.unwrap().is_empty());
+    }
 
     /// План SQLite для фильтра «Похожие»: строки `detail` из `EXPLAIN QUERY PLAN`.
     async fn sqlite_plan(sql: &str) -> Vec<String> {

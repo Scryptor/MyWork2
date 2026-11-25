@@ -9,7 +9,7 @@
 	import { page } from '$app/state';
 	import type { MovesReport } from '$api/MovesReport';
 	import type { OrderReport } from '$api/OrderReport';
-	import { ApiError, errorMessage } from '#lib/api/client.js';
+	import { errorReason } from '#lib/api/client.js';
 	import { downloadOrderReport, movesReport, orderReport } from '#lib/api/reports.js';
 	import { serverClock } from '#lib/api/server-clock.svelte.js';
 	import { app } from '#lib/app/context.svelte.js';
@@ -98,7 +98,7 @@
 			if (controller !== mine || mine.signal.aborted) return;
 			if (tab === 'moves') transfers = null;
 			else report = null;
-			error = errorMessage(e);
+			error = errorReason(e);
 		} finally {
 			if (controller === mine) loading = false;
 		}
@@ -129,7 +129,7 @@
 			await downloadOrderReport(query);
 		} catch (e) {
 			toast.show({
-				message: `${t.exportFailed}: ${e instanceof ApiError ? e.message : errorMessage(e)}`,
+				message: `${t.exportFailed}: ${errorReason(e)}`,
 				tone: 'danger'
 			});
 		} finally {

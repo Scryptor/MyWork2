@@ -1,4 +1,4 @@
-import { ApiError, errorMessage } from '#lib/api/client.js';
+import { errorReason } from '#lib/api/client.js';
 import { ru } from '#lib/i18n/ru.js';
 import { toast } from '#lib/ui/toast/toast.svelte.js';
 
@@ -8,7 +8,7 @@ export async function runExport(download: () => Promise<void>): Promise<void> {
 		await download();
 	} catch (e) {
 		toast.show({
-			message: `${ru.exports.failed}: ${e instanceof ApiError ? e.message : errorMessage(e)}`,
+			message: `${ru.exports.failed}: ${errorReason(e)}`,
 			tone: 'danger'
 		});
 	}

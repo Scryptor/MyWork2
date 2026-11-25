@@ -13,6 +13,10 @@ pub(crate) fn text_sort(backend: DatabaseBackend, expr: impl Into<SimpleExpr>) -
         _ => expr.into(),
     }
 }
+/// Сколько номеров кладётся в один `IN (…)`: SQLite принимает в запросе не больше 32 766
+/// переменных, а выгрузки берут до 50 000 строк.
+pub(crate) const ID_CHUNK: usize = 500;
+
 #[cfg(test)]
 mod tests {
     use sea_orm::sea_query::{Order, PostgresQueryBuilder, Query};

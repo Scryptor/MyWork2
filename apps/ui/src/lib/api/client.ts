@@ -32,6 +32,15 @@ export function errorMessage(e: unknown): string {
 	return e instanceof ApiError && e.message ? e.message : ru.api.failed;
 }
 
+/**
+ * The reason of a refusal for a toast: a refused value (`validation`) comes with the general line
+ * «Проверьте введённые данные» and the real reason in its first field; any other error is `errorMessage`.
+ */
+export function errorReason(e: unknown): string {
+	const reason = e instanceof ApiError ? e.body?.fields[0]?.message : undefined;
+	return reason || errorMessage(e);
+}
+
 let onUnauthenticated: () => void = () => {};
 
 export function setUnauthenticatedHandler(fn: () => void): void {
