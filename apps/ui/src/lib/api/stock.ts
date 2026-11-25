@@ -3,6 +3,7 @@ import type { AuditPage } from '$api/AuditPage';
 import type { HistoryQuery } from '$api/HistoryQuery';
 import type { NewOrderPart } from '$api/NewOrderPart';
 import type { NewStockItem } from '$api/NewStockItem';
+import type { NewStockRack } from '$api/NewStockRack';
 import type { OrderParts } from '$api/OrderParts';
 import type { StockCellRef } from '$api/StockCellRef';
 import type { StockItem } from '$api/StockItem';
@@ -12,6 +13,7 @@ import type { StockMove } from '$api/StockMove';
 import type { StockPage } from '$api/StockPage';
 import type { StockPut } from '$api/StockPut';
 import type { StockRack } from '$api/StockRack';
+import type { StockRackPatch } from '$api/StockRackPatch';
 import type { StockRackQuery } from '$api/StockRackQuery';
 import type { StockSummary } from '$api/StockSummary';
 import { request, upload } from './client.js';
@@ -69,3 +71,20 @@ export const addOrderPart = (orderId: number, n: NewOrderPart) =>
 /** Gives a part back: the stock gets it back when the position is alive; 404 — the row is already gone. */
 export const returnOrderPart = (orderId: number, partId: number) =>
 	request<OrderParts>('DELETE', `/orders/${orderId}/parts/${partId}`);
+
+/** A new rack at the end of the list. */
+export const createStockRack = (body: NewStockRack) =>
+	request<StockRack>('POST', '/stock/racks', { body });
+
+/** Only the changed fields; cells that fall out of a smaller grid must be empty (else 409). */
+export const updateStockRack = (id: number, patch: StockRackPatch) =>
+	request<StockRack>('PATCH', `/stock/racks/${id}`, { body: patch });
+
+/** Deletes an empty rack for good; a rack with parts in its cells is 409. */
+export const deleteStockRack = (id: number) => request<void>('DELETE', `/stock/racks/${id}`);
+
+/** The new order of all racks; `seenIds` is the order the screen saw (a changed one is refused). */
+export const reorderStockRacks = (orderedIds: number[], seenIds?: number[]) =>
+	request<void>('PUT', '/stock/racks/order', {
+		body: { ordered_ids: orderedIds, seen_ids: seenIds }
+	});

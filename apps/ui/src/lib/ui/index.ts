@@ -4,6 +4,7 @@ export { default as Button } from './Button.svelte';
 export { default as Callout } from './Callout.svelte';
 export { default as CameraDialog } from './CameraDialog.svelte';
 export { default as Card } from './Card.svelte';
+export { default as CellGrid } from './CellGrid.svelte';
 export { default as Chart } from './Chart.svelte';
 export { default as Checkbox } from './Checkbox.svelte';
 export { default as ChipGroup } from './ChipGroup.svelte';

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	DEFAULT_STOCK_SORT,
+	openStockCell,
 	openStockItemId,
 	stockItemHref,
 	stockSearch,
@@ -15,7 +16,9 @@ const plain: StockView = {
 	query: '',
 	sort: { ...DEFAULT_STOCK_SORT },
 	restock: false,
-	asText: false
+	asText: false,
+	map: false,
+	point: null
 };
 
 describe('stock view in the address', () => {
@@ -46,7 +49,9 @@ describe('stock view in the address', () => {
 			asText: false,
 			query: 'дисплей',
 			sort: { columnId: 'price', descending: true },
-			restock: true
+			restock: true,
+			map: false,
+			point: null
 		});
 	});
 
@@ -94,11 +99,46 @@ describe('stock view in the address', () => {
 		});
 		expect(
 			stockViewToQuery({
-				asText: false,
+				...plain,
 				query: '  экран ',
-				sort: { columnId: 'quantity', descending: true },
-				restock: false
+				sort: { columnId: 'quantity', descending: true }
 			})
 		).toEqual({ query: 'экран', sort: 'quantity', descending: true });
+	});
+});
+
+describe('the map in the address', () => {
+	it('the list is the default view: no parameters', () => {
+		expect(fromSearch('').map).toBe(false);
+		expect(stockViewToSearch(plain)).toBe('');
+	});
+
+	it('goes there and back: view=map, point=5, point=none', () => {
+		const map = { ...plain, map: true };
+		expect(stockViewToSearch(map)).toBe('view=map');
+		expect(fromSearch('view=map')).toEqual(map);
+		expect(fromSearch('view=map&point=5')).toEqual({ ...map, point: 5 });
+		expect(stockViewToSearch({ ...map, point: 5 })).toBe('view=map&point=5');
+		expect(fromSearch('view=map&point=none')).toEqual({ ...map, point: 'none' });
+		expect(stockViewToSearch({ ...map, point: 'none' })).toBe('view=map&point=none');
+	});
+
+	it('takes any other value of view and rubbish in point for the defaults', () => {
+		expect(fromSearch('view=list&point=x').map).toBe(false);
+		expect(fromSearch('view=map&point=0').point).toBeNull();
+		expect(fromSearch('view=map&point=x').point).toBeNull();
+	});
+
+	it('keeps the open cell beside the open position', () => {
+		const map = { ...plain, map: true };
+		expect(openStockCell(new URLSearchParams('cell=3.2.4'))).toEqual({
+			rack_id: 3,
+			shelf: 2,
+			cell: 4
+		});
+		expect(openStockCell(new URLSearchParams('cell=oops'))).toBeNull();
+		expect(stockSearch(map, null, '3.2.4')).toBe('view=map&cell=3.2.4');
+		expect(stockSearch(map, 7, '3.2.4')).toBe('view=map&item=7&cell=3.2.4');
+		expect(stockSearch(plain, null, '3.2.4')).toBe('cell=3.2.4');
 	});
 });

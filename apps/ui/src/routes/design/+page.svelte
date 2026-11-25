@@ -11,6 +11,7 @@
 	import Pattern from './sections/Pattern.svelte';
 	import Navigation from './sections/Navigation.svelte';
 	import Print from './sections/Print.svelte';
+	import StockMap from './sections/StockMap.svelte';
 	import Table from './sections/Table.svelte';
 	import Tokens from './sections/Tokens.svelte';
 
@@ -112,6 +113,11 @@
 	<section id="print">
 		<h2>Печать</h2>
 		<Print />
+	</section>
+
+	<section id="stock-map">
+		<h2>Карта склада</h2>
+		<StockMap />
 	</section>
 </main>
 

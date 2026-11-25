@@ -38,4 +38,28 @@ describe('PlaceDialog of a cell', () => {
 			expect(onsubmit).toHaveBeenCalledWith(9, { rack_id: 2, shelf: 2, cell: 4 }, 4)
 		);
 	});
+
+	it('does not lay a position whose name was edited after it was chosen', async () => {
+		const ui = userEvent.setup();
+		api.listStock.mockResolvedValue({
+			items: [stockItem({ id: 9, unplaced: 4 })],
+			total: 1,
+			place: null
+		});
+		const onsubmit = vi.fn().mockResolvedValue(undefined);
+		render(Harness, { onsubmit, reload: vi.fn() });
+		const field = screen.getByRole('combobox', { name: 'Позиция' });
+		await ui.type(field, 'диспл');
+		await ui.click(
+			await waitFor(() => {
+				const el = document.querySelector('[data-combobox-item]');
+				if (!el) throw new Error('no option');
+				return el;
+			})
+		);
+		await ui.type(field, 'x');
+		await ui.click(screen.getByRole('button', { name: 'Положить' }));
+		expect(await screen.findByText('Выберите позицию из списка')).toBeInTheDocument();
+		expect(onsubmit).not.toHaveBeenCalled();
+	});
 });

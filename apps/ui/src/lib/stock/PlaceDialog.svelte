@@ -55,19 +55,22 @@
 	let quantityError = $state<string | undefined>();
 	let problem = $state<string | undefined>();
 
+	const label = (i: StockItem) => `${i.display_name} · ${ru.stock.article(i.id)}`;
 	const options = $derived(
 		cellOptions(racks).filter((o) => !(mode === 'move' && from && sameCell(o.ref, from)))
 	);
 	const target = $derived(
 		mode === 'here' ? (cell?.ref ?? null) : (options.find((o) => o.value === cellText)?.ref ?? null)
 	);
-	const subject = $derived(mode === 'here' ? chosen : (item ?? null));
+	// `here`: the position chosen counts while the field still shows it; edited text is a choice not made.
+	const subject = $derived(
+		mode === 'here' ? (chosen && itemText.trim() === label(chosen) ? chosen : null) : (item ?? null)
+	);
 	const available = $derived(mode === 'move' ? (from?.quantity ?? 0) : (subject?.unplaced ?? 0));
 	const title = $derived(
 		mode === 'put' ? t.putTitle : mode === 'move' ? t.moveTitle : t.hereTitle(cell?.code ?? '')
 	);
 	const submitLabel = $derived(mode === 'move' ? t.submitMove : t.submitPut);
-	const label = (i: StockItem) => `${i.display_name} · ${ru.stock.article(i.id)}`;
 	const itemItems = $derived(
 		found.map((i) => ({ value: label(i), hint: t.itemUnplaced(i.unplaced) }))
 	);

@@ -2,7 +2,9 @@
 // address like the clients' view; beside it `item` names the position open in the panel.
 import type { StockListQuery } from '$api/StockListQuery';
 import type { SortState } from '#lib/ui/table/types.js';
+import type { StockCellRef } from '$api/StockCellRef';
 import { STOCK_SORT_FIELD } from './columns.js';
+import { NO_POINT, parseCellParam } from './map/racks.js';
 
 export interface StockView {
 	query: string;
@@ -11,13 +13,24 @@ export interface StockView {
 	restock: boolean;
 	/** `text=1`: the text is only text — a code of a rack or a cell in it is not taken as a place. */
 	asText: boolean;
+	/** `view=map`: the map of the racks instead of the list. */
+	map: boolean;
+	/** `point=`: the service point whose racks the map shows; `'none'` — the racks without one. */
+	point: number | typeof NO_POINT | null;
 }
 
 /** By name, A to Z. */
 export const DEFAULT_STOCK_SORT: SortState = { columnId: 'name', descending: false };
 
 export function defaultStockView(): StockView {
-	return { query: '', sort: { ...DEFAULT_STOCK_SORT }, restock: false, asText: false };
+	return {
+		query: '',
+		sort: { ...DEFAULT_STOCK_SORT },
+		restock: false,
+		asText: false,
+		map: false,
+		point: null
+	};
 }
 
 const sortable = (columnId: string) => Object.hasOwn(STOCK_SORT_FIELD, columnId);
@@ -33,6 +46,9 @@ export function stockViewFromSearch(p: Pick<URLSearchParams, 'get'>): StockView 
 	if (desc === '1' || desc === '0') v.sort.descending = desc === '1';
 	v.restock = p.get('restock') === '1';
 	v.asText = p.get('text') === '1';
+	v.map = p.get('view') === 'map';
+	const point = p.get('point');
+	v.point = point === NO_POINT ? NO_POINT : positive(point);
 	return v;
 }
 
@@ -49,6 +65,8 @@ export function stockViewToSearch(v: StockView): string {
 	}
 	if (v.restock) out.push(['restock', '1']);
 	if (v.asText) out.push(['text', '1']);
+	if (v.map) out.push(['view', 'map']);
+	if (v.point !== null) out.push(['point', String(v.point)]);
 	return out.map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join('&');
 }
 
@@ -57,11 +75,21 @@ export function openStockItemId(p: Pick<URLSearchParams, 'get'>): number | null 
 	return positive(p.get('item'));
 }
 
-/** The address of the list with this position open in the panel (or none). */
-export function stockSearch(v: StockView, itemId: number | null): string {
-	const view = stockViewToSearch(v);
-	if (itemId === null) return view;
-	return view ? `${view}&item=${itemId}` : `item=${itemId}`;
+/** The cell open in the panel of the map (`?cell=3.2.4`). */
+export function openStockCell(p: Pick<URLSearchParams, 'get'>): StockCellRef | null {
+	return parseCellParam(p.get('cell'));
+}
+
+/** The address of the view with this position and this cell (`3.2.4`) open in their panels (or none). */
+export function stockSearch(
+	v: StockView,
+	itemId: number | null,
+	cell: string | null = null
+): string {
+	const parts = [stockViewToSearch(v)];
+	if (itemId !== null) parts.push(`item=${itemId}`);
+	if (cell !== null) parts.push(`cell=${cell}`);
+	return parts.filter((s) => s !== '').join('&');
 }
 
 /** Where a position opens from elsewhere: «Склад» with its panel; for `resolve`. */

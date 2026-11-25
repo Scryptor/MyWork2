@@ -1,5 +1,6 @@
-<!-- «Склад» (decision 18): the list filter, «Все» / «Докупить», the table (cards on a phone) and the panel
-     of a position. The view and the position open live in the address: view.ts reads and writes them.
+<!-- «Склад» (decision 18): the tabs «Список» / «Карта», the filter, «Все» / «Докупить», the table (cards on a
+     phone) and the panel of a position; on the map the racks and the panel of a cell. The view, the position
+     and the cell open live in the address: view.ts reads and writes them.
      While the stock of MyWork 2 kept by a past import waits to be transferred, a notice above the list and the
      add dialog say that the first position closes the transfer (decision 17). -->
 <script lang="ts">
@@ -21,11 +22,14 @@
 	import { createLegacyStock } from '#lib/stock/legacy.svelte.js';
 	import LegacyStockNotice from '#lib/stock/LegacyStockNotice.svelte';
 	import { createStockList } from '#lib/stock/list.svelte.js';
+	import { cellParam } from '#lib/stock/map/racks.js';
+	import StockMap from '#lib/stock/map/StockMap.svelte';
 	import { placeCodes } from '#lib/stock/places.js';
 	import StockAddDialog from '#lib/stock/StockAddDialog.svelte';
 	import StockPanel from '#lib/stock/StockPanel.svelte';
 	import {
 		defaultStockView,
+		openStockCell,
 		openStockItemId,
 		shownStockChips,
 		stockSearch,
@@ -41,6 +45,7 @@
 	import HelpHint from '#lib/ui/HelpHint.svelte';
 	import InfiniteList from '#lib/ui/InfiniteList.svelte';
 	import Kbd from '#lib/ui/Kbd.svelte';
+	import Tabs from '#lib/ui/Tabs.svelte';
 	import ListCard from '#lib/ui/ListCard.svelte';
 	import DataTable from '#lib/ui/table/DataTable.svelte';
 	import type { RowId } from '#lib/ui/table/types.js';
@@ -54,6 +59,10 @@
 	const canMigrate = $derived(app.can('settings_manage') && app.can('users_manage'));
 	const view = $derived(stockViewFromSearch(page.url.searchParams));
 	const openId = $derived(openStockItemId(page.url.searchParams));
+	const openCell = $derived.by(() => {
+		const c = openStockCell(page.url.searchParams);
+		return c ? cellParam(c.rack_id, c.shelf, c.cell) : null;
+	});
 
 	// The list filter: its text is ahead of the address while the user types.
 	const filter = createListFilter({
@@ -61,10 +70,18 @@
 		send: (value) => navigate({ ...view, query: value }, openId, true)
 	});
 
-	/** The view and the position open go to the address; focus and scroll stay where they are. */
-	function navigate(next: StockView, itemId: number | null, replace: boolean) {
-		const search = stockSearch(next, itemId);
-		if (search === stockSearch(view, openId)) return;
+	/**
+	 * The view, the position and the cell open go to the address; focus and scroll stay where they are.
+	 * The cell stays with the map unless the caller names another.
+	 */
+	function navigate(
+		next: StockView,
+		itemId: number | null,
+		replace: boolean,
+		cell: string | null = next.map ? openCell : null
+	) {
+		const search = stockSearch(next, itemId, cell);
+		if (search === stockSearch(view, openId, openCell)) return;
 		void goto(search ? resolve(`stock?${search}`) : resolve('stock'), { replace, reset: false });
 	}
 	/** A chip, a column: a new entry of the history, with the text as typed. */
@@ -85,7 +102,7 @@
 	const queryKey = $derived(JSON.stringify(query));
 	$effect(() => {
 		void queryKey;
-		if (!canView) return;
+		if (!canView || view.map) return;
 		untrack(() => list.load(query));
 	});
 	// A page more that failed keeps the rows; the toast offers to ask again.
@@ -124,8 +141,26 @@
 		legacy.refresh();
 		list.load(query);
 		filter.cancel();
-		navigate({ ...view, query: filter.text }, item.id, false);
+		navigate({ ...view, query: filter.text, map: false }, item.id, false);
 	}
+
+	/** The tabs: the other view starts with no position and no cell open. */
+	function showMap(map: boolean) {
+		if (map === view.map) return;
+		filter.cancel();
+		navigate({ ...view, query: filter.text, map }, null, false);
+	}
+
+	/** A position of a cell opens in «Список», in its panel. */
+	function openFromMap(id: number) {
+		filter.cancel();
+		navigate({ ...view, query: filter.text, map: false }, id, false);
+	}
+	const mapQuery = $derived({
+		query: view.query.trim() || undefined,
+		restock: view.restock ? true : undefined,
+		as_text: view.asText ? true : undefined
+	});
 
 	const itemId = (s: StockItem) => s.id;
 	const COLUMNS = $derived(
@@ -224,8 +259,18 @@
 	</div>
 {/snippet}
 
+{#snippet tabs()}
+	<Tabs
+		items={[
+			{ value: 'list', label: t.map.list },
+			{ value: 'map', label: t.map.map }
+		]}
+		bind:value={() => (view.map ? 'map' : 'list'), (v) => showMap(v === 'map')}
+	/>
+{/snippet}
+
 {#snippet addButton()}
-	{#if canCreate}
+	{#if canCreate && !view.map}
 		<Button variant="primary" icon={Plus} onclick={() => (adding = true)}>{t.add}</Button>
 	{/if}
 {/snippet}
@@ -240,6 +285,7 @@
 {:else}
 	<div class="stock" class:phone={display.phone}>
 		<h1 class="title">{t.title}</h1>
+		{@render tabs()}
 		{#if display.phone}
 			<div class="toolbar">{@render filterField()}</div>
 			{@render chips()}
@@ -249,12 +295,15 @@
 				{@render filterField()}
 				{@render chips()}
 				<span class="count num" aria-live="polite">
-					{#if !list.loading || list.rows.length > 0}{countLabel(list.total, t.forms)}{/if}
+					{#if !view.map && (!list.loading || list.rows.length > 0)}{countLabel(
+							list.total,
+							t.forms
+						)}{/if}
 				</span>
 				{@render addButton()}
 			</div>
 		{/if}
-		{#if recognised !== null && !view.asText}
+		{#if !view.map && recognised !== null && !view.asText}
 			<p class="recognised">
 				<span>{t.places.placeLine(recognised)}</span>
 				<Button size="sm" variant="ghost" onclick={() => change((v) => ({ ...v, asText: true }))}
@@ -264,7 +313,17 @@
 		{/if}
 		{#if legacy.pending}<LegacyStockNotice {canMigrate} />{/if}
 
-		{#if display.phone}
+		{#if view.map}
+			<StockMap
+				query={mapQuery}
+				point={view.point}
+				cell={openStockCell(page.url.searchParams)}
+				canEdit={app.can('stock_edit')}
+				onpoint={(point) => change((v) => ({ ...v, point }))}
+				oncell={(code) => navigate({ ...view, query: filter.text }, null, true, code)}
+				onopenitem={openFromMap}
+			/>
+		{:else if display.phone}
 			<InfiniteList
 				items={list.rows}
 				key={itemId}
@@ -305,7 +364,7 @@
 	</div>
 
 	<StockPanel
-		itemId={openId}
+		itemId={view.map ? null : openId}
 		onclose={() => openItem(null)}
 		onchanged={(item) => list.update(item.id, () => item)}
 		ondeleted={() => list.load(query)}
