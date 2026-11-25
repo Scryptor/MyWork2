@@ -26,7 +26,13 @@ export const OWN_PORTS = {
 	/** `template-editor.spec.ts`: the templates of the documents are saved and put back, and stickers and acts are what every printing spec on 4173 renders. */
 	templates: { chromium: 4181, webkit: 4182 },
 	/** `backups.spec.ts`: copies are made, restored (requested) and deleted in the data folder of the base. */
-	backups: { chromium: 4187, webkit: 4188 }
+	backups: { chromium: 4187, webkit: 4188 },
+	/**
+	 * `stock-map.spec.ts`: racks and cells are the base's own, and the sticker of a cell is a template of it (spec 5.5,
+	 * plan 8.6). WebKit refuses 4190 (a restricted port of its list, «sieve»), and every page of the specs sets the
+	 * storage of all these origins first: so its server is on 4191.
+	 */
+	stockMap: { chromium: 4189, webkit: 4191 }
 } as const;
 
 export type OwnKind = keyof typeof OWN_PORTS;
