@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+	withStockQuery,
 	DEFAULT_STOCK_SORT,
 	openStockCell,
 	openStockItemId,
@@ -83,6 +84,13 @@ describe('stock view in the address', () => {
 		expect(stockViewToSearch(plain)).not.toContain('text');
 		expect(stockViewToQuery(v)).toMatchObject({ query: 'b-2', as_text: true });
 		expect(stockViewToQuery(plain)).not.toHaveProperty('as_text', true);
+	});
+
+	it('a new text from the field lets «Искать как текст» go; the rest of the view stays', () => {
+		const v = { ...plain, query: 'b-2', asText: true, restock: true, point: 3 };
+		const next = withStockQuery(v, 'b-2-4');
+		expect(stockViewToSearch(next)).toBe('q=b-2-4&restock=1&point=3');
+		expect(stockViewToSearch(withStockQuery(v, ''))).toBe('restock=1&point=3');
 	});
 
 	it('asks the server: trimmed text, the sort field, «Докупить»', () => {

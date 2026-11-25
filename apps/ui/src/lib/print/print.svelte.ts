@@ -83,7 +83,8 @@ export function printTarget(kind: DocumentKind): {
 	return isLabel(kind)
 		? {
 				printer: printSettings.labelPrinter,
-				copies: printSettings.labelCopies,
+				// The copies are of the order's labels; a sticker of a cell is printed once.
+				copies: kind === 'cell_sticker' ? 1 : printSettings.labelCopies,
 				mediaMm: printSettings.labelMm
 			}
 		: { printer: printSettings.actPrinter, copies: printSettings.actCopies, mediaMm: null };

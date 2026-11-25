@@ -23,7 +23,12 @@ describe('PlaceDialog of a cell', () => {
 		expect(screen.getByRole('dialog', { name: 'Положить в ячейку B-2-4' })).toBeInTheDocument();
 		await ui.type(screen.getByRole('combobox', { name: 'Позиция' }), 'диспл');
 		await waitFor(() =>
-			expect(api.listStock).toHaveBeenCalledWith({ query: 'диспл', limit: 20, sort: 'name' })
+			expect(api.listStock).toHaveBeenCalledWith({
+				query: 'диспл',
+				as_text: true,
+				limit: 50,
+				sort: 'name'
+			})
 		);
 		await ui.click(
 			await waitFor(() => {

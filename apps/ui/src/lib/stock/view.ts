@@ -97,6 +97,11 @@ export function stockItemHref(id: number): `stock?item=${number}` {
 	return `stock?item=${id}`;
 }
 
+/** A new text from the filter field: it is searched as it is read, so «Искать как текст» is let go. */
+export function withStockQuery(v: StockView, query: string): StockView {
+	return { ...v, query, asText: false };
+}
+
 /** The server's query of a view; paging is added by the list. */
 export function stockViewToQuery(v: StockView): StockListQuery {
 	return {

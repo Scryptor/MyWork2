@@ -77,6 +77,7 @@ test('places_finds_maps_and_prints_a_cell', async ({ page, request }) => {
 	await openTab(page, 'Карта');
 	const arrange = page.getByRole('switch', { name: 'Изменить расстановку' });
 	// A base that has racks already (a server kept from an earlier run) shows the switch first.
+	await expect(arrange.or(page.getByRole('button', { name: 'Добавить шкаф' }))).toBeVisible();
 	if (await arrange.isVisible()) {
 		await arrange.click();
 		await expect(arrange).toBeChecked();
@@ -123,10 +124,11 @@ test('places_finds_maps_and_prints_a_cell', async ({ page, request }) => {
 	await expect(row).toHaveCount(0);
 	await expect(page.getByText(`Место ${cell}`)).toHaveCount(0);
 
-	// 4. The same in the Russian layout.
-	await page.goto(`/stock?q=${encodeURIComponent(`${russian}-2-3`)}`);
+	// 4. The same in the Russian layout, typed into the field; a new text lets «Искать как текст» go.
+	await filter(page).fill(`${russian}-2-3`);
 	await expect(page.getByText(`Место ${cell}`)).toBeVisible();
 	await expect(row).toHaveCount(1);
+	await expect(page).not.toHaveURL(/text=1/);
 
 	// 5. The map: the cell says it holds a position, its panel shows it, the sticker is previewed.
 	await filter(page).fill('');

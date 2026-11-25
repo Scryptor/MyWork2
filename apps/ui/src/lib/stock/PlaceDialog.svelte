@@ -95,7 +95,7 @@
 		let current = true;
 		const timer = setTimeout(
 			() => {
-				listStock({ query: text || undefined, limit: 20, sort: 'name' })
+				listStock({ query: text || undefined, as_text: true, limit: 50, sort: 'name' })
 					.then((page) => {
 						if (current) found = page.items.filter((i) => i.unplaced > 0);
 					})

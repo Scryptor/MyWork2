@@ -36,6 +36,7 @@
 		stockViewFromSearch,
 		stockViewToQuery,
 		withStockChips,
+		withStockQuery,
 		type StockView
 	} from '#lib/stock/view.js';
 	import Badge from '#lib/ui/Badge.svelte';
@@ -67,7 +68,7 @@
 	// The list filter: its text is ahead of the address while the user types.
 	const filter = createListFilter({
 		query: () => view.query,
-		send: (value) => navigate({ ...view, query: value }, openId, true)
+		send: (value) => navigate(withStockQuery(view, value), openId, true)
 	});
 
 	/**

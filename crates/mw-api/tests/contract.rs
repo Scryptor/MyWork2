@@ -236,6 +236,8 @@ fn documented_operations_match_the_api_map() {
         "PATCH /api/v1/stock/racks/{id}",
         "DELETE /api/v1/stock/racks/{id}",
         "PUT /api/v1/stock/racks/order",
+        "GET /api/v1/stock/racks/{id}/stickers",
+        "GET /api/v1/stock/racks/{id}/cells/{shelf}/{cell}/sticker",
         "GET /api/v1/stock/{id}",
         "PATCH /api/v1/stock/{id}",
         "DELETE /api/v1/stock/{id}",

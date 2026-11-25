@@ -119,6 +119,10 @@ describe('the printer of a document', () => {
 		}
 	});
 
+	it('a sticker of a cell is printed once, whatever the copies of the order labels', () => {
+		expect(printTarget('cell_sticker')).toMatchObject({ printer: 'Xprinter XP-365B', copies: 1 });
+	});
+
 	it('the sticker and the calibration go to the label printer in its size, offset and resolution', () => {
 		for (const dpi of [203, 600] as const) {
 			printSettings.set({ dpi });
