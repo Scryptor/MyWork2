@@ -4,7 +4,7 @@ use crate::config::{
 use axum::Router;
 use mw_api::ApiConfig;
 use mw_core::documents::code_render_pool;
-use mw_core::{Core, SystemClock};
+use mw_core::{BackupRestoreResult, Core, CoreError, SystemClock};
 use sea_orm::DatabaseConnection;
 use std::future::{Future, IntoFuture};
 use std::net::SocketAddr;
@@ -81,6 +81,11 @@ impl Server {
         if let Some(dir) = &config.ui_dir {
             validate_ui_dir(dir)?;
         }
+        if let Some(name) = &config.timezone {
+            validate_timezone(name)?;
+        }
+        // Ждущее восстановление идёт до подключения базы: подключение создало бы пустую базу.
+        let restored = apply_restore_on_start(config).await?;
         let db = connect_and_migrate(config).await?;
         // Запасные шрифты нужны только настоящему серверу и программе (оба стартуют здесь); тесты на
         // `start_with_db` остаются на встроенных шрифтах.
@@ -88,7 +93,7 @@ impl Server {
             dirs: vec![config.data_dir.join("fonts")],
             system: true,
         });
-        let server = Server::start_with_db(config, db).await?;
+        let server = Server::start_with_restore(config, db, restored).await?;
         // Книга шрифтов собирается в фоне, чтобы первый документ не ждал её.
         tokio::task::spawn_blocking(mw_docs::warm_fonts);
         Ok(server)
@@ -98,6 +103,14 @@ impl Server {
     pub async fn start_with_db(
         config: &Config,
         db: DatabaseConnection,
+    ) -> Result<Server, ServerError> {
+        Server::start_with_restore(config, db, None).await
+    }
+
+    async fn start_with_restore(
+        config: &Config,
+        db: DatabaseConnection,
+        restored: Option<BackupRestoreResult>,
     ) -> Result<Server, ServerError> {
         if let Some(name) = &config.timezone {
             validate_timezone(name)?;
@@ -109,6 +122,12 @@ impl Server {
         let mut core = Core::open(db.clone(), Arc::new(SystemClock), &system_timezone(config))
             .await?
             .with_attachments_dir(config.data_dir.clone());
+        if config.database_url.is_none() {
+            core = core.with_backups();
+        }
+        if let Some(result) = &restored {
+            record_restore(&core, result).await;
+        }
         // Шаблоны со своим Typst-кодом строятся процессами-рендерерами; их запасные шрифты — те же,
         // что у сервера.
         let render_pool = config.render_worker.clone().map(|program| {
@@ -190,6 +209,7 @@ impl Server {
             grace,
         } = self;
         let cleanup = spawn_draft_cleanup(core.clone());
+        let auto_backup = spawn_auto_backup(core.clone());
         let (signalled, on_signal) = tokio::sync::oneshot::channel::<()>();
         let serving = axum::serve(
             listener,
@@ -221,6 +241,7 @@ impl Server {
             }
         };
         cleanup.abort();
+        auto_backup.abort();
         // Перенос файлов черновиков, начатый до остановки, доходит до конца раньше закрытия БД.
         // Импорт до начала записи в базу отменяется; срок `BACKGROUND_WAIT` действует только на это.
         // Начатую запись импорта остановка дожидается и после срока: `db.close()` ждёт, пока
@@ -232,6 +253,50 @@ impl Server {
         }
         tracing::info!("сервер остановлен");
         result
+    }
+}
+
+/// Текст ошибки ядра для человека: у ошибок проверки — сообщения полей, а не их коды.
+pub(crate) fn core_message(error: &CoreError) -> String {
+    match error {
+        CoreError::Validation(fields) if !fields.is_empty() => fields
+            .iter()
+            .map(|f| f.message_ru())
+            .collect::<Vec<_>>()
+            .join("; "),
+        other => other.to_string(),
+    }
+}
+
+/// Выполняет ждущее восстановление (только для базы в папке данных). Ошибка шагов 2–3 — ошибка запуска:
+/// отметка остаётся, а базу не подключаем, чтобы не создать пустую.
+async fn apply_restore_on_start(
+    config: &Config,
+) -> Result<Option<BackupRestoreResult>, ServerError> {
+    if config.database_url.is_some() {
+        return Ok(None);
+    }
+    mw_core::backups::apply_pending_restore(&config.data_dir)
+        .await
+        .map_err(|e| ServerError::Config(core_message(&e)))
+}
+
+/// Пишет итог восстановления в лог и в журнал действий; без данных клиентов.
+async fn record_restore(core: &Core, result: &BackupRestoreResult) {
+    let date = result.copy.created_at.format("%d.%m.%Y %H:%M");
+    if !result.ok {
+        tracing::warn!(
+            "восстановление из копии от {date} не выполнено, данные прежние: {}",
+            result.error.as_deref().unwrap_or("причина не указана")
+        );
+        return;
+    }
+    tracing::info!(
+        "данные восстановлены из копии от {date}; прежние данные сохранены в папке «{}»",
+        result.safety.as_deref().unwrap_or("-")
+    );
+    if let Err(e) = core.record_restore(result).await {
+        tracing::warn!("восстановление не записано в журнал действий: {e}");
     }
 }
 
@@ -292,6 +357,43 @@ pub(crate) fn spawn_draft_cleanup(core: Core) -> tokio::task::JoinHandle<()> {
     })
 }
 
+/// Первая проверка автокопии после запуска: даёт программе подняться и не мешает первым запросам.
+const AUTO_BACKUP_FIRST: std::time::Duration = std::time::Duration::from_secs(120);
+/// Как часто проверять, нужна ли автокопия (копия делается раз в день, но программу могут держать
+/// запущенной сутками).
+const AUTO_BACKUP_EVERY: std::time::Duration = std::time::Duration::from_secs(3600);
+
+/// Фоновая автокопия: первая проверка через две минуты, затем раз в час; итог и ошибки идут в лог.
+pub(crate) fn spawn_auto_backup(core: Core) -> tokio::task::JoinHandle<()> {
+    spawn_auto_backup_every(core, AUTO_BACKUP_FIRST, AUTO_BACKUP_EVERY)
+}
+
+fn spawn_auto_backup_every(
+    core: Core,
+    first: std::time::Duration,
+    every: std::time::Duration,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut tick = tokio::time::interval_at(tokio::time::Instant::now() + first, every);
+        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            tick.tick().await;
+            // Сама копия идёт фоновой задачей ядра: остановка сервера её дождётся или прервёт, а
+            // остановка этого цикла (`abort`) копию не обрывает посреди файла.
+            let worker = core.clone();
+            let job = core.spawn_background(async move { worker.run_auto_backup_if_due().await });
+            match job.await {
+                Ok(Ok(Some(copy))) => {
+                    tracing::info!("автокопия сохранена: {} ({} файлов)", copy.name, copy.files)
+                }
+                Ok(Ok(None)) => {}
+                Ok(Err(e)) => tracing::warn!("автокопия не сделана: {}", core_message(&e)),
+                Err(e) => tracing::warn!("автокопия прервана: {e}"),
+            }
+        }
+    })
+}
+
 /// Ждёт Ctrl+C или (на unix) SIGTERM.
 pub async fn shutdown_signal() {
     let ctrl_c = async {
@@ -315,4 +417,44 @@ pub async fn shutdown_signal() {
         () = terminate => {},
     }
     tracing::info!("получен сигнал остановки");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn the_auto_backup_loop_makes_a_copy_and_stops_on_abort() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = Config {
+            listen: "127.0.0.1:0".parse().unwrap(),
+            data_dir: dir.path().join("data"),
+            database_url: None,
+            timezone: Some("UTC".into()),
+            ui_dir: None,
+            render_worker: None,
+        };
+        let server = Server::start(&config).await.unwrap();
+        let core = server.core().clone();
+        let actor = mw_core::Actor::unrestricted("Тест");
+        let task = spawn_auto_backup_every(
+            core.clone(),
+            Duration::from_millis(10),
+            Duration::from_secs(3600),
+        );
+        let mut found = false;
+        for _ in 0..200 {
+            let copies = core.backup_overview(&actor).await.unwrap().copies;
+            if copies.iter().any(|c| c.kind == mw_core::BackupKind::Auto) {
+                found = true;
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        task.abort();
+        assert!(found, "автокопия не появилась");
+        drop(core);
+        server.serve(async {}).await.unwrap();
+    }
 }

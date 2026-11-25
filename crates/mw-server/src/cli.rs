@@ -3,9 +3,11 @@ use crate::config::{Config, DEFAULT_LISTEN, ServerError, redact_database_url, va
 use crate::import::run_import_with_db;
 use crate::lock::{DataDirLock, LockError};
 use crate::paths::{os_data_dir, resolve_data_dir};
-use crate::server::{Server, connect_and_migrate, log_timezone, shutdown_signal, system_timezone};
+use crate::server::{
+    Server, connect_and_migrate, core_message, log_timezone, shutdown_signal, system_timezone,
+};
 use clap::{Parser, Subcommand};
-use mw_core::{Core, SystemClock};
+use mw_core::{Actor, BackupKind, Core, SystemClock};
 use std::io::IsTerminal;
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -82,6 +84,14 @@ pub enum Command {
         source: PathBuf,
         #[arg(long)]
         replace: bool,
+    },
+    /// Сохранить резервную копию данных; программа при этом может работать.
+    Backup,
+    /// Восстановить данные из копии (папка с файлом mywork-backup.json). Прежние данные сохраняются
+    /// в папке копий. Программу перед этим нужно закрыть.
+    Restore {
+        /// Папка копии.
+        copy: PathBuf,
     },
 }
 
@@ -232,7 +242,121 @@ pub async fn run(cli: Cli) -> Result<(), ServerError> {
             }
             Ok(())
         }
+        Some(Command::Backup) => run_backup(&config).await,
+        Some(Command::Restore { copy }) => run_restore(&config, copy).await,
     }
+}
+
+/// Кто записан в журнале и в копиях, сделанных командой.
+const CLI_WHO: &str = "Командная строка";
+
+/// Только для базы в папке данных; для остальных копии не делаются и не восстанавливаются.
+fn require_data_dir_base(config: &Config) -> Result<(), ServerError> {
+    if config.database_url.is_some() {
+        return Err(ServerError::Config(
+            "Резервные копии делаются только для базы в папке данных".into(),
+        ));
+    }
+    Ok(())
+}
+
+async fn open_core(config: &Config) -> Result<(Core, sea_orm::DatabaseConnection), ServerError> {
+    let db = connect_and_migrate(config).await?;
+    match Core::open(db.clone(), Arc::new(SystemClock), &system_timezone(config)).await {
+        Ok(core) => Ok((
+            core.with_attachments_dir(config.data_dir.clone())
+                .with_backups(),
+            db,
+        )),
+        Err(e) => {
+            let _ = db.close().await;
+            Err(e.into())
+        }
+    }
+}
+
+/// `mw-server backup`: без замка папки данных — копия базы (`VACUUM INTO`) безопасна рядом с работающей
+/// программой.
+async fn run_backup(config: &Config) -> Result<(), ServerError> {
+    require_data_dir_base(config)?;
+    let (core, db) = open_core(config).await?;
+    let actor = Actor::unrestricted(CLI_WHO);
+    let result = async {
+        let copy = core.create_backup(&actor, BackupKind::Manual).await?;
+        let overview = core.backup_overview(&actor).await?;
+        Ok::<_, mw_core::CoreError>(PathBuf::from(overview.folder).join(copy.name))
+    }
+    .await;
+    drop(core);
+    let _ = db.close().await;
+    let path = result.map_err(|e| ServerError::Config(core_message(&e)))?;
+    println!("Копия сохранена: {}", path.display());
+    Ok(())
+}
+
+/// `mw-server restore <папка>`: под замком папки данных. Запрос и выполнение — сразу, без перезапуска.
+async fn run_restore(config: &Config, copy: PathBuf) -> Result<(), ServerError> {
+    require_data_dir_base(config)?;
+    let _lock = lock_data_dir(config)?;
+    let requested_at = request_time(config).await;
+    let copy = std::fs::canonicalize(&copy).unwrap_or(copy);
+    mw_core::backups::schedule_restore(&config.data_dir, &copy, requested_at, CLI_WHO)
+        .await
+        .map_err(|e| ServerError::Config(core_message(&e)))?;
+    let result = mw_core::backups::apply_pending_restore(&config.data_dir)
+        .await
+        .map_err(|e| ServerError::Config(core_message(&e)))?
+        .ok_or_else(|| ServerError::Config("восстановление не началось".into()))?;
+    if !result.ok {
+        return Err(ServerError::Config(
+            result
+                .error
+                .unwrap_or_else(|| "копия не подошла, данные прежние".into()),
+        ));
+    }
+    // Запись в журнал действий: сервер при запуске её уже не сделает, отметка снята.
+    match open_core(config).await {
+        Ok((core, db)) => {
+            if let Err(e) = core.record_restore(&result).await {
+                tracing::warn!("восстановление не записано в журнал действий: {e}");
+            }
+            drop(core);
+            let _ = db.close().await;
+        }
+        Err(e) => tracing::warn!("восстановление не записано в журнал действий: {e}"),
+    }
+    let mut line = format!(
+        "Данные восстановлены из копии от {}.",
+        result.copy.created_at.format("%d.%m.%Y %H:%M")
+    );
+    if let Some(safety) = &result.safety {
+        let path = config
+            .data_dir
+            .join(mw_core::backups::DEFAULT_DIR)
+            .join(safety);
+        line.push_str(&format!(" Прежние данные: {}", path.display()));
+    }
+    println!("{line}");
+    Ok(())
+}
+
+/// Время запроса: часы текущей базы (местное время предприятия). Команда нужна и тогда, когда база не
+/// открывается, — тогда UTC системы.
+async fn request_time(config: &Config) -> chrono::NaiveDateTime {
+    if config.data_dir.join("mywork.db").is_file() {
+        match open_core(config).await {
+            Ok((core, db)) => {
+                let now = core.now();
+                drop(core);
+                let _ = db.close().await;
+                return now;
+            }
+            Err(e) => tracing::warn!("база не открылась, время запроса — по UTC системы: {e}"),
+        }
+    } else {
+        tracing::warn!("базы нет, время запроса — по UTC системы");
+    }
+    chrono::Utc::now().naive_utc()
 }
 
 /// Подсказка после импорта командой: сервер на SQLite этой папки данных во время импорта не запущен

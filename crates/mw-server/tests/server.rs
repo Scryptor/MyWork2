@@ -451,3 +451,96 @@ async fn shutdown_gives_a_request_in_flight_a_deadline_on_every_backend() {
         request.abort();
     }
 }
+
+fn new_client(name: &str) -> mw_core::NewClient {
+    mw_core::NewClient {
+        full_name: name.into(),
+        phones: vec![],
+        address: String::new(),
+        note: String::new(),
+        source: String::new(),
+        blacklisted: false,
+    }
+}
+
+async fn client_count(core: &mw_core::Core) -> u64 {
+    core.list_clients(
+        &mw_core::Actor::unrestricted("Тест"),
+        &mw_core::ClientFilter::default(),
+        10,
+        0,
+    )
+    .await
+    .unwrap()
+    .total
+}
+
+/// Ждущее восстановление выполняется при следующем запуске, до подключения базы, и попадает в журнал.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_pending_restore_is_applied_on_the_next_start() {
+    let dir = temp_dir("restore-on-start");
+    let actor = mw_core::Actor::unrestricted("Тест");
+    let first = Server::start(&config(dir.clone())).await.unwrap();
+    let core = first.core().clone();
+    core.create_client(&actor, new_client("Первый"))
+        .await
+        .unwrap();
+    let copy = core
+        .create_backup(&actor, mw_core::backups::BackupKind::Manual)
+        .await
+        .unwrap();
+    core.create_client(&actor, new_client("Второй"))
+        .await
+        .unwrap();
+    core.request_restore(&actor, &copy.name).await.unwrap();
+    assert_eq!(client_count(&core).await, 2);
+    drop(core);
+    first.serve(async {}).await.unwrap();
+
+    let second = Server::start(&config(dir)).await.unwrap();
+    let core = second.core();
+    assert_eq!(client_count(core).await, 1);
+    let overview = core.backup_overview(&actor).await.unwrap();
+    assert!(overview.last_restore.as_ref().unwrap().ok);
+    let before: Vec<_> = overview
+        .copies
+        .iter()
+        .filter(|c| c.kind == mw_core::backups::BackupKind::BeforeRestore)
+        .collect();
+    assert_eq!(before.len(), 1, "{:?}", overview.copies);
+    let audit = core
+        .list_audit(
+            &actor,
+            &mw_core::AuditFilter {
+                action_prefix: Some("backup.restored".into()),
+                ..Default::default()
+            },
+            10,
+            0,
+        )
+        .await
+        .unwrap();
+    assert_eq!(audit.total, 1);
+    second.serve(async {}).await.unwrap();
+}
+
+/// База, заданная адресом, не лежит в папке данных: копии для неё выключены.
+#[tokio::test(flavor = "multi_thread")]
+async fn backups_are_off_for_a_database_given_by_address() {
+    let dir = temp_dir("backups-off");
+    let elsewhere = temp_dir("backups-off-db");
+    let mut cfg = config(dir);
+    cfg.database_url = Some(mw_db::sqlite_url(&elsewhere.join("other.db")));
+    let server = Server::start(&cfg).await.unwrap();
+    let overview = server
+        .core()
+        .backup_overview(&mw_core::Actor::unrestricted("Тест"))
+        .await
+        .unwrap();
+    assert!(!overview.supported);
+    assert_eq!(
+        overview.reason.as_deref(),
+        Some("Резервные копии делаются только для базы в папке данных")
+    );
+    server.serve(async {}).await.unwrap();
+}

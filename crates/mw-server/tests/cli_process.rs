@@ -167,3 +167,85 @@ fn serve_and_import_refuse_a_data_folder_in_use_and_create_admin_does_not() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(!stderr.contains("другая копия"), "замок отпущен: {stderr}");
 }
+
+async fn logins(data: &std::path::Path) -> Vec<String> {
+    use mw_db::entity::user;
+    use sea_orm::{EntityTrait, QueryOrder};
+    let db = mw_db::connect(&mw_db::sqlite_url(&data.join("mywork.db")))
+        .await
+        .unwrap();
+    let rows = user::Entity::find()
+        .order_by_asc(user::Column::Login)
+        .all(&db)
+        .await
+        .unwrap();
+    let _ = db.close().await;
+    rows.into_iter().map(|u| u.login).collect()
+}
+
+fn create_admin_on(data: &std::path::Path, login: &str) {
+    let output = run_on(
+        data,
+        &["create-admin".as_ref(), "--login".as_ref(), login.as_ref()],
+        "test-password-1\n",
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn backup_and_restore_commands_bring_the_data_back() {
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("data");
+    create_admin_on(&data, "first");
+    let output = run_on(&data, &["backup".as_ref()], "");
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let path = stdout
+        .lines()
+        .find_map(|l| l.strip_prefix("Копия сохранена: "))
+        .unwrap_or_else(|| panic!("{stdout}"))
+        .trim()
+        .to_string();
+    let copy = std::path::PathBuf::from(&path);
+    assert!(copy.is_absolute(), "{path}");
+    assert!(copy.join("mywork-backup.json").is_file(), "{path}");
+
+    create_admin_on(&data, "second");
+    assert_eq!(logins(&data).await, ["first", "second"]);
+    let output = run_on(&data, &["restore".as_ref(), copy.as_os_str()], "");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{stdout} {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        stdout.contains("Данные восстановлены из копии от "),
+        "{stdout}"
+    );
+    assert!(stdout.contains("Прежние данные: "), "{stdout}");
+    assert_eq!(logins(&data).await, ["first"]);
+}
+
+#[test]
+fn restore_refuses_a_folder_without_a_copy() {
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("data");
+    let empty = dir.path().join("пусто");
+    std::fs::create_dir_all(&empty).unwrap();
+    let output = run_on(&data, &["restore".as_ref(), empty.as_os_str()], "");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_ne!(output.status.code(), Some(0));
+    assert!(stderr.contains("Такой копии нет"), "{stderr}");
+}
