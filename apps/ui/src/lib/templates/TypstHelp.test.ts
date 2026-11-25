@@ -3,9 +3,10 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { Block } from '$api/Block';
 import { editorOf, templateOf } from './editor-fixtures.test-helper.js';
-import TypstCodeProps from './props/TypstCodeProps.svelte';
+import TypstCodeProps from './props/TypstCodePropsHarness.test-helper.svelte';
 import TypstHelp from './TypstHelp.svelte';
 
+vi.mock('#lib/app/context.svelte.js', () => ({ app: { settings: { firm_links: [] } } }));
 vi.mock('#lib/api/document-templates.js', async (original) => ({
 	...(await original<typeof import('#lib/api/document-templates.js')>()),
 	documentFields: vi.fn(async () => [])

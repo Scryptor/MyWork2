@@ -2232,6 +2232,23 @@ export const ru = {
 		codeHelp:
 			'Код Typst на месте блока. Доступны: v("order.number") и v1(…) — значения полей, data.values — все значения, copy — "service", "client" или "single", vspace(…) — отступ, image("logo.png"), когда есть data.logo, qr-image("link.telegram", 25mm) — QR-код ссылки фирмы по её коду (link.yandex_maps, link.2gis, …; старые firm.telegram, firm.google_maps, firm.yandex_maps тоже понятны). Штрихкод — блоком «Штрихкод». Предел — 5 секунд на документ.',
 		typstHelpOpen: 'Справка по коду',
+		/** The badges under the code: the labels by `typst-snippets.json` ids. */
+		badges: {
+			order_number: 'Номер заказа',
+			client_name: 'ФИО клиента',
+			client_phone: 'Телефон клиента',
+			device: 'Устройство',
+			received: 'Дата приёма',
+			logo: 'Логотип',
+			space: 'Отступ',
+			client_copy: 'Только в экземпляре клиента',
+			service_copy: 'Только в экземпляре сервиса'
+		} as Record<string, string>,
+		badgesLabel: 'Вставить в код',
+		badgeQr: (name: string) => `QR-код ${name}`,
+		badgeOtherField: 'Другое поле…',
+		badgeOtherCode: 'v("…")',
+		insertBadge: (label: string) => `Вставить: ${label}`,
 		typstHelp: {
 			title: 'Справка по Typst-коду',
 			description: 'Что можно написать в блоке «Typst-код». Примеры можно скопировать в редактор.',

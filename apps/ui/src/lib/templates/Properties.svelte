@@ -53,7 +53,9 @@
 			{:else if block.body.type === 'typst_code'}
 				<TypstCodeProps {editor} path={selected} />
 			{/if}
-			<CopiesField {editor} path={selected} />
+			{#if block.body.type !== 'typst_code'}
+				<CopiesField {editor} path={selected} />
+			{/if}
 		{/if}
 	{/key}
 </div>

@@ -24,6 +24,7 @@ export { default as FlagIcons } from './FlagIcons.svelte';
 export { default as HelpHint } from './HelpHint.svelte';
 export { default as HoverCard } from './HoverCard.svelte';
 export { default as IconButton } from './IconButton.svelte';
+export { default as InsertChip } from './InsertChip.svelte';
 export { default as InfiniteList } from './InfiniteList.svelte';
 export { default as Kbd } from './Kbd.svelte';
 export { default as KeyValue } from './KeyValue.svelte';

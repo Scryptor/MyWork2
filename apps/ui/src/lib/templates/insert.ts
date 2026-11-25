@@ -1,3 +1,5 @@
+import { tick } from 'svelte';
+
 /**
  * `insert` put into `value` over the selection (a caret is an empty one); `caret` is the place right
  * after it. A selection out of the text is cut to the text.
@@ -61,4 +63,26 @@ export function inTypstCode(before: string): boolean {
 		}
 	}
 	return code();
+}
+
+/**
+ * Puts `text(before)` into `value` where the caret of `target` is (at the end without one), hands the
+ * new text to `onchange`, then returns the focus to `target` with the caret right after what was put in
+ * (once it shows the new text).
+ */
+export function insertIntoField(
+	target: HTMLInputElement | HTMLTextAreaElement | null,
+	value: string,
+	text: (before: string) => string,
+	onchange: (value: string) => void
+): void {
+	const at = target
+		? { start: target.selectionStart ?? value.length, end: target.selectionEnd ?? value.length }
+		: { start: value.length, end: value.length };
+	const next = insertAtCaret(value, at, text(value.slice(0, Math.min(at.start, value.length))));
+	onchange(next.value);
+	void tick().then(() => {
+		target?.focus();
+		target?.setSelectionRange(next.caret, next.caret);
+	});
 }

@@ -16,6 +16,7 @@
 		FieldDispute,
 		FlagIcons,
 		IconButton,
+		InsertChip,
 		Kbd,
 		KeyValue,
 		OptionCard,
@@ -75,6 +76,13 @@
 	<Spinner />
 	<Skeleton width="8rem" />
 	<Divider vertical />
+</div>
+
+<h3>InsertChip</h3>
+<div class="row">
+	<InsertChip label="Номер заказа" code="#v(&quot;order.number&quot;)" onclick={() => {}} />
+	<InsertChip label="Отступ" code="#vspace(5mm)" onclick={() => {}} />
+	<InsertChip label="Недоступно" code="#v(x)" onclick={() => {}} disabled />
 </div>
 
 <h3>Метки и статусы</h3>

@@ -13,5 +13,27 @@
 		{ "id": "space", "code": "#vspace(5mm)" },
 		{ "id": "copy", "code": "#if copy == \"client\" [Этот экземпляр остаётся у вас]" }
 	],
-	"badges": []
+	"badges": [
+		{ "id": "order_number", "markup": "#v(\"order.number\")", "code": "v(\"order.number\")" },
+		{ "id": "client_name", "markup": "#v(\"client.name\")", "code": "v(\"client.name\")" },
+		{ "id": "client_phone", "markup": "#v(\"client.phone\")", "code": "v(\"client.phone\")" },
+		{ "id": "device", "markup": "#v(\"order.device\")", "code": "v(\"order.device\")" },
+		{ "id": "received", "markup": "#v(\"order.received\")", "code": "v(\"order.received\")" },
+		{
+			"id": "logo",
+			"markup": "#if data.logo { image(\"logo.png\", width: 30mm) }",
+			"code": "if data.logo { image(\"logo.png\", width: 30mm) }"
+		},
+		{ "id": "space", "markup": "#vspace(5mm)", "code": "vspace(5mm)" },
+		{
+			"id": "client_copy",
+			"markup": "#if copy == \"client\" [ ]",
+			"code": "if copy == \"client\" [ ]"
+		},
+		{
+			"id": "service_copy",
+			"markup": "#if copy == \"service\" [ ]",
+			"code": "if copy == \"service\" [ ]"
+		}
+	]
 }

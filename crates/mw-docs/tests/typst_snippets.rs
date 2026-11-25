@@ -6,6 +6,7 @@ use mw_docs::model::{
 };
 use mw_docs::{DocumentData, RenderOptions, Rendered, render, sample_data};
 use mw_domain::documents::DocumentKind;
+use std::sync::Arc;
 
 const SNIPPETS: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -139,4 +140,65 @@ fn every_help_example_renders() {
         1,
         "copy: {text:?}"
     );
+}
+
+/// A logo of 40 × 15 pixels.
+fn logo() -> Arc<[u8]> {
+    let image = image::RgbImage::from_pixel(40, 15, image::Rgb([40, 90, 160]));
+    let mut bytes = std::io::Cursor::new(Vec::new());
+    image
+        .write_to(&mut bytes, image::ImageFormat::Png)
+        .unwrap_or_else(|e| panic!("png: {e}"));
+    Arc::from(bytes.into_inner())
+}
+
+/// The badges of «Вставка в Typst-код»: the markup as a block, the code inside `#{ … }`, every one on a
+/// sample with a logo and one without.
+#[test]
+fn every_badge_renders() {
+    let json: serde_json::Value =
+        serde_json::from_str(SNIPPETS).unwrap_or_else(|e| panic!("json: {e}"));
+    let badges = json["badges"].as_array().expect("badges is a list");
+    let ids: Vec<_> = badges.iter().filter_map(|b| b["id"].as_str()).collect();
+    assert_eq!(
+        ids,
+        [
+            "order_number",
+            "client_name",
+            "client_phone",
+            "device",
+            "received",
+            "logo",
+            "space",
+            "client_copy",
+            "service_copy"
+        ],
+        "the badges changed: check each one here"
+    );
+    let without_logo = DocumentData {
+        logo: None,
+        ..sample_data(DocumentKind::IntakeAct)
+    };
+    let with_logo = DocumentData {
+        logo: Some(logo()),
+        ..without_logo.clone()
+    };
+    let samples = [("without a logo", without_logo), ("with a logo", with_logo)];
+    let qr = "#qr-image(\"link.telegram\", 20mm)";
+    for (_, data) in &samples {
+        for badge in badges {
+            let markup = badge["markup"].as_str().expect("markup");
+            let code = badge["code"].as_str().expect("code");
+            assert_eq!(
+                markup,
+                format!("#{code}"),
+                "the code is the markup without #"
+            );
+            render_code(markup, data);
+            render_code(&format!("#{{ {code} }}"), data);
+        }
+        render_code(qr, data);
+        let inside = format!("#{{ {} }}", &qr[1..]);
+        render_code(&inside, data);
+    }
 }

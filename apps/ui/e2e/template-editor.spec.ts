@@ -575,6 +575,24 @@ test.describe('own Typst code', () => {
 		await expect(item(page, label)).toBeVisible();
 	});
 
+	test('badges insert code at the caret', async ({ page }, info) => {
+		await openEditor(page, info);
+		await addBlock(page, 'Typst-код');
+		await code(page).fill('#{ ');
+		await props(page).getByRole('button', { name: 'Вставить: Отступ' }).click();
+		await expect(code(page)).toHaveValue('#{ vspace(5mm)');
+		await expect(code(page)).toBeFocused();
+
+		// The tooltip is opened by the pointer coming to the badge; a preview that redraws the panel at
+		// that moment closes it, so the pointer comes again.
+		const chip = props(page).getByRole('button', { name: 'Вставить: Номер заказа' });
+		await expect(async () => {
+			await page.mouse.move(0, 0);
+			await chip.hover();
+			await expect(page.getByRole('tooltip')).toHaveText('#v("order.number")', { timeout: 1500 });
+		}).toPass();
+	});
+
 	test('endless code stops in five seconds', async ({ page }, info) => {
 		test.setTimeout(60_000);
 		await openEditor(page, info);

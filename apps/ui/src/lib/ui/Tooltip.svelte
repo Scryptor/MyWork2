@@ -6,10 +6,13 @@
 	let {
 		text,
 		side = 'top',
+		mono = false,
 		children
 	}: {
 		text: string;
 		side?: 'top' | 'bottom' | 'left' | 'right';
+		/** The text is code: monospaced. */
+		mono?: boolean;
 		children: Snippet<[Record<string, unknown>]>;
 	} = $props();
 </script>
@@ -25,7 +28,7 @@
 		<Tooltip.Content
 			{side}
 			sideOffset={6}
-			class="mw-tooltip"
+			class={mono ? 'mw-tooltip mono' : 'mw-tooltip'}
 			role="tooltip"
 			onEscapeKeydown={(e) => layers.escapeFromTooltip(e)}>{text}</Tooltip.Content
 		>
@@ -42,5 +45,9 @@
 		border-radius: var(--radius-sm);
 		box-shadow: var(--shadow-md);
 		max-width: 20rem;
+	}
+	:global(.mw-tooltip.mono) {
+		font-family: var(--font-mono);
+		overflow-wrap: anywhere;
 	}
 </style>

@@ -5,7 +5,7 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Block } from '$api/Block';
 import type { CodeDiagnostic } from '$api/CodeDiagnostic';
 import { editorOf, templateOf } from '../editor-fixtures.test-helper.js';
-import TypstCodeProps from './TypstCodeProps.svelte';
+import TypstCodeProps from './TypstCodePropsHarness.test-helper.svelte';
 
 const api = vi.hoisted(() => ({
 	documentFields: vi.fn(async () => [
@@ -23,6 +23,17 @@ beforeAll(() => {
 	Element.prototype.releasePointerCapture ??= () => {};
 	Element.prototype.scrollIntoView ??= () => {};
 });
+
+vi.mock('#lib/app/context.svelte.js', () => ({
+	app: {
+		settings: {
+			firm_links: [
+				{ id: 'telegram', name: 'Telegram', url: 'https://t.example/x', enabled: true },
+				{ id: 'off', name: 'Выкл', url: 'https://off.example', enabled: false }
+			]
+		}
+	}
+}));
 
 const code = (s: string): Block => ({ copies: 'both', body: { type: 'typst_code', code: s } });
 const columns = (a: Block[], b: Block[]): Block => ({
@@ -98,23 +109,56 @@ describe('TypstCodeProps', () => {
 		expect(screen.queryByText(/the columns/)).toBeNull();
 	});
 
-	it('«Вставить поле» puts #v("key") where the caret was', async () => {
+	it('after «Экземпляры» comes the row of badges, with the QR of an enabled link', () => {
+		setup([code('')], [0]);
+		const copies = screen.getByText('Экземпляры');
+		const badge = screen.getByRole('button', { name: 'Вставить: Номер заказа' });
+		expect(copies.compareDocumentPosition(badge) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		expect(screen.getByRole('button', { name: 'Вставить: QR-код Telegram' })).toBeInTheDocument();
+		expect(screen.queryByRole('button', { name: /QR-код Выкл/ })).toBeNull();
+	});
+
+	it('a badge puts the markup at the caret, the caret after it and the focus in the editor', async () => {
+		const { codeAt, field } = setup([code('Заказ ')], [0]);
+		const box = field() as HTMLTextAreaElement;
+		box.focus();
+		box.setSelectionRange(6, 6);
+		await userEvent.click(screen.getByRole('button', { name: 'Вставить: Номер заказа' }));
+		expect(codeAt()).toBe('Заказ #v("order.number")');
+		await waitFor(() => expect(box).toHaveFocus());
+		expect(box.selectionStart).toBe(24);
+		expect(box.selectionEnd).toBe(24);
+	});
+
+	it('in code mode a badge puts the code without #', async () => {
+		const { codeAt, field } = setup([code('#{ ')], [0]);
+		const box = field() as HTMLTextAreaElement;
+		box.focus();
+		box.setSelectionRange(3, 3);
+		await userEvent.click(screen.getByRole('button', { name: 'Вставить: Отступ' }));
+		expect(codeAt()).toBe('#{ vspace(5mm)');
+	});
+
+	it('the last badge is «Другое поле…» and opens the search of fields', async () => {
 		const { codeAt, field } = setup([code('ab\ncd')], [0]);
+		const chips = screen.getAllByRole('button', { name: /^Вставить: / });
+		expect(chips.at(-1)).toHaveAccessibleName('Вставить: Другое поле…');
+		expect(screen.queryByRole('button', { name: 'Вставить поле' })).toBeNull();
 		const box = field() as HTMLTextAreaElement;
 		box.focus();
 		box.setSelectionRange(2, 2);
-		await userEvent.click(screen.getByRole('button', { name: 'Вставить поле' }));
+		await userEvent.click(chips.at(-1)!);
 		await waitFor(() => expect(api.documentFields).toHaveBeenCalled());
 		await userEvent.type(screen.getByRole('combobox', { name: 'Поле' }), 'номер{Enter}');
 		expect(codeAt()).toBe('ab#v("order.number")\ncd');
 	});
 
-	it('«Вставить поле» inside code mode puts v("key") without #', async () => {
+	it('«Другое поле…» inside code mode puts v("key") without #', async () => {
 		const { codeAt, field } = setup([code('#{\n\n}\n')], [0]);
 		const box = field() as HTMLTextAreaElement;
 		box.focus();
 		box.setSelectionRange(3, 3);
-		await userEvent.click(screen.getByRole('button', { name: 'Вставить поле' }));
+		await userEvent.click(screen.getByRole('button', { name: 'Вставить: Другое поле…' }));
 		await waitFor(() => expect(api.documentFields).toHaveBeenCalled());
 		await userEvent.type(screen.getByRole('combobox', { name: 'Поле' }), 'номер{Enter}');
 		expect(codeAt()).toBe('#{\nv("order.number")\n}\n');

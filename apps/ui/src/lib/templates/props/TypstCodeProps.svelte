@@ -1,15 +1,15 @@
 <!-- The properties of a «Typst-код» block: its code (typing in it is one step to undo per pause), the
-     errors of the newest preview that are in this block, by line, and «Вставить поле», which puts
-     `#v("order.number")` where the caret was (`v("order.number")` in code mode: `#{…}`, `if … {…}`). -->
+     errors of the newest preview that are in this block, by line, «Экземпляры» and the row of badges
+     (`CodeBadges`) that put `#v("order.number")` and the like where the caret was (without `#` in code
+     mode: `#{…}`, `if … {…}`). -->
 <script lang="ts">
-	import type { DocumentField } from '$api/DocumentField';
 	import { ru } from '#lib/i18n/ru.js';
 	import Button from '#lib/ui/Button.svelte';
 	import CodeEditor from '#lib/ui/CodeEditor.svelte';
 	import { CODE_MAX } from '../defaults.js';
 	import { diagnosticText, type TemplateEditor } from '../editor.svelte.js';
-	import InsertField from '../InsertField.svelte';
-	import { inTypstCode } from '../insert.js';
+	import CodeBadges from '../CodeBadges.svelte';
+	import CopiesField from './CopiesField.svelte';
 	import { blockAt, replaceBlock, type BlockPath } from '../ops.js';
 	import TypstHelp from '../TypstHelp.svelte';
 
@@ -35,10 +35,6 @@
 		)
 	);
 
-	/** A field in own code: its value by its key; `#` only in markup, in code mode it is an error. */
-	const asCode = (f: DocumentField, before: string) =>
-		`${inTypstCode(before) ? '' : '#'}v("${f.key}")`;
-
 	function set(code: string) {
 		if (!block || !body) return;
 		editor.edit(
@@ -58,7 +54,8 @@
 			maxlength={CODE_MAX}
 			bind:value={() => body.code, set}
 		/>
-		<InsertField target={field} value={body.code} onchange={set} format={asCode} />
+		<CopiesField {editor} {path} />
+		<CodeBadges target={field} value={body.code} onchange={set} />
 		<div>
 			<Button onclick={() => (helpOpen = true)}>{t.typstHelpOpen}</Button>
 		</div>
