@@ -1,8 +1,10 @@
 <!-- The preview of a document (spec 7, plan 6): its pages as pictures, «Сохранить PDF» under the server's
      file name and, in the desktop program, «Печать» (Ctrl/⌘P too; in a browser the key only keeps the
-     browser's printing of the page away). The pictures are `blob:` addresses: they are freed when the
-     preview closes or shows another document, and a request still on its way then is called off; what
-     was shown goes with them. Without `request` it is closed. -->
+     browser's printing of the page away). A document of several pages has a check box under each page
+     (plan 8.2): both buttons take only the checked pages, and with none checked neither works. The
+     pictures are `blob:` addresses: they are freed when the preview closes or shows another document, and
+     a request still on its way then is called off; what was shown goes with them, the check boxes too.
+     Without `request` it is closed. -->
 <script lang="ts">
 	import Download from '@lucide/svelte/icons/download';
 	import Printer from '@lucide/svelte/icons/printer';
@@ -15,9 +17,11 @@
 	import { ru } from '#lib/i18n/ru.js';
 	import Button from '#lib/ui/Button.svelte';
 	import Callout from '#lib/ui/Callout.svelte';
+	import Checkbox from '#lib/ui/Checkbox.svelte';
 	import Select from '#lib/ui/Select.svelte';
 	import Sheet from '#lib/ui/Sheet.svelte';
 	import Skeleton from '#lib/ui/Skeleton.svelte';
+	import { pageSelection } from './pages.js';
 	import { canPrintDirectly } from './platform.js';
 	import {
 		documentName,
@@ -42,8 +46,8 @@
 		request: PreviewRequest | null;
 		/** The pages of a document (the server's by default; the showcase has its own). */
 		load?: (kind: DocumentKind, target: Target, signal: AbortSignal) => Promise<DocumentPages>;
-		/** «Сохранить PDF»; throws what to say. */
-		save?: (kind: DocumentKind, target: Target) => Promise<void>;
+		/** «Сохранить PDF» of the checked pages (`undefined` — all of them); throws what to say. */
+		save?: (kind: DocumentKind, target: Target, pages?: string) => Promise<void>;
 		/** «Печать»: only where the program prints by itself; null — no button. */
 		print?: ((kind: DocumentKind, target: Target, opts: PrintOptions) => void) | null;
 		/** The preview is closed (✕, Esc, «Печать»). */
@@ -66,6 +70,11 @@
 		widthMm: number;
 	}
 	let shown = $state.raw<Shown | null>(null);
+	/** The check boxes of the pages shown, a page each; every page is checked when it comes. */
+	let checked = $state<boolean[]>([]);
+	/** The checked pages for the server: null — all of them, '' — none (nothing to print). */
+	const selection = $derived(pageSelection(checked));
+	const nothingChecked = $derived(selection === '');
 	let error = $state<string | null>(null);
 	/** «Повторить» asks again. */
 	let attempt = $state(0);
@@ -97,6 +106,7 @@
 					error = t.pagesFailed;
 					return;
 				}
+				checked = urls.map(() => true);
 				shown = { urls, widthMm: doc.width_mm };
 			},
 			(e: unknown) => {
@@ -108,6 +118,7 @@
 			free();
 			// Opened again or on another document, it starts from nothing: no freed page, no old failure.
 			shown = null;
+			checked = [];
 			error = null;
 		};
 	});
@@ -134,11 +145,11 @@
 
 	async function saveShown() {
 		const r = request;
-		if (!r || saving) return;
+		if (!r || saving || nothingChecked) return;
 		saving = true;
 		saveError = null;
 		try {
-			await save(kind, r.target);
+			await save(kind, r.target, selection ?? undefined);
 		} catch (e) {
 			saveError = errorMessage(e);
 		} finally {
@@ -148,10 +159,11 @@
 
 	function printShown() {
 		const r = request;
-		if (!r || !print) return;
+		if (!r || !print || nothingChecked) return;
 		const k = kind;
+		const pages = selection;
 		onclose();
-		print(k, r.target, { noPreview: true });
+		print(k, r.target, pages === null ? { noPreview: true } : { noPreview: true, pages });
 	}
 
 	const title = $derived(request ? documentTitle(kind, request.target) : '');
@@ -180,7 +192,15 @@
 	{:else if shown}
 		<div class="pages" style:--page-width="{shown.widthMm}mm">
 			{#each shown.urls as url, i (url)}
-				<img class="page" src={url} alt={t.page(i + 1, shown.urls.length)} />
+				<div class="sheet">
+					<img class="page" src={url} alt={t.page(i + 1, shown.urls.length)} />
+					{#if shown.urls.length > 1}
+						<Checkbox
+							label={t.pageToPrint(i + 1)}
+							bind:checked={() => checked[i] ?? false, (v) => (checked[i] = v)}
+						/>
+					{/if}
+				</div>
 			{/each}
 		</div>
 	{:else}
@@ -191,9 +211,14 @@
 
 	{#snippet footer()}
 		{#if saveError}<p class="failed" role="alert">{saveError}</p>{/if}
-		<Button icon={Download} busy={saving} onclick={() => void saveShown()}>{t.savePdf}</Button>
+		{#if nothingChecked}<p class="none">{t.noPagesChecked}</p>{/if}
+		<Button icon={Download} busy={saving} disabled={nothingChecked} onclick={() => void saveShown()}
+			>{t.savePdf}</Button
+		>
 		{#if print}
-			<Button variant="primary" icon={Printer} onclick={printShown}>{t.printButton}</Button>
+			<Button variant="primary" icon={Printer} disabled={nothingChecked} onclick={printShown}
+				>{t.printButton}</Button
+			>
 		{/if}
 	{/snippet}
 </Sheet>
@@ -208,6 +233,14 @@
 		align-items: center;
 		gap: var(--space-4);
 		padding: var(--space-2) 0 var(--space-4);
+	}
+	/* A page and, under it, its check box when there are several. */
+	.sheet {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: var(--space-2);
+		max-width: 100%;
 	}
 	/* A page in its own size where it fits (a label is small), never wider than the sheet. */
 	.page {
@@ -225,6 +258,12 @@
 		flex: 1 0 100%;
 		margin: 0;
 		color: var(--danger-text);
+		text-align: end;
+	}
+	.none {
+		flex: 1 0 100%;
+		margin: 0;
+		color: var(--text-3);
 		text-align: end;
 	}
 </style>

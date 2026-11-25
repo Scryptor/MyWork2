@@ -12,6 +12,7 @@ use mw_docs::{
     WorkerLimits, sample_data, standard_template,
 };
 use mw_domain::documents::DocumentKind;
+use mw_domain::pages::PageSelection;
 use mw_server::RENDER_WORKER_ARG;
 
 const GOOD_CODE: &str = r#"ВОРКЕР #v("order.number")"#;
@@ -58,6 +59,7 @@ fn code_job(code: &str, budget: Duration) -> Job {
             max_raster_pixels: 36_000_000.0,
             budget,
         },
+        pages: None,
     }
 }
 
@@ -78,6 +80,17 @@ fn assert_pdf_of_one_page(result: Result<mw_docs::JobResult, DocsError>) {
 fn worker_renders_a_code_template() {
     let pool = pool(LIMITS);
     assert_pdf_of_one_page(pool.run(&good_job()));
+}
+
+/// Выбор страниц доходит до настоящего процесса-рендерера: из двух страниц в PDF одна.
+#[test]
+fn chosen_pages_reach_the_worker() {
+    let pool = pool(LIMITS);
+    let mut job = good_job();
+    job.docs.push(sample_data(DocumentKind::Sticker));
+    assert_eq!(pool.run(&job).unwrap().page_count, 2);
+    job.pages = Some(PageSelection::parse("2").unwrap());
+    assert_pdf_of_one_page(pool.run(&job));
 }
 
 #[test]

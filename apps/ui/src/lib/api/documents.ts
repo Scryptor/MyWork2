@@ -15,6 +15,8 @@ export interface DocumentOptions {
 	labelMm?: [number, number];
 	/** The content moved right and down, mm. */
 	offsetMm?: [number, number];
+	/** Only these pages, as `pageSelection` gives them («1,3-4»); null or none — the whole document. */
+	pages?: string | null;
 }
 
 /** A PDF has no raster: its options have no `dpi` (the server refuses one). */
@@ -30,13 +32,17 @@ const path = (kind: DocumentKind, target: DocumentTarget) =>
 		? `/documents/${kind}`
 		: `/orders/${target.orderId}/documents/${kind}`;
 
-/** The parameters of the request; what is not given is not sent, a PDF never gets `dpi`. */
+/**
+ * The parameters of the request; what is not given is not sent, a PDF never gets `dpi`. `pages` goes
+ * with a single document only: a batch prints every page.
+ */
 export function documentQuery(format: DocumentFormat, opts: DocumentOptions): DocumentQuery {
 	const q: DocumentQuery = { format };
 	if (format === 'png' && opts.dpi !== undefined) q.dpi = opts.dpi;
 	if (opts.printerDpi !== undefined) q.printer_dpi = opts.printerDpi;
 	if (opts.labelMm) [q.label_w_mm, q.label_h_mm] = opts.labelMm;
 	if (opts.offsetMm) [q.offset_x_mm, q.offset_y_mm] = opts.offsetMm;
+	if (opts.pages != null) q.pages = opts.pages;
 	return q;
 }
 
@@ -70,7 +76,10 @@ export const documentPages = (
 		signal
 	});
 
-/** The body of a batch: the order numbers and the options the query of one document has (no format). */
+/**
+ * The body of a batch: the order numbers and the options the query of one document has (no format, no
+ * pages: a batch prints every page).
+ */
 export function documentBatchBody(orderIds: number[], opts: PdfOptions): DocumentBatch {
 	const q = documentQuery('pdf', opts);
 	const body: DocumentBatch = { order_ids: orderIds };

@@ -15,6 +15,7 @@ use mw_docs::{
     error_through_wire_for_tests, run_job, sample_data, serve, standard_template,
 };
 use mw_domain::documents::DocumentKind;
+use mw_domain::pages::PageSelection;
 use serde_json::{Value, json};
 
 fn frame(bytes: &[u8]) -> Vec<u8> {
@@ -106,6 +107,7 @@ fn sticker_job(docs: usize, output: JobOutput) -> Job {
             max_raster_pixels: 36_000_000.0,
             budget: Duration::from_secs(60),
         },
+        pages: None,
     }
 }
 
@@ -213,9 +215,10 @@ fn variant(error: &DocsError) -> usize {
         DocsError::CodeTimeout => 9,
         DocsError::WorkerCrashed => 10,
         DocsError::WorkerUnavailable(_) => 11,
+        DocsError::NoPages => 12,
     }
 }
-const LAST_VARIANT: usize = 11;
+const LAST_VARIANT: usize = 12;
 
 /// По ошибке каждого варианта.
 fn every_error() -> Vec<DocsError> {
@@ -247,6 +250,7 @@ fn every_error() -> Vec<DocsError> {
         DocsError::CodeTimeout,
         DocsError::WorkerCrashed,
         DocsError::WorkerUnavailable("не запустился: нет файла".to_owned()),
+        DocsError::NoPages,
     ]
 }
 
@@ -261,6 +265,19 @@ fn every_error_round_trips() {
     for (error, expected) in every_error().into_iter().zip(every_error()) {
         assert_eq!(error_through_wire_for_tests(error).unwrap(), expected);
     }
+}
+
+/// Выбор страниц доходит до рендерера: в ответе только выбранная страница.
+#[test]
+fn chosen_pages_cross_the_pipe() {
+    let mut job = sticker_job(2, JobOutput::Png { dpi: 72 });
+    job.docs[1].barcode = None;
+    let all = png_pages(in_process(&job));
+    job.pages = Some(PageSelection::parse("2").unwrap());
+    let replies = serve_all(&[hello(), run(&job)].concat());
+    let done = replies.last().unwrap();
+    assert_eq!(done.message["Done"]["page_count"], 1, "{replies:?}");
+    assert_eq!(done.frames, all[1..]);
 }
 
 #[test]

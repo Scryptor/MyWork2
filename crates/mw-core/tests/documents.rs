@@ -11,6 +11,7 @@ use mw_db::entity::order;
 use mw_docs::{RenderOptions, font_covers};
 use mw_domain::documents::DocumentKind;
 use mw_domain::money::{DOC_CURRENCY_REPLACEMENTS, Money, format_money_doc};
+use mw_domain::pages::PageSelection;
 use sea_orm::{ActiveModelTrait, Set};
 
 /// Между разрядами — узкий неразрывный пробел, перед знаком валюты — неразрывный, как в интерфейсе.
@@ -25,6 +26,7 @@ fn request(kind: DocumentKind, order_id: Option<i64>) -> DocumentRequest {
         sample: false,
         options: RenderOptions::default(),
         draft: None,
+        pages: None,
     }
 }
 
@@ -1451,6 +1453,102 @@ async fn firm_links_print_as_text() -> Result<(), CoreError> {
             "{}: {out:?}",
             t.label
         );
+    }
+    Ok(())
+}
+
+/// Акт приёма, где каждый экземпляр на своём листе: документ из двух страниц без своего кода.
+fn sheet_per_copy_act() -> mw_domain::document_template::Template {
+    let mut template = mw_docs::standard_template(DocumentKind::IntakeAct);
+    template.layout = mw_domain::document_template::Layout::SheetPerCopy;
+    template
+}
+
+fn pages(text: &str) -> Option<PageSelection> {
+    Some(PageSelection::parse(text).unwrap())
+}
+
+/// Выбор страниц печатает только их: в превью черновика и в акте заказа по сохранённому шаблону,
+/// в PNG и в PDF.
+#[tokio::test]
+async fn a_page_selection_prints_only_those_pages() -> Result<(), CoreError> {
+    for t in cores().await {
+        let all = png_pages(&t, draft_request(sheet_per_copy_act())).await?;
+        assert_eq!(all.len(), 2, "{}", t.label);
+        assert_ne!(all[0], all[1], "{}: экземпляры различимы", t.label);
+        let second = DocumentRequest {
+            pages: pages("2"),
+            ..draft_request(sheet_per_copy_act())
+        };
+        assert_eq!(
+            png_pages(&t, second.clone()).await?,
+            all[1..],
+            "{}",
+            t.label
+        );
+        let pdf = t
+            .core
+            .export_document(&admin(), second, DocumentOutput::Pdf)
+            .await?;
+        assert_eq!(pdf.page_count, 1, "{}", t.label);
+
+        // Печать заказа: сохранённый шаблон, без черновика.
+        t.core
+            .save_document_template(
+                &admin(),
+                DocumentKind::IntakeAct,
+                mw_core::TemplateSave {
+                    template: sheet_per_copy_act(),
+                    version: 0,
+                },
+            )
+            .await?;
+        let order = t.core.create_order(&admin(), sample_new_order()).await?;
+        let act = request(DocumentKind::IntakeAct, Some(order.id));
+        let whole = png_pages(&t, act.clone()).await?;
+        assert_eq!(whole.len(), 2, "{}", t.label);
+        let first = DocumentRequest {
+            pages: pages("1"),
+            ..act
+        };
+        assert_eq!(
+            png_pages(&t, first.clone()).await?,
+            whole[..1],
+            "{}",
+            t.label
+        );
+        let pdf = t
+            .core
+            .export_document(&admin(), first, DocumentOutput::Pdf)
+            .await?;
+        assert_eq!(pdf.page_count, 1, "{}", t.label);
+        assert!(pdf_of(t.label, pdf).starts_with(b"%PDF-"));
+    }
+    Ok(())
+}
+
+/// Страница за концом документа — ошибка поля `pages`, а не пустой или неполный файл.
+#[tokio::test]
+async fn pages_beyond_the_document_are_refused() -> Result<(), CoreError> {
+    for t in cores().await {
+        let order = t.core.create_order(&admin(), sample_new_order()).await?;
+        let act = request(DocumentKind::IntakeAct, Some(order.id));
+        let whole = png_pages(&t, act.clone()).await?;
+        assert_eq!(whole.len(), 1, "{}: акт в одну страницу", t.label);
+        for (selection, output) in [
+            ("5", DocumentOutput::Pdf),
+            ("5", DocumentOutput::Png { dpi: 72 }),
+            ("1-2", DocumentOutput::Pdf),
+        ] {
+            let req = DocumentRequest {
+                pages: pages(selection),
+                ..act.clone()
+            };
+            assert_validation(
+                t.core.export_document(&admin(), req, output).await,
+                &[("pages", "out_of_range")],
+            );
+        }
     }
     Ok(())
 }

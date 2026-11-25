@@ -1,4 +1,5 @@
 use mw_docs::{DocsError, compile_for_tests, font_covers};
+use mw_domain::pages::PageSelection;
 
 const TEXT: &str = "Привет, №1 «тест» — ёлка";
 
@@ -90,4 +91,43 @@ fn invalid_virtual_file_name_is_an_error() {
         "{:?}",
         r.map(|_| ())
     );
+}
+
+/// Страниц в PDF: объектов `/Type /Page`, за которыми не идёт буква — `/Pages` (дерево страниц) и
+/// `/PageLabel` (номер выбранной страницы) не в счёт; typst-pdf пишет их без пробела, `/Type/Page`.
+fn pdf_page_count(pdf: &[u8]) -> usize {
+    let text = String::from_utf8_lossy(pdf);
+    text.match_indices("/Type")
+        .filter(|(at, mark)| {
+            let rest = text[at + mark.len()..].trim_start();
+            rest.strip_prefix("/Page")
+                .is_some_and(|after| !after.starts_with(|c: char| c.is_ascii_alphabetic()))
+        })
+        .count()
+}
+
+#[test]
+fn only_the_chosen_pages_are_exported() {
+    let doc =
+        compile_for_tests("Первая\n#pagebreak()\nВторая".to_owned(), vec![]).expect("compiles");
+    assert_eq!(doc.page_count(), 2);
+    let second = PageSelection::parse("2").expect("selection");
+
+    let all = doc.png_pages(72).expect("png");
+    assert_eq!(all.len(), 2);
+    let chosen = doc.png_selected(72, Some(&second)).expect("png");
+    assert_eq!(chosen, [all[1].clone()], "только вторая страница");
+    assert_eq!(doc.png_selected(72, None).expect("png"), all);
+
+    assert_eq!(pdf_page_count(&doc.pdf().expect("pdf")), 2);
+    let pdf = doc.pdf_selected(Some(&second)).expect("pdf");
+    assert!(pdf.starts_with(b"%PDF-"));
+    assert_eq!(pdf_page_count(&pdf), 1);
+
+    // Страница за концом документа, в том числе среди существующих, — отказ, а не молчаливый пропуск.
+    for beyond in ["5", "2-3"] {
+        let beyond = PageSelection::parse(beyond).expect("selection");
+        assert_eq!(doc.png_selected(72, Some(&beyond)), Err(DocsError::NoPages));
+        assert_eq!(doc.pdf_selected(Some(&beyond)), Err(DocsError::NoPages));
+    }
 }

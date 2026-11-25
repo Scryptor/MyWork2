@@ -1,7 +1,11 @@
 //! Compiling Typst source and turning the result into PDF and PNG.
 
+use std::num::NonZeroUsize;
+
+use mw_domain::pages::PageSelection;
 use serde::{Deserialize, Serialize};
 use typst::diag::SourceDiagnostic;
+use typst::layout::PageRanges;
 use typst::utils::Scalar;
 use typst_layout::PagedDocument;
 use typst_pdf::PdfOptions;
@@ -47,6 +51,9 @@ pub enum DocsError {
     /// The render process did not start or did not get ready in time (the reason).
     #[error("the render process is unavailable: {0}")]
     WorkerUnavailable(String),
+    /// A chosen page is not in the document.
+    #[error("the chosen pages are not in the document")]
+    NoPages,
 }
 
 /// [`DocsError`] на проводе процесса-рендерера (`wire`): те же варианты с теми же данными, в JSON —
@@ -67,6 +74,7 @@ pub(crate) enum WireError {
     CodeTimeout,
     WorkerCrashed,
     WorkerUnavailable(String),
+    NoPages,
 }
 
 impl From<DocsError> for WireError {
@@ -84,6 +92,7 @@ impl From<DocsError> for WireError {
             DocsError::CodeTimeout => Self::CodeTimeout,
             DocsError::WorkerCrashed => Self::WorkerCrashed,
             DocsError::WorkerUnavailable(reason) => Self::WorkerUnavailable(reason),
+            DocsError::NoPages => Self::NoPages,
         }
     }
 }
@@ -103,6 +112,7 @@ impl From<WireError> for DocsError {
             WireError::CodeTimeout => Self::CodeTimeout,
             WireError::WorkerCrashed => Self::WorkerCrashed,
             WireError::WorkerUnavailable(reason) => Self::WorkerUnavailable(reason),
+            WireError::NoPages => Self::NoPages,
         }
     }
 }
@@ -207,9 +217,13 @@ impl Rendered {
 
     /// Size of the first page in millimetres (width, height); `(0, 0)` for a document without pages.
     pub fn page_size_mm(&self) -> (f64, f64) {
-        self.doc
-            .pages()
-            .first()
+        self.page_size_mm_of(1)
+    }
+
+    /// Size of page `page` (from 1) in millimetres (width, height); `(0, 0)` when there is no such page.
+    pub fn page_size_mm_of(&self, page: usize) -> (f64, f64) {
+        page.checked_sub(1)
+            .and_then(|i| self.doc.pages().get(i))
             .map(|p| {
                 let size = p.frame.size();
                 (size.x.to_mm(), size.y.to_mm())
@@ -217,34 +231,68 @@ impl Rendered {
             .unwrap_or((0.0, 0.0))
     }
 
+    /// PDF of the whole document.
     pub fn pdf(&self) -> Result<Vec<u8>, DocsError> {
-        let bytes = typst_pdf::pdf(&self.doc, &PdfOptions::default())
-            .map_err(|e| DocsError::Pdf(messages(e)));
+        self.pdf_selected(None)
+    }
+
+    /// PDF of the pages `pages` (with `None` all of them): typst-pdf leaves the others out, links to
+    /// them too. A chosen page beyond the document — [`DocsError::NoPages`]. The PDF of chosen pages
+    /// is not tagged: typst-pdf builds the tags of the whole document only.
+    pub fn pdf_selected(&self, pages: Option<&PageSelection>) -> Result<Vec<u8>, DocsError> {
+        self.check_pages(pages)?;
+        let options = PdfOptions {
+            page_ranges: pages.map(page_ranges),
+            tagged: pages.is_none(),
+            ..PdfOptions::default()
+        };
+        let bytes = typst_pdf::pdf(&self.doc, &options).map_err(|e| DocsError::Pdf(messages(e)));
         evict_cache();
         bytes
     }
 
     /// One PNG per page at `dpi` dots per inch.
     pub fn png_pages(&self, dpi: u32) -> Result<Vec<Vec<u8>>, DocsError> {
+        self.png_selected(dpi, None)
+    }
+
+    /// One PNG per page of `pages` (with `None` of every page) at `dpi` dots per inch. A chosen page
+    /// beyond the document — [`DocsError::NoPages`].
+    pub fn png_selected(
+        &self,
+        dpi: u32,
+        pages: Option<&PageSelection>,
+    ) -> Result<Vec<Vec<u8>>, DocsError> {
         if dpi == 0 || dpi > 1200 {
             return Err(DocsError::Dpi(dpi));
         }
+        self.check_pages(pages)?;
         let options = RenderOptions {
             pixel_per_pt: Scalar::new(f64::from(dpi) / 72.0),
             render_bleed: false,
         };
-        let pages = self
+        let pngs = self
             .doc
             .pages()
             .iter()
-            .map(|page| {
+            .enumerate()
+            .filter(|(i, _)| pages.is_none_or(|p| p.contains(i + 1)))
+            .map(|(_, page)| {
                 typst_render::render(page, &options)
                     .encode_png()
                     .map_err(|e| DocsError::Png(e.to_string()))
             })
             .collect();
         evict_cache();
-        pages
+        pngs
+    }
+
+    /// Every page of `pages` is in the document; otherwise [`DocsError::NoPages`]. `None` — all pages.
+    pub fn check_pages(&self, pages: Option<&PageSelection>) -> Result<(), DocsError> {
+        match pages.and_then(|p| p.as_slice().last()) {
+            Some(&last) if usize::from(last) > self.page_count() => Err(DocsError::NoPages),
+            _ => Ok(()),
+        }
     }
 
     /// All text of the document, page by page, a new line where the baseline changes.
@@ -256,6 +304,20 @@ impl Rendered {
         }
         out
     }
+}
+
+/// The pages of `pages` for typst-pdf: a range of one page each (numbers from 1, never 0).
+fn page_ranges(pages: &PageSelection) -> PageRanges {
+    PageRanges::new(
+        pages
+            .as_slice()
+            .iter()
+            .map(|&page| {
+                let page = NonZeroUsize::new(usize::from(page));
+                page..=page
+            })
+            .collect(),
+    )
 }
 
 /// Appends the text of a frame; group offsets are ignored (good enough for tests and checks).

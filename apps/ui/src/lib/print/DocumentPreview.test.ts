@@ -171,7 +171,8 @@ describe('the preview', () => {
 			onclose: () => {}
 		});
 		await userEvent.click(screen.getByRole('button', { name: 'Сохранить PDF' }));
-		expect(save).toHaveBeenCalledWith('issue_act', { orderId: 7 });
+		// The whole document: no pages chosen.
+		expect(save).toHaveBeenCalledWith('issue_act', { orderId: 7 }, undefined);
 	});
 
 	it('«Печать» is only in the program: it closes the preview and prints', async () => {
@@ -336,5 +337,104 @@ describe('the preview', () => {
 			onclose: () => {}
 		});
 		expect(screen.getByRole('dialog', { name: 'Пустой акт приёма' })).toBeInTheDocument();
+	});
+
+	describe('the pages to print', () => {
+		const uncheck = async (...names: string[]) => {
+			for (const name of names)
+				await userEvent.click(await screen.findByRole('checkbox', { name }));
+		};
+
+		it('a document of two pages has a check box for each, both checked', async () => {
+			render(DocumentPreview, {
+				request: request(),
+				load: async () => pages(2),
+				save: vi.fn(),
+				print: null,
+				onclose: () => {}
+			});
+			expect(await screen.findByRole('checkbox', { name: 'Страница 1' })).toBeChecked();
+			expect(screen.getByRole('checkbox', { name: 'Страница 2' })).toBeChecked();
+			expect(screen.getAllByRole('checkbox')).toHaveLength(2);
+		});
+
+		it('«Печать» prints only the checked pages', async () => {
+			const print = vi.fn();
+			render(DocumentPreview, {
+				request: request(),
+				load: async () => pages(2),
+				save: vi.fn(),
+				print,
+				onclose: vi.fn()
+			});
+			await uncheck('Страница 2');
+			await userEvent.click(screen.getByRole('button', { name: 'Печать' }));
+			expect(print).toHaveBeenCalledWith(
+				'intake_act',
+				{ orderId: 42 },
+				{ noPreview: true, pages: '1' }
+			);
+		});
+
+		it('«Сохранить PDF» saves only the checked pages', async () => {
+			const save = vi.fn(async () => {});
+			render(DocumentPreview, {
+				request: request(),
+				load: async () => pages(2),
+				save,
+				print: null,
+				onclose: () => {}
+			});
+			await uncheck('Страница 2');
+			await userEvent.click(screen.getByRole('button', { name: 'Сохранить PDF' }));
+			expect(save).toHaveBeenCalledWith('intake_act', { orderId: 42 }, '1');
+		});
+
+		it('nothing checked: neither «Печать» nor «Сохранить PDF», and Ctrl/⌘P prints nothing', async () => {
+			const print = vi.fn();
+			const onclose = vi.fn();
+			render(DocumentPreview, {
+				request: request(),
+				load: async () => pages(2),
+				save: vi.fn(),
+				print,
+				onclose
+			});
+			await uncheck('Страница 1', 'Страница 2');
+			expect(screen.getByRole('button', { name: 'Печать' })).toBeDisabled();
+			expect(screen.getByRole('button', { name: 'Сохранить PDF' })).toBeDisabled();
+			expect(ctrlP().defaultPrevented).toBe(true);
+			expect(print).not.toHaveBeenCalled();
+			expect(onclose).not.toHaveBeenCalled();
+		});
+
+		it('a document of one page has no check boxes', async () => {
+			render(DocumentPreview, {
+				request: request(),
+				load: async () => pages(1),
+				save: vi.fn(),
+				print: null,
+				onclose: () => {}
+			});
+			await screen.findByRole('img', { name: 'Страница 1 из 1' });
+			expect(screen.queryByRole('checkbox')).toBeNull();
+		});
+
+		it('another document comes with every page checked', async () => {
+			const save = vi.fn(async () => {});
+			const view = render(DocumentPreview, {
+				request: request(),
+				load: async () => pages(2),
+				save,
+				print: null,
+				onclose: () => {}
+			});
+			await uncheck('Страница 2');
+			await view.rerender({ request: request({ kind: 'issue_act', kinds: ['issue_act'] }) });
+			await screen.findByRole('img', { name: 'Страница 2 из 2' });
+			expect(screen.getByRole('checkbox', { name: 'Страница 2' })).toBeChecked();
+			await userEvent.click(screen.getByRole('button', { name: 'Сохранить PDF' }));
+			expect(save).toHaveBeenCalledWith('issue_act', { orderId: 42 }, undefined);
+		});
 	});
 });

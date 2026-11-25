@@ -47,6 +47,16 @@ describe('documentQuery', () => {
 		expect(documentQuery('pdf', { printerDpi: 600 })).toEqual({ format: 'pdf', printer_dpi: 600 });
 	});
 
+	it('sends the chosen pages; none chosen (null) is the whole document, no parameter', () => {
+		expect(documentQuery('pdf', { pages: '1,3-4' })).toEqual({ format: 'pdf', pages: '1,3-4' });
+		expect(documentQuery('png', { dpi: 300, pages: '2' })).toEqual({
+			format: 'png',
+			dpi: 300,
+			pages: '2'
+		});
+		expect(documentQuery('pdf', { pages: null })).toEqual({ format: 'pdf' });
+	});
+
 	it('a PDF never gets the raster resolution, even when it is passed', () => {
 		const opts = { dpi: 300, printerDpi: 203, labelMm: [40, 30] as [number, number] };
 		expect(documentQuery('pdf', opts)).toEqual({
@@ -109,6 +119,15 @@ describe('documentPdf', () => {
 				})
 		);
 		expect((await documentPdf('intake_act', { orderId: 42 })).filename).toBe('document.pdf');
+	});
+
+	it('only the chosen pages', async () => {
+		const fn = stubFetch(() => new Response('%PDF', { status: 200 }));
+		await documentPdf('intake_act', { orderId: 7 }, { printerDpi: 300, pages: '1' });
+		expect(sent(fn)).toEqual({
+			path: '/api/v1/orders/7/documents/intake_act',
+			params: { format: 'pdf', printer_dpi: '300', pages: '1' }
+		});
 	});
 
 	it('without an order: the document itself (blank act) or the sample', async () => {

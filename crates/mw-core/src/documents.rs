@@ -17,6 +17,7 @@ use mw_docs::{
 use mw_domain::document_template::Template;
 use mw_domain::documents::DocumentKind;
 use mw_domain::money::{Money, doc_text, format_money_doc};
+use mw_domain::pages::PageSelection;
 use mw_domain::pattern::pattern_text;
 use mw_domain::permission::Permission;
 use mw_domain::phone::format_phone;
@@ -121,6 +122,7 @@ fn docs_error(e: DocsError, kind: DocumentKind) -> CoreError {
             "документ «{}» не построен: не собран PNG",
             kind.as_str()
         )),
+        DocsError::NoPages => CoreError::Validation(vec![FieldError::new("pages", "out_of_range")]),
         e @ (DocsError::Compile(_) | DocsError::BadFileName(_)) => {
             CoreError::Internal(format!("документ «{}» не построен: {e}", kind.as_str()))
         }
@@ -236,7 +238,8 @@ fn refusal_summary(failure: &JobFailure) -> String {
         | DocsError::TooSlow
         | DocsError::CodeTimeout
         | DocsError::WorkerCrashed
-        | DocsError::WorkerUnavailable(_) => error.to_string(),
+        | DocsError::WorkerUnavailable(_)
+        | DocsError::NoPages => error.to_string(),
     }
 }
 
@@ -279,6 +282,9 @@ pub struct DocumentRequest {
     /// Несохранённый шаблон для предпросмотра в редакторе; нужен `SettingsManage`. Без него — сохранённый
     /// шаблон предприятия, а при его отсутствии стандартный.
     pub draft: Option<Template>,
+    /// Какие страницы выгрузить; `None` — все. Страницы, которой нет в документе, —
+    /// `pages`/`out_of_range`.
+    pub pages: Option<PageSelection>,
 }
 
 /// Документ одним PDF на несколько заказов.
@@ -358,7 +364,8 @@ impl Core {
     /// идут одним заданием ([`mw_docs::run_job`]) под ограничителем рендера (растр A4 тяжелее самой
     /// компиляции). Данные и проверки — те же, что у `Core::render_document` (он только для
     /// тестов). Неверный `dpi` у PNG — ошибка проверки поля `dpi`; дольше [`RENDER_BUDGET`] —
-    /// `documents`/`too_slow`.
+    /// `documents`/`too_slow`. С `pages` в файле только выбранные страницы (`page_count` — их
+    /// число); страницы нет в документе — `pages`/`out_of_range`.
     ///
     /// Шаблон со своим Typst-кодом строится процессом-рендерером. Превью черновика показывает отказ
     /// своего кода: ошибки компиляции — [`CoreError::TemplateCode`], документ дольше
@@ -387,6 +394,7 @@ impl Core {
             docs: vec![data],
             output: output.into(),
             limits: job_limits(MAX_PAGES),
+            pages: req.pages.clone(),
         };
         if req.draft.is_some() {
             self.render_job(job, req.kind).await
@@ -444,6 +452,7 @@ impl Core {
                 sample: false,
                 options,
                 draft: None,
+                pages: None,
             };
             docs.push(self.document_values(actor, &one).await?);
         }
@@ -454,6 +463,7 @@ impl Core {
             docs,
             output: JobOutput::Pdf,
             limits: job_limits(MAX_BATCH_PAGES),
+            pages: None,
         };
         self.print_job(job, kind).await
     }
@@ -1128,6 +1138,7 @@ mod tests {
             sample: false,
             options: RenderOptions::default(),
             draft: None,
+            pages: None,
         }
     }
 
@@ -1404,6 +1415,16 @@ mod tests {
         }
     }
 
+    /// Выбранной страницы нет в документе — ошибка поля `pages`, а не внутренняя.
+    #[test]
+    fn missing_pages_are_a_field_error() {
+        let e = docs_error(DocsError::NoPages, DocumentKind::IntakeAct);
+        assert!(
+            matches!(&e, CoreError::Validation(f) if *f == vec![FieldError::new("pages", "out_of_range")]),
+            "{e:?}"
+        );
+    }
+
     /// Задание дольше бюджета — ошибка проверки, а не внутренняя.
     #[test]
     fn too_slow_is_a_validation_error() {
@@ -1473,6 +1494,7 @@ mod tests {
             JobFailure::Docs(DocsError::TooSlow),
             JobFailure::Docs(DocsError::Dpi(1)),
             JobFailure::Docs(DocsError::BadFileName("../x".into())),
+            JobFailure::Docs(DocsError::NoPages),
             JobFailure::Core(CoreError::Internal("сбой".into())),
         ] {
             assert!(!other.is_code_refusal(), "{other}");

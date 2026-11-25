@@ -293,6 +293,7 @@ async fn broken_logo_file_prints_without_logo() {
                 sample: false,
                 options: RenderOptions::default(),
                 draft: None,
+                pages: None,
             };
             core.export_document(&actor, req, output)
         };

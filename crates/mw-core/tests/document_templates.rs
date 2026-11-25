@@ -21,6 +21,7 @@ fn sample(kind: DocumentKind, draft: Option<Template>) -> DocumentRequest {
         sample: true,
         options: RenderOptions::default(),
         draft,
+        pages: None,
     }
 }
 

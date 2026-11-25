@@ -145,6 +145,50 @@ async fn wrong_parameters_are_rejected_in_russian() {
     }
 }
 
+/// `pages` выбирает страницы: неверная запись — 422 `pages` `invalid`, страница за концом документа —
+/// 422 `pages` `out_of_range`, верный выбор — только эти страницы, в PDF и в PNG.
+#[tokio::test]
+async fn pages_choose_what_is_exported() {
+    for t in apis(Listen::Network).await {
+        let token = t.admin_token().await;
+        let order = create_order(&t, &token, new_order("Иван", "", "A", "B")).await;
+        let id = order["id"].as_i64().unwrap();
+        let base = format!("/api/v1/orders/{id}/documents/intake_act");
+        for (query, code) in [
+            ("pages=abc", "invalid"),
+            ("pages=0", "invalid"),
+            ("pages=1,,2", "invalid"),
+            ("format=png&pages=2-1", "invalid"),
+            ("pages=5", "out_of_range"),
+            ("format=png&pages=1-2", "out_of_range"),
+        ] {
+            let r = t.get(&format!("{base}?{query}"), Some(&token)).await;
+            assert_eq!(r.status, 422, "{}: {query}: {}", t.label, r.body);
+            assert_eq!(
+                r.body["fields"][0]["field"], "pages",
+                "{}: {query}",
+                t.label
+            );
+            assert_eq!(r.body["fields"][0]["code"], code, "{}: {query}", t.label);
+            assert!(!r.body["fields"][0]["message"].as_str().unwrap().is_empty());
+        }
+        let (status, headers, body) = t.get_raw(&format!("{base}?pages=1"), &token).await;
+        assert_eq!(status, 200, "{}", t.label);
+        assert_eq!(headers["content-type"], "application/pdf");
+        assert!(body.starts_with(b"%PDF-"), "{}", t.label);
+        let r = t
+            .get(&format!("{base}?format=png&pages=%201%20"), Some(&token))
+            .await;
+        assert_eq!(r.status, 200, "{}: {}", t.label, r.body);
+        assert_eq!(r.body["pages"].as_array().unwrap().len(), 1, "{}", t.label);
+        // Документ без заказа — тот же параметр.
+        let (status, _, _) = t
+            .get_raw("/api/v1/documents/issue_act?pages=1", &token)
+            .await;
+        assert_eq!(status, 200, "{}", t.label);
+    }
+}
+
 #[tokio::test]
 async fn without_an_order_the_blank_and_calibration_print_and_the_rest_are_samples() {
     for t in apis(Listen::Network).await {

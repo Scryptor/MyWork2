@@ -1566,6 +1566,9 @@ export const ru = {
 		sample: (name: string) => `Образец · ${name}`,
 		document: 'Документ',
 		page: (n: number, of: number) => `Страница ${n} из ${of}`,
+		/** The check box under a page of the preview: print it or not. */
+		pageToPrint: (n: number) => `Страница ${n}`,
+		noPagesChecked: 'Отметьте страницы, которые нужно напечатать',
 		pagesLoading: 'Документ готовится…',
 		pagesFailed: 'Не удалось показать страницы документа',
 		preview: 'Предпросмотр',

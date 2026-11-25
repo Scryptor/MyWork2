@@ -54,6 +54,9 @@ impl FieldError {
         if self.field == "order_ids" && self.code == "too_many" {
             return "Не больше 100 заказов за раз";
         }
+        if self.field == "pages" && self.code == "out_of_range" {
+            return "В документе нет выбранных страниц";
+        }
         match self.code.as_str() {
             "required" => "Заполните поле",
             "too_short" => "Слишком короткое значение",
@@ -138,6 +141,19 @@ mod tests {
         assert_ne!(
             FieldError::new("logo", "unsupported").message_ru(),
             FieldError::new("file", "unsupported").message_ru()
+        );
+    }
+
+    /// Страницы за концом документа — свой текст, а не общий «вне допустимого диапазона».
+    #[test]
+    fn pages_out_of_range_has_its_own_message() {
+        assert_eq!(
+            FieldError::new("pages", "out_of_range").message_ru(),
+            "В документе нет выбранных страниц"
+        );
+        assert_ne!(
+            FieldError::new("dpi", "out_of_range").message_ru(),
+            "В документе нет выбранных страниц"
         );
     }
 

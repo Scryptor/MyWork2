@@ -195,6 +195,22 @@ describe('the printer of a document', () => {
 		);
 	});
 
+	it('only the pages chosen in the preview: the PDF and the pages of Windows', async () => {
+		await printDocument('intake_act', { orderId: 42 }, { noPreview: true, pages: '1' });
+		expect(documents.documentPdf).toHaveBeenCalledWith(
+			'intake_act',
+			{ orderId: 42 },
+			{ printerDpi: 300, pages: '1' }
+		);
+		platform.printFormat.mockResolvedValue('png');
+		await printDocument('intake_act', { orderId: 42 }, { noPreview: true, pages: '2-3' });
+		expect(documents.documentPages).toHaveBeenCalledWith(
+			'intake_act',
+			{ orderId: 42 },
+			{ printerDpi: 300, dpi: 300, pages: '2-3' }
+		);
+	});
+
 	it('«Принтер по умолчанию» is the system’s default printer, named in the notice', async () => {
 		printSettings.set({ actPrinter: null });
 		await printDocument('issue_act', { orderId: 5 });
@@ -411,6 +427,19 @@ describe('«Сохранить PDF»', () => {
 			{ printerDpi: 300 }
 		);
 		expect(names).toEqual(['akt-priema-42.pdf']);
+		click.mockRestore();
+	});
+
+	it('of the pages chosen in the preview', async () => {
+		const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+		URL.createObjectURL = () => 'blob:pdf';
+		URL.revokeObjectURL = () => {};
+		await savePdf('intake_act', { orderId: 42 }, '1');
+		expect(documents.documentPdf).toHaveBeenCalledWith(
+			'intake_act',
+			{ orderId: 42 },
+			{ printerDpi: 300, pages: '1' }
+		);
 		click.mockRestore();
 	});
 });

@@ -204,9 +204,24 @@ export function previewPages(
 	return documentPages(kind, target, { ...documentOptions(kind), dpi: PREVIEW_DPI }, signal);
 }
 
-/** «Сохранить PDF»: the file under the name the server gave it; the desktop program keeps it in Downloads. */
-export async function savePdf(kind: DocumentKind, target: DocumentTarget): Promise<void> {
-	const { blob, filename } = await documentPdf(kind, target, documentOptions(kind));
+/** The options of a document with the pages chosen in the preview; none chosen — the whole document. */
+const withPages = <T extends object>(opts: T, pages: string | undefined): T =>
+	pages === undefined ? opts : { ...opts, pages };
+
+/**
+ * «Сохранить PDF»: the file under the name the server gave it; the desktop program keeps it in Downloads.
+ * `pages`: only those («1,3-4», from the preview).
+ */
+export async function savePdf(
+	kind: DocumentKind,
+	target: DocumentTarget,
+	pages?: string
+): Promise<void> {
+	const { blob, filename } = await documentPdf(
+		kind,
+		target,
+		withPages(documentOptions(kind), pages)
+	);
 	downloadBlob(filename, blob);
 }
 
@@ -241,10 +256,18 @@ async function printerName(chosen: string | null): Promise<string> {
 	return name;
 }
 
-/** The document to the printer in the format of this system: a PDF to CUPS, pages of PNG to Windows. */
-async function send(kind: DocumentKind, target: DocumentTarget, printer: string): Promise<void> {
+/**
+ * The document to the printer in the format of this system: a PDF to CUPS, pages of PNG to Windows. The
+ * server picks the pages of `selection` for both, so the commands of the program print what they get.
+ */
+async function send(
+	kind: DocumentKind,
+	target: DocumentTarget,
+	printer: string,
+	selection?: string
+): Promise<void> {
 	const { copies, mediaMm } = printTarget(kind);
-	const opts = documentOptions(kind);
+	const opts = withPages(documentOptions(kind), selection);
 	if ((await printFormat()) === 'png') {
 		const pages = await documentPages(kind, target, { ...opts, dpi: printerDpi(kind) });
 		await printPages({
@@ -295,6 +318,8 @@ export interface PrintOptions {
 	 * «Настройки → Печать». A browser has no printer: the caller does not ask then.
 	 */
 	noPreview?: boolean;
+	/** Only these pages («1,3-4»), chosen in the preview; none — every page. */
+	pages?: string;
 }
 
 /**
@@ -327,7 +352,7 @@ async function printOne(
 	sending.add(job);
 	try {
 		const printer = await printerName(printTarget(kind).printer);
-		await send(kind, target, printer);
+		await send(kind, target, printer, opts.pages);
 		toast.show({ message: ru.print.sent(printer), tone: 'success' });
 	} catch (e) {
 		if (noPrinter(e)) {

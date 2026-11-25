@@ -10,6 +10,7 @@ use mw_docs::{
     sample_data, standard_template,
 };
 use mw_domain::documents::DocumentKind;
+use mw_domain::pages::PageSelection;
 
 fn sticker() -> Template {
     standard_template(DocumentKind::Sticker)
@@ -28,6 +29,7 @@ fn job(template: Template, docs: usize, output: JobOutput) -> Job {
             max_raster_pixels: 36_000_000.0,
             budget: Duration::from_secs(60),
         },
+        pages: None,
     }
 }
 
@@ -167,8 +169,15 @@ fn job_round_trips_as_json() {
     job.docs[1].blank = true;
     job.docs[1].barcode = None;
     job.limits.budget = Duration::from_millis(25_500);
+    job.pages = Some(PageSelection::parse("2").unwrap());
     let back: Job = serde_json::from_str(&serde_json::to_string(&job).unwrap()).unwrap();
     assert_eq!(back, job);
+
+    // Задание без `pages` — все страницы: так читается и кадр, где выбора страниц нет.
+    let mut without = serde_json::to_value(&job).unwrap();
+    assert!(without.as_object_mut().unwrap().remove("pages").is_some());
+    let back: Job = serde_json::from_value(without).unwrap();
+    assert_eq!(back.pages, None);
 
     // Логотип в JSON не входит: по проводу он идёт отдельно.
     job.logo = Some(png(4, 4));
@@ -178,4 +187,29 @@ fn job_round_trips_as_json() {
         back.logo.is_none() && back.docs[0].logo.is_none(),
         "{back:?}"
     );
+}
+
+/// С выбором страниц в файле только они, и `page_count` — их число; страница за концом — `NoPages`.
+#[test]
+fn a_job_exports_only_the_chosen_pages() {
+    let mut job = job(sticker(), 2, JobOutput::Png { dpi: 72 });
+    // Вторая наклейка без штрихкода: листы различимы.
+    job.docs[1].barcode = None;
+    let full = run(&job).unwrap();
+    let all = pages(&full);
+    assert_ne!(all[0], all[1]);
+
+    job.pages = Some(PageSelection::parse("2").unwrap());
+    let chosen = run(&job).unwrap();
+    assert_eq!(chosen.page_count, 1);
+    assert_eq!(pages(&chosen), &all[1..]);
+
+    job.output = JobOutput::Pdf;
+    let pdf_result = run(&job).unwrap();
+    assert_eq!(pdf_result.page_count, 1);
+    assert!(pdf(&pdf_result).starts_with(b"%PDF"));
+
+    job.pages = Some(PageSelection::parse("1,3").unwrap());
+    let r = run(&job);
+    assert!(matches!(r, Err(DocsError::NoPages)), "{r:?}");
 }

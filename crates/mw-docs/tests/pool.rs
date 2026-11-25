@@ -50,6 +50,7 @@ fn job() -> Job {
             max_raster_pixels: 36_000_000.0,
             budget: Duration::from_secs(20),
         },
+        pages: None,
     }
 }
 

@@ -5,6 +5,7 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use mw_domain::pages::PageSelection;
 use serde::{Deserialize, Serialize};
 
 use crate::fonts::{FontSet, shared};
@@ -24,6 +25,10 @@ pub struct Job {
     pub docs: Vec<DocumentData>,
     pub output: JobOutput,
     pub limits: JobLimits,
+    /// Какие страницы файла выгрузить; `None` — все. Поле появилось позже остальных: кадр задания
+    /// без него читается как «все страницы».
+    #[serde(default)]
+    pub pages: Option<PageSelection>,
 }
 
 /// В каком виде отдать результат.
@@ -52,8 +57,9 @@ pub struct JobLimits {
 /// Построенный файл.
 #[derive(Debug)]
 pub struct JobResult {
+    /// Страниц в файле: при выборе страниц — выбранных.
     pub page_count: usize,
-    /// Размер первой страницы, мм (ширина, высота).
+    /// Размер первой страницы файла, мм (ширина, высота).
     pub page_size_mm: (f64, f64),
     pub bytes: JobBytes,
 }
@@ -86,8 +92,9 @@ pub fn run_job(job: &Job, on_compiled: &mut dyn FnMut(usize)) -> Result<JobResul
 /// проверяются пределы: страниц в нём больше `max_pages` — [`DocsError::TooManyPages`] с его
 /// страницами, всего больше `max_total_pages` — то же со всеми; с начала задания прошло больше
 /// `budget` — [`DocsError::TooSlow`]. Иначе зовётся `on_compiled` с номером документа. Один
-/// документ берётся как есть, несколько склеиваются ([`merge`]). Растр сначала проверяется по
-/// первой странице против `max_raster_pixels` ([`DocsError::TooManyPixels`]).
+/// документ берётся как есть, несколько склеиваются ([`merge`]). С выбором `pages` в файл идут
+/// только эти страницы; выбранной страницы нет в документе — [`DocsError::NoPages`]. Растр сначала
+/// проверяется по первой странице файла против `max_raster_pixels` ([`DocsError::TooManyPixels`]).
 pub fn run_job_with_fonts(
     job: &Job,
     fonts: &FontSet,
@@ -123,20 +130,26 @@ pub fn run_job_with_fonts(
         Ok([one]) => one,
         Err(docs) => merge(docs),
     };
+    let pages = job.pages.as_ref();
+    doc.check_pages(pages)?;
+    let first = pages
+        .and_then(|p| p.as_slice().first())
+        .map_or(1, |&page| usize::from(page));
+    let page_size_mm = doc.page_size_mm_of(first);
     let bytes = match job.output {
-        JobOutput::Pdf => JobBytes::Pdf(doc.pdf()?),
+        JobOutput::Pdf => JobBytes::Pdf(doc.pdf_selected(pages)?),
         JobOutput::Png { dpi } => {
-            let (w, h) = doc.page_size_mm();
+            let (w, h) = page_size_mm;
             let px = |mm: f64| mm / 25.4 * f64::from(dpi);
             if px(w) * px(h) > limits.max_raster_pixels {
                 return Err(DocsError::TooManyPixels);
             }
-            JobBytes::Png(doc.png_pages(dpi)?)
+            JobBytes::Png(doc.png_selected(dpi, pages)?)
         }
     };
     Ok(JobResult {
-        page_count: doc.page_count(),
-        page_size_mm: doc.page_size_mm(),
+        page_count: pages.map_or(doc.page_count(), |p| p.as_slice().len()),
+        page_size_mm,
         bytes,
     })
 }

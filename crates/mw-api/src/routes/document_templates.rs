@@ -125,6 +125,7 @@ pub(super) async fn preview_template(
         sample: body.order_id.is_none() && kind.for_order(),
         options,
         draft: Some(body.template),
+        pages: None,
     };
     let file = state
         .core

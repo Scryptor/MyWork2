@@ -16,17 +16,24 @@
 		request = { kind, target: { orderId: ORDER }, kinds };
 	}
 
-	// Pages without a server: drawn here a moment later, an act on A4 or a label of 58 × 40 mm.
+	// Pages without a server: drawn here a moment later, an act on A4 (two sheets: the check boxes of
+	// the pages to print) or a label of 58 × 40 mm.
 	async function load(kind: DocumentKind): Promise<DocumentPages> {
 		await new Promise((resolve) => setTimeout(resolve, 400));
 		const [width, height] = isLabel(kind) ? [58, 40] : [210, 297];
-		return { dpi: 110, width_mm: width, height_mm: height, pages: [demoPage(width, height)] };
+		const sheets = isLabel(kind) ? 1 : 2;
+		const pages = Array.from({ length: sheets }, () => demoPage(width, height));
+		return { dpi: 110, width_mm: width, height_mm: height, pages };
 	}
+
+	const withPages = (what: string, pages: string | undefined) =>
+		pages === undefined ? what : `${what}, страницы ${pages}`;
 </script>
 
 <p class="muted">
 	«Печать ▾» заказа: пункт сразу печатает (в программе), «Предпросмотр…» открывает страницы. У
-	выданного заказа — ещё гарантийные акты; на телефоне кнопка — значок.
+	выданного заказа — ещё гарантийные акты; на телефоне кнопка — значок. В предпросмотре документа из
+	нескольких страниц под каждой — галочка: печатаются и сохраняются только отмеченные.
 </p>
 <div class="row">
 	<PrintMenu
@@ -69,10 +76,10 @@
 <DocumentPreview
 	{request}
 	{load}
-	save={async () => {
-		picked = 'PDF сохранён';
+	save={async (_kind, _target, pages) => {
+		picked = withPages('PDF сохранён', pages);
 	}}
-	print={(kind) => (picked = documentName(kind))}
+	print={(kind, _target, opts) => (picked = withPages(documentName(kind), opts.pages))}
 	onclose={() => (request = null)}
 />
 

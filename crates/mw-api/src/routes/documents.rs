@@ -8,6 +8,8 @@ use mw_core::CoreError;
 use mw_core::documents::{DocumentBatchRequest, DocumentBytes, DocumentOutput, DocumentRequest};
 use mw_docs::RenderOptions;
 use mw_domain::documents::DocumentKind;
+use mw_domain::pages::PageSelection;
+use mw_domain::validation::FieldError;
 
 use crate::auth::CurrentActor;
 use crate::dto::{DocumentBatch, DocumentFormat, DocumentPages, DocumentQuery};
@@ -146,6 +148,14 @@ async fn respond(
         (q.offset_x_mm, q.offset_y_mm),
         q.printer_dpi,
     )?;
+    let pages = q
+        .pages
+        .as_deref()
+        .map(PageSelection::parse)
+        .transpose()
+        .map_err(|message| {
+            CoreError::Validation(vec![FieldError::with_message("pages", "invalid", message)])
+        })?;
     let raster_dpi = q.dpi.unwrap_or(DEFAULT_PNG_DPI);
     let output = match format {
         DocumentFormat::Pdf => DocumentOutput::Pdf,
@@ -157,6 +167,7 @@ async fn respond(
         sample: order_id.is_none() && kind.for_order(),
         options,
         draft: None,
+        pages,
     };
     let file = state.core.export_document(actor, request, output).await?;
     let response = match file.bytes {

@@ -123,6 +123,52 @@ test('«Печать ▾ → Предпросмотр…» shows the pages, «С
 	await expect(panel).toBeVisible();
 });
 
+/** Pages of a PDF: objects `/Type /Page` (not `/Pages`, the tree, nor `/PageLabel`). */
+const pdfPageCount = (pdf: Buffer) =>
+	pdf.toString('latin1').match(/\/Type\s*\/Page(?![A-Za-z])/g)?.length ?? 0;
+
+test('a two-page document saves only the checked page', async ({ page, request }) => {
+	const m = uniq('M');
+	// A malfunction too long for half a sheet: the standard intake act puts each copy on a sheet of its
+	// own (`Layout::TwoPerA4`) — two pages without a template of its own, nothing shared with other specs.
+	const o = await createOrder(request, {
+		model: m,
+		malfunction: `${m}. ${'Не включается после падения в воду. '.repeat(60)}`
+	});
+	const panel = await openPanel(page, m, o.id);
+	await panel.getByRole('button', { name: 'Печать' }).click();
+	await page
+		.getByRole('menu', { name: 'Печать' })
+		.getByRole('menuitem', { name: 'Предпросмотр…' })
+		.click();
+
+	const preview = previewOf(page, `Акт приёма · № ${o.id}`);
+	await expectPage(preview, 'Страница 1 из 2');
+	await expectPage(preview, 'Страница 2 из 2');
+	const first = preview.getByRole('checkbox', { name: 'Страница 1', exact: true });
+	const second = preview.getByRole('checkbox', { name: 'Страница 2', exact: true });
+	await expect(first).toBeChecked();
+	await expect(second).toBeChecked();
+	await second.uncheck();
+
+	const asked = page.waitForRequest(
+		(r) =>
+			new URL(r.url()).pathname === `/api/v1/orders/${o.id}/documents/intake_act` &&
+			new URL(r.url()).searchParams.get('format') === 'pdf'
+	);
+	const saving = page.waitForEvent('download');
+	await preview.getByRole('button', { name: 'Сохранить PDF' }).click();
+	expect(new URL((await asked).url()).searchParams.get('pages')).toBe('1');
+	const pdf = await fs.readFile((await (await saving).path())!);
+	expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
+	expect(pdfPageCount(pdf)).toBe(1);
+
+	// None checked: nothing to save.
+	await first.uncheck();
+	await expect(preview.getByRole('button', { name: 'Сохранить PDF' })).toBeDisabled();
+	await expect(preview.getByText('Отметьте страницы, которые нужно напечатать')).toBeVisible();
+});
+
 test('an issued order has the warranty acts too', async ({ page, request }) => {
 	const m = uniq('M');
 	const o = await createOrder(request, { model: m });
