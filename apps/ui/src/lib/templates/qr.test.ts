@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { FirmLink } from '$api/FirmLink';
 import { ru } from '#lib/i18n/ru.js';
-import { chooseLink, linkCaption, qrLinkId, type QrBody } from './qr.js';
+import { chooseLink, linkCaption, linkName, qrLinkId, type QrBody } from './qr.js';
 
 const body = (link: string, caption: string): QrBody => ({
 	type: 'qr',
@@ -49,11 +49,28 @@ describe('qrLinkId', () => {
 		expect(qrLinkId('{ссылка.}')).toBeNull();
 	});
 
+	it('finds no name of Object.prototype among the old names', () => {
+		expect(qrLinkId('{constructor}')).toBeNull();
+		expect(qrLinkId('{toString}')).toBeNull();
+		expect(qrLinkId('{__proto__}')).toBeNull();
+		expect(qrLinkId('{ссылка.constructor}')).toBe('constructor');
+	});
+
 	it('is null for a link of its own or with more than the substitution', () => {
 		expect(qrLinkId('https://x')).toBeNull();
 		expect(qrLinkId('{ссылка.telegram}/x')).toBeNull();
 		expect(qrLinkId('{заказ.номер}')).toBeNull();
 		expect(qrLinkId('')).toBeNull();
+	});
+});
+
+describe('linkName', () => {
+	it('names a built-in or an old link without the list, any other by its id', () => {
+		expect(linkName('google_maps')).toBe('Google Карты');
+		expect(linkName('2gis')).toBe('2ГИС');
+		expect(linkName('link_gone')).toBe('link_gone');
+		expect(linkName('constructor')).toBe('constructor');
+		expect(linkName('toString')).toBe('toString');
 	});
 });
 
@@ -69,6 +86,7 @@ describe('linkCaption', () => {
 
 	it('is the name of an own link', () => {
 		expect(linkCaption(links[4]!)).toBe('Сайт');
+		expect(linkCaption(link('constructor', 'Конструктор'))).toBe('Конструктор');
 	});
 });
 

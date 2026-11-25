@@ -16,7 +16,7 @@
 	import type { TemplateEditor } from '../editor.svelte.js';
 	import InsertField from '../InsertField.svelte';
 	import { blockAt, replaceBlock, type BlockPath } from '../ops.js';
-	import { chooseLink, qrLinkId, type QrBody } from '../qr.js';
+	import { chooseLink, linkName, qrLinkId, type QrBody } from '../qr.js';
 	import NumberField from './NumberField.svelte';
 
 	let { editor, path }: { editor: TemplateEditor; path: BlockPath } = $props();
@@ -29,10 +29,11 @@
 	/** The id of the link of the list the block takes, null for a link of its own. */
 	const linkId = $derived(body ? qrLinkId(body.link) : null);
 	const firmLink = $derived(links.find((l) => l.id === linkId));
-	/** What keeps the code from printing, as the hint says it. */
+	/** A link the list lacks: the hint around the link to the settings, where it can be added again. */
+	const gone = $derived(linkId !== null && !firmLink ? t.qrLinkGone(linkName(linkId)) : null);
+	/** What else keeps the code from printing, as the hint says it. */
 	const problem = $derived.by(() => {
-		if (linkId === null) return null;
-		if (!firmLink) return t.qrLinkGone(linkId);
+		if (linkId === null || !firmLink) return null;
 		if (!firmLink.enabled) return t.qrLinkOff;
 		return firmLink.url.trim() ? null : t.qrMissing;
 	});
@@ -71,10 +72,10 @@
 		editor.edit(replaceBlock(editor.template, path, { ...block, body: next }));
 	}
 
-	/** The links of the list in their order, the one of an old block that the list lacks (by its id), «своя ссылка». */
+	/** The links of the list in their order, the one of an old block that the list lacks (by its name), «своя ссылка». */
 	const sources = $derived([
 		...links.map((l) => ({ value: l.id, label: l.enabled ? l.name : t.qrLinkOffItem(l.name) })),
-		...(linkId !== null && !firmLink ? [{ value: linkId, label: linkId }] : []),
+		...(linkId !== null && !firmLink ? [{ value: linkId, label: linkName(linkId) }] : []),
 		{ value: 'custom', label: t.qrCustom }
 	]);
 	const ALIGNS: Align[] = ['left', 'center', 'right'];
@@ -120,7 +121,11 @@
 				bind:value={() => body.align, (v) => set({ align: v })}
 			/>
 		</div>
-		{#if problem}
+		{#if gone}
+			<Callout tone="info">
+				{gone[0]}<a href={resolve('settings/documents')}>{t.documentsSettingsLink}</a>{gone[1]}
+			</Callout>
+		{:else if problem}
 			<Callout tone="info">
 				{problem}
 				<a href={resolve('settings/documents')}>{t.documentsSettingsLink}</a>

@@ -19,6 +19,11 @@ const LEGACY_NAMES: Record<string, string> = {
 
 const PREFIX = 'ссылка.';
 
+/** `record[key]` of the record's own keys only: `constructor` and the like of `Object.prototype` are not in it. */
+function own(record: Record<string, string>, key: string): string | undefined {
+	return Object.hasOwn(record, key) ? record[key] : undefined;
+}
+
 /**
  * The id of the link of a block that is one substitution and spaces around it, as the server reads it:
  * spaces around do not count (`qr_name`), the name in the braces is compared by `normalize_search`
@@ -28,7 +33,7 @@ export function qrLinkId(link: string): string | null {
 	const name = /^\s*\{([^{}]*)\}\s*$/.exec(link)?.[1];
 	if (name === undefined) return null;
 	const wanted = normalizeSearch(name);
-	const legacy = LEGACY_NAMES[wanted];
+	const legacy = own(LEGACY_NAMES, wanted);
 	if (legacy !== undefined) return legacy;
 	if (!wanted.startsWith(PREFIX)) return null;
 	const id = wanted.slice(PREFIX.length);
@@ -37,7 +42,12 @@ export function qrLinkId(link: string): string | null {
 
 /** The caption a block starts from for `link`: the default text of a built-in link, else its name. */
 export function linkCaption(link: FirmLink): string {
-	return ru.templates.defaults.qrCaptions[link.id] ?? link.name;
+	return own(ru.templates.defaults.qrCaptions, link.id) ?? link.name;
+}
+
+/** The name of a link by its id when the list does not have it: of a built-in or an old one, else the id. */
+export function linkName(id: string): string {
+	return own(ru.templates.qrLinkNames, id) ?? id;
 }
 
 /**

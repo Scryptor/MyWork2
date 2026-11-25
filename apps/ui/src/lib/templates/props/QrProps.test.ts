@@ -129,13 +129,23 @@ describe('QrProps', () => {
 		]);
 	});
 
-	it('a link of an old block that the list lacks is shown by its id, with a hint', () => {
+	it('a link of an old block that the list lacks is shown by its name, with a hint what to do', () => {
 		setup('{фирма.гугл_карты}');
 		expect(screen.getByRole('combobox', { name: 'Откуда ссылка' })).toHaveTextContent(
-			'google_maps'
+			'Google Карты'
 		);
-		expect(screen.getByText(/Ссылки «google_maps» нет в списке/)).toBeInTheDocument();
-		expect(screen.getByRole('link', { name: 'Документы и реквизиты' })).toBeInTheDocument();
+		const settingsLink = screen.getByRole('link', { name: 'Документы и реквизиты' });
+		expect(settingsLink.parentElement).toHaveTextContent(
+			'Ссылки «Google Карты» нет в списке — выберите другую ссылку или добавьте её в «Документы и реквизиты»',
+			{ normalizeWhitespace: true }
+		);
+		expect(screen.queryByText(/google_maps/)).toBeNull();
+	});
+
+	it('a gone link of its own, without a known name, is called by its id', () => {
+		setup('{ссылка.link_gone}');
+		expect(screen.getByRole('combobox', { name: 'Откуда ссылка' })).toHaveTextContent('link_gone');
+		expect(screen.getByText(/Ссылки «link_gone» нет в списке/)).toBeInTheDocument();
 	});
 
 	it('a link that is switched off shows a hint with a link to the settings', () => {

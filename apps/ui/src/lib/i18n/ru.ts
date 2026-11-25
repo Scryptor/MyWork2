@@ -1433,6 +1433,8 @@ export const ru = {
 		linkUrl: 'Адрес',
 		linkUrlPlaceholder: 'https://…',
 		linkRemove: 'Удалить ссылку',
+		linkRemoved: (name: string) => `Ссылка «${name}» удалена`,
+		linkRestore: 'Вернуть',
 		linkAdd: 'Добавить ссылку',
 		linkNewName: 'Новая ссылка',
 		linkNameTaken: 'Такое название уже есть',
@@ -2334,7 +2336,9 @@ export const ru = {
 		qrCaption: 'Подпись под кодом',
 		qrMissing: 'Ссылка не заполнена — код не печатается.',
 		qrLinkOff: 'Ссылка выключена — QR-код не печатается.',
-		qrLinkGone: (id: string) => `Ссылки «${id}» нет в списке — QR-код не печатается.`,
+		/** A link the list lacks: the text before the link to «Документы и реквизиты» and after it. */
+		qrLinkGone: (name: string) =>
+			[`Ссылки «${name}» нет в списке — выберите другую ссылку или добавьте её в «`, '»'] as const,
 		barcodeHeight: 'Высота, мм',
 		barcodeDigits: 'Цифры под штрихкодом',
 		barcodeStretch: 'Растянуть по ширине',

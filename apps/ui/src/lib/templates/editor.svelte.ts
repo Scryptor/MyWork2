@@ -22,7 +22,7 @@ import { sameValue } from '#lib/orders/merge.js';
 import { toast } from '#lib/ui/toast/toast.svelte.js';
 import { createHistory } from './history.svelte.js';
 import { blockAt, type BlockPath } from './ops.js';
-import { qrLinkId } from './qr.js';
+import { linkName, qrLinkId } from './qr.js';
 
 const t = ru.templates;
 
@@ -297,10 +297,7 @@ export function blockLabel(block: Block, links: readonly FirmLink[] = []): strin
 	else if (b.type === 'columns') detail = String(b.columns.length);
 	else if (b.type === 'qr') {
 		const id = qrLinkId(b.link);
-		detail =
-			id === null
-				? start(b.link)
-				: (links.find((l) => l.id === id)?.name ?? t.qrLinkNames[id] ?? id);
+		detail = id === null ? start(b.link) : (links.find((l) => l.id === id)?.name ?? linkName(id));
 	}
 	return detail ? `${type} · ${detail}` : type;
 }

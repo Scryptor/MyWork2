@@ -394,6 +394,7 @@ describe('blockLabel', () => {
 			])
 		).toBe('QR-код · Наш сайт');
 		expect(blockLabel(qr('{ссылка.link_gone}'))).toBe('QR-код · link_gone');
+		expect(blockLabel(qr('{ссылка.constructor}'))).toBe('QR-код · constructor');
 		expect(blockLabel(qr('https://example.com/o/{заказ.номер}'))).toBe(
 			'QR-код · https://example.com/o/{заказ.номер}'
 		);

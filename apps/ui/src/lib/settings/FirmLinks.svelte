@@ -1,6 +1,8 @@
 <!-- The list of the firm's links printed as QR codes (plan 8.3): the built-in ones can be switched off and
-     renamed, an own one can also be deleted. The list goes to the server whole, as it is edited. -->
+     renamed, an own one can also be deleted — its toast «Вернуть» puts it back in its place with its id
+     (templates print its QR by the id). The list goes to the server whole, as it is edited. -->
 <script lang="ts">
+	import { onDestroy } from 'svelte';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import type { FirmLink } from '$api/FirmLink';
@@ -10,6 +12,7 @@
 	import IconButton from '#lib/ui/IconButton.svelte';
 	import Switch from '#lib/ui/Switch.svelte';
 	import TextInput from '#lib/ui/TextInput.svelte';
+	import { toast } from '#lib/ui/toast/toast.svelte.js';
 	import { isBuiltin, MAX_LINKS, newLinkId, newLinkName } from './firm-links.js';
 	import type { SettingsEditor } from './settings-editor.svelte.js';
 
@@ -37,12 +40,38 @@
 		];
 		editor.commit('firm_links', next);
 	}
+
+	/**
+	 * The toasts «Ссылка … удалена» on screen. They go with the list:
+	 * «Вернуть» never writes from a closed page.
+	 */
+	let undoToasts: string[] = [];
+
 	function remove(i: number) {
+		const link = links[i];
+		if (!link) return;
 		editor.commit(
 			'firm_links',
 			links.filter((_, k) => k !== i)
 		);
+		const id = toast.show({
+			message: t.linkRemoved(link.name),
+			action: { label: t.linkRestore, run: () => restore(link, i) },
+			onclose: () => (undoToasts = undoToasts.filter((u) => u !== id))
+		});
+		undoToasts = [...undoToasts, id];
 	}
+	/** Back to its place (or to the end of a shorter list), unless a link with its id is there again. */
+	function restore(link: FirmLink, at: number) {
+		if (links.some((l) => l.id === link.id)) return;
+		const next = [...links];
+		next.splice(Math.min(at, next.length), 0, link);
+		editor.commit('firm_links', next);
+	}
+
+	onDestroy(() => {
+		for (const id of undoToasts) toast.dismiss(id);
+	});
 </script>
 
 <ul class="links" aria-label={t.qrLinks}>
