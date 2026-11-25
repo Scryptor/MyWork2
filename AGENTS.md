@@ -31,7 +31,7 @@
   (проверяет привязки до их перегенерации) — тогда запустить `cargo test -p mw-api --test contract` без переменной, он должен пройти.
 - `Actor::for_tests` и `Core::db()` — только в тестах (фича `testing`). Рабочий код получает `Actor` из `Core::authenticate` или `Actor::unrestricted`.
 - Документы (`mw-docs`): данные заказа никогда не становятся разметкой Typst — только `data.json` и виртуальные `barcode.svg`, `logo.png` и `qr-<имя>.svg`.
-  Рендерит их только `Core::export_document` (под семафором), сам `mw-docs` из API и интерфейса не зовут.
+  Рендерят их только методы `Core::export_*` (`export_document`, `export_documents`, `export_cell_stickers`) под семафором, сам `mw-docs` из API и интерфейса не зовут.
 - Свой Typst-код (блок `TypstCode`) строится только процессом-рендерером (`RenderPool`, аргумент `--mw-render-worker`): компиляцию нельзя прервать изнутри, а процесс можно убить по сроку. В процессе сервера такой шаблон строится только в тестах (`Core::with_code_in_process`).
 - Процесс-рендерер пишет в stdout только кадры протокола: ни `println!`, ни журнала в stdout.
 - Аргумент `--mw-render-worker` проверяется в `main` первым делом, до `clap`, `tokio`, блокировки папки данных и Tauri — в `mw-server` и в программе для компьютера.

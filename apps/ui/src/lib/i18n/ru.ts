@@ -1667,7 +1667,8 @@ export const ru = {
 			warranty_issue_act: 'Акт выдачи после гарантии',
 			blank_intake_act: 'Пустой акт приёма',
 			sticker: 'Наклейка',
-			calibration: 'Пробная наклейка'
+			calibration: 'Пробная наклейка',
+			cell_sticker: 'Наклейка ячейки'
 		} satisfies Record<DocumentKind, string>,
 		/** The menu of an order and its button. */
 		print: 'Печать',

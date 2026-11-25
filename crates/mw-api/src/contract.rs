@@ -7,11 +7,11 @@ use ts_rs::TS;
 use crate::{
     AboutInfo, AttachmentNameQuery, AuditListQuery, AuditPage, BarcodeQuery, CaptionPatch,
     ChangePasswordRequest, ClientListQuery, ClientPage, CurrentUser, DictionaryListQuery,
-    DictionaryValue, DocumentPages, DocumentQuery, ErrorBody, HistoryQuery, IncludeArchived,
-    LegacyImportCheck, LegacyImportStart, LoginRequest, LoginResponse, NewServicePoint,
-    NextOrderNumber, OrderListQuery, OrderPage, OrderSummaryQuery, OrderValuesQuery, PageQuery,
-    PhoneQuery, ReorderRequest, ServerInfo, SetPasswordRequest, StatusChange, StockListQuery,
-    StockPage, StockRackQuery, VersionParam,
+    DictionaryValue, DocumentFieldsQuery, DocumentPages, DocumentQuery, ErrorBody, HistoryQuery,
+    IncludeArchived, LegacyImportCheck, LegacyImportStart, LoginRequest, LoginResponse,
+    NewServicePoint, NextOrderNumber, OrderListQuery, OrderPage, OrderSummaryQuery,
+    OrderValuesQuery, PageQuery, PhoneQuery, ReorderRequest, ServerInfo, SetPasswordRequest,
+    StatusChange, StockListQuery, StockPage, StockRackQuery, VersionParam,
 };
 
 /// Выгружает в `dir` TS-типы всех корневых типов API вместе с зависимостями
@@ -125,6 +125,7 @@ pub fn export_typescript(dir: &Path) -> Result<(), ts_rs::ExportError> {
     mw_core::BackupRestoreRequest::export_all(&cfg)?;
     mw_core::BackupLegacyChoice::export_all(&cfg)?;
     DocumentQuery::export_all(&cfg)?;
+    DocumentFieldsQuery::export_all(&cfg)?;
     crate::OrderReportQuery::export_all(&cfg)?;
     crate::OrderExportQuery::export_all(&cfg)?;
     crate::ClientExportQuery::export_all(&cfg)?;

@@ -168,6 +168,8 @@ fn stock_map_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(stock_map::put_stock))
         .routes(routes!(stock_map::move_stock))
         .routes(routes!(stock_map::unplace_stock))
+        .routes(routes!(stock_map::rack_stickers))
+        .routes(routes!(stock_map::cell_sticker))
 }
 
 /// Заказы, их журнал, комментарии и запчасти.

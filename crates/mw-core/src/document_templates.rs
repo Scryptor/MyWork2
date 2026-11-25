@@ -294,8 +294,9 @@ impl Core {
             .ok_or_else(|| CoreError::Validation(vec![FieldError::new("path", "code_unavailable")]))
     }
 
-    /// Поля подстановки в порядке меню: поля реестра, затем ссылки фирмы из настроек по порядку.
-    pub fn document_fields(&self) -> Vec<DocumentField> {
+    /// Поля подстановки в порядке меню: поля вида (`mw_docs::fields::fields_for`), затем ссылки
+    /// фирмы из настроек по порядку. Без вида — поля актов, как у акта приёма.
+    pub fn document_fields(&self, kind: Option<DocumentKind>) -> Vec<DocumentField> {
         use mw_docs::fields::{LINK_KEY_PREFIX, LINK_PLACEHOLDER_PREFIX};
         let links = self
             .settings()
@@ -310,8 +311,7 @@ impl Core {
                     format!("Ссылка: {} (выключена)", link.name)
                 },
             });
-        mw_docs::fields::fields()
-            .iter()
+        mw_docs::fields::fields_for(kind.unwrap_or(DocumentKind::IntakeAct))
             .map(|f| DocumentField {
                 key: f.key.to_owned(),
                 placeholder: f.placeholder.to_owned(),

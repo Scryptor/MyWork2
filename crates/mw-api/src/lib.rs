@@ -30,14 +30,15 @@ pub use dto::{
     AboutInfo, AttachmentNameQuery, AuditListQuery, AuditPage, BarcodeQuery, BlockCode,
     BlockCodeRequest, CaptionPatch, ChangePasswordRequest, ClientExportQuery, ClientListQuery,
     ClientPage, ContactsExportQuery, CurrentUser, DictionaryListQuery, DictionaryValue,
-    DocumentBatch, DocumentFormat, DocumentPages, DocumentQuery, HistoryQuery, IncludeArchived,
-    LegacyImportCheck, LegacyImportStart, LoginRequest, LoginResponse, MovesReportQuery,
-    NewServicePoint, NextOrderNumber, OrderCommentPage, OrderCommentQuery, OrderExportQuery,
-    OrderListQuery, OrderPage, OrderReportQuery, OrderSummaryQuery, OrderValuesQuery, PageQuery,
-    PhoneQuery, ReorderRequest, ServerInfo, SetPasswordRequest, StatusChange, StockListQuery,
-    StockPage, StockRackQuery, TemplatePreview, VersionParam,
+    DocumentBatch, DocumentFieldsQuery, DocumentFormat, DocumentPages, DocumentQuery, HistoryQuery,
+    IncludeArchived, LegacyImportCheck, LegacyImportStart, LoginRequest, LoginResponse,
+    MovesReportQuery, NewServicePoint, NextOrderNumber, OrderCommentPage, OrderCommentQuery,
+    OrderExportQuery, OrderListQuery, OrderPage, OrderReportQuery, OrderSummaryQuery,
+    OrderValuesQuery, PageQuery, PhoneQuery, ReorderRequest, ServerInfo, SetPasswordRequest,
+    StatusChange, StockListQuery, StockPage, StockRackQuery, TemplatePreview, VersionParam,
 };
 pub use error::{ErrorBody, ErrorCode, ErrorField};
+pub use mw_core::documents::CellStickerRequest;
 pub use state::ApiConfig;
 
 use middleware::{

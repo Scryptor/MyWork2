@@ -5,7 +5,7 @@ mod items;
 mod parts;
 mod photos;
 mod places;
-mod racks;
+pub(crate) mod racks;
 
 pub use parts::{NewOrderPart, OrderPart, OrderParts};
 pub use racks::{NewStockRack, StockCell, StockRack, StockRackPatch};

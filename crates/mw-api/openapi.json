@@ -1672,8 +1672,19 @@
         "tags": [
           "Документы"
         ],
-        "summary": "Поля подстановки для меню «вставить поле» (достаточно войти).",
+        "summary": "Поля подстановки для меню «вставить поле» (достаточно войти); `kind` — поля этого вида.",
         "operationId": "list_fields",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "description": "Вид документа; без него — поля актов.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/DocumentKind"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -6476,6 +6487,302 @@
         ]
       }
     },
+    "/api/v1/stock/racks/{id}/cells/{shelf}/{cell}/sticker": {
+      "get": {
+        "tags": [
+          "Склад"
+        ],
+        "summary": "Наклейка одной ячейки (право `stock_view`). Нет шкафа — 404, ячейки нет в сетке — 422.",
+        "operationId": "cell_sticker",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер шкафа",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "shelf",
+            "in": "path",
+            "description": "Номер полки",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "cell",
+            "in": "path",
+            "description": "Номер ячейки на полке",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "description": "`pdf` или `png`; по умолчанию `pdf`.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/DocumentFormat"
+            }
+          },
+          {
+            "name": "dpi",
+            "in": "query",
+            "description": "Разрешение растра PNG, точек на дюйм (72–600); по умолчанию 110. Только для `png`.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "printer_dpi",
+            "in": "query",
+            "description": "Разрешение принтера, точек на дюйм (72–600): ширина штрихкода подгоняется под целое число\nточек принтера, без него модуль штрихкода 0,33 мм. Годится с обоими форматами.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "label_w_mm",
+            "in": "query",
+            "description": "Ширина наклейки, мм (15–200); только вместе с `label_h_mm`.",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          {
+            "name": "label_h_mm",
+            "in": "query",
+            "description": "Высота наклейки, мм (15–200); только вместе с `label_w_mm`.",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          {
+            "name": "offset_x_mm",
+            "in": "query",
+            "description": "Сдвиг содержимого вправо, мм (от −10 до 10); по умолчанию 0.",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          {
+            "name": "offset_y_mm",
+            "in": "query",
+            "description": "Сдвиг содержимого вниз, мм (от −10 до 10); по умолчанию 0.",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          {
+            "name": "pages",
+            "in": "query",
+            "description": "Какие страницы выгрузить: номера и диапазоны через запятую, `1,3-4` (пробелы и «–»\nдопускаются); без параметра или пусто — все. Неверная запись — 422 `pages`/`invalid`,\nстраницы нет в документе — 422 `pages`/`out_of_range`. Годится с обоими форматами.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "PDF или, для `format=png`, страницы PNG",
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentPages"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/stock/racks/{id}/stickers": {
+      "get": {
+        "tags": [
+          "Склад"
+        ],
+        "summary": "Наклейки шкафа: сначала шкафа, затем всех его ячеек (право `stock_view`); у шкафа 1×1 наклейка\nодна. PDF или, для `format=png`, страницы.",
+        "operationId": "rack_stickers",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер шкафа",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "description": "`pdf` или `png`; по умолчанию `pdf`.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/DocumentFormat"
+            }
+          },
+          {
+            "name": "dpi",
+            "in": "query",
+            "description": "Разрешение растра PNG, точек на дюйм (72–600); по умолчанию 110. Только для `png`.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "printer_dpi",
+            "in": "query",
+            "description": "Разрешение принтера, точек на дюйм (72–600): ширина штрихкода подгоняется под целое число\nточек принтера, без него модуль штрихкода 0,33 мм. Годится с обоими форматами.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "label_w_mm",
+            "in": "query",
+            "description": "Ширина наклейки, мм (15–200); только вместе с `label_h_mm`.",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          {
+            "name": "label_h_mm",
+            "in": "query",
+            "description": "Высота наклейки, мм (15–200); только вместе с `label_w_mm`.",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          {
+            "name": "offset_x_mm",
+            "in": "query",
+            "description": "Сдвиг содержимого вправо, мм (от −10 до 10); по умолчанию 0.",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          {
+            "name": "offset_y_mm",
+            "in": "query",
+            "description": "Сдвиг содержимого вниз, мм (от −10 до 10); по умолчанию 0.",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          {
+            "name": "pages",
+            "in": "query",
+            "description": "Какие страницы выгрузить: номера и диапазоны через запятую, `1,3-4` (пробелы и «–»\nдопускаются); без параметра или пусто — все. Неверная запись — 422 `pages`/`invalid`,\nстраницы нет в документе — 422 `pages`/`out_of_range`. Годится с обоими форматами.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "PDF или, для `format=png`, страницы PNG",
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentPages"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/stock/summary": {
       "get": {
         "tags": [
@@ -8977,7 +9284,8 @@
           "warranty_issue_act",
           "blank_intake_act",
           "sticker",
-          "calibration"
+          "calibration",
+          "cell_sticker"
         ]
       },
       "DocumentPages": {

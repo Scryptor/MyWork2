@@ -325,3 +325,90 @@ async fn stock_search_knows_place_codes() {
         assert_eq!(found, vec!["B-2-4"], "{}", t.label);
     }
 }
+
+#[tokio::test]
+async fn stickers_come_as_pdf_or_png() {
+    for t in apis(Listen::Network).await {
+        let token = t
+            .token_with("sklad", &[Permission::StockView, Permission::StockEdit])
+            .await;
+        let r = t
+            .send(
+                Method::POST,
+                "/api/v1/stock/racks",
+                Some(&token),
+                Some(body("b")),
+            )
+            .await;
+        let id = r.body["id"].as_i64().unwrap();
+
+        let (status, headers, bytes) = t
+            .get_raw(
+                &format!("/api/v1/stock/racks/{id}/cells/2/4/sticker?format=pdf"),
+                &token,
+            )
+            .await;
+        assert_eq!(status, 200, "{}", t.label);
+        assert_eq!(headers["content-type"], "application/pdf");
+        assert_eq!(
+            headers["content-disposition"], "inline; filename=\"naklejka-yachejki-B-2-4.pdf\"",
+            "{}",
+            t.label
+        );
+        assert!(bytes.starts_with(b"%PDF-"));
+
+        let r = t
+            .get(
+                &format!("/api/v1/stock/racks/{id}/cells/2/4/sticker?format=png"),
+                Some(&token),
+            )
+            .await;
+        assert_eq!(r.status, 200, "{}: {}", t.label, r.body);
+        assert_eq!(r.body["pages"].as_array().unwrap().len(), 1);
+
+        let (status, headers, bytes) = t
+            .get_raw(
+                &format!("/api/v1/stock/racks/{id}/stickers?format=pdf"),
+                &token,
+            )
+            .await;
+        assert_eq!(status, 200, "{}", t.label);
+        assert_eq!(
+            headers["content-disposition"],
+            "inline; filename=\"naklejki-shkafa-B.pdf\""
+        );
+        assert!(bytes.starts_with(b"%PDF-"));
+
+        let r = t
+            .get(
+                &format!("/api/v1/stock/racks/{id}/cells/9/9/sticker"),
+                Some(&token),
+            )
+            .await;
+        assert_eq!(r.status, 422, "{}: {}", t.label, r.body);
+        let r = t
+            .get("/api/v1/stock/racks/9999/stickers", Some(&token))
+            .await;
+        assert_eq!(r.status, 404, "{}: {}", t.label, r.body);
+
+        let r = t
+            .get("/api/v1/document-fields?kind=cell_sticker", Some(&token))
+            .await;
+        assert_eq!(r.status, 200);
+        let keys: Vec<_> = r
+            .body
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|f| f["placeholder"].as_str().unwrap())
+            .collect();
+        assert!(keys.contains(&"ячейка.код"), "{keys:?}");
+        assert!(!keys.contains(&"заказ.номер"));
+
+        let r = t
+            .get("/api/v1/documents/cell_sticker?format=png", Some(&token))
+            .await;
+        assert_eq!(r.status, 200, "{}: {}", t.label, r.body);
+        assert_eq!(r.body["pages"].as_array().unwrap().len(), 1);
+    }
+}

@@ -7,6 +7,7 @@ use mw_domain::documents::DocumentKind;
 use typst::layout::{Frame, FrameItem, Point};
 use typst::visualize::ImageKind;
 
+use crate::barcode::Shape;
 use crate::model::{
     Align, Block, BlockBody, CopyFilter, FieldRow, Layout, Margins, PageSetup, PageSize, Template,
 };
@@ -127,6 +128,11 @@ fn attribute(tag: &str, name: &str) -> f64 {
 /// Every crop shows bars from its top to its bottom, and the guard bars stick out 5 of its own
 /// modules below the regular ones.
 fn assert_covered(crop: &Crop, what: &str) {
+    assert_covered_with(crop, 5.0, what);
+}
+
+/// The same for a symbol whose guard bars stick out `guard_modules` modules (Code 128 has none).
+fn assert_covered_with(crop: &Crop, guard_modules: f64, what: &str) {
     assert!(
         crop.image_y <= EPS_MM,
         "{what}: bars start below the top: {crop:?}"
@@ -141,8 +147,8 @@ fn assert_covered(crop: &Crop, what: &str) {
     );
     let guard_extension = (crop.guard - crop.regular) * crop.scale();
     assert!(
-        (guard_extension - 5.0 * crop.module()).abs() < EPS_MM,
-        "{what}: guard bars stick out {guard_extension} mm, not 5 modules: {crop:?}"
+        (guard_extension - guard_modules * crop.module()).abs() < EPS_MM,
+        "{what}: guard bars stick out {guard_extension} mm, not {guard_modules} modules: {crop:?}"
     );
 }
 
@@ -180,8 +186,19 @@ fn every_standard_barcode_crop_is_covered_and_the_image_is_never_taller_than_the
                 let what = format!("{kind:?} {label_mm:?} {dpi:?}");
                 let doc = render(&template, &data, &opts).unwrap_or_else(|e| panic!("{what}: {e}"));
                 let crops = crops(&doc);
+                let area_width =
+                    label_mm.map_or_else(
+                        || f64::from(template.page.size.size_mm().0),
+                        |(w, _)| f64::from(w),
+                    ) - f64::from(template.page.margins_mm.left + template.page.margins_mm.right);
+                let code_fits = data.barcode.as_deref().is_some_and(|code| {
+                    Shape::of(code).is_some_and(|shape| shape.fits(area_width, dpi))
+                });
                 let expected = match (data.barcode.is_some(), template.layout) {
                     (false, _) => 0,
+                    (true, Layout::OnePerPage) if kind == DocumentKind::CellSticker => {
+                        usize::from(code_fits)
+                    }
                     (true, Layout::TwoPerA4 | Layout::SheetPerCopy | Layout::TwoAcross) => 2,
                     (true, Layout::OnePerPage) => 1,
                 };
@@ -193,7 +210,12 @@ fn every_standard_barcode_crop_is_covered_and_the_image_is_never_taller_than_the
                 let margins = template.page.margins_mm;
                 let area_height = page_height - f64::from(margins.top + margins.bottom);
                 for crop in &crops {
-                    assert_covered(crop, &what);
+                    let guard = if kind == DocumentKind::CellSticker {
+                        0.0
+                    } else {
+                        5.0
+                    };
+                    assert_covered_with(crop, guard, &what);
                     // One image serves every copy: its bars are no longer than the page area (twice
                     // the page took hundreds of megabytes of textures on a 600 dpi printer).
                     assert!(crop.regular <= area_height + EPS_MM, "{what}: {crop:?}");
@@ -823,12 +845,23 @@ fn standard_acts_start_with_logo() {
             height_mm: 15.0,
             align: Align::Left,
         };
-        let acts = !matches!(kind, DocumentKind::Sticker | DocumentKind::Calibration);
+        let acts = !kind.is_label();
         assert_eq!(first == Some(&expected), acts, "{kind:?}");
         if !acts {
             assert!(!format!("{:?}", t.blocks).contains("Logo"), "{kind:?}");
         }
     }
+}
+
+#[test]
+fn cell_sticker_code_is_16pt() {
+    let doc = render(
+        &standard_template(DocumentKind::CellSticker),
+        &sample_data(DocumentKind::CellSticker),
+        &sticker_options(None, None),
+    )
+    .expect("renders");
+    assert_eq!(sizes_of_text(&doc, "B-2-4"), [16.0]);
 }
 
 /// The font sizes (pt) of the texts of the first page that are exactly `value`.

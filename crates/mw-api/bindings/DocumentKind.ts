@@ -3,4 +3,4 @@
 /**
  * Вид документа.
  */
-export type DocumentKind = "intake_act" | "issue_act" | "warranty_intake_act" | "warranty_issue_act" | "blank_intake_act" | "sticker" | "calibration";
+export type DocumentKind = "intake_act" | "issue_act" | "warranty_intake_act" | "warranty_issue_act" | "blank_intake_act" | "sticker" | "calibration" | "cell_sticker";

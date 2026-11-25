@@ -137,6 +137,40 @@ async fn respond(
     order_id: Option<i64>,
     q: DocumentQuery,
 ) -> Result<Response, ApiError> {
+    let ParsedQuery {
+        options,
+        pages,
+        output,
+        raster_dpi,
+    } = parse_query(&q)?;
+    let request = DocumentRequest {
+        kind,
+        order_id,
+        sample: order_id.is_none() && kind.for_order(),
+        options,
+        draft: None,
+        pages,
+    };
+    let file = state.core.export_document(actor, request, output).await?;
+    let response = match file.bytes {
+        DocumentBytes::Pdf(pdf) => {
+            let name = file_name(kind, order_id.filter(|_| kind.for_order()));
+            pdf_response(pdf, &name)
+        }
+        DocumentBytes::Png(pages) => png_response(&pages, file.page_size_mm, raster_dpi),
+    };
+    Ok(no_store(response))
+}
+
+/// Параметры запроса документа: отрисовка, страницы и вид выгрузки.
+pub(super) struct ParsedQuery {
+    pub(super) options: RenderOptions,
+    pub(super) pages: Option<PageSelection>,
+    pub(super) output: DocumentOutput,
+    pub(super) raster_dpi: u32,
+}
+
+pub(super) fn parse_query(q: &DocumentQuery) -> Result<ParsedQuery, ApiError> {
     let format = q.format.unwrap_or_default();
     if format == DocumentFormat::Pdf && q.dpi.is_some() {
         return Err(ApiError::bad_request(
@@ -161,27 +195,16 @@ async fn respond(
         DocumentFormat::Pdf => DocumentOutput::Pdf,
         DocumentFormat::Png => DocumentOutput::Png { dpi: raster_dpi },
     };
-    let request = DocumentRequest {
-        kind,
-        order_id,
-        sample: order_id.is_none() && kind.for_order(),
+    Ok(ParsedQuery {
         options,
-        draft: None,
         pages,
-    };
-    let file = state.core.export_document(actor, request, output).await?;
-    let response = match file.bytes {
-        DocumentBytes::Pdf(pdf) => {
-            let name = file_name(kind, order_id.filter(|_| kind.for_order()));
-            pdf_response(pdf, &name)
-        }
-        DocumentBytes::Png(pages) => png_response(&pages, file.page_size_mm, raster_dpi),
-    };
-    Ok(no_store(response))
+        output,
+        raster_dpi,
+    })
 }
 
 /// PDF с именем файла для показа в окне.
-fn pdf_response(pdf: Vec<u8>, name: &str) -> Response {
+pub(super) fn pdf_response(pdf: Vec<u8>, name: &str) -> Response {
     with_disposition(
         ([(header::CONTENT_TYPE, "application/pdf")], pdf).into_response(),
         Disposition::Inline,
@@ -233,6 +256,7 @@ pub(super) fn file_base(kind: DocumentKind) -> &'static str {
         DocumentKind::BlankIntakeAct => "akt-priema-pustoj",
         DocumentKind::Sticker => "naklejka",
         DocumentKind::Calibration => "kalibrovka",
+        DocumentKind::CellSticker => "naklejka-yachejki",
     }
 }
 

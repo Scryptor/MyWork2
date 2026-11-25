@@ -106,14 +106,17 @@ pub struct StockRackPatch {
     pub service_point_id: Option<Option<i64>>,
 }
 
-fn grid(m: &stock_rack::Model) -> Grid {
+pub(crate) fn grid(m: &stock_rack::Model) -> Grid {
     Grid {
         shelves: m.shelves,
         cells_per_shelf: m.cells_per_shelf,
     }
 }
 
-async fn load(conn: &impl ConnectionTrait, id: i64) -> Result<stock_rack::Model, CoreError> {
+pub(crate) async fn load(
+    conn: &impl ConnectionTrait,
+    id: i64,
+) -> Result<stock_rack::Model, CoreError> {
     stock_rack::Entity::find_by_id(id)
         .one(conn)
         .await?

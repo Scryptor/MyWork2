@@ -6,7 +6,7 @@
 
 use mw_domain::documents::DocumentKind;
 
-use crate::fields::{LEGACY_LINKS, LINK_KEY_PREFIX, LINK_SAMPLES, fields};
+use crate::fields::{LEGACY_LINKS, LINK_KEY_PREFIX, LINK_SAMPLES, fields_for};
 use crate::model::{
     Align, Block, BlockBody, CopyFilter, FieldRow, Layout, Margins, PageSetup, PageSize, Template,
 };
@@ -62,6 +62,7 @@ pub fn standard_template(kind: DocumentKind) -> Template {
         ),
         DocumentKind::Sticker => sticker(),
         DocumentKind::Calibration => calibration(),
+        DocumentKind::CellSticker => cell_sticker(),
     }
 }
 
@@ -81,13 +82,18 @@ pub fn sample_data(kind: DocumentKind) -> DocumentData {
         linked.chain(legacy)
     };
     let samples = || {
-        fields()
-            .iter()
+        fields_for(kind)
             .map(|f| (f.key.to_owned(), f.sample.to_owned()))
             .chain(links())
     };
     match kind {
         DocumentKind::Calibration => DocumentData::default(),
+        DocumentKind::CellSticker => DocumentData {
+            values: samples().collect(),
+            barcode: Some("B-2-4".to_owned()),
+            logo: None,
+            blank: false,
+        },
         DocumentKind::BlankIntakeAct => DocumentData {
             values: samples()
                 .filter(|(key, _)| !key.starts_with("order.") && !key.starts_with("client."))
@@ -279,6 +285,38 @@ fn sticker() -> Template {
             line("{клиент.фио}", None),
             line("{клиент.телефон}", None),
             line("{заказ.устройство}", None),
+        ],
+    }
+}
+
+/// The cell's code over its rack's name and the code as a barcode (Code 128: the code has letters).
+fn cell_sticker() -> Template {
+    let line = |text: &str, size_pt: Option<f32>, bold: bool| {
+        both(BlockBody::Text {
+            text: text.to_owned(),
+            size_pt,
+            bold,
+            align: Align::Center,
+            one_line: true,
+            frame: false,
+            numbered: false,
+        })
+    };
+    Template {
+        kind: DocumentKind::CellSticker,
+        page: label_page(STICKER_MARGIN_MM),
+        layout: Layout::OnePerPage,
+        font_size_pt: STICKER_PT,
+        blocks: vec![
+            line("{ячейка.код}", Some(16.0), true),
+            line("{ячейка.шкаф}", None, false),
+            both(BlockBody::Barcode {
+                height_mm: 6.0,
+                digits: false,
+                align: Align::Center,
+                fill: true,
+                stretch: true,
+            }),
         ],
     }
 }

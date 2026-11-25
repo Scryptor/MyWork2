@@ -913,6 +913,16 @@ pub struct DocumentQuery {
     pub pages: Option<String>,
 }
 
+/// Вид документа для списка полей подстановки.
+#[derive(Debug, Clone, Default, Deserialize, TS, IntoParams)]
+#[serde(deny_unknown_fields)]
+#[ts(optional_fields)]
+#[into_params(parameter_in = Query)]
+pub struct DocumentFieldsQuery {
+    /// Вид документа; без него — поля актов.
+    pub kind: Option<mw_domain::documents::DocumentKind>,
+}
+
 /// Документ одним PDF на несколько заказов: параметры отрисовки — как у `DocumentQuery`.
 #[derive(Debug, Clone, Deserialize, TS, ToSchema)]
 #[serde(deny_unknown_fields)]

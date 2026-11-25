@@ -39,7 +39,7 @@ pub fn presets(kind: DocumentKind) -> Vec<Preset> {
             "Акт выдачи оборудования после гарантийного ремонта",
             true,
         )],
-        DocumentKind::Sticker | DocumentKind::Calibration => Vec::new(),
+        DocumentKind::Sticker | DocumentKind::Calibration | DocumentKind::CellSticker => Vec::new(),
     }
 }
 

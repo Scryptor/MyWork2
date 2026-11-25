@@ -10,11 +10,12 @@ code_enum! {
         BlankIntakeAct => "blank_intake_act",
         Sticker => "sticker",
         Calibration => "calibration",
+        CellSticker => "cell_sticker",
     }
 }
 
 impl DocumentKind {
-    pub const ALL: [DocumentKind; 7] = [
+    pub const ALL: [DocumentKind; 8] = [
         Self::IntakeAct,
         Self::IssueAct,
         Self::WarrantyIntakeAct,
@@ -22,11 +23,20 @@ impl DocumentKind {
         Self::BlankIntakeAct,
         Self::Sticker,
         Self::Calibration,
+        Self::CellSticker,
     ];
 
-    /// Печатается из заказа: все виды, кроме пустого акта приёма и калибровки.
+    /// Печатается из заказа: все виды, кроме пустого акта приёма, калибровки и наклейки ячейки.
     pub fn for_order(self) -> bool {
-        !matches!(self, Self::BlankIntakeAct | Self::Calibration)
+        !matches!(
+            self,
+            Self::BlankIntakeAct | Self::Calibration | Self::CellSticker
+        )
+    }
+
+    /// Этикетка: наклейка, пробная наклейка, наклейка ячейки.
+    pub fn is_label(self) -> bool {
+        matches!(self, Self::Sticker | Self::Calibration | Self::CellSticker)
     }
 
     /// Шаблон можно настраивать: все виды, кроме калибровки.
@@ -52,6 +62,7 @@ impl DocumentKind {
             Self::BlankIntakeAct => "Пустой акт приёма",
             Self::Sticker => "Наклейка",
             Self::Calibration => "Пробная наклейка",
+            Self::CellSticker => "Наклейка ячейки",
         }
     }
 }
@@ -87,7 +98,7 @@ mod tests {
             .into_iter()
             .map(DocumentKind::ordinal)
             .collect();
-        assert_eq!(ordinals, [1, 2, 3, 4, 5, 6, 7]);
+        assert_eq!(ordinals, [1, 2, 3, 4, 5, 6, 7, 8]);
         let labels: Vec<_> = DocumentKind::ALL
             .into_iter()
             .map(DocumentKind::label_ru)
@@ -102,19 +113,24 @@ mod tests {
                 "Пустой акт приёма",
                 "Наклейка",
                 "Пробная наклейка",
+                "Наклейка ячейки",
             ]
         );
     }
 
     #[test]
-    fn only_blank_act_and_calibration_are_printed_without_an_order() {
+    fn kinds_without_an_order() {
         let without: Vec<_> = DocumentKind::ALL
             .into_iter()
             .filter(|k| !k.for_order())
             .collect();
         assert_eq!(
             without,
-            [DocumentKind::BlankIntakeAct, DocumentKind::Calibration]
+            [
+                DocumentKind::BlankIntakeAct,
+                DocumentKind::Calibration,
+                DocumentKind::CellSticker
+            ]
         );
     }
 }

@@ -248,7 +248,7 @@ async fn calibration_is_not_editable() -> Result<(), CoreError> {
             not_editable,
         );
         let list = t.core.list_document_templates(&admin()).await?;
-        assert_eq!(list.len(), 6, "{}", t.label);
+        assert_eq!(list.len(), 7, "{}", t.label);
         assert!(list.iter().all(|i| i.kind != kind));
         let order: Vec<_> = list.iter().map(|i| i.kind).collect();
         let expected: Vec<_> = DocumentKind::ALL
@@ -256,6 +256,7 @@ async fn calibration_is_not_editable() -> Result<(), CoreError> {
             .filter(|k| k.editable())
             .collect();
         assert_eq!(order, expected);
+        assert_eq!(order.last(), Some(&DocumentKind::CellSticker));
         assert!(
             list.iter()
                 .all(|i| !i.custom && i.version == 0 && i.updated_at.is_none())
@@ -471,7 +472,7 @@ async fn import_replaces_kind() -> Result<(), CoreError> {
 #[tokio::test]
 async fn fields_are_listed() {
     for t in cores().await {
-        let fields = t.core.document_fields();
+        let fields = t.core.document_fields(None);
         assert_eq!(fields.len(), 35 + 4, "{}", t.label);
         assert_eq!(fields[0].placeholder, "заказ.номер");
         assert_eq!(fields[0].key, "order.number");
@@ -583,7 +584,7 @@ async fn block_code_needs_settings_manage() {
 #[tokio::test]
 async fn fields_have_keys() {
     for t in cores().await {
-        let fields = t.core.document_fields();
+        let fields = t.core.document_fields(None);
         let number = fields
             .iter()
             .find(|f| f.placeholder == "заказ.номер")
@@ -627,7 +628,7 @@ async fn document_fields_list_the_links() {
     use mw_domain::links::{FirmLink, default_links};
     for t in cores().await {
         let tail = |t: &TestCore| {
-            let fields = t.core.document_fields();
+            let fields = t.core.document_fields(None);
             fields[35..].to_vec()
         };
         let got = tail(&t);
@@ -673,7 +674,7 @@ async fn document_fields_list_the_links() {
             "{}",
             t.label
         );
-        let all = t.core.document_fields();
+        let all = t.core.document_fields(None);
         assert!(
             all.iter().all(|f| !f.key.starts_with("firm.telegram")),
             "{}",
@@ -717,4 +718,24 @@ async fn template_lists_its_presets() -> Result<(), CoreError> {
         assert!(rendered.text().contains("К оплате"), "{}", t.label);
     }
     Ok(())
+}
+
+#[tokio::test]
+async fn document_fields_depend_on_the_kind() {
+    for t in cores().await {
+        let keys = |kind| {
+            t.core
+                .document_fields(kind)
+                .into_iter()
+                .map(|f| f.key)
+                .collect::<Vec<_>>()
+        };
+        let cell = keys(Some(DocumentKind::CellSticker));
+        assert!(cell.contains(&"cell.code".to_owned()), "{}", t.label);
+        assert!(!cell.contains(&"order.number".to_owned()));
+        let none = keys(None);
+        assert!(!none.contains(&"cell.code".to_owned()));
+        assert!(none.contains(&"order.number".to_owned()));
+        assert_eq!(none, keys(Some(DocumentKind::IntakeAct)));
+    }
 }

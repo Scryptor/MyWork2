@@ -1,5 +1,6 @@
 //! Substitution fields: `{заказ.номер}` in template text is the value `order.number` of the document data.
 
+use mw_domain::documents::DocumentKind;
 use mw_domain::links::is_link_id;
 use mw_domain::search::normalize_search;
 
@@ -79,7 +80,7 @@ pub const LINK_SAMPLES: [(&str, &str); 5] = [
     ("google_maps", "https://maps.google.com/?q=example"),
 ];
 
-static FIELDS: [FieldDef; 35] = [
+static FIELDS: [FieldDef; 39] = [
     field("order.number", "заказ.номер", "Номер заказа", "1234", ""),
     field(
         "order.barcode",
@@ -287,11 +288,28 @@ static FIELDS: [FieldDef; 35] = [
         "22 ноября 2026",
         "",
     ),
+    field("cell.code", "ячейка.код", "Код ячейки", "B-2-4", ""),
+    field("cell.rack", "ячейка.шкаф", "Шкаф (подпись)", "Дисплеи", ""),
+    field("cell.shelf", "ячейка.полка", "Полка", "2", ""),
+    field("cell.number", "ячейка.номер", "Номер ячейки", "4", ""),
 ];
 
 /// All substitution fields, in the order of the «insert field» menu.
 pub fn fields() -> &'static [FieldDef] {
     &FIELDS
+}
+
+/// The fields offered for `kind`: a cell sticker has the cell's, the firm's and the date; every other
+/// kind has everything but the cell's.
+pub fn fields_for(kind: DocumentKind) -> impl Iterator<Item = &'static FieldDef> {
+    FIELDS.iter().filter(move |f| {
+        let cell = f.key.starts_with("cell.");
+        if kind == DocumentKind::CellSticker {
+            cell || f.key.starts_with("firm.") || f.key == "doc.date"
+        } else {
+            !cell
+        }
+    })
 }
 
 /// The field written in template text as `{name}`: case does not matter, «ё» = «е».
@@ -350,11 +368,31 @@ mod tests {
 
     #[test]
     fn link_fields_are_not_static() {
-        assert_eq!(FIELDS.len(), 35);
+        assert_eq!(FIELDS.len(), 39);
         for key in ["firm.telegram", "firm.google_maps", "firm.yandex_maps"] {
             assert!(FIELDS.iter().all(|f| f.key != key), "{key}");
         }
         assert_eq!(field_by_placeholder("фирма.телеграм").map(|f| f.key), None);
+    }
+
+    #[test]
+    fn cell_fields_belong_to_the_cell_sticker() {
+        let names = |kind| fields_for(kind).map(|f| f.placeholder).collect::<Vec<_>>();
+        let cell = names(DocumentKind::CellSticker);
+        assert!(cell.contains(&"ячейка.код"));
+        assert!(cell.contains(&"фирма.название"));
+        assert!(!cell.contains(&"заказ.номер"));
+        for kind in DocumentKind::ALL {
+            if kind != DocumentKind::CellSticker {
+                let other = names(kind);
+                assert!(other.iter().all(|n| !n.starts_with("ячейка.")), "{kind:?}");
+                assert!(other.contains(&"заказ.номер"), "{kind:?}");
+            }
+        }
+        assert_eq!(
+            field_by_placeholder("Ячейка.Шкаф").map(|f| f.key),
+            Some("cell.rack")
+        );
     }
 
     #[test]

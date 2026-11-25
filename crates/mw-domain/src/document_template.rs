@@ -331,12 +331,12 @@ impl Template {
                 if self.page.size != PageSize::A4 || self.page.landscape {
                     errors.push(FieldError::new("layout", "requires_a4"));
                 }
-                if matches!(self.kind, DocumentKind::Sticker | DocumentKind::Calibration) {
+                if self.kind.is_label() {
                     errors.push(FieldError::new("layout", "not_allowed"));
                 }
             }
             Layout::SheetPerCopy => {
-                if matches!(self.kind, DocumentKind::Sticker | DocumentKind::Calibration) {
+                if self.kind.is_label() {
                     errors.push(FieldError::new("layout", "not_allowed"));
                 }
             }
@@ -344,7 +344,7 @@ impl Template {
                 if self.page.size != PageSize::A4 || !self.page.landscape {
                     errors.push(FieldError::new("layout", "requires_a4_landscape"));
                 }
-                if matches!(self.kind, DocumentKind::Sticker | DocumentKind::Calibration) {
+                if self.kind.is_label() {
                     errors.push(FieldError::new("layout", "not_allowed"));
                 }
             }
@@ -689,6 +689,17 @@ mod tests {
         let mut t = base(DocumentKind::Sticker);
         t.layout = Layout::TwoPerA4;
         assert_eq!(errs(&t), [pair("layout", "not_allowed")]);
+    }
+
+    #[test]
+    fn cell_sticker_is_a_label() {
+        for layout in [Layout::TwoPerA4, Layout::SheetPerCopy, Layout::TwoAcross] {
+            let mut t = base(DocumentKind::CellSticker);
+            t.layout = layout;
+            t.page.size = PageSize::A4;
+            t.page.landscape = layout == Layout::TwoAcross;
+            assert_eq!(errs(&t), [pair("layout", "not_allowed")], "{layout:?}");
+        }
     }
 
     #[test]

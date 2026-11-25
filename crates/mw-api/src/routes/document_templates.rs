@@ -12,9 +12,11 @@ use mw_domain::documents::DocumentKind;
 use super::documents::{DEFAULT_PNG_DPI, file_base, png_response, render_options};
 use super::headers::{Disposition, no_store, with_disposition};
 use crate::auth::CurrentActor;
-use crate::dto::{BlockCode, BlockCodeRequest, DocumentPages, TemplatePreview};
+use crate::dto::{
+    BlockCode, BlockCodeRequest, DocumentFieldsQuery, DocumentPages, TemplatePreview,
+};
 use crate::error::ApiError;
-use crate::extract::{Json, Path};
+use crate::extract::{Json, Path, Query};
 use crate::state::AppState;
 
 /// Виды документов, шаблоны которых можно менять (достаточно войти).
@@ -211,17 +213,19 @@ pub(super) async fn import_template_file(
     ))
 }
 
-/// Поля подстановки для меню «вставить поле» (достаточно войти).
+/// Поля подстановки для меню «вставить поле» (достаточно войти); `kind` — поля этого вида.
 #[utoipa::path(
     get,
     path = "/api/v1/document-fields",
     tag = "Документы",
     security(("bearer" = [])),
+    params(DocumentFieldsQuery),
     responses((status = 200, body = Vec<DocumentField>))
 )]
 pub(super) async fn list_fields(
     State(state): State<AppState>,
     CurrentActor(_actor): CurrentActor,
+    Query(q): Query<DocumentFieldsQuery>,
 ) -> Json<Vec<DocumentField>> {
-    Json(state.core.document_fields())
+    Json(state.core.document_fields(q.kind))
 }

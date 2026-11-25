@@ -56,7 +56,11 @@ fn mywork2_presets_validate() {
         assert_eq!(t.page.size, PageSize::A4);
         assert!(t.page.landscape);
     }
-    for kind in [DocumentKind::Sticker, DocumentKind::Calibration] {
+    for kind in [
+        DocumentKind::Sticker,
+        DocumentKind::Calibration,
+        DocumentKind::CellSticker,
+    ] {
         assert!(presets(kind).is_empty(), "{kind:?}");
     }
 }

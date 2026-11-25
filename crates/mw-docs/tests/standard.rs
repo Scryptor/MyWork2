@@ -246,6 +246,16 @@ fn sticker_fits_58x40_and_40x30_labels() {
     }
 }
 
+#[test]
+fn cell_sticker_prints_the_code_and_the_rack() {
+    let doc = sample(DocumentKind::CellSticker);
+    assert_page(&doc, 58.0, 40.0);
+    let out = doc.text();
+    assert_printable(DocumentKind::CellSticker, &out);
+    assert_eq!(out.matches("B-2-4").count(), 1, "{out:?}");
+    assert!(out.contains("Дисплеи"), "{out:?}");
+}
+
 /// Width in mm of the barcode image in the Typst source.
 fn barcode_width_mm(source: &str) -> Option<f64> {
     let key = "image(\"barcode.svg\", width: ";
@@ -318,7 +328,7 @@ fn sample_data_comes_from_the_field_samples() {
         mw_domain::barcode::order_barcode(1234),
         "the sample order is number 1234"
     );
-    for field in mw_docs::fields::fields() {
+    for field in mw_docs::fields::fields_for(DocumentKind::IntakeAct) {
         assert_eq!(
             data.values.get(field.key).map(String::as_str),
             Some(field.sample),
@@ -389,7 +399,11 @@ fn write_previews() {
         &RenderOptions::default(),
     );
     previews.push(("intake_act_long_terms".to_owned(), doc));
-    for kind in [DocumentKind::Sticker, DocumentKind::Calibration] {
+    for kind in [
+        DocumentKind::Sticker,
+        DocumentKind::Calibration,
+        DocumentKind::CellSticker,
+    ] {
         let opts = RenderOptions {
             offset_mm: (0.0, 0.0),
             ..label(40.0, 30.0)

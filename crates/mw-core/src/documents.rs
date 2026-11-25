@@ -22,6 +22,7 @@ use mw_domain::pages::PageSelection;
 use mw_domain::pattern::pattern_text;
 use mw_domain::permission::Permission;
 use mw_domain::phone::format_phone;
+use mw_domain::stock_place::cell_code;
 use mw_domain::validation::FieldError;
 use sea_orm::EntityTrait;
 
@@ -288,6 +289,19 @@ pub struct DocumentRequest {
     pub pages: Option<PageSelection>,
 }
 
+/// Какие наклейки склада напечатать.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CellStickerRequest {
+    /// Шкаф.
+    pub rack_id: i64,
+    /// Одна ячейка (полка, ячейка); `None` — наклейка шкафа и затем всех его ячеек.
+    pub cell: Option<(i32, i32)>,
+    /// Размер наклейки, смещение и DPI принтера — как пришли.
+    pub options: RenderOptions,
+    /// Какие страницы выгрузить; `None` — все.
+    pub pages: Option<PageSelection>,
+}
+
 /// Документ одним PDF на несколько заказов.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DocumentBatchRequest {
@@ -469,6 +483,161 @@ impl Core {
         self.print_job(job, kind).await
     }
 
+    /// Наклейки шкафа или одной ячейки в PDF или PNG (право `stock_view`): задание и пределы как у
+    /// [`Core::export_documents`], шаблон — сохранённый «Наклейки ячейки» или стандартный. Нет
+    /// шкафа — `NotFound`; ячейки нет в сетке — `cell`/`no_such_place`; неверный `dpi` у PNG — ошибка
+    /// проверки поля `dpi`. Без ячейки сначала наклейка шкафа (код шкафа и подпись; у шкафа 1×1 её
+    /// нет, ячейка и шкаф — одно место), затем ячейки полка за полкой.
+    pub async fn export_cell_stickers(
+        &self,
+        actor: &Actor,
+        req: CellStickerRequest,
+        output: DocumentOutput,
+    ) -> Result<DocumentFile, CoreError> {
+        if let DocumentOutput::Png { dpi } = output
+            && !RASTER_DPI.contains(&dpi)
+        {
+            return Err(CoreError::Validation(vec![FieldError::new(
+                "dpi",
+                "out_of_range",
+            )]));
+        }
+        let (template, docs, logo, options, pages) =
+            self.cell_stickers_prepared(actor, req).await?;
+        let job = Job {
+            template,
+            options,
+            logo,
+            docs,
+            output: output.into(),
+            limits: job_limits(MAX_BATCH_PAGES),
+            pages,
+        };
+        self.print_job(job, DocumentKind::CellSticker).await
+    }
+
+    /// Код для имени файла наклеек: ячейки или, без неё, шкафа (право `stock_view`).
+    pub async fn cell_sticker_code(
+        &self,
+        actor: &Actor,
+        rack_id: i64,
+        cell: Option<(i32, i32)>,
+    ) -> Result<String, CoreError> {
+        actor.require(Permission::StockView)?;
+        let rack = crate::stock::racks::load(&self.db, rack_id).await?;
+        Ok(match cell {
+            Some((shelf, cell)) => {
+                cell_code(&rack.code, crate::stock::racks::grid(&rack), shelf, cell)
+            }
+            None => rack.code,
+        })
+    }
+
+    /// Те же наклейки без выгрузки, для текста в тестах (`Rendered::text`).
+    #[cfg(any(test, feature = "testing"))]
+    pub async fn render_cell_stickers(
+        &self,
+        actor: &Actor,
+        req: CellStickerRequest,
+    ) -> Result<mw_docs::Rendered, CoreError> {
+        let (template, docs, _, options, _) = self.cell_stickers_prepared(actor, req).await?;
+        self.render_gate
+            .run(move || {
+                let mut pages = Vec::with_capacity(docs.len());
+                let mut total = 0;
+                for data in &docs {
+                    let doc = mw_docs::render(&template, data, &options)?;
+                    total += doc.page_count();
+                    if total > MAX_BATCH_PAGES {
+                        return Err(DocsError::TooManyPages(total));
+                    }
+                    pages.push(doc);
+                }
+                Ok(mw_docs::merge(pages))
+            })
+            .await?
+            .map_err(|e| docs_error(e, DocumentKind::CellSticker))
+    }
+
+    /// Шаблон, данные каждой наклейки, логотип, размеры и выбор страниц.
+    #[allow(clippy::type_complexity)]
+    async fn cell_stickers_prepared(
+        &self,
+        actor: &Actor,
+        req: CellStickerRequest,
+    ) -> Result<
+        (
+            Template,
+            Vec<DocumentData>,
+            Option<std::sync::Arc<[u8]>>,
+            RenderOptions,
+            Option<PageSelection>,
+        ),
+        CoreError,
+    > {
+        actor.require(Permission::StockView)?;
+        check_options(&req.options)?;
+        let rack = crate::stock::racks::load(&self.db, req.rack_id).await?;
+        let grid = crate::stock::racks::grid(&rack);
+        let settings = self.settings();
+        let point = self.point_name(rack.service_point_id).await?;
+        let today = self.now().date();
+        let mut base = own_values(&settings, &point, today);
+        base.insert("cell.rack".to_owned(), rack.label.clone());
+        let sticker = |code: String, shelf: String, number: String| {
+            let mut values = base.clone();
+            values.insert("cell.code".to_owned(), code.clone());
+            values.insert("cell.shelf".to_owned(), shelf);
+            values.insert("cell.number".to_owned(), number);
+            for value in values.values_mut() {
+                if let Cow::Owned(text) = doc_text(value) {
+                    *value = text;
+                }
+            }
+            DocumentData {
+                values,
+                barcode: Some(code),
+                logo: None,
+                blank: false,
+            }
+        };
+        let cell_sticker = |shelf: i32, cell: i32| {
+            sticker(
+                cell_code(&rack.code, grid, shelf, cell),
+                shelf.to_string(),
+                cell.to_string(),
+            )
+        };
+        let docs = match req.cell {
+            Some((shelf, cell)) => {
+                if !grid.contains(shelf, cell) {
+                    return Err(CoreError::Validation(vec![FieldError::new(
+                        "cell",
+                        "no_such_place",
+                    )]));
+                }
+                vec![cell_sticker(shelf, cell)]
+            }
+            None => {
+                let single = grid.shelves == 1 && grid.cells_per_shelf == 1;
+                let rack_sticker =
+                    (!single).then(|| sticker(rack.code.clone(), String::new(), String::new()));
+                rack_sticker
+                    .into_iter()
+                    .chain(grid.cells().map(|(s, c)| cell_sticker(s, c)))
+                    .collect()
+            }
+        };
+        let template = self.template_for_print(DocumentKind::CellSticker).await?;
+        Ok((
+            template,
+            docs,
+            self.firm_logo_png().await,
+            req.options,
+            req.pages,
+        ))
+    }
+
     /// Строит документ. Из заказа — с теми же правами, что и просмотр заказа (`get_order`): нужен
     /// `order_id` (он важнее `sample`) или `sample`, иначе ошибка проверки. Пустой акт приёма и
     /// калибровка — всегда без заказа. Рендер идёт вне рабочих потоков, не больше
@@ -629,6 +798,8 @@ impl Core {
         let today = self.now().date();
         match req.kind {
             DocumentKind::Calibration => Ok(DocumentData::default()),
+            // Наклейка ячейки печатается через `export_cell_stickers`; здесь — образец (превью шаблона).
+            DocumentKind::CellSticker => self.sample_values(req.kind, &settings).await,
             // Бланк заполняют от руки: поля заказа и клиента остаются линиями, свои — из настроек.
             DocumentKind::BlankIntakeAct => {
                 let point = self.point_name(settings.default_service_point_id).await?;
@@ -651,26 +822,32 @@ impl Core {
                     Ok(order_data(&order, &client, &point, &settings, today))
                 }
                 // Образец — на своих реквизитах: фирма и точка из настроек, где они заданы.
-                (None, true) => {
-                    let point = self.point_name(settings.default_service_point_id).await?;
-                    let mut data = sample_data(req.kind);
-                    // Ссылки образца — из настроек: выключенных нет, у включённых без адреса пример.
-                    data.values.retain(|key, _| {
-                        !key.starts_with(LINK_KEY_PREFIX)
-                            && !LEGACY_LINKS.iter().any(|l| l.key == key)
-                    });
-                    let own = link_values(&settings, true)
-                        .into_iter()
-                        .chain(firm_values(&settings, &point))
-                        .filter(|(_, value)| !value.trim().is_empty());
-                    data.values.extend(own);
-                    Ok(data)
-                }
+                (None, true) => self.sample_values(req.kind, &settings).await,
                 (None, false) => Err(CoreError::Validation(vec![FieldError::required(
                     "order_id",
                 )])),
             },
         }
+    }
+
+    /// Образец документа `kind` на своих реквизитах: фирма и точка из настроек, где они заданы.
+    async fn sample_values(
+        &self,
+        kind: DocumentKind,
+        settings: &AppSettings,
+    ) -> Result<DocumentData, CoreError> {
+        let point = self.point_name(settings.default_service_point_id).await?;
+        let mut data = sample_data(kind);
+        // Ссылки образца — из настроек: выключенных нет, у включённых без адреса пример.
+        data.values.retain(|key, _| {
+            !key.starts_with(LINK_KEY_PREFIX) && !LEGACY_LINKS.iter().any(|l| l.key == key)
+        });
+        let own = link_values(settings, true)
+            .into_iter()
+            .chain(firm_values(settings, &point))
+            .filter(|(_, value)| !value.trim().is_empty());
+        data.values.extend(own);
+        Ok(data)
     }
 
     /// Название точки; архивная печатается как есть, нет точки — пусто.
@@ -1128,7 +1305,7 @@ mod tests {
 
     use chrono::{TimeZone, Utc};
     use mw_db::entity::role;
-    use mw_docs::fields::fields;
+    use mw_docs::fields::fields_for;
     use mw_domain::document_template::{CodeDiagnostic, CodePlace};
     use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
@@ -1236,8 +1413,7 @@ mod tests {
 
     /// Ключи реестра и ключи ссылок: `link.<id>` включённых ссылок и старые `firm.*` из `legacy`.
     fn keys_with_links(links: &[&str], legacy: &[&str]) -> BTreeSet<String> {
-        fields()
-            .iter()
+        fields_for(DocumentKind::IntakeAct)
             .map(|f| f.key.to_owned())
             .chain(links.iter().map(|id| format!("link.{id}")))
             .chain(legacy.iter().map(|id| format!("firm.{id}")))

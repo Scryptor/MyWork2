@@ -23,7 +23,7 @@ async fn templates_round_trip_over_http() {
         let token = t.admin_token().await;
         let r = t.get(BASE, Some(&token)).await;
         assert_eq!(r.status, 200, "{}: {}", t.label, r.body);
-        assert_eq!(r.body.as_array().unwrap().len(), 6, "{}", t.label);
+        assert_eq!(r.body.as_array().unwrap().len(), 7, "{}", t.label);
 
         let r = t.get(&format!("{BASE}/intake_act"), Some(&token)).await;
         assert_eq!(r.status, 200, "{}: {}", t.label, r.body);
