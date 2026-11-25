@@ -143,7 +143,9 @@ async fn save_config_rows(core: &Core, rows: &[(&str, &str, &str)]) {
 async fn first_usable_folder_is_taken_and_the_change_is_audited() {
     let tmp = tempfile::tempdir().unwrap();
     let outside = tempfile::tempdir().unwrap();
+    let outside_b = tempfile::tempdir().unwrap();
     let good = outside.path().to_string_lossy().into_owned();
+    let good_b = outside_b.path().to_string_lossy().into_owned();
     let missing = outside
         .path()
         .join("нет-такой")
@@ -163,6 +165,7 @@ async fn first_usable_folder_is_taken_and_the_change_is_audited() {
                 ("CHECKBOX", "EveryDayBackup", "Unchecked"),
                 ("WD-A", "backupPath", &missing),
                 ("WD-B", "backupPath", &good),
+                ("WD-C", "backupPath", &good_b),
             ],
         )
         .await;
@@ -171,7 +174,7 @@ async fn first_usable_folder_is_taken_and_the_change_is_audited() {
             offered,
             Some(BackupLegacySettings {
                 auto: false,
-                folders: vec![missing.clone(), good.clone()],
+                folders: vec![missing.clone(), good.clone(), good_b.clone()],
             })
         );
         assert_eq!(settings_audit(&core).await, 0);
