@@ -1678,6 +1678,9 @@ export const ru = {
 		/** The title of the preview: the document of an order, a sample of one, or the document itself. */
 		ofOrder: (name: string, id: number) => `${name} · № ${id}`,
 		sample: (name: string) => `Образец · ${name}`,
+		/** The titles of the sticker of one cell and of the stickers of a whole rack. */
+		cellSticker: (code: string) => `Наклейка ячейки ${code}`,
+		rackStickers: (code: string) => `Наклейки шкафа ${code}`,
 		document: 'Документ',
 		page: (n: number, of: number) => `Страница ${n} из ${of}`,
 		/** The check box under a page of the preview: print it or not. */

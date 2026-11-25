@@ -1,11 +1,12 @@
 <!-- «Вставить поле» under a text field of a template: opens a search over the fields an order offers
-     (`documentFields()`), and puts `{field}` into the text where the caret was (own Typst code puts what
+     (`documentFields(kind)`), and puts `{field}` into the text where the caret was (own Typst code puts what
      its `format` makes of the field and the text before the caret); the focus goes back to the field
      with the caret after what was put in. -->
 <script lang="ts">
 	import Braces from '@lucide/svelte/icons/braces';
 	import { tick } from 'svelte';
 	import type { DocumentField } from '$api/DocumentField';
+	import type { DocumentKind } from '$api/DocumentKind';
 	import { documentFields } from '#lib/api/document-templates.js';
 	import { errorMessage } from '#lib/api/client.js';
 	import { ru } from '#lib/i18n/ru.js';
@@ -16,6 +17,7 @@
 	import { insertIntoField } from './insert.js';
 
 	let {
+		kind,
 		target,
 		value,
 		onchange,
@@ -23,6 +25,8 @@
 		format = (field) => `{${field.placeholder}}`,
 		trigger = 'button'
 	}: {
+		/** The document the template is of: the menu offers the fields of that document. */
+		kind: DocumentKind;
 		/** The field the text is typed into; its caret is where the placeholder goes. */
 		target: HTMLInputElement | HTMLTextAreaElement | null;
 		value: string;
@@ -53,7 +57,7 @@
 		if (!open) return;
 		if (!loaded) {
 			loaded = true;
-			documentFields().then(
+			documentFields(kind).then(
 				(list) => (fields = list),
 				(e) => {
 					loaded = false;

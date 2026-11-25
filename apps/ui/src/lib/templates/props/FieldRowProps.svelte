@@ -2,6 +2,7 @@
      and «Удалить строку». Typed text makes one step to undo per pause. -->
 <script lang="ts">
 	import Trash2 from '@lucide/svelte/icons/trash-2';
+	import type { DocumentKind } from '$api/DocumentKind';
 	import type { FieldRow } from '$api/FieldRow';
 	import { ru } from '#lib/i18n/ru.js';
 	import IconButton from '#lib/ui/IconButton.svelte';
@@ -11,11 +12,14 @@
 	import InsertField from '../InsertField.svelte';
 
 	let {
+		kind,
 		row,
 		number,
 		onchange,
 		onremove
 	}: {
+		/** The document the template is of. */
+		kind: DocumentKind;
 		row: FieldRow;
 		/** The place of the row in the list, from 1. */
 		number: number;
@@ -41,6 +45,7 @@
 		bind:value={() => row.value, (v) => onchange({ value: v }, 'value')}
 	/>
 	<InsertField
+		{kind}
 		name={row.label || t.fieldRow(number)}
 		target={valueField}
 		value={row.value}

@@ -97,6 +97,7 @@
 
 {#snippet item(r: { row: FieldRow; i: number })}
 	<FieldRowProps
+		kind={editor.template.kind}
 		row={r.row}
 		number={r.i + 1}
 		onchange={(patch, field) => change(r.i, patch, field)}

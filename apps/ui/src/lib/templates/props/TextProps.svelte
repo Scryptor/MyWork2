@@ -53,7 +53,12 @@
 			maxRows={14}
 			bind:value={() => body.text, (v) => set({ text: v }, 'text')}
 		/>
-		<InsertField target={field} value={body.text} onchange={(v) => set({ text: v }, 'text')} />
+		<InsertField
+			kind={editor.template.kind}
+			target={field}
+			value={body.text}
+			onchange={(v) => set({ text: v }, 'text')}
+		/>
 		<NumberField
 			label={t.textSize}
 			hint={t.textSizeHint(formatMm(editor.template.font_size_pt))}

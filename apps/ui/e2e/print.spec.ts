@@ -456,9 +456,10 @@ test('settings: «Образец» of every document and «Пробная нак
 		/^Акт выдачи после гарантии/,
 		/^Пустой акт приёма/,
 		/^Наклейка/,
+		/^Наклейка ячейки/,
 		/^Пробная наклейка/
 	]);
-	await list.getByRole('button', { name: 'Образец: Наклейка' }).click();
+	await list.getByRole('button', { name: 'Образец: Наклейка', exact: true }).click();
 	const sample = previewOf(page, 'Образец · Наклейка');
 	await expectPage(sample);
 	await page.keyboard.press('Escape');

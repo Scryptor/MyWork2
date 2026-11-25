@@ -3,6 +3,7 @@ import type { Block } from '$api/Block';
 import type { DocumentKind } from '$api/DocumentKind';
 import type { DocumentTemplate } from '$api/DocumentTemplate';
 import type { Template } from '$api/Template';
+import { isLabel } from '#lib/print/print.svelte.js';
 import { createTemplateEditor, type TemplateEditorApi } from './editor.svelte.js';
 
 export function templateOf(
@@ -13,7 +14,7 @@ export function templateOf(
 	return {
 		kind,
 		page: { size: 'a4', landscape: false, margins_mm: margins },
-		layout: kind === 'sticker' ? 'one_per_page' : 'two_per_a4',
+		layout: isLabel(kind) ? 'one_per_page' : 'two_per_a4',
 		font_size_pt: 9,
 		blocks
 	};

@@ -26,15 +26,30 @@ export interface DocumentOptions {
 /** A PDF has no raster: its options have no `dpi` (the server refuses one). */
 export type PdfOptions = Omit<DocumentOptions, 'dpi'> & { dpi?: never };
 
-/** An order's document, or without `orderId` the document itself (blank act, calibration) or a sample. */
+/**
+ * An order's document, or without `orderId` the document itself (blank act, calibration) or a sample. A
+ * sticker of a cell is of a rack: `rackId` with `shelf` and `cell` — one cell's, `rackId` alone — the
+ * stickers of the whole rack. `code` only names it in a title; it is never sent.
+ */
 export interface DocumentTarget {
 	orderId?: number;
+	rackId?: number;
+	shelf?: number;
+	cell?: number;
+	code?: string;
 }
 
-const path = (kind: DocumentKind, target: DocumentTarget) =>
-	target.orderId === undefined
+function path(kind: DocumentKind, target: DocumentTarget): string {
+	if (target.rackId !== undefined) {
+		const rack = `/stock/racks/${target.rackId}`;
+		return target.shelf !== undefined && target.cell !== undefined
+			? `${rack}/cells/${target.shelf}/${target.cell}/sticker`
+			: `${rack}/stickers`;
+	}
+	return target.orderId === undefined
 		? `/documents/${kind}`
 		: `/orders/${target.orderId}/documents/${kind}`;
+}
 
 /**
  * The parameters of the request; what is not given is not sent, a PDF never gets `dpi`. `pages` goes

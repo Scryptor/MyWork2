@@ -98,7 +98,13 @@
 					bind:ref={linkField}
 					bind:value={() => body.link, write}
 				/>
-				<InsertField name={t.qrLink} target={linkField} value={body.link} onchange={write} />
+				<InsertField
+					kind={editor.template.kind}
+					name={t.qrLink}
+					target={linkField}
+					value={body.link}
+					onchange={write}
+				/>
 			</div>
 		{/if}
 		<NumberField

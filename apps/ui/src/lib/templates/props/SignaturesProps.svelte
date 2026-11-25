@@ -40,6 +40,7 @@
 				bind:value={() => body.left, (v) => set({ left: v }, 'left')}
 			/>
 			<InsertField
+				kind={editor.template.kind}
 				name={t.signatureLeft}
 				target={leftField}
 				value={body.left}
@@ -54,6 +55,7 @@
 				bind:value={() => body.right, (v) => set({ right: v }, 'right')}
 			/>
 			<InsertField
+				kind={editor.template.kind}
 				name={t.signatureRight}
 				target={rightField}
 				value={body.right}

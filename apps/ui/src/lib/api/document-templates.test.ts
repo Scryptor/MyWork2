@@ -101,4 +101,11 @@ describe('document templates API', () => {
 		expect(await documentFields()).toHaveLength(1);
 		expect(sent(fn)).toMatchObject({ path: '/api/v1/document-fields', method: 'GET' });
 	});
+
+	it('asks for the fields of a kind', async () => {
+		const fn = stubFetch(() => json([]));
+		await documentFields('cell_sticker');
+		expect(sent(fn)).toMatchObject({ path: '/api/v1/document-fields' });
+		expect(fn.mock.calls[0]![0]).toContain('kind=cell_sticker');
+	});
 });

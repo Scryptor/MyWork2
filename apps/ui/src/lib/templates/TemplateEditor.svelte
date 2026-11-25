@@ -21,7 +21,7 @@
 	import { ru } from '#lib/i18n/ru.js';
 	import SaveIndicator from '#lib/orders/SaveIndicator.svelte';
 	import { deviceOf } from '#lib/orders/view.js';
-	import { documentName } from '#lib/print/print.svelte.js';
+	import { documentName, forOrder } from '#lib/print/print.svelte.js';
 	import Button from '#lib/ui/Button.svelte';
 	import Callout from '#lib/ui/Callout.svelte';
 	import Combobox from '#lib/ui/Combobox.svelte';
@@ -80,7 +80,7 @@
 
 	// «Заказ для примера»: «Пример» (the sample order), or an order found by its number, client or device.
 	/** The blank act has no order: its preview is the blank form. */
-	const withOrder = $derived(kind !== 'blank_intake_act');
+	const withOrder = $derived(forOrder(kind));
 	const orders = createOrderSearch({
 		sample: t.sample,
 		sampleHint: t.sampleHint,

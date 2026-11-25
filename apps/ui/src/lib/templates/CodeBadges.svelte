@@ -3,6 +3,7 @@
      «Другое поле…», searches all fields. -->
 <script lang="ts">
 	import type { DocumentField } from '$api/DocumentField';
+	import type { DocumentKind } from '$api/DocumentKind';
 	import { app } from '#lib/app/context.svelte.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import InsertChip from '#lib/ui/InsertChip.svelte';
@@ -11,10 +12,13 @@
 	import { inTypstCode, insertIntoField } from './insert.js';
 
 	let {
+		kind,
 		target,
 		value,
 		onchange
 	}: {
+		/** The document the template is of: «Другое поле…» offers its fields. */
+		kind: DocumentKind;
 		/** The code editor the badges put text into. */
 		target: HTMLTextAreaElement | null;
 		value: string;
@@ -37,7 +41,7 @@
 				insertIntoField(target, value, (b) => badgeText(badge, b), onchange, badge.caret_back)}
 		/>
 	{/each}
-	<InsertField {target} {value} {onchange} format={asCode} trigger="chip" />
+	<InsertField {kind} {target} {value} {onchange} format={asCode} trigger="chip" />
 </div>
 
 <style>

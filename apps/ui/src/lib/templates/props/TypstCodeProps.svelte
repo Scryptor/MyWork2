@@ -55,7 +55,7 @@
 			bind:value={() => body.code, set}
 		/>
 		<CopiesField {editor} {path} />
-		<CodeBadges target={field} value={body.code} onchange={set} />
+		<CodeBadges kind={editor.template.kind} target={field} value={body.code} onchange={set} />
 		<div>
 			<Button onclick={() => (helpOpen = true)}>{t.typstHelpOpen}</Button>
 		</div>

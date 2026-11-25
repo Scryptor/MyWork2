@@ -55,17 +55,21 @@ export const actDpiHelp = (format: PrintFormat | null, inProgram = false): strin
 
 /** Printed on the label printer in the label's size; the rest are acts on A4. */
 export const isLabel = (kind: DocumentKind): boolean =>
-	kind === 'sticker' || kind === 'calibration';
+	kind === 'sticker' || kind === 'calibration' || kind === 'cell_sticker';
 
 /** Of an order: everything but the blank act and the calibration label (`DocumentKind::for_order`). */
 export const forOrder = (kind: DocumentKind): boolean =>
-	kind !== 'blank_intake_act' && kind !== 'calibration';
+	kind !== 'blank_intake_act' && kind !== 'calibration' && kind !== 'cell_sticker';
 
 export const documentName = (kind: DocumentKind): string => ru.print.documents[kind];
 
 /** The title of a document: of the order, a sample of a document of an order, or the document itself. */
 export function documentTitle(kind: DocumentKind, target: DocumentTarget): string {
 	const name = documentName(kind);
+	if (kind === 'cell_sticker' && target.rackId !== undefined)
+		return target.shelf !== undefined && target.cell !== undefined
+			? ru.print.cellSticker(target.code ?? '')
+			: ru.print.rackStickers(target.code ?? '');
 	if (target.orderId !== undefined) return ru.print.ofOrder(name, target.orderId);
 	return forOrder(kind) ? ru.print.sample(name) : name;
 }
@@ -153,8 +157,21 @@ export interface PreviewRequest {
 	kinds: readonly DocumentKind[];
 }
 
+/**
+ * What a document is of, as a key: `o<order>`, `r<rack>.<shelf>.<cell>` for a cell, `r<rack>` for a whole
+ * rack, empty for a document of nothing (the blank act, a sample). The queue of the preview and the jobs
+ * being sent tell their documents apart by it.
+ */
+export function targetKey(t: DocumentTarget): string {
+	if (t.orderId !== undefined) return `o${t.orderId}`;
+	if (t.rackId === undefined) return '';
+	return t.shelf !== undefined && t.cell !== undefined
+		? `r${t.rackId}.${t.shelf}.${t.cell}`
+		: `r${t.rackId}`;
+}
+
 const sameRequest = (a: PreviewRequest, b: PreviewRequest) =>
-	a.kind === b.kind && a.target.orderId === b.target.orderId;
+	a.kind === b.kind && targetKey(a.target) === targetKey(b.target);
 
 /**
  * The preview of the program's frame: one at a time; the documents asked meanwhile (the sticker after the
@@ -305,7 +322,7 @@ function failureText(e: unknown): string {
 }
 
 /**
- * The documents on their way to a printer (`kind:orderId:pages`). Each press of Ctrl/⌘P or of the menu is
+ * The documents on their way to a printer (`kind:targetKey:pages`). Each press of Ctrl/⌘P or of the menu is
  * a job, and nothing shows until the printer has it: a second press then is dropped, not a second sheet.
  * Other pages of the same document (chosen in the preview) are another job.
  */
@@ -348,7 +365,7 @@ async function printOne(
 		openPreview(kind, target);
 		return null;
 	}
-	const job = `${kind}:${target.orderId ?? ''}:${opts.pages ?? ''}`;
+	const job = `${kind}:${targetKey(target)}:${opts.pages ?? ''}`;
 	if (sending.has(job)) return null;
 	sending.add(job);
 	try {

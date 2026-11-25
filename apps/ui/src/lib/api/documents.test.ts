@@ -242,3 +242,17 @@ describe('documentBatchPdf', () => {
 		expect(file.filename).toBe('naklejka-2.pdf');
 	});
 });
+
+describe('cell and rack stickers', () => {
+	it('cell and rack stickers have their paths', async () => {
+		const fn = stubFetch(() => new Response('%PDF', { status: 200 }));
+		await documentPdf('cell_sticker', { rackId: 3, shelf: 2, cell: 4 });
+		expect(sent(fn).path).toBe('/api/v1/stock/racks/3/cells/2/4/sticker');
+		expect(new URL(fn.mock.calls[0]![0], 'http://127.0.0.1').searchParams.get('format')).toBe(
+			'pdf'
+		);
+		fn.mockClear();
+		await documentPdf('cell_sticker', { rackId: 3 });
+		expect(sent(fn).path).toBe('/api/v1/stock/racks/3/stickers');
+	});
+});

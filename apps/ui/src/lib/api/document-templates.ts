@@ -59,7 +59,9 @@ export async function exportTemplateFile(
 export const importTemplateFile = (kind: DocumentKind, file: unknown): Promise<Template> =>
 	request('POST', `${base(kind)}/file`, { body: file });
 
-export const documentFields = (): Promise<DocumentField[]> => request('GET', '/document-fields');
+/** The fields of a document kind (`?kind=`); without a kind, those of an order's documents. */
+export const documentFields = (kind?: DocumentKind): Promise<DocumentField[]> =>
+	request('GET', '/document-fields', kind === undefined ? {} : { query: { kind } });
 
 /** The text of the old MyWork 2 act of the kind, or null when the import left none (a 404). */
 export async function legacyTemplate(kind: DocumentKind): Promise<LegacyTemplate | null> {

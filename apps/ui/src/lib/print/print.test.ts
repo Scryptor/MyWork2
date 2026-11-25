@@ -30,6 +30,9 @@ import {
 	ACT_DPI,
 	actDpiHelp,
 	documentOptions,
+	documentTitle,
+	forOrder,
+	isLabel,
 	issueKind,
 	menuDocuments,
 	openPreview,
@@ -41,10 +44,12 @@ import {
 	stopBatch,
 	printShortcut,
 	printTarget,
+	printerDpi,
 	savePdf,
 	savePdfBatch,
 	showBatchResult,
-	shortcutKind
+	shortcutKind,
+	targetKey
 } from './print.svelte.js';
 
 const PRINTERS = [
@@ -737,5 +742,42 @@ describe('printing a batch of orders', () => {
 		);
 		expect(names).toEqual(['naklejka-3.pdf']);
 		click.mockRestore();
+	});
+});
+
+describe('the sticker of a cell', () => {
+	it('cell stickers are labels without an order', () => {
+		printSettings.set({ dpi: 600 });
+		expect(isLabel('cell_sticker')).toBe(true);
+		expect(forOrder('cell_sticker')).toBe(false);
+		expect(printerDpi('cell_sticker')).toBe(600);
+		expect(documentOptions('cell_sticker').printerDpi).toBe(600);
+	});
+
+	it('titles name the cell and the rack', () => {
+		const cell = { rackId: 3, shelf: 2, cell: 4, code: 'B-2-4' };
+		expect(documentTitle('cell_sticker', cell)).toBe('Наклейка ячейки B-2-4');
+		expect(documentTitle('cell_sticker', { rackId: 3, code: 'B' })).toBe('Наклейки шкафа B');
+	});
+
+	it('the key of a target tells orders, cells and racks apart', () => {
+		expect(targetKey({ orderId: 5 })).toBe('o5');
+		expect(targetKey({ rackId: 3, shelf: 2, cell: 4, code: 'x' })).toBe('r3.2.4');
+		expect(targetKey({ rackId: 3 })).toBe('r3');
+		expect(targetKey({})).toBe('');
+	});
+
+	it('the preview queue keeps two cells apart', () => {
+		preview.reset();
+		const open = (cell: number) =>
+			openPreview('cell_sticker', { rackId: 3, shelf: 1, cell, code: 'B' });
+		open(1);
+		open(2);
+		open(2);
+		expect(preview.current?.target.cell).toBe(1);
+		preview.close();
+		expect(preview.current?.target.cell).toBe(2);
+		preview.close();
+		expect(preview.current).toBeNull();
 	});
 });

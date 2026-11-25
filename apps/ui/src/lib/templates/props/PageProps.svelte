@@ -85,7 +85,7 @@
 	 */
 	const MIN_CONTENT_MM = 10;
 	const labelNoRoom = $derived.by(() => {
-		if (template.kind !== 'sticker') return null;
+		if (!isLabel(template.kind)) return null;
 		const [w, h] = printSettings.labelMm;
 		const { top, right, bottom, left } = page.margins_mm;
 		if (w - left - right >= MIN_CONTENT_MM && h - top - bottom >= MIN_CONTENT_MM) return null;

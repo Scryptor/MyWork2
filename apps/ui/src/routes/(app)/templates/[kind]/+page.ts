@@ -12,7 +12,8 @@ const EDITABLE: readonly DocumentKind[] = [
 	'warranty_intake_act',
 	'warranty_issue_act',
 	'blank_intake_act',
-	'sticker'
+	'sticker',
+	'cell_sticker'
 ];
 
 // The template editor (plan 7.1): the template of the document in the address. Reading it needs only a

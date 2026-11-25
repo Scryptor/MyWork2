@@ -53,6 +53,7 @@
 		'warranty_issue_act',
 		'blank_intake_act',
 		'sticker',
+		'cell_sticker',
 		'calibration'
 	];
 
