@@ -13,11 +13,11 @@ use mw_domain::permission::Permission;
 use mw_domain::report::{is_without_repair, master_pay};
 use mw_domain::search::normalize_search;
 use mw_domain::status::StatusKind;
-use mw_domain::validation::FieldError;
 use sea_orm::sea_query::{Condition, Expr, ExprTrait, Order, Query};
 use sea_orm::{ConnectionTrait, EntityTrait, StatementBuilder};
 use serde::{Deserialize, Serialize};
 
+use super::{check_period, period_bounds, point_title};
 use crate::{Actor, Core, CoreError};
 
 /// Самый длинный период, который рисуется по дням; дальше — по месяцам.
@@ -244,17 +244,12 @@ fn base_condition(filter: &ReportFilter) -> Condition {
     let mut cond = Condition::all()
         .add(Expr::col((status::Entity, status::Column::Kind)).eq(StatusKind::Issued.as_str()))
         .add(o(order::Column::DeletedAt).is_null());
-    if let Some(from) = filter.from {
-        cond = cond.add(o(order::Column::IssuedAt).gte(from.and_time(chrono::NaiveTime::MIN)));
+    let (not_before, before) = period_bounds(filter.from, filter.to);
+    if let Some(at) = not_before {
+        cond = cond.add(o(order::Column::IssuedAt).gte(at));
     }
-    // Год 10000 в SQLite записывается пятью цифрами и сравнивается как текст неверно: после
-    // 9999-12-31 верхней границы нет.
-    if let Some(next) = filter
-        .to
-        .and_then(|to| to.succ_opt())
-        .filter(|next| next.year() <= 9999)
-    {
-        cond = cond.add(o(order::Column::IssuedAt).lt(next.and_time(chrono::NaiveTime::MIN)));
+    if let Some(at) = before {
+        cond = cond.add(o(order::Column::IssuedAt).lt(at));
     }
     if let Some(id) = filter.service_point_id {
         cond = cond.add(o(order::Column::ServicePointId).eq(id));
@@ -487,14 +482,7 @@ impl Core {
         filter: &ReportFilter,
     ) -> Result<(OrderReport, Vec<ReportOrderRow>), CoreError> {
         actor.require(Permission::ReportsView)?;
-        if let (Some(from), Some(to)) = (filter.from, filter.to)
-            && from > to
-        {
-            return Err(CoreError::Validation(vec![FieldError::new(
-                "to",
-                "period_reversed",
-            )]));
-        }
+        check_period(filter.from, filter.to)?;
         let rows = self.report_rows(filter).await?;
         let mut totals = ReportTotals::default();
         for row in &rows {
@@ -547,12 +535,10 @@ pub(crate) fn groups(
             }
             ReportGroupBy::Master => spellings.add(&key, &row.master),
             ReportGroupBy::ServicePoint => {
-                let name = if row.service_point_archived {
-                    format!("{} (в архиве)", row.service_point)
-                } else {
-                    row.service_point.clone()
-                };
-                fixed.insert(key, name);
+                fixed.insert(
+                    key,
+                    point_title(&row.service_point, row.service_point_archived),
+                );
             }
             ReportGroupBy::DeviceType => spellings.add(&key, &row.device_type),
             ReportGroupBy::Brand => spellings.add(&key, &row.brand),

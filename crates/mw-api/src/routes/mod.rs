@@ -178,6 +178,7 @@ fn report_routes() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
         .routes(routes!(reports::order_report))
         .routes(routes!(reports::order_report_xlsx))
+        .routes(routes!(reports::moves_report))
 }
 
 /// Документы и шаблоны документов.

@@ -1,12 +1,12 @@
-//! Отчёты: отчёт по выданным заказам и его файл Excel.
+//! Отчёты: отчёт по выданным заказам, его файл Excel и отчёт о перемещениях.
 
 use axum::extract::State;
 use axum::response::Response;
-use mw_core::OrderReport;
+use mw_core::{MovesReport, OrderReport};
 
 use super::headers::export_response;
 use crate::auth::CurrentActor;
-use crate::dto::OrderReportQuery;
+use crate::dto::{MovesReportQuery, OrderReportQuery};
 use crate::error::ApiError;
 use crate::extract::{Json, Query};
 use crate::state::AppState;
@@ -48,4 +48,22 @@ pub(super) async fn order_report_xlsx(
     Ok(export_response(
         state.core.order_report_xlsx(&actor, &q.filter()).await?,
     ))
+}
+
+/// Перемещения заказов между точками за период: маршруты со счётом и последние 500 перемещений
+/// (право `reports_view`).
+#[utoipa::path(
+    get,
+    path = "/api/v1/reports/moves",
+    tag = "Отчёты",
+    security(("bearer" = [])),
+    params(MovesReportQuery),
+    responses((status = 200, description = "Отчёт о перемещениях", body = MovesReport))
+)]
+pub(super) async fn moves_report(
+    State(state): State<AppState>,
+    CurrentActor(actor): CurrentActor,
+    Query(q): Query<MovesReportQuery>,
+) -> Result<Json<MovesReport>, ApiError> {
+    Ok(Json(state.core.moves_report(&actor, &q.filter()).await?))
 }

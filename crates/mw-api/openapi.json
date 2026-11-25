@@ -4100,6 +4100,74 @@
         ]
       }
     },
+    "/api/v1/reports/moves": {
+      "get": {
+        "tags": [
+          "Отчёты"
+        ],
+        "summary": "Перемещения заказов между точками за период: маршруты со счётом и последние 500 перемещений\n(право `reports_view`).",
+        "operationId": "moves_report",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Первый день периода, включительно; без параметра — без нижней границы.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Последний день периода, включительно; без параметра — без верхней границы.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "service_point_id",
+            "in": "query",
+            "description": "Только перемещения из этой точки или в неё.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Отчёт о перемещениях",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MovesReport"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/reports/orders": {
       "get": {
         "tags": [
@@ -8248,6 +8316,133 @@
         "type": "integer",
         "format": "int64",
         "description": "Сумма денег в копейках."
+      },
+      "MoveItem": {
+        "type": "object",
+        "description": "Одно перемещение заказа.",
+        "required": [
+          "at",
+          "order_id",
+          "user_name",
+          "from",
+          "from_name",
+          "to",
+          "to_name"
+        ],
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Когда (местное время предприятия)."
+          },
+          "from": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Точка «откуда»; пусто — «без точки»."
+          },
+          "from_name": {
+            "type": "string",
+            "description": "Подпись точки «откуда»."
+          },
+          "order_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Номер заказа."
+          },
+          "to": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Точка «куда»; пусто — «без точки»."
+          },
+          "to_name": {
+            "type": "string",
+            "description": "Подпись точки «куда»."
+          },
+          "user_name": {
+            "type": "string",
+            "description": "Кто переместил."
+          }
+        }
+      },
+      "MoveRoute": {
+        "type": "object",
+        "description": "Маршрут: откуда и куда, и сколько раз заказы ездили так.",
+        "required": [
+          "from",
+          "from_name",
+          "to",
+          "to_name",
+          "count"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Сколько перемещений по этому маршруту.",
+            "minimum": 0
+          },
+          "from": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Точка «откуда»; пусто — «без точки»."
+          },
+          "from_name": {
+            "type": "string",
+            "description": "Подпись точки «откуда»."
+          },
+          "to": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Точка «куда»; пусто — «без точки»."
+          },
+          "to_name": {
+            "type": "string",
+            "description": "Подпись точки «куда»."
+          }
+        }
+      },
+      "MovesReport": {
+        "type": "object",
+        "description": "Отчёт о перемещениях.",
+        "required": [
+          "routes",
+          "items",
+          "total"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MoveItem"
+            },
+            "description": "Последние перемещения, новые сверху; не больше 500."
+          },
+          "routes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MoveRoute"
+            },
+            "description": "Маршруты: частые сверху."
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Сколько перемещений в отчёте всего.",
+            "minimum": 0
+          }
+        }
       },
       "NewClient": {
         "type": "object",

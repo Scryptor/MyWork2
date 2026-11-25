@@ -1086,6 +1086,7 @@ export const ru = {
 		noAccess: 'Отчёты может смотреть пользователь с правом «Отчёты»',
 		tabs: 'Отчёты',
 		orders: 'Заказы',
+		moves: 'Перемещения',
 		filters: 'Фильтры отчёта',
 		master: 'Мастер',
 		anyMaster: 'Любой',
@@ -1128,7 +1129,20 @@ export const ru = {
 		columnCosts: 'Затраты',
 		columnProfit: 'Прибыль',
 		columnMasterPay: 'Мастеру',
-		groupsTable: 'Итоги по группам'
+		groupsTable: 'Итоги по группам',
+		movesEmpty: 'За этот период заказы между точками не перемещались',
+		movesRoutes: 'Маршруты',
+		movesRoute: 'Откуда → Куда',
+		movesCount: 'Сколько раз',
+		movesList: 'Перемещения',
+		movesWhen: 'Когда',
+		movesOrder: 'Заказ',
+		movesFrom: 'Откуда',
+		movesTo: 'Куда',
+		movesWho: 'Кто',
+		movesRouteName: (from: string, to: string) => `${from} → ${to}`,
+		movesCut: (shown: number, total: number) => `Показаны последние ${shown} из ${total}`,
+		orderNumber: (id: number) => `№ ${id}`
 	},
 	/** «Что это?» (HelpHint): the texts of the hints, plain words for the owner; every sentence is true to the code. */
 	help: {

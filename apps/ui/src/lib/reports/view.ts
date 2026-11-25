@@ -1,5 +1,6 @@
 // The view of «Отчёты»: the tab, the period, the grouping and the filters. It lives in the address like
 // the other lists; `reportQuery` turns it into the server's query.
+import type { MovesReportQuery } from '$api/MovesReportQuery';
 import type { OrderReportQuery } from '$api/OrderReportQuery';
 import type { ReportGroupBy } from '$api/ReportGroupBy';
 import { parseLocalDateTime } from '#lib/format/date.js';
@@ -102,5 +103,15 @@ export function reportQuery(v: ReportView, today: string): OrderReportQuery {
 	if (v.deviceType) q.device_type = v.deviceType;
 	if (v.brand) q.brand = v.brand;
 	if (v.source) q.source = v.source;
+	return q;
+}
+
+/** The transfers use the period and the point of the view; the other filters are the orders' own. */
+export function movesQuery(v: ReportView, today: string): MovesReportQuery {
+	const [from, to] = v.period === 'custom' ? [v.from, v.to] : periodRange(v.period, today);
+	const q: MovesReportQuery = {};
+	if (from !== null) q.from = from;
+	if (to !== null) q.to = to;
+	if (v.servicePointId !== undefined) q.service_point_id = v.servicePointId;
 	return q;
 }

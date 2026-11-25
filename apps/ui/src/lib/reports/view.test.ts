@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { reportQuery, reportViewFromSearch, reportViewToSearch, type ReportView } from './view.js';
+import {
+	movesQuery,
+	reportQuery,
+	reportViewFromSearch,
+	reportViewToSearch,
+	type ReportView
+} from './view.js';
 
 const fromSearch = (s: string) => reportViewFromSearch(new URLSearchParams(s));
 const plain: ReportView = {
@@ -78,5 +84,17 @@ describe('reportQuery', () => {
 		expect(
 			reportQuery({ ...plain, period: 'custom', from: '2026-01-01', to: null }, '2026-11-25')
 		).toEqual({ from: '2026-01-01', group_by: 'master' });
+	});
+});
+
+describe('movesQuery', () => {
+	it('has the period and the point only', () => {
+		expect(
+			movesQuery(
+				{ ...plain, tab: 'moves', servicePointId: 3, brand: 'Apple', masterUserId: 2 },
+				'2026-11-25'
+			)
+		).toEqual({ from: '2026-11-01', to: '2026-11-25', service_point_id: 3 });
+		expect(movesQuery({ ...plain, period: 'all' }, '2026-11-25')).toEqual({});
 	});
 });

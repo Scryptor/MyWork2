@@ -161,3 +161,95 @@ async fn unknown_query_fields_are_refused() {
         }
     }
 }
+
+#[tokio::test]
+async fn moves_endpoint() {
+    for t in apis(Listen::Network).await {
+        let token = t
+            .token_with(
+                "peremeshcheniya",
+                &[
+                    Permission::OrdersCreate,
+                    Permission::OrdersEdit,
+                    Permission::ReportsView,
+                ],
+            )
+            .await;
+        let admin = Actor::unrestricted("Тест");
+        let a = t
+            .core
+            .create_service_point(&admin, "Север")
+            .await
+            .unwrap()
+            .id;
+        let b = t.core.create_service_point(&admin, "Юг").await.unwrap().id;
+        let mut n = new_order("Иван", "", "Бренд", "Модель");
+        n["service_point_id"] = json!(a);
+        let o = create_order(&t, &token, n).await;
+        t.core
+            .update_order(
+                &admin,
+                o["id"].as_i64().unwrap(),
+                o["version"].as_i64().unwrap(),
+                OrderPatch {
+                    service_point_id: Some(Some(b)),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+
+        let r = t.get("/api/v1/reports/moves", Some(&token)).await;
+        assert_eq!(r.status, 200, "{}: {}", t.label, r.body);
+        assert_eq!(r.body["total"], json!(1), "{}", t.label);
+        assert_eq!(r.body["routes"][0]["from_name"], json!("Север"));
+        assert_eq!(r.body["routes"][0]["to_name"], json!("Юг"));
+        assert_eq!(r.body["routes"][0]["count"], json!(1));
+        assert_eq!(r.body["items"][0]["order_id"], o["id"]);
+
+        // Точка и период.
+        let r = t
+            .get(
+                &format!("/api/v1/reports/moves?service_point_id={b}&from=2000-01-01"),
+                Some(&token),
+            )
+            .await;
+        assert_eq!(
+            (r.status, &r.body["total"]),
+            (200, &json!(1)),
+            "{}",
+            t.label
+        );
+        let r = t
+            .get("/api/v1/reports/moves?to=2000-01-01", Some(&token))
+            .await;
+        assert_eq!(
+            (r.status, &r.body["total"]),
+            (200, &json!(0)),
+            "{}",
+            t.label
+        );
+
+        let r = t
+            .get(
+                "/api/v1/reports/moves?from=2026-03-12&to=2026-03-11",
+                Some(&token),
+            )
+            .await;
+        assert_eq!(
+            (r.status, &r.body["fields"][0]["code"]),
+            (422, &json!("period_reversed")),
+            "{}: {}",
+            t.label,
+            r.body
+        );
+        let r = t.get("/api/v1/reports/moves?brand=x", Some(&token)).await;
+        assert_eq!(r.status, 400, "{}", t.label);
+
+        let plain = t.token_with("bez-prav", &[Permission::OrdersCreate]).await;
+        let r = t.get("/api/v1/reports/moves", Some(&plain)).await;
+        assert_eq!(r.status, 403, "{}", t.label);
+        let r = t.get("/api/v1/reports/moves", None).await;
+        assert_eq!(r.status, 401, "{}", t.label);
+    }
+}

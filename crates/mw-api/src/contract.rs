@@ -111,6 +111,8 @@ pub fn export_typescript(dir: &Path) -> Result<(), ts_rs::ExportError> {
     DocumentQuery::export_all(&cfg)?;
     crate::OrderReportQuery::export_all(&cfg)?;
     mw_core::OrderReport::export_all(&cfg)?;
+    crate::MovesReportQuery::export_all(&cfg)?;
+    mw_core::MovesReport::export_all(&cfg)?;
     mw_core::ReportGroupBy::export_all(&cfg)?;
     crate::DocumentBatch::export_all(&cfg)?;
     DocumentPages::export_all(&cfg)?;

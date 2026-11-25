@@ -209,3 +209,57 @@ test('«Свой период» starts from the days of the period before it, an
 	await expect(page.getByLabel('С', { exact: true })).toHaveValue('');
 	await expect(page.getByLabel('По', { exact: true })).toHaveValue('');
 });
+
+test('the transfers tab counts a move between two points and opens the order', async ({
+	page,
+	playwright
+}) => {
+	await signIn(page);
+	const token = await sessionToken(page);
+	const api = await playwright.request.newContext({
+		baseURL: adminOrigin('reports', test.info().project.name),
+		extraHTTPHeaders: token ? { Authorization: `Bearer ${token}` } : {}
+	});
+	try {
+		const point = async (name: string) => {
+			const made = await api.post('/api/v1/service-points', { data: { name } });
+			expect(made.ok(), await made.text()).toBe(true);
+			return ((await made.json()) as { id: number }).id;
+		};
+		const first = uniq('Точка');
+		const second = uniq('Точка');
+		const firstId = await point(first);
+		const secondId = await point(second);
+		const order = await createOrder(api, { service_point_id: firstId });
+		await patchOrder(api, order.id, { service_point_id: secondId });
+
+		// A whole load: the points made above are in the catalogs.
+		await page.goto('/reports');
+		await page.getByRole('tab', { name: 'Перемещения' }).click();
+		await expect(page).toHaveURL(/tab=moves/);
+		await page.getByRole('radio', { name: 'Всё время' }).click();
+		await page.getByRole('combobox', { name: 'Точка', exact: true }).click();
+		await page.getByRole('option', { name: first }).click();
+		await expect(page).toHaveURL(/period=all/);
+		await expect(page).toHaveURL(/p=/);
+
+		// The orders' own filters are not on this tab.
+		await expect(page.getByRole('combobox', { name: /^Бренд/ })).toHaveCount(0);
+
+		const routes = page.getByRole('table', { name: 'Маршруты' });
+		const route = routes.getByRole('row', { name: new RegExp(`${first} → ${second}`) });
+		await expect(route).toBeVisible();
+		await expect(route.getByRole('cell')).toHaveText('1');
+
+		const list = page.getByRole('table', { name: 'Перемещения' });
+		await list.getByRole('button', { name: `№ ${order.id}` }).click();
+		await expect(
+			page.getByRole('dialog', { name: new RegExp(`^№ ${order.id}(?!\\d)`) })
+		).toBeVisible();
+
+		// The tab stays in the address while the panel is open.
+		await expect(page).toHaveURL(/tab=moves/);
+	} finally {
+		await api.dispose();
+	}
+});

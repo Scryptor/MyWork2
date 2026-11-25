@@ -31,10 +31,11 @@ pub use dto::{
     BlockCodeRequest, CaptionPatch, ChangePasswordRequest, ClientListQuery, ClientPage,
     CurrentUser, DictionaryListQuery, DictionaryValue, DocumentBatch, DocumentFormat,
     DocumentPages, DocumentQuery, HistoryQuery, IncludeArchived, LegacyImportCheck,
-    LegacyImportStart, LoginRequest, LoginResponse, NewServicePoint, NextOrderNumber,
-    OrderCommentPage, OrderCommentQuery, OrderListQuery, OrderPage, OrderReportQuery,
-    OrderSummaryQuery, OrderValuesQuery, PageQuery, PhoneQuery, ReorderRequest, ServerInfo,
-    SetPasswordRequest, StatusChange, StockListQuery, StockPage, TemplatePreview, VersionParam,
+    LegacyImportStart, LoginRequest, LoginResponse, MovesReportQuery, NewServicePoint,
+    NextOrderNumber, OrderCommentPage, OrderCommentQuery, OrderListQuery, OrderPage,
+    OrderReportQuery, OrderSummaryQuery, OrderValuesQuery, PageQuery, PhoneQuery, ReorderRequest,
+    ServerInfo, SetPasswordRequest, StatusChange, StockListQuery, StockPage, TemplatePreview,
+    VersionParam,
 };
 pub use error::{ErrorBody, ErrorCode, ErrorField};
 pub use state::ApiConfig;

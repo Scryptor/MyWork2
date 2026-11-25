@@ -252,6 +252,31 @@ impl OrderReportQuery {
     }
 }
 
+/// Параметры отчёта о перемещениях заказов между точками.
+#[derive(Debug, Clone, Default, Deserialize, TS, IntoParams)]
+#[serde(deny_unknown_fields)]
+#[ts(optional_fields)]
+#[into_params(parameter_in = Query)]
+pub struct MovesReportQuery {
+    /// Первый день периода, включительно; без параметра — без нижней границы.
+    pub from: Option<NaiveDate>,
+    /// Последний день периода, включительно; без параметра — без верхней границы.
+    pub to: Option<NaiveDate>,
+    /// Только перемещения из этой точки или в неё.
+    pub service_point_id: Option<i64>,
+}
+
+impl MovesReportQuery {
+    /// Условия отчёта для ядра.
+    pub fn filter(&self) -> mw_core::MovesFilter {
+        mw_core::MovesFilter {
+            from: self.from,
+            to: self.to,
+            service_point_id: self.service_point_id,
+        }
+    }
+}
+
 /// Параметры списка и поиска склада.
 #[derive(Debug, Clone, Default, Deserialize, TS, IntoParams)]
 #[serde(deny_unknown_fields)]

@@ -1,3 +1,5 @@
+import type { MovesReport } from '$api/MovesReport';
+import type { MovesReportQuery } from '$api/MovesReportQuery';
 import type { OrderReport } from '$api/OrderReport';
 import type { OrderReportQuery } from '$api/OrderReportQuery';
 import { downloadBlob } from '#lib/platform/download.js';
@@ -15,3 +17,7 @@ export async function downloadOrderReport(query: OrderReportQuery): Promise<void
 	const file = await requestFile('/reports/orders/xlsx', { query });
 	downloadBlob(file.filename ?? UNNAMED_REPORT, file.blob);
 }
+
+/** The transfers of orders between the points; `signal` calls a request off when the view has changed. */
+export const movesReport = (query: MovesReportQuery, signal?: AbortSignal) =>
+	request<MovesReport>('GET', '/reports/moves', { query, signal });

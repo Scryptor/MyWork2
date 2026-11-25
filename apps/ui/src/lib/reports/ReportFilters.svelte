@@ -1,4 +1,5 @@
-<!-- The top of «Отчёты»: the period, the filters, the grouping and «В Excel». Every change goes up as a
+<!-- The top of «Отчёты»: the period, the filters, the grouping and «В Excel»; the transfers' tab keeps the
+     period and the point only. Every change goes up as a
      whole new view; the screen writes it to the address. -->
 <script lang="ts">
 	import FileSpreadsheet from '@lucide/svelte/icons/file-spreadsheet';
@@ -155,15 +156,17 @@
 <div class="filters">
 	<PeriodPicker kind={view.period} from={view.from} to={view.to} onchange={changePeriod} />
 	<div class="fields">
-		<Select
-			label={t.master}
-			items={masterItems}
-			bind:value={
-				() => view.masterUserId ?? ANY,
-				(id) =>
-					onchange((v) => ({ ...v, masterUserId: id === null || id === ANY ? undefined : id }))
-			}
-		/>
+		{#if view.tab === 'orders'}
+			<Select
+				label={t.master}
+				items={masterItems}
+				bind:value={
+					() => view.masterUserId ?? ANY,
+					(id) =>
+						onchange((v) => ({ ...v, masterUserId: id === null || id === ANY ? undefined : id }))
+				}
+			/>
+		{/if}
 		{#if pointItems.length > 1}
 			<Select
 				label={t.point}
@@ -175,42 +178,46 @@
 				}
 			/>
 		{/if}
-		<Combobox
-			label={t.deviceType}
-			items={deviceType.items}
-			bind:value={deviceType.text}
-			onselect={deviceType.apply}
-			onenter={deviceType.apply}
-			onblur={deviceType.apply}
-		/>
-		<Combobox
-			label={t.brand}
-			items={brand.items}
-			bind:value={brand.text}
-			onselect={brand.apply}
-			onenter={brand.apply}
-			onblur={brand.apply}
-		/>
-		<Select
-			label={t.source}
-			items={sourceItems}
-			bind:value={
-				() => view.source ?? ANY_SOURCE,
-				(name) =>
-					onchange((v) => ({
-						...v,
-						source: name === null || name === ANY_SOURCE ? undefined : name
-					}))
-			}
-		/>
-		<Select
-			label={t.groupBy}
-			items={groupItems}
-			bind:value={() => view.groupBy, (by) => onchange((v) => ({ ...v, groupBy: by ?? 'master' }))}
-		/>
-		<div class="export">
-			<Button icon={FileSpreadsheet} onclick={onexport} disabled={exporting}>{t.toExcel}</Button>
-		</div>
+		{#if view.tab === 'orders'}
+			<Combobox
+				label={t.deviceType}
+				items={deviceType.items}
+				bind:value={deviceType.text}
+				onselect={deviceType.apply}
+				onenter={deviceType.apply}
+				onblur={deviceType.apply}
+			/>
+			<Combobox
+				label={t.brand}
+				items={brand.items}
+				bind:value={brand.text}
+				onselect={brand.apply}
+				onenter={brand.apply}
+				onblur={brand.apply}
+			/>
+			<Select
+				label={t.source}
+				items={sourceItems}
+				bind:value={
+					() => view.source ?? ANY_SOURCE,
+					(name) =>
+						onchange((v) => ({
+							...v,
+							source: name === null || name === ANY_SOURCE ? undefined : name
+						}))
+				}
+			/>
+			<Select
+				label={t.groupBy}
+				items={groupItems}
+				bind:value={
+					() => view.groupBy, (by) => onchange((v) => ({ ...v, groupBy: by ?? 'master' }))
+				}
+			/>
+			<div class="export">
+				<Button icon={FileSpreadsheet} onclick={onexport} disabled={exporting}>{t.toExcel}</Button>
+			</div>
+		{/if}
 	</div>
 </div>
 
