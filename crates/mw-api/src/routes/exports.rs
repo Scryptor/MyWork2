@@ -5,7 +5,7 @@ use axum::response::Response;
 
 use super::headers::export_response;
 use crate::auth::CurrentActor;
-use crate::dto::{ClientExportQuery, OrderExportQuery};
+use crate::dto::{ClientExportQuery, ContactsExportQuery, OrderExportQuery};
 use crate::error::ApiError;
 use crate::extract::Query;
 use crate::state::AppState;
@@ -52,5 +52,32 @@ pub(super) async fn export_clients(
 ) -> Result<Response, ApiError> {
     Ok(export_response(
         state.core.export_clients_xlsx(&actor, &q.filter()).await?,
+    ))
+}
+
+/// Контакты клиентов для телефона: CSV для Google Контактов или vCard (права `data_export` и
+/// `clients_view`). Условия и порядок как у списка клиентов, плюс `created_from`. Нет ни одного
+/// номера — 422 `rows`/`nothing_to_export`; больше 50 000 клиентов — 422 `rows`/`too_many_rows`.
+#[utoipa::path(
+    get,
+    path = "/api/v1/exports/contacts",
+    tag = "Выгрузки",
+    security(("bearer" = [])),
+    params(ContactsExportQuery),
+    responses((status = 200, description = "Файл CSV или vCard", content(
+        (Vec<u8> = "text/csv"),
+        (Vec<u8> = "text/vcard")
+    )))
+)]
+pub(super) async fn export_contacts(
+    State(state): State<AppState>,
+    CurrentActor(actor): CurrentActor,
+    Query(q): Query<ContactsExportQuery>,
+) -> Result<Response, ApiError> {
+    Ok(export_response(
+        state
+            .core
+            .export_contacts(&actor, &q.filter(), q.created_from, q.format)
+            .await?,
     ))
 }

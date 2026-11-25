@@ -1,4 +1,4 @@
-import { statSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { createClient, createOrder, uniq } from './support/api';
 
@@ -46,6 +46,41 @@ test('«Выгрузить» → «В Excel» of the clients gives a file named 
 	expect(name.endsWith('.xlsx')).toBe(true);
 	expect(statSync(await download.path()).size).toBeGreaterThan(0);
 });
+
+for (const [format, extension, start] of [
+	['Google Контакты (CSV)', '.csv', 'Name,Given Name,'],
+	['vCard (iPhone, Android)', '.vcf', 'BEGIN:VCARD']
+] as const) {
+	test(`«Контакты для телефона…» as ${extension} holds the name and the number`, async ({
+		page,
+		request
+	}) => {
+		const marker = uniq('Контакт');
+		const client = await createClient(request, { full_name: `Контактов ${marker}` });
+		const phone = client.phones[0].phone;
+		await page.goto('/clients');
+		await filterOf(page).fill(marker);
+		await expect(
+			page.getByRole('grid', { name: 'Клиенты' }).getByRole('row').filter({ hasText: marker })
+		).toHaveCount(1);
+		await page.getByRole('button', { name: 'Выгрузить' }).click();
+		await page.getByRole('menuitem', { name: 'Контакты для телефона…' }).click();
+		const dialog = page.getByRole('dialog', { name: 'Контакты для телефона' });
+		await dialog.getByRole('radio', { name: format }).check();
+		const [download] = await Promise.all([
+			page.waitForEvent('download'),
+			dialog.getByRole('button', { name: 'Выгрузить' }).click()
+		]);
+		const name = download.suggestedFilename().normalize('NFC');
+		expect(name.startsWith('Контакты ')).toBe(true);
+		expect(name.endsWith(extension)).toBe(true);
+		const text = readFileSync(await download.path(), 'utf8');
+		expect(text.startsWith(start)).toBe(true);
+		expect(text).toContain(`Контактов ${marker}`);
+		expect(text).toContain(phone);
+		await expect(dialog).toBeHidden();
+	});
+}
 
 test("a refusal of the server is a toast with the server's words", async ({ page }) => {
 	const words = 'Слишком много строк для одного файла — не больше 50 000, сузьте выборку';

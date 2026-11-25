@@ -4,6 +4,7 @@ use crate::CoreError;
 use mw_domain::validation::FieldError;
 
 pub(crate) mod clients;
+pub(crate) mod contacts;
 pub(crate) mod orders;
 pub(crate) mod report;
 pub(crate) mod xlsx;

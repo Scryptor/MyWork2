@@ -189,6 +189,7 @@ fn export_routes() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
         .routes(routes!(exports::export_orders))
         .routes(routes!(exports::export_clients))
+        .routes(routes!(exports::export_contacts))
 }
 
 /// Документы и шаблоны документов.

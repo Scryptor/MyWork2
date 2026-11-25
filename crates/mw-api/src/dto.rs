@@ -242,6 +242,39 @@ impl ClientExportQuery {
     }
 }
 
+/// Условия выгрузки контактов: те же поля, что у `ClientExportQuery`, формат и дата добавления.
+#[derive(Debug, Clone, Deserialize, TS, IntoParams)]
+#[serde(deny_unknown_fields)]
+#[ts(optional_fields)]
+#[into_params(parameter_in = Query)]
+pub struct ContactsExportQuery {
+    /// Формат файла: `csv` (Google Контакты) или `vcard`.
+    pub format: mw_core::ContactsFormat,
+    /// Часть имени или телефона; без учёта регистра. Пусто — все клиенты.
+    pub query: Option<String>,
+    /// Поле сортировки; по умолчанию дата последнего заказа, новые сверху, без заказов в конце.
+    pub sort: Option<mw_core::ClientSortField>,
+    /// Обратный порядок; действует только вместе с `sort`, по умолчанию `false`.
+    pub descending: Option<bool>,
+    /// Только клиенты, у которых есть похожий (порядок по имени); по умолчанию `false`.
+    pub duplicates: Option<bool>,
+    /// Только клиенты, добавленные с 00:00 этого дня (местное время), включительно.
+    pub created_from: Option<NaiveDate>,
+}
+
+impl ContactsExportQuery {
+    /// Условия для ядра — те же, что у выгрузки клиентов.
+    pub fn filter(&self) -> mw_core::ClientFilter {
+        ClientExportQuery {
+            query: self.query.clone(),
+            sort: self.sort,
+            descending: self.descending,
+            duplicates: self.duplicates,
+        }
+        .filter()
+    }
+}
+
 /// Условия отчёта по заказам; пустые `device_type`, `brand` и `source` — без фильтра.
 #[derive(Debug, Clone, Default, Deserialize, TS, IntoParams)]
 #[serde(deny_unknown_fields)]

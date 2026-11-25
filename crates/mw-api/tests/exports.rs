@@ -123,3 +123,91 @@ async fn exports_refuse_paging_and_missing_rights() {
         }
     }
 }
+
+#[tokio::test]
+async fn contacts_export_is_a_vcard_or_csv() {
+    for t in apis(Listen::Network).await {
+        let token = t
+            .token_with(
+                "vygruzka-kontaktov",
+                &[
+                    Permission::OrdersCreate,
+                    Permission::ClientsView,
+                    Permission::DataExport,
+                ],
+            )
+            .await;
+        create_order(
+            &t,
+            &token,
+            new_order(
+                "Контактов Уникальный",
+                "+7 921 555-44-33",
+                "Бренд",
+                "Модель",
+            ),
+        )
+        .await;
+        let (status, headers, body) = t
+            .get_raw(
+                "/api/v1/exports/contacts?format=vcard&query=%D0%9A%D0%BE%D0%BD%D1%82%D0%B0%D0%BA%D1%82%D0%BE%D0%B2",
+                &token,
+            )
+            .await;
+        assert_eq!(status, 200, "{}", t.label);
+        assert_eq!(headers["content-type"], "text/vcard; charset=utf-8");
+        let disposition = headers["content-disposition"].to_str().unwrap();
+        assert!(
+            disposition.starts_with("attachment; filename=\"contacts.vcf\"; filename*=UTF-8''"),
+            "{disposition}"
+        );
+        let name = decoded_name(disposition);
+        assert!(
+            name.starts_with("Контакты ") && name.ends_with(".vcf"),
+            "{name}"
+        );
+        assert_eq!(headers["cache-control"], "private, no-store");
+        let text = String::from_utf8(body).unwrap();
+        assert!(text.starts_with("BEGIN:VCARD\r\n"), "{text}");
+        assert!(text.contains("TEL;TYPE=CELL:+79215554433"));
+
+        let (status, headers, body) = t
+            .get_raw(
+                "/api/v1/exports/contacts?format=csv&created_from=2000-01-01",
+                &token,
+            )
+            .await;
+        assert_eq!(status, 200, "{}", t.label);
+        assert_eq!(headers["content-type"], "text/csv; charset=utf-8");
+        assert!(
+            String::from_utf8(body)
+                .unwrap()
+                .starts_with("Name,Given Name,")
+        );
+
+        for bad in ["format=pdf", "", "format=csv&limit=5"] {
+            let r = t
+                .get(&format!("/api/v1/exports/contacts?{bad}"), Some(&token))
+                .await;
+            assert_eq!(
+                (r.status, &r.body["code"]),
+                (400, &json!("bad_request")),
+                "{bad}"
+            );
+        }
+        let nothing = t
+            .get(
+                "/api/v1/exports/contacts?format=csv&query=%D1%8F%D1%8F%D1%8F%D1%8F%D1%8F%D1%8F",
+                Some(&token),
+            )
+            .await;
+        assert_eq!(nothing.status, 422, "{}", t.label);
+        let plain = t
+            .token_with("bez-kontaktov", &[Permission::ClientsView])
+            .await;
+        let r = t
+            .get("/api/v1/exports/contacts?format=csv", Some(&plain))
+            .await;
+        assert_eq!(r.status, 403);
+    }
+}

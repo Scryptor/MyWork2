@@ -29,13 +29,13 @@ pub use contract::export_typescript;
 pub use dto::{
     AboutInfo, AttachmentNameQuery, AuditListQuery, AuditPage, BarcodeQuery, BlockCode,
     BlockCodeRequest, CaptionPatch, ChangePasswordRequest, ClientExportQuery, ClientListQuery,
-    ClientPage, CurrentUser, DictionaryListQuery, DictionaryValue, DocumentBatch, DocumentFormat,
-    DocumentPages, DocumentQuery, HistoryQuery, IncludeArchived, LegacyImportCheck,
-    LegacyImportStart, LoginRequest, LoginResponse, MovesReportQuery, NewServicePoint,
-    NextOrderNumber, OrderCommentPage, OrderCommentQuery, OrderExportQuery, OrderListQuery,
-    OrderPage, OrderReportQuery, OrderSummaryQuery, OrderValuesQuery, PageQuery, PhoneQuery,
-    ReorderRequest, ServerInfo, SetPasswordRequest, StatusChange, StockListQuery, StockPage,
-    TemplatePreview, VersionParam,
+    ClientPage, ContactsExportQuery, CurrentUser, DictionaryListQuery, DictionaryValue,
+    DocumentBatch, DocumentFormat, DocumentPages, DocumentQuery, HistoryQuery, IncludeArchived,
+    LegacyImportCheck, LegacyImportStart, LoginRequest, LoginResponse, MovesReportQuery,
+    NewServicePoint, NextOrderNumber, OrderCommentPage, OrderCommentQuery, OrderExportQuery,
+    OrderListQuery, OrderPage, OrderReportQuery, OrderSummaryQuery, OrderValuesQuery, PageQuery,
+    PhoneQuery, ReorderRequest, ServerInfo, SetPasswordRequest, StatusChange, StockListQuery,
+    StockPage, TemplatePreview, VersionParam,
 };
 pub use error::{ErrorBody, ErrorCode, ErrorField};
 pub use state::ApiConfig;
@@ -157,6 +157,7 @@ impl Modify for CommonDoc {
     mw_core::IssuedFilter,
     mw_core::OrderSortField,
     mw_core::ClientSortField,
+    mw_core::ContactsFormat,
     mw_core::StockSortField,
     mw_core::OrderValueField,
     mw_domain::documents::DocumentKind,

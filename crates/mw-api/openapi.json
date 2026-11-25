@@ -2105,6 +2105,114 @@
         ]
       }
     },
+    "/api/v1/exports/contacts": {
+      "get": {
+        "tags": [
+          "Выгрузки"
+        ],
+        "summary": "Контакты клиентов для телефона: CSV для Google Контактов или vCard (права `data_export` и\n`clients_view`). Условия и порядок как у списка клиентов, плюс `created_from`. Нет ни одного\nномера — 422 `rows`/`nothing_to_export`; больше 50 000 клиентов — 422 `rows`/`too_many_rows`.",
+        "operationId": "export_contacts",
+        "parameters": [
+          {
+            "name": "format",
+            "in": "query",
+            "description": "Формат файла: `csv` (Google Контакты) или `vcard`.",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ContactsFormat"
+            }
+          },
+          {
+            "name": "query",
+            "in": "query",
+            "description": "Часть имени или телефона; без учёта регистра. Пусто — все клиенты.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "description": "Поле сортировки; по умолчанию дата последнего заказа, новые сверху, без заказов в конце.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/ClientSortField"
+            }
+          },
+          {
+            "name": "descending",
+            "in": "query",
+            "description": "Обратный порядок; действует только вместе с `sort`, по умолчанию `false`.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "duplicates",
+            "in": "query",
+            "description": "Только клиенты, у которых есть похожий (порядок по имени); по умолчанию `false`.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "created_from",
+            "in": "query",
+            "description": "Только клиенты, добавленные с 00:00 этого дня (местное время), включительно.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Файл CSV или vCard",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              },
+              "text/vcard": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/exports/orders": {
       "get": {
         "tags": [
@@ -7492,6 +7600,14 @@
             "minimum": 0
           }
         }
+      },
+      "ContactsFormat": {
+        "type": "string",
+        "description": "Формат файла с контактами.",
+        "enum": [
+          "csv",
+          "vcard"
+        ]
       },
       "CopyFilter": {
         "type": "string",

@@ -6,7 +6,10 @@ use std::io::Cursor;
 
 use calamine::{Data, Reader, Xlsx, open_workbook_from_rs};
 use common::*;
-use mw_core::{ClientFilter, CoreError, NewClient, NewOrder, OrderFilter, OrderPatch, OrderSort};
+use mw_core::{
+    ClientFilter, ContactsFormat, CoreError, NewClient, NewOrder, OrderFilter, OrderPatch,
+    OrderSort,
+};
 use mw_domain::money::Money;
 use mw_domain::permission::Permission;
 
@@ -234,6 +237,132 @@ async fn exports_need_data_export() -> Result<(), CoreError> {
         t.core
             .export_orders_xlsx(&no_clients, &OrderFilter::default(), OrderSort::default())
             .await?;
+    }
+    Ok(())
+}
+
+fn text(file: mw_core::ExportFile) -> String {
+    String::from_utf8(file.bytes).unwrap()
+}
+
+#[tokio::test]
+async fn a_phone_goes_to_the_first_client_only() -> Result<(), CoreError> {
+    for t in cores().await {
+        make_client(&t, "Альфа Телефонов", &["8 (921) 111-22-33", "12"]).await;
+        make_client(&t, "Бета Телефонов", &["+7 921 111 22 33"]).await;
+        make_client(&t, "Гамма Телефонов", &["+7 921 111 22 33", "123-45-67"]).await;
+        let filter = ClientFilter {
+            query: "телефонов".into(),
+            sort: mw_core::ClientSort {
+                field: mw_core::ClientSortField::Name,
+                descending: false,
+            },
+            ..Default::default()
+        };
+        let file = t
+            .core
+            .export_contacts(&admin(), &filter, None, ContactsFormat::Csv)
+            .await?;
+        assert_eq!(file.ascii_name, "contacts.csv");
+        assert_eq!(file.content_type, "text/csv; charset=utf-8");
+        assert!(file.name.starts_with("Контакты ") && file.name.ends_with(".csv"));
+        let csv = text(file);
+        assert!(
+            csv.contains("Альфа Телефонов,Альфа Телефонов,* myContacts,Mobile,+79211112233\r\n")
+        );
+        assert!(!csv.contains("Бета"), "{}: {csv}", t.label);
+        assert!(csv.contains("Гамма Телефонов,Гамма Телефонов,* myContacts,Mobile,1234567\r\n"));
+        assert_eq!(csv.matches("+79211112233").count(), 1);
+
+        let card = text(
+            t.core
+                .export_contacts(&admin(), &filter, None, ContactsFormat::Vcard)
+                .await?,
+        );
+        assert!(card.starts_with("BEGIN:VCARD\r\n"));
+        assert_eq!(card.matches("BEGIN:VCARD").count(), 2);
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn contacts_since_a_day() -> Result<(), CoreError> {
+    for t in cores().await {
+        make_client(&t, "Вчерашний Контакт", &["+7 900 000-00-11"]).await;
+        t.clock.advance(chrono::Duration::days(1));
+        make_client(&t, "Сегодняшний Контакт", &["+7 900 000-00-22"]).await;
+        let today = t.core.now().date();
+        let csv = text(
+            t.core
+                .export_contacts(
+                    &admin(),
+                    &ClientFilter::default(),
+                    Some(today),
+                    ContactsFormat::Csv,
+                )
+                .await?,
+        );
+        assert!(csv.contains("Сегодняшний"), "{}", t.label);
+        assert!(!csv.contains("Вчерашний"), "{}", t.label);
+        let all = text(
+            t.core
+                .export_contacts(
+                    &admin(),
+                    &ClientFilter::default(),
+                    None,
+                    ContactsFormat::Csv,
+                )
+                .await?,
+        );
+        assert!(all.contains("Вчерашний") && all.contains("Сегодняшний"));
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn no_contacts_is_an_error() -> Result<(), CoreError> {
+    for t in cores().await {
+        make_client(&t, "Без Телефона", &[]).await;
+        make_client(&t, "Короткий Номер", &["12"]).await;
+        for format in [ContactsFormat::Csv, ContactsFormat::Vcard] {
+            assert_validation(
+                t.core
+                    .export_contacts(&admin(), &ClientFilter::default(), None, format)
+                    .await,
+                &[("rows", "nothing_to_export")],
+            );
+        }
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn contacts_need_data_export() -> Result<(), CoreError> {
+    for t in cores().await {
+        let no_export = actor_with(&[Permission::ClientsView]);
+        assert!(matches!(
+            t.core
+                .export_contacts(
+                    &no_export,
+                    &ClientFilter::default(),
+                    None,
+                    ContactsFormat::Csv
+                )
+                .await,
+            Err(CoreError::Forbidden(Permission::DataExport))
+        ));
+        let no_clients = actor_with(&[Permission::DataExport]);
+        assert!(matches!(
+            t.core
+                .export_contacts(
+                    &no_clients,
+                    &ClientFilter::default(),
+                    None,
+                    ContactsFormat::Vcard
+                )
+                .await,
+            Err(CoreError::Forbidden(Permission::ClientsView))
+        ));
     }
     Ok(())
 }

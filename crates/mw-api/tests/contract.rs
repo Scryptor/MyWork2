@@ -132,7 +132,7 @@ fn every_schema_reference_resolves() {
 
 #[test]
 fn parameters_match_their_paths() {
-    const REQUIRED_QUERY: [&str; 5] = ["version", "phone", "code", "field", "name"];
+    const REQUIRED_QUERY: [&str; 6] = ["version", "phone", "code", "field", "name", "format"];
     let api: serde_json::Value =
         serde_json::from_str(&mw_api::openapi().to_json().unwrap()).unwrap();
     for (path, item) in api["paths"].as_object().unwrap() {
@@ -186,7 +186,7 @@ fn documented_operations_match_the_api_map() {
             }
         }
     }
-    assert_eq!(ops.len(), 110, "{ops:#?}");
+    assert_eq!(ops.len(), 111, "{ops:#?}");
     for expected in [
         "GET /api/v1/server-info",
         "GET /api/v1/openapi.json",

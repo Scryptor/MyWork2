@@ -51,6 +51,7 @@ macro_rules! code_enum {
 }
 
 pub mod barcode;
+pub mod contacts;
 pub mod dictionary;
 pub mod document_template;
 pub mod documents;

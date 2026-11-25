@@ -61,8 +61,9 @@ describe('«Выгрузить» of the clients', () => {
 		// Opened and chosen from the keyboard; jsdom does not place the menu, so its parts are found with `hidden`.
 		screen.getByRole('button', { name: 'Выгрузить' }).focus();
 		await userEvent.keyboard('{Enter}');
-		const item = await screen.findByRole('menuitem', { hidden: true });
-		expect(item).toHaveTextContent('В Excel');
+		const items = await screen.findAllByRole('menuitem', { hidden: true });
+		expect(items.map((i) => i.textContent?.trim())).toEqual(['В Excel', 'Контакты для телефона…']);
+		const item = items[0];
 		item.focus();
 		await userEvent.keyboard('{Enter}');
 		expect(api.downloadClients).toHaveBeenCalledWith({ query: 'и' });
