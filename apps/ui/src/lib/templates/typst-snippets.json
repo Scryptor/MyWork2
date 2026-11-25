@@ -1,0 +1,17 @@
+{
+	"examples": [
+		{ "id": "value", "code": "Заказ № #v(\"order.number\") от #v(\"order.received\")" },
+		{
+			"id": "condition",
+			"code": "#if filled(\"order.prepayment\") [Предоплата: #v(\"order.prepayment\")]"
+		},
+		{
+			"id": "table",
+			"code": "#table(columns: (auto, 1fr), [Устройство], [#v(\"order.device\")], [Серийный номер], [#v(\"order.serial\")])"
+		},
+		{ "id": "qr", "code": "#qr-image(\"link.telegram\", 20mm)" },
+		{ "id": "space", "code": "#vspace(5mm)" },
+		{ "id": "copy", "code": "#if copy == \"client\" [Этот экземпляр остаётся у вас]" }
+	],
+	"badges": []
+}

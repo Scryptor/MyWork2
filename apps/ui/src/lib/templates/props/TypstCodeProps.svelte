@@ -4,12 +4,14 @@
 <script lang="ts">
 	import type { DocumentField } from '$api/DocumentField';
 	import { ru } from '#lib/i18n/ru.js';
+	import Button from '#lib/ui/Button.svelte';
 	import CodeEditor from '#lib/ui/CodeEditor.svelte';
 	import { CODE_MAX } from '../defaults.js';
 	import { diagnosticText, type TemplateEditor } from '../editor.svelte.js';
 	import InsertField from '../InsertField.svelte';
 	import { inTypstCode } from '../insert.js';
 	import { blockAt, replaceBlock, type BlockPath } from '../ops.js';
+	import TypstHelp from '../TypstHelp.svelte';
 
 	let { editor, path }: { editor: TemplateEditor; path: BlockPath } = $props();
 
@@ -19,6 +21,7 @@
 	const body = $derived(block?.body.type === 'typst_code' ? block.body : null);
 	const key = $derived(path.join('.'));
 	let field = $state<HTMLTextAreaElement | null>(null);
+	let helpOpen = $state(false);
 
 	const samePath = (a: readonly number[], b: BlockPath) =>
 		a.length === b.length && a.every((n, i) => n === b[i]);
@@ -56,6 +59,10 @@
 			bind:value={() => body.code, set}
 		/>
 		<InsertField target={field} value={body.code} onchange={set} format={asCode} />
+		<div>
+			<Button onclick={() => (helpOpen = true)}>{t.typstHelpOpen}</Button>
+		</div>
+		<TypstHelp bind:open={helpOpen} />
 	</div>
 {/if}
 
