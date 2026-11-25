@@ -90,14 +90,20 @@ async function addText(page: Page, text: string) {
 	await field.fill(text);
 }
 
-/** The standard template of this browser's document, put back after every test. */
+/**
+ * The standard template of this browser's document, put back after every test.
+ * Retried: the page's autosave may commit between the read and the write (409); a late
+ * autosave after the restore gets a 409 itself and changes nothing.
+ */
 async function restoreStandard(request: APIRequestContext, info: TestInfo) {
 	const { kind } = documentOf(info);
-	const current = await fetchTemplate(request, kind);
-	const response = await request.put(`/api/v1/document-templates/${kind}`, {
-		data: { template: current.standard, version: current.version }
-	});
-	expect(response.ok()).toBe(true);
+	await expect(async () => {
+		const current = await fetchTemplate(request, kind);
+		const response = await request.put(`/api/v1/document-templates/${kind}`, {
+			data: { template: current.standard, version: current.version }
+		});
+		expect(response.status(), await response.text()).toBe(200);
+	}).toPass({ timeout: 15_000 });
 }
 
 test.describe('the editor', () => {
