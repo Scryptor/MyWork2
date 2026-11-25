@@ -2,6 +2,7 @@ use mw_db::entity::{attachment, order, service_point, status};
 use mw_domain::barcode::order_barcode;
 use mw_domain::money::Money;
 use mw_domain::pattern::validate_pattern;
+use mw_domain::payment::{MAX_PAYMENT, PaymentStage};
 use mw_domain::permission::Permission;
 use mw_domain::status::StatusKind;
 use mw_domain::validation::FieldError;
@@ -13,9 +14,11 @@ use sea_orm::{
 use serde_json::json;
 
 use super::master::{available_master, master_unavailable};
+use super::payments::{PaymentRow, insert_payment, payment_details, received_by_of};
 use super::types::warranty_columns;
 use crate::attachments::valid_key;
 use crate::clients::{find_live, insert_client};
+use crate::money_text::MoneyText;
 use crate::search_index::{order_search_text, set_order_keys};
 use crate::{Actor, ClientRef, Core, CoreError, NewAuditEntry, NewOrder, Order, write_audit};
 
@@ -129,7 +132,9 @@ impl Core {
             ("estimate_to", new.estimate_to.map(|m| m.kopecks())),
             ("prepayment", Some(new.prepayment.kopecks())),
         ] {
-            if value.is_some_and(|v| v < 0) {
+            if value.is_some_and(|v| v < 0)
+                || (field == "prepayment" && new.prepayment > MAX_PAYMENT)
+            {
                 errors.push(FieldError::new(field, "out_of_range"));
             }
         }
@@ -210,7 +215,7 @@ impl Core {
             status_id: Set(status_id),
             received_at: Set(now),
             issued_at: Set(None),
-            prepaid_at: Set((prepayment > 0).then_some(now)),
+            prepaid_at: Set(None),
             device_type: Set(device_type),
             brand: Set(brand),
             model: Set(model),
@@ -272,6 +277,30 @@ impl Core {
         .update(&tx)
         .await?;
 
+        let mut summary = format!("Заказ № {} принят", model.id);
+        let mut details = json!({ "order_id": model.id, "client_id": client_id });
+        if prepayment > 0 {
+            let payment = insert_payment(
+                &tx,
+                now,
+                actor,
+                model.id,
+                PaymentRow {
+                    day: now.date(),
+                    amount: new.prepayment,
+                    received_by: received_by_of(actor),
+                    stage: PaymentStage::BeforeIssue,
+                    legacy: false,
+                    request_key: None,
+                },
+            )
+            .await?;
+            summary.push_str(&format!(
+                ", предоплата {}",
+                self.money_text(new.prepayment, MoneyText::Short)
+            ));
+            details["payment"] = payment_details(&payment);
+        }
         write_audit(
             &tx,
             now,
@@ -281,8 +310,8 @@ impl Core {
                 order_id: Some(model.id),
                 client_id: Some(client_id),
                 stock_item_id: None,
-                summary: format!("Заказ № {} принят", model.id),
-                details: Some(json!({ "order_id": model.id, "client_id": client_id })),
+                summary,
+                details: Some(details),
             },
         )
         .await?;

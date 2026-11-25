@@ -4,6 +4,7 @@ use common::*;
 use mw_core::{ClientRef, CoreError, NewClient, NewOrder, SettingsPatch};
 use mw_domain::barcode::order_barcode;
 use mw_domain::money::Money;
+use mw_domain::payment::{MAX_PAYMENT, PaymentStage};
 use mw_domain::permission::Permission;
 use mw_domain::status::StatusKind;
 
@@ -23,7 +24,16 @@ async fn intake_creates_client_order_barcode_and_audit() -> Result<(), CoreError
         assert_eq!(o.barcode, order_barcode(o.id).unwrap(), "{}", t.label);
         assert_eq!(status_name(&t.core, o.status_id).await, "Диагностика");
         assert_eq!(o.received_at.to_string(), "2026-11-11 09:00:00");
-        assert_eq!(o.prepaid_at, Some(o.received_at));
+        assert_eq!(o.prepaid_at, None);
+        assert_eq!(o.prepayment, Money::from_rubles(2000));
+        let pays = t.core.list_order_payments(&admin(), o.id).await?;
+        assert_eq!(pays.payments.len(), 1, "{}", t.label);
+        let p = &pays.payments[0];
+        assert_eq!(p.amount, Money::from_rubles(2000));
+        assert_eq!(p.day.to_string(), "2026-11-11");
+        assert_eq!(p.stage, PaymentStage::BeforeIssue);
+        assert_eq!(p.received_by, "");
+        assert_eq!(pays.prepayment, Money::from_rubles(2000));
         assert_eq!(t.core.get_order(&admin(), o.id).await?, o);
         assert_eq!(
             t.core.get_client(&admin(), o.client_id).await?.phones,
@@ -31,7 +41,10 @@ async fn intake_creates_client_order_barcode_and_audit() -> Result<(), CoreError
         );
         assert_eq!(
             audit_summaries(&t.core, o.id).await,
-            vec![format!("Заказ № {} принят", o.id)]
+            vec![format!(
+                "Заказ № {} принят, предоплата 2\u{a0}000\u{a0}₽",
+                o.id
+            )]
         );
         let a = last_audit(&t.core, o.id).await;
         assert_eq!(a.action, "order.created");
@@ -147,6 +160,14 @@ async fn negative_money_is_rejected() -> Result<(), CoreError> {
             estimate_from: Some(Money::from_kopecks(-1)),
             ..sample_new_order()
         };
+        let too_much = NewOrder {
+            prepayment: Money::from_kopecks(MAX_PAYMENT.kopecks() + 1),
+            ..sample_new_order()
+        };
+        assert_validation(
+            t.core.create_order(&admin(), too_much).await,
+            &[("prepayment", "out_of_range")],
+        );
         assert_validation(
             t.core.create_order(&admin(), bad).await,
             &[
@@ -190,6 +211,23 @@ async fn create_order_is_idempotent_by_request_key() -> Result<(), CoreError> {
                 .await,
             &[("request_key", "invalid")],
         );
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn repeated_intake_pays_once() -> Result<(), CoreError> {
+    for t in cores().await {
+        let new = NewOrder {
+            request_key: Some("pay-once".into()),
+            prepayment: Money::from_rubles(500),
+            ..sample_new_order()
+        };
+        let a = t.core.create_order(&admin(), new.clone()).await?;
+        let b = t.core.create_order(&admin(), new).await?;
+        assert_eq!(a.id, b.id, "{}", t.label);
+        let pays = t.core.list_order_payments(&admin(), a.id).await?;
+        assert_eq!(pays.payments.len(), 1);
     }
     Ok(())
 }

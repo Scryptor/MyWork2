@@ -19,6 +19,7 @@ mod headers;
 mod legacy_import;
 mod logo;
 mod meta;
+mod order_payments;
 mod orders;
 mod reports;
 mod setup;
@@ -41,6 +42,7 @@ pub(crate) fn api_routes() -> OpenApiRouter<AppState> {
         .merge(stock_routes())
         .merge(stock_map_routes())
         .merge(order_routes())
+        .merge(order_payment_routes())
         .merge(document_routes())
         .merge(report_routes())
         .merge(export_routes())
@@ -196,6 +198,17 @@ fn order_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(orders::order_parts, orders::add_order_part))
         .routes(routes!(orders::return_order_part))
         .routes(routes!(orders::accept_warranty_case))
+}
+
+/// Платежи по заказу.
+#[inline(never)]
+fn order_payment_routes() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(
+            order_payments::order_payments,
+            order_payments::add_order_payment
+        ))
+        .routes(routes!(order_payments::remove_order_payment))
 }
 
 /// Отчёты.

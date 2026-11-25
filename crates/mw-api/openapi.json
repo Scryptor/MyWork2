@@ -4671,6 +4671,168 @@
         ]
       }
     },
+    "/api/v1/orders/{id}/payments": {
+      "get": {
+        "tags": [
+          "Заказы"
+        ],
+        "summary": "Платежи заказа (достаточно войти; удалённый заказ читается).",
+        "operationId": "order_payments",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер заказа",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Платежи заказа",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderPayments"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Заказы"
+        ],
+        "summary": "Приём платежа (право `orders_edit`). День вне отрезка «приём заказа — сегодня» — 422, поле\n`day`, код `payment_day`. Повтор с тем же `request_key` и тем же содержимым не добавляет\nплатёж; с другим — 422, поле `request_key`, код `duplicate`. Версия заказа не меняется.",
+        "operationId": "add_order_payment",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер заказа",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewOrderPayment"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Платежи заказа после приёма",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderPayments"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/orders/{id}/payments/{payment_id}": {
+      "delete": {
+        "tags": [
+          "Заказы"
+        ],
+        "summary": "Удаление платежа (право `orders_edit`). Платёж другого заказа или уже удалённый — 404.",
+        "operationId": "remove_order_payment",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер заказа",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "payment_id",
+            "in": "path",
+            "description": "Номер платежа",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Оставшиеся платежи заказа",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderPayments"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/orders/{id}/status": {
       "post": {
         "tags": [
@@ -10524,6 +10686,36 @@
         },
         "additionalProperties": false
       },
+      "NewOrderPayment": {
+        "type": "object",
+        "description": "Приём платежа.",
+        "required": [
+          "day",
+          "amount",
+          "received_by",
+          "request_key"
+        ],
+        "properties": {
+          "amount": {
+            "$ref": "#/components/schemas/Money",
+            "description": "Сумма, в копейках: от 1 копейки до 999 999 999,99."
+          },
+          "day": {
+            "type": "string",
+            "format": "date",
+            "description": "День оплаты: не раньше дня приёма заказа и не позже сегодняшнего."
+          },
+          "received_by": {
+            "type": "string",
+            "description": "Кто принял; до 100 знаков, может быть пустым."
+          },
+          "request_key": {
+            "type": "string",
+            "description": "Ключ повтора запроса: от 1 до 64 латинских букв, цифр и дефисов. Повтор с тем же ключом и\nтем же содержимым возвращает платежи без нового платежа."
+          }
+        },
+        "additionalProperties": false
+      },
       "NewRole": {
         "type": "object",
         "description": "Данные новой роли.",
@@ -11502,6 +11694,83 @@
         },
         "additionalProperties": false
       },
+      "OrderPayment": {
+        "type": "object",
+        "description": "Платёж по заказу.",
+        "required": [
+          "id",
+          "day",
+          "amount",
+          "received_by",
+          "stage",
+          "added_by_name",
+          "added_at",
+          "legacy"
+        ],
+        "properties": {
+          "added_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Когда внесена (местное время предприятия)."
+          },
+          "added_by_name": {
+            "type": "string",
+            "description": "Кто внёс запись (имя на момент внесения)."
+          },
+          "amount": {
+            "$ref": "#/components/schemas/Money",
+            "description": "Сумма, в копейках."
+          },
+          "day": {
+            "type": "string",
+            "format": "date",
+            "description": "День оплаты."
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Номер платежа."
+          },
+          "legacy": {
+            "type": "boolean",
+            "description": "Перенесён из предоплаты заказа или из MyWork 2."
+          },
+          "received_by": {
+            "type": "string",
+            "description": "Кто принял (текст; может быть пустым)."
+          },
+          "stage": {
+            "$ref": "#/components/schemas/PaymentStage",
+            "description": "Этап относительно выдачи."
+          }
+        }
+      },
+      "OrderPayments": {
+        "type": "object",
+        "description": "Платежи заказа по дню и номеру и суммы.",
+        "required": [
+          "payments",
+          "paid",
+          "prepayment"
+        ],
+        "properties": {
+          "paid": {
+            "$ref": "#/components/schemas/Money",
+            "description": "Все платежи, в копейках."
+          },
+          "payments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderPayment"
+            },
+            "description": "Платежи по дню, затем по номеру."
+          },
+          "prepayment": {
+            "$ref": "#/components/schemas/Money",
+            "description": "Платежи до выдачи (равна предоплате заказа), в копейках."
+          }
+        }
+      },
       "OrderReport": {
         "type": "object",
         "description": "Отчёт по выданным заказам.",
@@ -11696,6 +11965,14 @@
               }
             }
           }
+        ]
+      },
+      "PaymentStage": {
+        "type": "string",
+        "enum": [
+          "before_issue",
+          "at_issue",
+          "after_issue"
         ]
       },
       "Permission": {

@@ -24,10 +24,14 @@ async fn intake_and_read() {
             "{}",
             t.label
         );
-        assert_eq!(
-            (&o["received_at"], &o["prepaid_at"]),
-            (&json!("2026-11-11T09:00:00"), &json!("2026-11-11T09:00:00"))
-        );
+        assert_eq!(o["received_at"], json!("2026-11-11T09:00:00"));
+        let pays = t
+            .get(&format!("/api/v1/orders/{id}/payments"), Some(&token))
+            .await;
+        assert_eq!(pays.status, 200, "{}", t.label);
+        assert_eq!(pays.body["payments"].as_array().unwrap().len(), 1);
+        assert_eq!(pays.body["payments"][0]["amount"], json!(200_000));
+        assert_eq!(pays.body["prepayment"], json!(200_000));
         assert_eq!(
             (&o["warranty"], &o["warranty_term"]),
             (&json!("30 дней"), &json!({ "unit": "days", "value": 30 }))

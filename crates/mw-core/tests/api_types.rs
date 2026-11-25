@@ -6,10 +6,11 @@ use std::fmt::Debug;
 
 use mw_core::{
     AppSettings, AuditEntry, Client, ClientPatch, ClientRef, DictionaryItem, DictionaryMerge,
-    DictionaryRename, IssuedFilter, MasterUser, NewClient, NewOrder, NewRole, NewStatus,
-    NewStockRack, NewUser, Order, OrderListItem, OrderPatch, OrderSortField, ReportFilter,
-    ReportGroupBy, RewriteResult, Role, RolePatch, ServicePoint, ServicePointPatch, SettingsPatch,
-    Status, StatusPatch, StockCellRef, StockMove, StockPut, StockRackPatch, User, UserPatch,
+    DictionaryRename, IssuedFilter, MasterUser, NewClient, NewOrder, NewOrderPayment, NewRole,
+    NewStatus, NewStockRack, NewUser, Order, OrderListItem, OrderPatch, OrderSortField,
+    ReportFilter, ReportGroupBy, RewriteResult, Role, RolePatch, ServicePoint, ServicePointPatch,
+    SettingsPatch, Status, StatusPatch, StockCellRef, StockMove, StockPut, StockRackPatch, User,
+    UserPatch,
 };
 use mw_domain::dictionary::DictionaryKind;
 use mw_domain::money::Money;
@@ -316,6 +317,9 @@ where
 
 #[test]
 fn request_bodies_require_every_field() {
+    check_new::<NewOrderPayment>(
+        json!({ "day": "2026-11-11", "amount": 150000, "received_by": "", "request_key": "k-1" }),
+    );
     check_new::<NewStatus>(json!({ "name": "А", "kind": "open", "color": "blue" }));
     check_new::<NewClient>(
         json!({ "full_name": "А", "phones": [], "address": "", "note": "",

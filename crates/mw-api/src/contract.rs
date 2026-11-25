@@ -86,6 +86,9 @@ pub fn export_typescript(dir: &Path) -> Result<(), ts_rs::ExportError> {
     mw_core::NewOrderPart::export_all(&cfg)?;
     mw_core::OrderPart::export_all(&cfg)?;
     mw_core::OrderParts::export_all(&cfg)?;
+    mw_core::NewOrderPayment::export_all(&cfg)?;
+    mw_core::OrderPayment::export_all(&cfg)?;
+    mw_core::OrderPayments::export_all(&cfg)?;
     SetPasswordRequest::export_all(&cfg)?;
     AuditListQuery::export_all(&cfg)?;
     AuditPage::export_all(&cfg)?;
