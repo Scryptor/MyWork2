@@ -109,9 +109,9 @@ impl FieldError {
             "not_enough_stock" => "На складе столько нет",
             "period_reversed" => "Начало периода позже конца",
             "too_many_rows" => {
-                "Слишком много строк для файла (больше 50 000): сузьте выбор и повторите"
+                "Слишком много строк для одного файла — не больше 50 000, сузьте выборку"
             }
-            "nothing_to_export" => "Нечего выгружать",
+            "nothing_to_export" => "Нет клиентов с телефонами для выгрузки",
             _ => "Недопустимое значение",
         }
     }
@@ -123,13 +123,14 @@ mod tests {
 
     #[test]
     fn export_codes_have_russian_messages() {
-        for code in ["too_many_rows", "nothing_to_export"] {
-            assert_ne!(
-                FieldError::new("rows", code).message_ru(),
-                "Недопустимое значение",
-                "{code}"
-            );
-        }
+        assert_eq!(
+            FieldError::new("rows", "too_many_rows").message_ru(),
+            "Слишком много строк для одного файла — не больше 50 000, сузьте выборку"
+        );
+        assert_eq!(
+            FieldError::new("rows", "nothing_to_export").message_ru(),
+            "Нет клиентов с телефонами для выгрузки"
+        );
     }
 
     #[test]
