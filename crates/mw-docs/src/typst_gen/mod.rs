@@ -32,8 +32,9 @@ pub(crate) use code::CodeSources;
 pub use code::block_code;
 
 /// The values of one document. In JSON without the logo: a [`crate::Job`] carries it once for all
-/// its documents.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+/// its documents. `Debug` masks the device's password and pattern ([`SECRET_FIELDS`]), as the order
+/// of `mw-core` does.
+#[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DocumentData {
     /// By field key (`order.number`, see [`crate::fields`]); a missing key is an empty value.
     pub values: BTreeMap<String, String>,
@@ -45,6 +46,32 @@ pub struct DocumentData {
     pub logo: Option<Arc<[u8]>>,
     /// A form to fill in by hand: empty values become lines to write on.
     pub blank: bool,
+}
+
+/// The fields that hold the secrets of the client's device: [`DocumentData`]'s `Debug` shows `***`.
+const SECRET_FIELDS: [&str; 2] = ["order.password", "order.pattern"];
+
+impl std::fmt::Debug for DocumentData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let values: BTreeMap<&str, &str> = self
+            .values
+            .iter()
+            .map(|(k, v)| {
+                let shown = if SECRET_FIELDS.contains(&k.as_str()) {
+                    "***"
+                } else {
+                    v.as_str()
+                };
+                (k.as_str(), shown)
+            })
+            .collect();
+        f.debug_struct("DocumentData")
+            .field("values", &values)
+            .field("barcode", &self.barcode)
+            .field("logo", &self.logo)
+            .field("blank", &self.blank)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
@@ -259,4 +286,29 @@ fn helpers() -> String {
     };
     out.push_str(PRELUDE);
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn debug_output_masks_the_device_password_and_pattern() {
+        let data = DocumentData {
+            values: BTreeMap::from([
+                ("order.number".to_owned(), "41".to_owned()),
+                ("order.password".to_owned(), "Zx-0000-pw".to_owned()),
+                ("order.pattern".to_owned(), "1 · 2 · 3 · 6".to_owned()),
+            ]),
+            barcode: Some("000000000417".to_owned()),
+            ..Default::default()
+        };
+        for text in [format!("{data:?}"), format!("{data:#?}")] {
+            assert!(!text.contains("Zx-0000-pw"), "{text}");
+            assert!(!text.contains("1 · 2 · 3 · 6"), "{text}");
+            assert!(text.contains("order.password"), "{text}");
+            assert!(text.contains("\"41\""), "{text}");
+            assert!(text.contains("000000000417"), "{text}");
+        }
+    }
 }

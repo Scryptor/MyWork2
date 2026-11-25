@@ -809,6 +809,48 @@ async fn moving_and_editing_together_writes_both_entries() -> Result<(), CoreErr
     Ok(())
 }
 
+/// Вторая вкладка с устаревшей версией: перемещение — спор, а не запись; `order.moved` не пишется.
+#[tokio::test]
+async fn a_stale_move_is_a_conflict_and_writes_no_history() -> Result<(), CoreError> {
+    for t in cores().await {
+        let (o, center, north) = order_in_center(&t).await?;
+        let edited = t
+            .core
+            .update_order(
+                &admin(),
+                o.id,
+                o.version,
+                OrderPatch {
+                    brand: Some("Apple".into()),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        let entries = audit_entries(&t.core, o.id).await;
+        let stale = t
+            .core
+            .update_order(&admin(), o.id, o.version, move_to(Some(north)))
+            .await;
+        assert!(
+            matches!(
+                stale,
+                Err(CoreError::Conflict { current_version, .. }) if current_version == edited.version
+            ),
+            "{}: {stale:?}",
+            t.label
+        );
+        assert_eq!(audit_entries(&t.core, o.id).await, entries, "{}", t.label);
+        let now = t.core.get_order(&admin(), o.id).await?;
+        assert_eq!(
+            (now.service_point_id, now.version),
+            (Some(center), edited.version),
+            "{}",
+            t.label
+        );
+    }
+    Ok(())
+}
+
 #[tokio::test]
 async fn clearing_the_point_says_without_point() -> Result<(), CoreError> {
     for t in cores().await {
