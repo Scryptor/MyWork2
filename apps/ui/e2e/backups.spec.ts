@@ -25,16 +25,21 @@ test('makes_restores_and_deletes_a_copy', async ({ page }) => {
 	const dialog = page.getByRole('alertdialog');
 	await expect(dialog.getByText('Восстановить данные из копии?')).toBeVisible();
 	await dialog.getByRole('button', { name: 'Восстановить', exact: true }).click();
-	await expect(page.getByText(/при следующем запуске программы/)).toBeVisible();
+	await expect(dialog).toBeHidden();
+	// The callout's own text: the closing dialog says «при следующем запуске» too.
+	const pending = page.getByText(/^Данные заменятся копией от .* при следующем запуске программы/);
+	await expect(pending).toBeVisible();
 	await expect(
 		page.getByText('Перезапустите сервер mw-server, чтобы восстановить данные.')
 	).toBeVisible();
 
 	await page.getByRole('button', { name: 'Отменить восстановление' }).click();
-	await expect(page.getByText(/при следующем запуске программы/)).toHaveCount(0);
+	await expect(pending).toHaveCount(0);
 
 	await list.getByRole('button', { name: /^Удалить копию от/ }).click();
-	await page.getByRole('alertdialog').getByRole('button', { name: 'Удалить', exact: true }).click();
+	const confirm = page.getByRole('alertdialog');
+	await confirm.getByRole('button', { name: 'Удалить', exact: true }).click();
+	await expect(confirm).toBeHidden();
 	await expect(page.getByText('Вручную')).toHaveCount(0);
 	await expect(page.getByText('Копий пока нет')).toBeVisible();
 });
