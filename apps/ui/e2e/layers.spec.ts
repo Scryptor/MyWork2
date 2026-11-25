@@ -354,6 +354,26 @@ test.describe('layers', () => {
 		await expect(text).toBeHidden();
 	});
 
+	test('a hover card opens on a pause of the pointer and on keyboard focus; Esc closes it', async ({
+		page
+	}) => {
+		const section = page.locator('#layers');
+		const trigger = section.getByRole('button', { name: '№ 10481' });
+		const card = page.getByText('Скидка: 200 ₽', { exact: true });
+		await trigger.scrollIntoViewIfNeeded();
+		await trigger.hover();
+		await expect(card).toBeVisible();
+		await page.mouse.move(0, 0);
+		await expect(card).toBeHidden();
+		// Focus as from the keyboard: a key first (WebKit does not Tab to plain buttons), then the trigger.
+		await page.keyboard.press('Tab');
+		await trigger.focus();
+		await expect(trigger).toBeFocused();
+		await expect(card).toBeVisible();
+		await page.keyboard.press('Escape');
+		await expect(card).toBeHidden();
+	});
+
 	test('an icon button is a popover trigger and keeps its tooltip: «Колонки»', async ({ page }) => {
 		await page.goto('/orders');
 		await expect(page.getByRole('grid', { name: 'Заказы' })).toBeVisible();

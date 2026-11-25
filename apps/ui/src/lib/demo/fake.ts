@@ -484,6 +484,8 @@ export function makeOrders(count: number, seed = 1): OrderListItem[] {
 			estimate_to: estimateTo,
 			prepayment,
 			final_price: finalPrice,
+			// No discount: another draw would change every fictional order after it.
+			discount: 0,
 			need_call: !done ? rng() < 0.15 : kind === 'ready' && rng() < 0.3,
 			need_parts: statusId === 5 ? rng() < 0.7 : !done && rng() < 0.05,
 			barcode: '2' + String(id).padStart(11, '0'),

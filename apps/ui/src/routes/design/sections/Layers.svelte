@@ -13,6 +13,7 @@
 		ConfirmDialog,
 		Dialog,
 		DropdownMenu,
+		HoverCard,
 		Kbd,
 		Popover,
 		Select,
@@ -147,6 +148,24 @@
 		{/snippet}
 	</DropdownMenu>
 	<span class="muted">Выбрано: {picked || 'ничего'}</span>
+</div>
+<!-- As an earlier order in the client's card: the card comes after a pause of the pointer or on focus by
+     keyboard; a press does what the trigger does. -->
+<div class="row">
+	<HoverCard>
+		{#snippet trigger(props)}
+			<Button {...props} variant="ghost" onclick={() => (picked = ORDER)}>{ORDER}</Button>
+		{/snippet}
+		<div class="brief">
+			<strong>{ORDER} · 02.11.2026</strong>
+			<span>Samsung Galaxy A52</span>
+			<span>Не включается</span>
+			<span>Итог: 2 500 ₽</span>
+			<span>Скидка: 200 ₽</span>
+			<span>Выдан 12.11.2026</span>
+		</div>
+	</HoverCard>
+	<span class="muted">Наведите на заказ: краткий просмотр</span>
 </div>
 
 <h3>Диалоги</h3>
@@ -285,5 +304,10 @@
 	.pop {
 		margin: 0;
 		max-width: 16rem;
+	}
+	.brief {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-0-5);
 	}
 </style>

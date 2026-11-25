@@ -86,6 +86,10 @@ prepayment: Money,
  */
 final_price: Money | null, 
 /**
+ * Скидка, в копейках.
+ */
+discount: Money, 
+/**
  * Нужно позвонить клиенту.
  */
 need_call: boolean, 

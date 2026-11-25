@@ -394,3 +394,35 @@ async fn received_and_issued_periods_are_inclusive() -> Result<(), CoreError> {
     }
     Ok(())
 }
+
+#[tokio::test]
+async fn list_items_carry_the_discount() -> Result<(), CoreError> {
+    use mw_core::OrderPatch;
+    use mw_domain::money::Money;
+    for t in cores().await {
+        let o = t.core.create_order(&admin(), sample_new_order()).await?;
+        t.core
+            .update_order(
+                &admin(),
+                o.id,
+                o.version,
+                OrderPatch {
+                    discount: Some(Money::from_rubles(200)),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        let filter = OrderFilter {
+            client_id: Some(o.client_id),
+            ..Default::default()
+        };
+        let items = t
+            .core
+            .list_orders(&admin(), &filter, OrderSort::default(), 50, 0)
+            .await?
+            .items;
+        let item = items.iter().find(|i| i.id == o.id).unwrap();
+        assert_eq!(item.discount, Money::from_kopecks(20_000), "{}", t.label);
+    }
+    Ok(())
+}

@@ -1,6 +1,7 @@
 <!-- «Заказы клиента» of the client panel (spec 6.6): the newest orders, issued too, as № · date · device ·
      status. A click opens the order's panel; orders changed or accepted meanwhile come again. More than
-     fit here: «все» shows them on «Заказы». -->
+     fit here: «все» shows them on «Заказы». The pointer resting on an order shows its brief (device,
+     malfunction, money, issued); a phone has no hover, and its row shows the total and the day issued. -->
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import type { OrderListItem } from '$api/OrderListItem';
@@ -8,14 +9,17 @@
 	import { listOrders } from '#lib/api/orders.js';
 	import { serverClock } from '#lib/api/server-clock.svelte.js';
 	import { app } from '#lib/app/context.svelte.js';
+	import { display } from '#lib/design/prefs.svelte.js';
 	import { formatFull, formatRelative } from '#lib/format/date.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import { onOrderChanged } from '#lib/orders/events.js';
 	import { deviceOf } from '#lib/orders/view.js';
 	import Button from '#lib/ui/Button.svelte';
+	import HoverCard from '#lib/ui/HoverCard.svelte';
 	import Section from '#lib/ui/Section.svelte';
 	import Skeleton from '#lib/ui/Skeleton.svelte';
 	import StatusBadge from '#lib/ui/StatusBadge.svelte';
+	import { orderBrief, phoneLine } from './brief.js';
 
 	/** The orders shown at most: the newest ones. */
 	const LIMIT = 50;
@@ -53,7 +57,7 @@
 	});
 
 	// An order of this client accepted («Новый заказ») comes in; one changed (its status in the order
-	// panel) is updated in place.
+	// panel, its money) is updated in place, the brief too.
 	$effect(() =>
 		onOrderChanged((o, change) => {
 			if (o.client_id !== clientId) return;
@@ -64,14 +68,37 @@
 			orders = orders.with(at, {
 				...row,
 				status_id: o.status_id,
+				issued_at: o.issued_at,
 				device_type: o.device_type,
 				brand: o.brand,
 				model: o.model,
+				malfunction: o.malfunction,
+				prepayment: o.prepayment,
+				final_price: o.final_price,
+				discount: o.discount,
 				version: o.version
 			});
 		})
 	);
 </script>
+
+<!-- `props`: of the hover card that the row is the trigger of; none on a phone. -->
+{#snippet row(o: OrderListItem, props: Record<string, unknown>)}
+	{@const s = app.statusById(o.status_id)}
+	{@const second = display.phone ? phoneLine(o) : ''}
+	<button {...props} type="button" class="order" onclick={() => onopen(o.id)}>
+		<span class="number num">№ {o.id}</span>
+		<span class="when num" title={formatFull(o.received_at)}
+			>{formatRelative(o.received_at, serverClock.now())}</span
+		>
+		<!-- A long device is cut in the narrow panel: the whole of it on hover. -->
+		<span class="device">
+			<span class="device-name" title={deviceOf(o)}>{deviceOf(o)}</span>
+			{#if second}<span class="second num">{second}</span>{/if}
+		</span>
+		{#if s}<StatusBadge name={s.name} color={s.color} size="sm" />{/if}
+	</button>
+{/snippet}
 
 <Section title={t.orders}>
 	{#if failure}
@@ -89,17 +116,19 @@
 	{:else}
 		<ul class="orders" aria-label={t.orders}>
 			{#each orders as o (o.id)}
-				{@const s = app.statusById(o.status_id)}
 				<li>
-					<button type="button" class="order" onclick={() => onopen(o.id)}>
-						<span class="number num">№ {o.id}</span>
-						<span class="when num" title={formatFull(o.received_at)}
-							>{formatRelative(o.received_at, serverClock.now())}</span
-						>
-						<!-- A long device is cut in the narrow panel: the whole of it on hover. -->
-						<span class="device" title={deviceOf(o)}>{deviceOf(o)}</span>
-						{#if s}<StatusBadge name={s.name} color={s.color} size="sm" />{/if}
-					</button>
+					{#if display.phone}
+						{@render row(o, {})}
+					{:else}
+						<HoverCard>
+							{#snippet trigger(props)}{@render row(o, props)}{/snippet}
+							{@const brief = orderBrief(o, app.statusById(o.status_id)?.name ?? '')}
+							<div class="brief">
+								<strong class="num">{brief.title}</strong>
+								{#each brief.lines as line, i (i)}<span>{line}</span>{/each}
+							</div>
+						</HoverCard>
+					{/if}
 				</li>
 			{/each}
 		</ul>
@@ -155,10 +184,23 @@
 		font-size: var(--text-sm);
 	}
 	.device {
+		display: flex;
+		flex-direction: column;
 		min-width: 0;
+	}
+	.device-name {
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+	.second {
+		color: var(--text-3);
+		font-size: var(--text-sm);
+	}
+	.brief {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-0-5);
 	}
 	a {
 		color: var(--accent);

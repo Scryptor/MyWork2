@@ -171,6 +171,8 @@ pub struct OrderListItem {
     /// Итоговая цена, в копейках.
     #[schema(required = true)]
     pub final_price: Option<Money>,
+    /// Скидка, в копейках.
+    pub discount: Money,
     /// Нужно позвонить клиенту.
     pub need_call: bool,
     /// Нужны запчасти.
@@ -206,6 +208,7 @@ struct Row {
     estimate_to: Option<i64>,
     prepayment: i64,
     final_price: Option<i64>,
+    discount: i64,
     need_call: bool,
     need_parts: bool,
     barcode: String,
@@ -236,6 +239,7 @@ impl From<Row> for OrderListItem {
             estimate_to: r.estimate_to.map(Money::from_kopecks),
             prepayment: Money::from_kopecks(r.prepayment),
             final_price: r.final_price.map(Money::from_kopecks),
+            discount: Money::from_kopecks(r.discount),
             need_call: r.need_call,
             need_parts: r.need_parts,
             barcode: r.barcode,
@@ -342,6 +346,7 @@ impl Core {
             .expr_as(o(order::Column::EstimateTo), "estimate_to")
             .expr_as(o(order::Column::Prepayment), "prepayment")
             .expr_as(o(order::Column::FinalPrice), "final_price")
+            .expr_as(o(order::Column::Discount), "discount")
             .expr_as(o(order::Column::NeedCall), "need_call")
             .expr_as(o(order::Column::NeedParts), "need_parts")
             .expr_as(o(order::Column::Barcode), "barcode")

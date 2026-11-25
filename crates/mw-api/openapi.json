@@ -8704,6 +8704,7 @@
           "estimate_to",
           "prepayment",
           "final_price",
+          "discount",
           "need_call",
           "need_parts",
           "barcode",
@@ -8747,6 +8748,10 @@
           "device_type": {
             "type": "string",
             "description": "Тип устройства."
+          },
+          "discount": {
+            "$ref": "#/components/schemas/Money",
+            "description": "Скидка, в копейках."
           },
           "estimate_from": {
             "oneOf": [

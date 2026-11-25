@@ -147,6 +147,7 @@ function order(patch: Partial<OrderListItem> = {}): OrderListItem {
 		estimate_to: null,
 		prepayment: 0,
 		final_price: null,
+		discount: 0,
 		need_call: false,
 		need_parts: false,
 		barcode: '200000010001',

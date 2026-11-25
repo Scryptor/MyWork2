@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { createClient, createOrder, fetchClient, uniq, uniqPhone } from './support/api';
+import { createClient, createOrder, fetchClient, patchOrder, uniq, uniqPhone } from './support/api';
 
 // «Клиенты» on the server of 4173 (open mode: every right). The database is shared by every test and
 // both browsers: each test names its clients with a unique marker and narrows the list to it.
@@ -293,6 +293,32 @@ test('earlier orders open from the client panel reached by Ctrl K and by «от�
 	await expectOnTop(orderPanelOf(page, older.id));
 });
 
+test('hovering an earlier order shows its brief', async ({ page, request }) => {
+	const name = clientName();
+	const o = await createOrder(request, { clientName: name, model: uniq('M') });
+	await patchOrder(request, o.id, { final_price: 250000, discount: 20000 });
+	const panel = await openPanel(page, o.client_id, name);
+	const row = panel
+		.getByRole('list', { name: 'Заказы клиента' })
+		.getByRole('button', { name: new RegExp(`^№ ${o.id}(?!\\d)`) });
+	const total = page.getByText('Итог: 2 500 ₽', { exact: true });
+	await row.hover();
+	await expect(total).toBeVisible();
+	await expect(page.getByText('Скидка: 200 ₽', { exact: true })).toBeVisible();
+	await expect(page.getByText('Не включается', { exact: true })).toBeVisible();
+
+	await page.mouse.move(0, 0);
+	await expect(total).toBeHidden();
+
+	// A click at once, before the pause is over, opens the order; the brief does not come later over
+	// the order's panel.
+	await row.click();
+	await expect(orderPanelOf(page, o.id)).toBeVisible();
+	await page.waitForTimeout(600);
+	await expect(total).toBeHidden();
+	await expectOnTop(orderPanelOf(page, o.id));
+});
+
 test('«Новый заказ» opens the intake with this client', async ({ page, request }) => {
 	const name = clientName();
 	const c = await createClient(request, { full_name: name });
@@ -449,6 +475,23 @@ test.describe('on a phone', () => {
 		await card.click();
 		await expect(panelOf(page, name)).toBeVisible();
 		await expect(page).toHaveURL(new RegExp(`client=${o.client_id}`));
+	});
+
+	test('an earlier order shows its total under the device instead of a brief', async ({
+		page,
+		request
+	}) => {
+		const name = clientName();
+		const o = await createOrder(request, { clientName: name, model: uniq('M') });
+		await patchOrder(request, o.id, { final_price: 250000, discount: 20000 });
+		const panel = await openPanel(page, o.client_id, name);
+		const row = panel
+			.getByRole('list', { name: 'Заказы клиента' })
+			.getByRole('button', { name: new RegExp(`^№ ${o.id}(?!\\d)`) });
+		await expect(row).toContainText('2 500 ₽');
+		await row.hover();
+		await page.waitForTimeout(600);
+		await expect(page.getByText('Скидка: 200 ₽', { exact: true })).toHaveCount(0);
 	});
 
 	test('an earlier order opens from the client on the whole screen, and «← к клиенту» returns', async ({

@@ -660,6 +660,16 @@ export const ru = {
 		noOrders: 'Заказов пока нет',
 		moreOrders: (shown: number, total: number) => `Показаны последние ${shown} из ${total}`,
 		allOrders: 'все',
+		/** The brief of an earlier order: a card on hover, a second line of the row on a phone. */
+		brief: {
+			title: (id: number, received: string) => `№ ${id} · ${received}`,
+			total: (sum: string) => `Итог: ${sum}`,
+			noTotal: 'Итог не указан',
+			prepayment: (sum: string) => `Предоплата: ${sum}`,
+			discount: (sum: string) => `Скидка: ${sum}`,
+			issued: (date: string) => `Выдан ${date}`,
+			issuedShort: (date: string) => `выдан ${date}`
+		},
 		backToClient: '← к клиенту',
 		open: 'открыть',
 		newOrder: 'Новый заказ',

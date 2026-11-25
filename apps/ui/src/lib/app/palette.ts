@@ -197,6 +197,7 @@ export function listItemOf(o: Order, c: Client | null): OrderListItem {
 		estimate_to: o.estimate_to,
 		prepayment: o.prepayment,
 		final_price: o.final_price,
+		discount: o.discount,
 		need_call: o.need_call,
 		need_parts: o.need_parts,
 		barcode: o.barcode,

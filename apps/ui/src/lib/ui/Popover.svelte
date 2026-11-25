@@ -2,6 +2,7 @@
 	import { Popover } from 'bits-ui';
 	import { untrack, type Snippet } from 'svelte';
 	import { layers } from '#lib/design/layers.svelte.js';
+	import './popup.css';
 
 	let {
 		open = $bindable(false),
@@ -47,18 +48,3 @@
 		</Popover.Content>
 	</Popover.Portal>
 </Popover.Root>
-
-<style>
-	:global(.mw-popover) {
-		z-index: var(--z-popover);
-		box-sizing: border-box;
-		max-width: calc(100vw - 2 * var(--space-4));
-		padding: var(--space-3);
-		border: 1px solid var(--border-strong);
-		border-radius: var(--radius-md);
-		background: var(--surface);
-		color: var(--text);
-		box-shadow: var(--shadow-md);
-		font-size: var(--text-md);
-	}
-</style>
