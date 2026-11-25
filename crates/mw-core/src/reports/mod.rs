@@ -3,5 +3,6 @@
 pub(crate) mod orders;
 
 pub use orders::{
-    OrderReport, ReportFilter, ReportGroup, ReportGroupBy, ReportPoint, ReportStep, ReportTotals,
+    OrderReport, OrderReportGroup, ReportFilter, ReportGroupBy, ReportPoint, ReportStep,
+    ReportTotals,
 };

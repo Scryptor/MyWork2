@@ -108,7 +108,7 @@ pub struct ReportTotals {
 
 /// Группа разреза.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
-pub struct ReportGroup {
+pub struct OrderReportGroup {
     /// Ключ группы (для фильтра и сравнения).
     pub key: String,
     /// Подпись для человека.
@@ -132,7 +132,7 @@ pub struct OrderReport {
     /// Итоги по всем заказам отчёта.
     pub totals: ReportTotals,
     /// Группы выбранного разреза: большая выручка сверху.
-    pub groups: Vec<ReportGroup>,
+    pub groups: Vec<OrderReportGroup>,
     /// Шаг шкалы времени.
     pub step: ReportStep,
     /// Шкала времени; пустые дни и месяцы — нули.
@@ -533,7 +533,7 @@ fn group_key(by: ReportGroupBy, row: &ReportOrderRow) -> String {
 pub(crate) fn groups(
     by: ReportGroupBy,
     rows: &[ReportOrderRow],
-) -> Result<Vec<ReportGroup>, CoreError> {
+) -> Result<Vec<OrderReportGroup>, CoreError> {
     let mut spellings = Spellings::default();
     let mut totals: BTreeMap<String, ReportTotals> = BTreeMap::new();
     // Подписи точек и пользователей берутся из строк: они уже подставлены в заказы отчёта.
@@ -559,7 +559,7 @@ pub(crate) fn groups(
             ReportGroupBy::Source => spellings.add(&key, &row.source),
         }
     }
-    let mut list: Vec<ReportGroup> = totals
+    let mut list: Vec<OrderReportGroup> = totals
         .into_iter()
         .map(|(key, totals)| {
             let label = if key.is_empty() {
@@ -576,7 +576,7 @@ pub(crate) fn groups(
                     .or_else(|| spellings.best(&key))
                     .unwrap_or_else(|| key.clone())
             };
-            ReportGroup { key, label, totals }
+            OrderReportGroup { key, label, totals }
         })
         .collect();
     // Большая выручка сверху; при равенстве группа «без значения» — последней, затем по подписи.

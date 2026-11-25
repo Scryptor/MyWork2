@@ -69,7 +69,8 @@ pub use orders::{
 };
 pub use page::{Page, PageRequest};
 pub use reports::{
-    OrderReport, ReportFilter, ReportGroup, ReportGroupBy, ReportPoint, ReportStep, ReportTotals,
+    OrderReport, OrderReportGroup, ReportFilter, ReportGroupBy, ReportPoint, ReportStep,
+    ReportTotals,
 };
 pub use search_index::{ReindexStats, SEARCH_INDEX_VERSION};
 pub use service_points::{ServicePoint, ServicePointPatch};

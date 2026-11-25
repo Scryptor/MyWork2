@@ -9423,7 +9423,7 @@
           "groups": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/ReportGroup"
+              "$ref": "#/components/schemas/OrderReportGroup"
             },
             "description": "Группы выбранного разреза: большая выручка сверху."
           },
@@ -9447,6 +9447,29 @@
           "totals": {
             "$ref": "#/components/schemas/ReportTotals",
             "description": "Итоги по всем заказам отчёта."
+          }
+        }
+      },
+      "OrderReportGroup": {
+        "type": "object",
+        "description": "Группа разреза.",
+        "required": [
+          "key",
+          "label",
+          "totals"
+        ],
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "Ключ группы (для фильтра и сравнения)."
+          },
+          "label": {
+            "type": "string",
+            "description": "Подпись для человека."
+          },
+          "totals": {
+            "$ref": "#/components/schemas/ReportTotals",
+            "description": "Итоги группы."
           }
         }
       },
@@ -9673,24 +9696,52 @@
       },
       "ReportGroup": {
         "type": "object",
-        "description": "Группа разреза.",
+        "description": "Группа предупреждений одного кода.",
         "required": [
-          "key",
-          "label",
-          "totals"
+          "code",
+          "severity",
+          "title",
+          "count",
+          "order_ids",
+          "entries",
+          "entries_count"
         ],
         "properties": {
-          "key": {
-            "type": "string",
-            "description": "Ключ группы (для фильтра и сравнения)."
+          "code": {
+            "$ref": "#/components/schemas/WarningCode"
           },
-          "label": {
-            "type": "string",
-            "description": "Подпись для человека."
+          "count": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
           },
-          "totals": {
-            "$ref": "#/components/schemas/ReportTotals",
-            "description": "Итоги группы."
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReportEntry"
+            },
+            "description": "Предупреждения группы без номера заказа (клиенты, история, файлы, …): первые\n`REPORT_GROUP_ENTRIES` в порядке отчёта. Предупреждения заказов видны по `order_ids`."
+          },
+          "entries_count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Сколько всего предупреждений группы без номера заказа; `count` — все предупреждения группы.",
+            "minimum": 0
+          },
+          "order_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "Номера заказов, к которым относятся предупреждения группы, по возрастанию без повторов."
+          },
+          "severity": {
+            "$ref": "#/components/schemas/Severity"
+          },
+          "title": {
+            "type": "string",
+            "description": "Заголовок, как в текстовом отчёте."
           }
         }
       },
