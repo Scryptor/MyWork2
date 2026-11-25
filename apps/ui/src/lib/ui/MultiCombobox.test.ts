@@ -39,6 +39,20 @@ describe('MultiCombobox', () => {
 		expect(shown()).toEqual(['Коробка']);
 	});
 
+	it('an option given twice is offered once, and the list still opens', async () => {
+		render(Harness, { options: ['Чехол', 'Коробка', 'Чехол', 'Шнур', 'Коробка'] });
+		await userEvent.click(field());
+		expect(shown()).toEqual(['Чехол', 'Коробка', 'Шнур']);
+		await userEvent.type(field(), 'чех');
+		expect(shown()).toEqual(['Чехол']);
+	});
+
+	it('repeats do not take the rows of the limit', async () => {
+		render(Harness, { options: ['Чехол', 'Чехол', 'Чехол', 'Коробка', 'Шнур'], limit: 2 });
+		await userEvent.click(field());
+		expect(shown()).toEqual(['Чехол', 'Коробка']);
+	});
+
 	it('the list opens with every option not chosen, in the given order', async () => {
 		render(Harness, { options: OPTIONS, selected: ['Шнур'] });
 		await userEvent.click(field());

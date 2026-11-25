@@ -647,9 +647,10 @@
 		align-items: start;
 		gap: var(--space-3);
 	}
+	/* Four fields two by two: none alone on a row («Расходы» and its cost line too). */
 	.money {
 		display: grid;
-		grid-template-columns: repeat(3, minmax(0, 1fr));
+		grid-template-columns: repeat(2, minmax(0, 1fr));
 		align-items: start;
 		gap: var(--space-3);
 	}

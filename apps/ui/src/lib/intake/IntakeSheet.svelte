@@ -62,7 +62,7 @@
 	import IntakeAside from './IntakeAside.svelte';
 	import IntakePhotos, { MAX_INTAKE_PHOTOS } from './IntakePhotos.svelte';
 	import { intake, intakeDocuments, intakePrintOptions, printSheet } from './intake.svelte.js';
-	import { rankByUsage } from './ranking.js';
+	import { loadDictionaries } from './ranking.js';
 
 	const t = ru.intake;
 	/** Pause after the last key before the draft is written and the suggestions are asked. */
@@ -195,7 +195,7 @@
 		submitError = null;
 		serverErrors = {};
 		wrongMoney = { estimateFrom: false, estimateTo: false, prepayment: false };
-		loadDictionaries();
+		openDictionaries();
 		// The draft of this device was replaced (another client, a draft accepted or of another user, or
 		// the page was loaded again meanwhile): its photos go now, not in a day.
 		const before = storedKey(raw);
@@ -287,26 +287,20 @@
 	}
 
 	let dictionarySeq = 0;
-	function loadDictionaries() {
+	function openDictionaries() {
 		const mine = ++dictionarySeq;
-		void Promise.all(
-			KINDS.map((k) =>
-				Promise.all([
-					listDictionary(k).catch(() => []),
-					// Without the counts (no right, no answer) the list keeps the order of the dictionary.
-					RANKED.includes(k) ? dictionaryUsage(k).catch(() => []) : []
-				])
-			)
-		).then((lists) => {
-			// Without them the fields still take any text.
-			if (mine !== dictionarySeq) return;
-			dictionaries = Object.fromEntries(
-				KINDS.map((k, i) => {
-					const [items, usage] = lists[i] ?? [[], []];
-					return [k, rankByUsage(items, usage)];
-				})
-			) as Record<Kind, string[]>;
-		});
+		// The lists come first and the fields offer them at once; the counts (most used first) re-rank
+		// «Комплектность» and «Состояние» when they come, or never (no right, no answer). Without the lists
+		// the fields still take any text.
+		void loadDictionaries(
+			KINDS,
+			RANKED,
+			{ list: (k) => listDictionary(k), usage: dictionaryUsage },
+			(lists) => {
+				if (mine !== dictionarySeq) return;
+				dictionaries = { ...dictionaries, ...lists };
+			}
+		);
 		// Without them only «Не выбран» is offered.
 		void listMasters().then(
 			(list) => {
@@ -649,7 +643,7 @@
 			<ClientStep bind:draft sources={dictionaries.client_source} {errors} onchosen={chosen} />
 
 			<Section title={t.device}>
-				<div class="grid three">
+				<div class="grid three names">
 					<Combobox
 						id={FIELDS.deviceType}
 						label={t.deviceType}
@@ -674,6 +668,9 @@
 						bind:value={draft.model}
 						error={errors.model}
 					/>
+				</div>
+				<!-- Two by two: «Графический ключ» beside «Пароль», no field alone on a row. -->
+				<div class="grid two">
 					<Combobox label={t.color} items={colorItems} bind:value={draft.color} />
 					<TextInput
 						label={t.serial}
@@ -864,6 +861,11 @@
 	.grid.two {
 		grid-template-columns: repeat(2, minmax(0, 1fr));
 	}
+	/* The type, the brand and the model: one row of three while there is room, the rest of the device
+	   two by two under them. */
+	.grid.names + .grid {
+		margin-top: calc(var(--space-3) - var(--space-2));
+	}
 	.failed,
 	.note {
 		flex: 1 0 100%;
@@ -899,6 +901,9 @@
 	}
 	:global(:is([data-width='xs'], [data-width='sm'])) .grid.three {
 		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+	:global([data-width='sm']) .grid.three.names {
+		grid-template-columns: repeat(3, minmax(0, 1fr));
 	}
 	:global([data-width='xs']) :is(.grid.three, .grid.two) {
 		grid-template-columns: minmax(0, 1fr);

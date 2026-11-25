@@ -305,8 +305,9 @@ function failureText(e: unknown): string {
 }
 
 /**
- * The documents on their way to a printer (`kind:orderId`). Each press of Ctrl/⌘P or of the menu is a job,
- * and nothing shows until the printer has it: a second press then is dropped, not a second sheet.
+ * The documents on their way to a printer (`kind:orderId:pages`). Each press of Ctrl/⌘P or of the menu is
+ * a job, and nothing shows until the printer has it: a second press then is dropped, not a second sheet.
+ * Other pages of the same document (chosen in the preview) are another job.
  */
 // eslint-disable-next-line svelte/prefer-svelte-reactivity -- bookkeeping, nothing renders it
 const sending = new Set<string>();
@@ -325,8 +326,8 @@ export interface PrintOptions {
 /**
  * Prints a document on this computer and says where it went. In a browser, or without a printer, the
  * preview opens instead (with `noPreview` and no printer: a notice); a failure is a notice with its text
- * and «Предпросмотр». The same document of the same order asked again while it is being sent is dropped.
- * Never throws.
+ * and «Предпросмотр». The same pages of the same document of the same order asked again while they are
+ * being sent are dropped. Never throws.
  */
 export async function printDocument(
 	kind: DocumentKind,
@@ -347,7 +348,7 @@ async function printOne(
 		openPreview(kind, target);
 		return null;
 	}
-	const job = `${kind}:${target.orderId ?? ''}`;
+	const job = `${kind}:${target.orderId ?? ''}:${opts.pages ?? ''}`;
 	if (sending.has(job)) return null;
 	sending.add(job);
 	try {

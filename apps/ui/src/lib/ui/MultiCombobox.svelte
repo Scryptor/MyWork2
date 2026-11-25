@@ -64,7 +64,8 @@
 	const query = $derived(normalizeSearch(pending));
 	const chosen = $derived(new Set(selected.map(normalizeSearch)));
 	const matches = $derived.by(() => {
-		const found = options.filter((o) => {
+		// An option given twice is one row: the rows are keyed by their text.
+		const found = [...new Set(options)].filter((o) => {
 			const key = normalizeSearch(o);
 			return !chosen.has(key) && key.includes(query);
 		});

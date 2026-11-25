@@ -350,6 +350,26 @@ describe('one job at a time', () => {
 		expect(platform.printPdf).toHaveBeenCalledTimes(4);
 	});
 
+	it('the same document with other pages chosen is another job: both go to the printer', async () => {
+		const done = slowPrinter();
+		const first = printDocument('intake_act', { orderId: 42 }, { noPreview: true, pages: '1' });
+		await vi.waitFor(() => expect(platform.printPdf).toHaveBeenCalledOnce());
+		const second = printDocument('intake_act', { orderId: 42 }, { noPreview: true, pages: '2' });
+		const whole = printDocument('intake_act', { orderId: 42 }, { noPreview: true });
+		await vi.waitFor(() => expect(platform.printPdf).toHaveBeenCalledTimes(3));
+		// The same pages again while they are on their way: dropped.
+		const again = printDocument('intake_act', { orderId: 42 }, { noPreview: true, pages: '2' });
+		await settle();
+		done();
+		await Promise.all([first, second, whole, again]);
+		expect(platform.printPdf).toHaveBeenCalledTimes(3);
+		expect(documents.documentPdf.mock.calls.map((c) => c[2])).toEqual([
+			{ printerDpi: 300, pages: '1' },
+			{ printerDpi: 300, pages: '2' },
+			{ printerDpi: 300 }
+		]);
+	});
+
 	it('a failed job does not hold the document back', async () => {
 		platform.printPdf.mockRejectedValueOnce(new Error('Принтер «Акты HP» не найден'));
 		await printDocument('intake_act', { orderId: 42 });

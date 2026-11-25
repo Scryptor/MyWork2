@@ -3,6 +3,7 @@ import type { DocumentFormat } from '$api/DocumentFormat';
 import type { DocumentKind } from '$api/DocumentKind';
 import type { DocumentPages } from '$api/DocumentPages';
 import type { DocumentQuery } from '$api/DocumentQuery';
+import { ru } from '#lib/i18n/ru.js';
 import { request, requestFile } from './client.js';
 
 /** How a document is built: the label and its offset, the printer's resolution, the raster's (PNG only). */
@@ -15,7 +16,10 @@ export interface DocumentOptions {
 	labelMm?: [number, number];
 	/** The content moved right and down, mm. */
 	offsetMm?: [number, number];
-	/** Only these pages, as `pageSelection` gives them («1,3-4»); null or none — the whole document. */
+	/**
+	 * Only these pages, as `pageSelection` gives them («1,3-4»); null or none — the whole document. Empty
+	 * (nothing checked) is refused: the server would read it as the whole document.
+	 */
 	pages?: string | null;
 }
 
@@ -34,9 +38,10 @@ const path = (kind: DocumentKind, target: DocumentTarget) =>
 
 /**
  * The parameters of the request; what is not given is not sent, a PDF never gets `dpi`. `pages` goes
- * with a single document only: a batch prints every page.
+ * with a single document only: a batch prints every page. No page checked throws: nothing is asked.
  */
 export function documentQuery(format: DocumentFormat, opts: DocumentOptions): DocumentQuery {
+	if (opts.pages === '') throw new Error(ru.print.noPagesChecked);
 	const q: DocumentQuery = { format };
 	if (format === 'png' && opts.dpi !== undefined) q.dpi = opts.dpi;
 	if (opts.printerDpi !== undefined) q.printer_dpi = opts.printerDpi;
@@ -64,8 +69,11 @@ export async function documentPdf(
 	return { blob: file.blob, filename: file.filename ?? UNNAMED_PDF };
 }
 
-/** The pages as PNG; `signal` calls the request off (a preview closed before the answer). */
-export const documentPages = (
+/**
+ * The pages as PNG; `signal` calls the request off (a preview closed before the answer). Options refused
+ * by `documentQuery` reject, as a failed request does.
+ */
+export const documentPages = async (
 	kind: DocumentKind,
 	target: DocumentTarget,
 	opts: DocumentOptions = {},

@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
+import { expect, test, type APIRequestContext, type Page, type Route } from '@playwright/test';
 import type { DictionaryItem } from '$api/DictionaryItem';
 import type { OrderPage } from '$api/OrderPage';
 import {
@@ -16,8 +16,9 @@ import {
 	uniqPhone
 } from './support/api';
 
-// The server on 4173 runs without sign-in: every right, so «+ своё» also fills the dictionaries. Its
-// settings keep «intake_required_fields» on: the brand and the model are required too.
+// The server on 4173 runs without sign-in: every right, so a value added in a field («Добавить «…»», or
+// Enter) also fills its dictionary. Its settings keep «intake_required_fields» on: the brand and the
+// model are required too.
 
 /** The modifier the app reads as Mod: ⌘ where navigator.platform says Mac, Ctrl elsewhere. */
 async function mod(page: Page): Promise<'Meta' | 'Control'> {
@@ -1196,4 +1197,37 @@ test('without the usage counts the list keeps the order of the dictionary', asyn
 	await page.keyboard.press('Backspace');
 	await expect(tagOf(page, second)).toHaveCount(0);
 	await expect(sheetOf(page)).toBeVisible();
+});
+
+test('the lists do not wait for the usage counts; the most used go up when the counts come', async ({
+	page,
+	request
+}) => {
+	const mark = uniq('С');
+	const [first, second] = [`Первое ${mark}`, `Второе ${mark}`];
+	const type = `Тип ${mark}`;
+	await addDictionaryItem(request, 'device_type', type);
+	await addDictionaryItem(request, 'condition', first);
+	await addDictionaryItem(request, 'condition', second);
+	await createOrder(request, { device_condition: second });
+	// The counts are slow: held until the test lets them go.
+	let slow = true;
+	const held: Route[] = [];
+	await page.route('**/api/v1/dictionaries/*/usage', (route) =>
+		slow ? void held.push(route) : route.continue()
+	);
+
+	await openIntake(page);
+	await expect.poll(() => held.length).toBeGreaterThan(0);
+	await typeOf(page).fill(mark);
+	await expect(page.getByRole('option', { name: type, exact: true })).toBeVisible();
+	await typeOf(page).fill('');
+	await conditionOf(page).click();
+	await conditionOf(page).fill(mark);
+	const options = page.getByRole('option').filter({ hasText: mark });
+	await expect(options).toHaveText([first, second, `Добавить «${mark}»`]);
+
+	slow = false;
+	for (const route of held.splice(0)) await route.continue();
+	await expect(options).toHaveText([second, first, `Добавить «${mark}»`]);
 });

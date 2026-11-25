@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ru } from '#lib/i18n/ru.js';
 import { documentBatchPdf, documentPages, documentPdf, documentQuery } from './documents.js';
 
 // The documents of the server: an order's (`/orders/{id}/documents/{kind}`) or without an order
@@ -55,6 +56,11 @@ describe('documentQuery', () => {
 			pages: '2'
 		});
 		expect(documentQuery('pdf', { pages: null })).toEqual({ format: 'pdf' });
+	});
+
+	it('refuses an empty selection: nothing checked is not the whole document', () => {
+		expect(() => documentQuery('pdf', { pages: '' })).toThrow(ru.print.noPagesChecked);
+		expect(() => documentQuery('png', { dpi: 300, pages: '' })).toThrow(ru.print.noPagesChecked);
 	});
 
 	it('a PDF never gets the raster resolution, even when it is passed', () => {
@@ -128,6 +134,17 @@ describe('documentPdf', () => {
 			path: '/api/v1/orders/7/documents/intake_act',
 			params: { format: 'pdf', printer_dpi: '300', pages: '1' }
 		});
+	});
+
+	it('nothing checked asks the server nothing', async () => {
+		const fn = stubFetch(() => new Response('%PDF', { status: 200 }));
+		await expect(documentPdf('intake_act', { orderId: 7 }, { pages: '' })).rejects.toThrow(
+			ru.print.noPagesChecked
+		);
+		await expect(documentPages('intake_act', { orderId: 7 }, { pages: '' })).rejects.toThrow(
+			ru.print.noPagesChecked
+		);
+		expect(fn).not.toHaveBeenCalled();
 	});
 
 	it('without an order: the document itself (blank act) or the sample', async () => {
