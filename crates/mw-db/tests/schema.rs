@@ -388,6 +388,55 @@ async fn vacuum_into_writes_a_consistent_copy_once() {
     assert!(mw_db::backup::vacuum_into(&db, &copy).await.is_err());
 }
 
+#[tokio::test]
+async fn inspect_tells_good_damaged_and_newer_copies() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = mw_db::connect(&mw_db::sqlite_url(&dir.path().join("live.db")))
+        .await
+        .unwrap();
+    mw_db::migrate(&db).await.unwrap();
+
+    let good = dir.path().join("good.db");
+    mw_db::backup::vacuum_into(&db, &good).await.unwrap();
+    let check = mw_db::backup::inspect_copy(&good).await.unwrap();
+    assert!(check.intact);
+    assert!(check.unknown_migrations.is_empty());
+    let header_before = std::fs::read(&good).unwrap()[..32].to_vec();
+
+    let broken = dir.path().join("broken.db");
+    let noise: Vec<u8> = (0..4096u32).map(|i| (i * 37 % 251) as u8).collect();
+    std::fs::write(&broken, noise).unwrap();
+    let check = mw_db::backup::inspect_copy(&broken).await.unwrap();
+    assert!(!check.intact);
+
+    let newer = dir.path().join("newer.db");
+    mw_db::backup::vacuum_into(&db, &newer).await.unwrap();
+    let copy_db = mw_db::connect(&mw_db::sqlite_url(&newer)).await.unwrap();
+    copy_db
+        .execute_raw(Statement::from_string(
+            sea_orm::DatabaseBackend::Sqlite,
+            "INSERT INTO seaql_migrations (version, applied_at) VALUES ('m29991231_000001_future', 1)",
+        ))
+        .await
+        .unwrap();
+    copy_db.close().await.unwrap();
+    let check = mw_db::backup::inspect_copy(&newer).await.unwrap();
+    assert!(check.intact);
+    assert_eq!(check.unknown_migrations, ["m29991231_000001_future"]);
+
+    // Нет таблицы миграций — копия не годится.
+    let bare = dir.path().join("bare.db");
+    let bare_db = mw_db::connect(&mw_db::sqlite_url(&bare)).await.unwrap();
+    bare_db.close().await.unwrap();
+    assert!(!mw_db::backup::inspect_copy(&bare).await.unwrap().intact);
+
+    // Осмотр ничего не пишет и не создаёт.
+    assert_eq!(std::fs::read(&good).unwrap()[..32], header_before[..]);
+    let missing = dir.path().join("missing.db");
+    assert!(mw_db::backup::inspect_copy(&missing).await.is_err());
+    assert!(!missing.exists());
+}
+
 async fn put_setting_row(db: &DatabaseConnection, key: &str, value: &str) {
     setting::Entity::insert(setting::ActiveModel {
         key: Set(key.to_owned()),

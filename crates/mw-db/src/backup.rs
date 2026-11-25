@@ -33,3 +33,75 @@ pub async fn vacuum_into(db: &DatabaseConnection, path: &Path) -> Result<(), DbE
     .await?;
     Ok(())
 }
+
+/// Что нашлось в файле копии базы.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CopyCheck {
+    /// `PRAGMA quick_check` ответил `ok`, и есть таблица миграций.
+    pub intact: bool,
+    /// Миграции копии, которых эта программа не знает (копия от более новой версии).
+    pub unknown_migrations: Vec<String>,
+}
+
+/// Осматривает файл копии базы, ничего в нём не меняя: одно соединение, без создания файла и
+/// без смены `journal_mode`. Нет файла — ошибка; повреждённый или не тот файл — `intact: false`.
+pub async fn inspect_copy(path: &Path) -> Result<CopyCheck, DbErr> {
+    use sea_orm::sqlx::sqlite::SqliteConnectOptions;
+    use sea_orm::sqlx::{ConnectOptions, Connection, Row};
+    use sea_orm_migration::MigratorTrait;
+
+    if !path.is_file() {
+        return Err(DbErr::Custom(format!(
+            "файла копии нет: {}",
+            path.display()
+        )));
+    }
+    let broken = CopyCheck {
+        intact: false,
+        unknown_migrations: Vec::new(),
+    };
+    let options = SqliteConnectOptions::new()
+        .filename(path)
+        .create_if_missing(false)
+        .read_only(true);
+    let Ok(mut conn) = options.connect().await else {
+        return Ok(broken);
+    };
+    let checked = async {
+        let first: String = sea_orm::sqlx::query("PRAGMA quick_check")
+            .fetch_optional(&mut conn)
+            .await?
+            .map(|row| row.try_get(0))
+            .transpose()?
+            .unwrap_or_default();
+        if first != "ok" {
+            return Ok::<_, sea_orm::sqlx::Error>(None);
+        }
+        let rows = sea_orm::sqlx::query("SELECT version FROM seaql_migrations")
+            .fetch_all(&mut conn)
+            .await?;
+        let mut versions = Vec::new();
+        for row in rows {
+            versions.push(row.try_get::<String, _>(0)?);
+        }
+        Ok(Some(versions))
+    }
+    .await;
+    conn.close().await.ok();
+    let Ok(Some(versions)) = checked else {
+        return Ok(broken);
+    };
+    let known: Vec<String> = crate::migration::Migrator::migrations()
+        .iter()
+        .map(|m| m.name().to_owned())
+        .collect();
+    let mut unknown_migrations: Vec<String> = versions
+        .into_iter()
+        .filter(|v| !known.contains(v))
+        .collect();
+    unknown_migrations.sort();
+    Ok(CopyCheck {
+        intact: true,
+        unknown_migrations,
+    })
+}

@@ -1,6 +1,7 @@
 //! Резервные копии: база и файлы вложений в папке копий, автокопия раз в сутки.
 
 mod copy;
+mod restore;
 mod settings;
 
 use std::path::{Path, PathBuf};
@@ -12,8 +13,12 @@ use sea_orm::DatabaseBackend;
 use serde::{Deserialize, Serialize};
 use tokio::sync::OwnedMutexGuard;
 
-#[allow(unused_imports)] // для восстановления (следующая задача)
-pub(crate) use copy::{Manifest, list_copies, unique_name, write_manifest};
+use copy::{list_copies, unique_name};
+pub use restore::{
+    RESTORE_MARKER, RESTORE_RESULT, RESTORE_STAGING, apply_pending_restore, schedule_restore,
+};
+#[cfg(any(test, feature = "testing"))]
+pub use restore::{RestoreStop, apply_pending_restore_until};
 
 use crate::{Actor, Core, CoreError, NewAuditEntry, write_audit};
 
@@ -142,6 +147,8 @@ pub struct BackupRestoreResult {
     pub ok: bool,
     pub copy: BackupCopy,
     pub requested_at: NaiveDateTime,
+    /// Кто запросил восстановление.
+    pub requested_by: String,
     /// Имя страховочной копии прежних данных.
     #[schema(required = true)]
     pub safety: Option<String>,
@@ -178,6 +185,10 @@ pub struct BackupOverview {
     pub last_restore: Option<BackupRestoreResult>,
     #[schema(required = true)]
     pub legacy: Option<BackupLegacySettings>,
+}
+
+fn data_dir_if<'a>(reason: Option<&str>, data_dir: Option<&'a Path>) -> Option<&'a Path> {
+    data_dir.filter(|_| reason.is_none())
 }
 
 /// Папка по умолчанию.
@@ -274,8 +285,9 @@ impl Core {
             folder_problem,
             copies,
             job,
-            pending: None,
-            last_restore: None,
+            pending: data_dir_if(reason, self.data_dir.as_deref()).and_then(restore::read_pending),
+            last_restore: data_dir_if(reason, self.data_dir.as_deref())
+                .and_then(restore::read_last_result),
             legacy: None,
         })
     }
@@ -583,6 +595,12 @@ impl Core {
                 "backup_missing",
             )]));
         };
+        if restore::pending_copy_path(self.backups_data_dir()?).is_some_and(|p| p == path) {
+            return Err(CoreError::Validation(vec![FieldError::new(
+                "name",
+                "backup_pending",
+            )]));
+        }
         let _guard = self.backup_guard()?;
         tokio::task::spawn_blocking(move || copy::remove_dir_checked(&path))
             .await
