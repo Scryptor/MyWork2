@@ -389,7 +389,8 @@ test.describe('server settings', () => {
 		await expect(panel.getByRole('textbox', { name: 'Предоплата' })).toHaveValue('500');
 		await expect(panel.getByText(/^К оплате/)).toHaveText(/^К оплате\s3\s000\s\$$/);
 		await expect(panel.getByText('$', { exact: true }).first()).toBeVisible();
-		await expect(panel.getByText('₽')).toHaveCount(0);
+		// No amount shows ₽; the history keeps «…, предоплата 500 ₽» as written when the order was taken.
+		await expect(panel.getByText('₽', { exact: true })).toHaveCount(0);
 
 		await page.goto('/settings/general');
 		saved = settingsSaved(page);
