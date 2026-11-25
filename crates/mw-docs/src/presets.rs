@@ -51,6 +51,7 @@ fn mywork2(kind: DocumentKind, title: &str, issue: bool) -> Preset {
             align: Align::Left,
         }),
         text("{фирма.название}", Some(FIRM_NAME_PT), true, Align::Left),
+        text("{фирма.телефон}", Some(BODY_PT), false, Align::Left),
         text("{фирма.сведения}", Some(SMALL_PT), false, Align::Left),
     ];
     let right = vec![

@@ -97,6 +97,25 @@ fn mywork2_presets_fit_one_landscape_sheet() {
     }
 }
 
+#[test]
+fn mywork2_presets_print_the_firm_phone_in_the_header() {
+    for kind in ACTS {
+        let t = mywork2(kind).template;
+        let data = sample_data(kind);
+        let phone = data.values.get("firm.phone").expect("образец телефона");
+        assert!(!phone.is_empty());
+        let doc = render(&t, &data, &RenderOptions::default())
+            .unwrap_or_else(|e| panic!("{kind:?}: {e}"));
+        assert_eq!(doc.page_count(), 1, "{kind:?}");
+        let flat = doc.text().replace('\n', "");
+        assert_eq!(
+            flat.matches(phone.as_str()).count(),
+            2,
+            "{kind:?}: {flat:?}"
+        );
+    }
+}
+
 fn labels(kind: DocumentKind) -> Vec<String> {
     let t = mywork2(kind).template;
     t.blocks
