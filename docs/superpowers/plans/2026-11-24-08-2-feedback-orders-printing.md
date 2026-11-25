@@ -207,14 +207,15 @@
 **Interfaces:**
 - Produces:
   - `mw_domain::pattern::{PATTERN_MIN_POINTS: usize = 4, validate_pattern(text: &str) -> Result<(), &'static str>, pattern_text(text: &str) -> String}`;
-  - `Order.device_pattern: String`, `NewOrder.device_pattern: String` (`#[serde(default)]`), `OrderPatch.device_pattern: Option<String>` (`patch::present`);
+  - `Order.device_pattern: String`, `NewOrder.device_pattern: String` (обязательное поле тела, без `#[serde(default)]`), `OrderPatch.device_pattern: Option<String>` (`patch::present`);
+  - *Поправка при исполнении:* сначала здесь стоял `#[serde(default)]`; контролёр отменил его (коммит `bab1b60`). `NewOrder` — только тело запроса, из хранилища его не читают, предрелизам совместимость не нужна, а все прежние поля `NewOrder` обязательны (`request_bodies_require_every_field`). Не возвращать.
   - поля документов `order.password` (`заказ.пароль`, «Пароль устройства», образец `1234`, пусто `""`) и `order.pattern` (`заказ.графический_ключ`, «Графический ключ», образец `1 · 5 · 8 · 9 · 6 · 3`, пусто `""`) сразу после `order.serial`.
 
 - [ ] **Step 1: Тесты домена.**
   - `validate_pattern`: принимает `""`, `"1589"`, `"123456789"`; не принимает `"158"` (3 точки), `"1123"` (повтор), `"1580"` (`0`), `"a123"`, `"1234567891"` (10 знаков).
   - `pattern_text("158963") == "1 · 5 · 8 · 9 · 6 · 3"`, `pattern_text("") == ""`.
 - [ ] **Step 2: Тесты ядра** (`all_backends`).
-  - `orders_create.rs`: `a_new_order_keeps_its_pattern_key` — `device_pattern: "1596"` сохраняется; `NewOrder` без поля в JSON читается с пустым ключом.
+  - `orders_create.rs`: `a_new_order_keeps_its_pattern_key` — `device_pattern: "1596"` сохраняется; `NewOrder` без поля в JSON отклоняется (поле обязательно; по решению контролёра при исполнении вместо прежнего «читается с пустым ключом», см. *Interfaces*).
   - `orders_update.rs`: `the_pattern_key_is_saved_and_masked_in_history` — правка `"15963"` сохраняется; запись журнала `summary == "Изменено: графический ключ"`, `details.changes.device_pattern == json!(["***", "***"])`, в сериализованных `details` нет `"15963"`.
   - `orders_update.rs`: `a_short_pattern_is_rejected` — `"158"` → `CoreError::Validation` с полем `device_pattern` и кодом `invalid`; у создания то же.
   - `documents.rs`: `password_and_pattern_reach_the_document_data` — заказ с паролем `0000` и ключом `1236` → `values["order.password"] == "0000"`, `values["order.pattern"] == "1 · 2 · 3 · 6"`.
