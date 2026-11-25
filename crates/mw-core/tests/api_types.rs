@@ -222,6 +222,7 @@ fn field_error_messages_are_russian() {
         "unsupported",
         "mismatch",
         "not_editable",
+        "period_reversed",
     ] {
         assert!(
             FieldError::new("x", code)

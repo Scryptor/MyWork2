@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 /// `duplicate`, `out_of_range`, `estimate_range`, `deleted`, `last_admin`, `last_issued_status`,
 /// `comma`, `changes_term`, `stale`, `closed`, `too_many`, `too_long`, `too_large`, `no_room`, `text_budget`, `code_budget`, `typst_error`, `code_timeout`, `code_crashed`, `too_slow`, `code_unavailable`, `too_many_pages`, `too_many_pixels`, `requires_a4`,
 /// `requires_a4_landscape`, `not_allowed`, `nested_columns`, `fill_in_columns`, `unsupported`,
-/// `mismatch`, `not_editable`, `not_enough_stock`, `builtin_missing`, `not_a_link`).
+/// `mismatch`, `not_editable`, `not_enough_stock`, `builtin_missing`, `not_a_link`, `period_reversed`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
 pub struct FieldError {
     /// Имя поля запроса.
@@ -106,6 +106,7 @@ impl FieldError {
             "mismatch" => "Шаблон другого документа",
             "not_editable" => "Этот документ не настраивается",
             "not_enough_stock" => "На складе столько нет",
+            "period_reversed" => "Начало периода позже конца",
             _ => "Недопустимое значение",
         }
     }

@@ -61,6 +61,7 @@ pub mod pages;
 pub mod pattern;
 pub mod permission;
 pub mod phone;
+pub mod report;
 pub mod search;
 pub mod spelling;
 pub mod status;
