@@ -8,6 +8,7 @@
 pub mod launch;
 pub mod navigation;
 pub mod print;
+pub mod system;
 
 use mw_server::LogGuard;
 use mw_server::lock::{self, DataDirLock, LockError};
@@ -115,7 +116,9 @@ pub fn run() {
             print::list_printers,
             print::print_format,
             print::print_pdf,
-            print::print_pages
+            print::print_pages,
+            system::restart_app,
+            system::open_folder
         ])
         .manage(desktop)
         .setup(move |app| {
@@ -416,9 +419,9 @@ mod tests {
         assert_eq!(names, vec![std::ffi::OsString::from(CRASH_FILE)]);
     }
 
-    /// Права окна — узкие: только адрес встроенного сервера, только выбор папки, события окна и печать.
+    /// Права окна — узкие: только адрес встроенного сервера, только выбор папки, события окна, печать, перезапуск и открытие папки.
     #[test]
-    fn the_window_rights_reach_only_the_embedded_server_and_only_folders_window_events_and_printing()
+    fn the_window_rights_reach_only_the_embedded_server_and_only_folders_window_events_printing_restart_and_open_folder()
      {
         let capability: serde_json::Value =
             serde_json::from_str(include_str!("../capabilities/default.json")).unwrap();
@@ -432,7 +435,9 @@ mod tests {
                 "allow-list-printers",
                 "allow-print-format",
                 "allow-print-pdf",
-                "allow-print-pages"
+                "allow-print-pages",
+                "allow-restart-app",
+                "allow-open-folder"
             ])
         );
         let urls = capability["remote"]["urls"].as_array().unwrap();

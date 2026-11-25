@@ -1,7 +1,7 @@
 {
 	"$schema": "../gen/schemas/desktop-schema.json",
 	"identifier": "default",
-	"description": "Окно программы на адресе встроенного сервера: выбор папки, события окна, принтеры и печать.",
+	"description": "Окно программы на адресе встроенного сервера: выбор папки, события окна, принтеры и печать, перезапуск программы и открытие папки.",
 	"windows": ["main"],
 	"remote": {
 		"urls": ["http://127.0.0.1:*"]
@@ -13,6 +13,8 @@
 		"allow-list-printers",
 		"allow-print-format",
 		"allow-print-pdf",
-		"allow-print-pages"
+		"allow-print-pages",
+		"allow-restart-app",
+		"allow-open-folder"
 	]
 }

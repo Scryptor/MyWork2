@@ -1594,6 +1594,11 @@ export const ru = {
 		copy: 'Скопировать',
 		copied: 'Папка данных скопирована'
 	},
+	/** The program of this computer: its own commands (restart, open a folder). */
+	platform: {
+		onlyInProgram: 'Это работает только в программе для компьютера',
+		failed: 'Программа не смогла выполнить команду'
+	},
 	/** «Настройки → Печать» and printing on this computer. */
 	print: {
 		browserTitle: 'Печать из браузера — через PDF',
