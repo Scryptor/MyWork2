@@ -2,9 +2,9 @@
 //! each of them must render.
 
 use mw_docs::model::{
-    Align, Block, BlockBody, CopyFilter, Layout, Margins, PageSetup, PageSize, Template,
+    Block, BlockBody, CopyFilter, Layout, Margins, PageSetup, PageSize, Template,
 };
-use mw_docs::{RenderOptions, render, sample_data};
+use mw_docs::{DocumentData, RenderOptions, Rendered, render, sample_data};
 use mw_domain::documents::DocumentKind;
 
 const SNIPPETS: &str = include_str!(concat!(
@@ -13,10 +13,6 @@ const SNIPPETS: &str = include_str!(concat!(
 ));
 
 fn template(code: &str) -> Template {
-    let block = |body| Block {
-        copies: CopyFilter::Both,
-        body,
-    };
     Template {
         kind: DocumentKind::IntakeAct,
         page: PageSetup {
@@ -31,40 +27,116 @@ fn template(code: &str) -> Template {
         },
         layout: Layout::TwoPerA4,
         font_size_pt: 9.0,
-        blocks: vec![
-            block(BlockBody::Text {
-                text: "Пример".to_owned(),
-                size_pt: None,
-                bold: false,
-                align: Align::Left,
-                one_line: false,
-                frame: false,
-                numbered: false,
-            }),
-            block(BlockBody::TypstCode {
+        blocks: vec![Block {
+            copies: CopyFilter::Both,
+            body: BlockBody::TypstCode {
                 code: code.to_owned(),
-            }),
-        ],
+            },
+        }],
     }
+}
+
+fn render_code(code: &str, data: &DocumentData) -> Rendered {
+    render(&template(code), data, &RenderOptions::default())
+        .unwrap_or_else(|e| panic!("`{code}` does not render: {e}"))
+}
+
+/// Every QR code found on the pages, decoded (a QR code is a vector picture, so it is read from pixels).
+#[allow(clippy::expect_used)]
+fn qr_codes(rendered: &Rendered) -> Vec<String> {
+    let mut found = Vec::new();
+    for png in rendered.png_pages(300).expect("png") {
+        let page = image::load_from_memory(&png).expect("png").to_luma_alpha8();
+        let (w, h) = (page.width() as usize, page.height() as usize);
+        let mut image = rqrr::PreparedImage::prepare_from_greyscale(w, h, |x, y| {
+            let [luma, alpha] = page.get_pixel(x as u32, y as u32).0;
+            let ink = (255 - u16::from(luma)) * u16::from(alpha) / 255;
+            (255 - ink) as u8
+        });
+        for grid in image.detect_grids() {
+            found.push(grid.decode().expect("decodes").1);
+        }
+    }
+    found
+}
+
+/// A sample value; the example is checked against what the sample data really prints.
+fn sample<'a>(data: &'a DocumentData, key: &str) -> &'a str {
+    let value = data.values.get(key).unwrap_or_else(|| panic!("no {key}"));
+    assert!(!value.is_empty(), "the sample {key} is empty");
+    value
 }
 
 #[test]
 fn every_help_example_renders() {
     let json: serde_json::Value =
         serde_json::from_str(SNIPPETS).unwrap_or_else(|e| panic!("json: {e}"));
-    let examples = json["examples"].as_array().expect("examples is a list");
-    assert!(!examples.is_empty(), "no examples");
     assert!(json["badges"].is_array(), "the key `badges` is a list");
+    let examples = json["examples"].as_array().expect("examples is a list");
+    let code_of = |id: &str| -> &str {
+        examples
+            .iter()
+            .find(|e| e["id"] == id)
+            .and_then(|e| e["code"].as_str())
+            .unwrap_or_else(|| panic!("no example {id}"))
+    };
+    let ids: Vec<_> = examples.iter().filter_map(|e| e["id"].as_str()).collect();
+    assert_eq!(
+        ids,
+        ["value", "condition", "table", "qr", "space", "copy"],
+        "the examples changed: check each one here"
+    );
     let data = sample_data(DocumentKind::IntakeAct);
-    for example in examples {
-        let id = example["id"].as_str().expect("id");
-        let code = example["code"].as_str().expect("code");
-        let rendered = render(&template(code), &data, &RenderOptions::default())
-            .unwrap_or_else(|e| panic!("example {id} does not render: {e}"));
-        assert!(rendered.page_count() > 0, "example {id} has no page");
-        assert!(
-            !rendered.text().trim().is_empty(),
-            "example {id} printed nothing"
-        );
+
+    let text = render_code(code_of("value"), &data).text();
+    assert!(
+        text.contains(sample(&data, "order.number")),
+        "value: {text:?}"
+    );
+
+    let text = render_code(code_of("condition"), &data).text();
+    assert!(
+        text.contains("Предоплата") && text.contains(sample(&data, "order.prepayment")),
+        "condition: {text:?}"
+    );
+    // An empty prepayment prints nothing.
+    let mut empty = data.clone();
+    empty
+        .values
+        .insert("order.prepayment".to_owned(), String::new());
+    let text = render_code(code_of("condition"), &empty).text();
+    assert!(!text.contains("Предоплата"), "condition (empty): {text:?}");
+
+    let text = render_code(code_of("table"), &data).text();
+    for want in [
+        "Устройство",
+        "Серийный номер",
+        sample(&data, "order.device"),
+        sample(&data, "order.serial"),
+    ] {
+        assert!(text.contains(want), "table lacks {want:?}: {text:?}");
     }
+
+    let codes = qr_codes(&render_code(code_of("qr"), &data));
+    assert!(!codes.is_empty(), "qr: no QR code printed");
+    assert!(
+        codes.iter().all(|c| c == sample(&data, "link.telegram")),
+        "qr: {codes:?}"
+    );
+    let unknown = code_of("qr").replace("link.telegram", "link.nope");
+    assert!(
+        qr_codes(&render_code(&unknown, &data)).is_empty(),
+        "an unknown QR name must print nothing"
+    );
+
+    // `space` prints nothing: it only has to render.
+    render_code(code_of("space"), &data);
+
+    // TwoPerA4 prints both copies; only the client one has the line.
+    let text = render_code(code_of("copy"), &data).text();
+    assert_eq!(
+        text.matches("Этот экземпляр остаётся у вас").count(),
+        1,
+        "copy: {text:?}"
+    );
 }
