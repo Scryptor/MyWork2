@@ -3,8 +3,17 @@ import { ru } from '#lib/i18n/ru.js';
 import { inTypstCode } from './insert.js';
 import snippets from './typst-snippets.json';
 
-/** What a badge puts into the code: `markup` in markup, `code` (no `#`) inside `#{…}`, `if … {…}`. */
-export type CodeBadge = { id: string; label: string; markup: string; code: string };
+/**
+ * What a badge puts into the code: `markup` in markup, `code` (no `#`) inside `#{…}`, `if … {…}`;
+ * `caret_back` — how far before the end of it the caret stays (inside the brackets of `[ ]`), 0 without it.
+ */
+export type CodeBadge = {
+	id: string;
+	label: string;
+	markup: string;
+	code: string;
+	caret_back?: number;
+};
 
 /** The permanent badges, by `typst-snippets.json` (Rust renders each of them); the labels are in `ru.ts`. */
 export function staticBadges(): CodeBadge[] {

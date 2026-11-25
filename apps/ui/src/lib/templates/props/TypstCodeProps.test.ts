@@ -130,6 +130,29 @@ describe('TypstCodeProps', () => {
 		expect(box.selectionEnd).toBe(24);
 	});
 
+	it('«Только в экземпляре …» leaves the caret inside its brackets', async () => {
+		const { codeAt, field } = setup([code('Текст ')], [0]);
+		const box = field() as HTMLTextAreaElement;
+		box.focus();
+		box.setSelectionRange(6, 6);
+		await userEvent.click(
+			screen.getByRole('button', { name: 'Вставить: Только в экземпляре клиента' })
+		);
+		const inserted = 'Текст #if copy == "client" [ ]';
+		expect(codeAt()).toBe(inserted);
+		await waitFor(() => expect(box).toHaveFocus());
+		// Right after `[`: what is typed goes into the client copy.
+		await waitFor(() => expect(box.selectionStart).toBe(inserted.indexOf('[') + 1));
+		expect(box.selectionEnd).toBe(box.selectionStart);
+		box.setSelectionRange(0, 0);
+		await userEvent.click(
+			screen.getByRole('button', { name: 'Вставить: Только в экземпляре сервиса' })
+		);
+		const both = '#if copy == "service" [ ]' + inserted;
+		expect(codeAt()).toBe(both);
+		await waitFor(() => expect(box.selectionStart).toBe(both.indexOf('[') + 1));
+	});
+
 	it('in code mode a badge puts the code without #', async () => {
 		const { codeAt, field } = setup([code('#{ ')], [0]);
 		const box = field() as HTMLTextAreaElement;

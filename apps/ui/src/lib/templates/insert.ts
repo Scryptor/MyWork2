@@ -68,21 +68,24 @@ export function inTypstCode(before: string): boolean {
 /**
  * Puts `text(before)` into `value` where the caret of `target` is (at the end without one), hands the
  * new text to `onchange`, then returns the focus to `target` with the caret right after what was put in
- * (once it shows the new text).
+ * (once it shows the new text) — or `caretBack` characters before its end, but not before its start.
  */
 export function insertIntoField(
 	target: HTMLInputElement | HTMLTextAreaElement | null,
 	value: string,
 	text: (before: string) => string,
-	onchange: (value: string) => void
+	onchange: (value: string) => void,
+	caretBack = 0
 ): void {
 	const at = target
 		? { start: target.selectionStart ?? value.length, end: target.selectionEnd ?? value.length }
 		: { start: value.length, end: value.length };
-	const next = insertAtCaret(value, at, text(value.slice(0, Math.min(at.start, value.length))));
+	const insert = text(value.slice(0, Math.min(at.start, value.length)));
+	const next = insertAtCaret(value, at, insert);
+	const caret = next.caret - Math.min(Math.max(0, caretBack), insert.length);
 	onchange(next.value);
 	void tick().then(() => {
 		target?.focus();
-		target?.setSelectionRange(next.caret, next.caret);
+		target?.setSelectionRange(caret, caret);
 	});
 }

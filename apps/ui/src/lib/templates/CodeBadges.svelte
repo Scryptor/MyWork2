@@ -1,5 +1,6 @@
 <!-- The row of badges under the code of a «Typst-код» block: a click puts the badge where the caret was
-     (the caret after it, the focus in the editor); the last one, «Другое поле…», searches all fields. -->
+     (the caret after it, or inside its `[ ]` by `caret_back`; the focus in the editor); the last one,
+     «Другое поле…», searches all fields. -->
 <script lang="ts">
 	import type { DocumentField } from '$api/DocumentField';
 	import { app } from '#lib/app/context.svelte.js';
@@ -32,7 +33,8 @@
 		<InsertChip
 			label={badge.label}
 			code={badge.markup}
-			onclick={() => insertIntoField(target, value, (b) => badgeText(badge, b), onchange)}
+			onclick={() =>
+				insertIntoField(target, value, (b) => badgeText(badge, b), onchange, badge.caret_back)}
 		/>
 	{/each}
 	<InsertField {target} {value} {onchange} format={asCode} trigger="chip" />

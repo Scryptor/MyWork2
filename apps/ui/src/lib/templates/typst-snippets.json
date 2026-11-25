@@ -28,12 +28,14 @@
 		{
 			"id": "client_copy",
 			"markup": "#if copy == \"client\" [ ]",
-			"code": "if copy == \"client\" [ ]"
+			"code": "if copy == \"client\" [ ]",
+			"caret_back": 2
 		},
 		{
 			"id": "service_copy",
 			"markup": "#if copy == \"service\" [ ]",
-			"code": "if copy == \"service\" [ ]"
+			"code": "if copy == \"service\" [ ]",
+			"caret_back": 2
 		}
 	]
 }
