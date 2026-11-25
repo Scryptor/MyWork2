@@ -8,6 +8,7 @@ import type { DocumentTemplate } from '$api/DocumentTemplate';
 import type { ErrorField } from '$api/ErrorField';
 import type { FirmLink } from '$api/FirmLink';
 import type { Template } from '$api/Template';
+import type { TemplatePreset } from '$api/TemplatePreset';
 import { ApiError } from '#lib/api/client.js';
 import { getTemplate, saveTemplate } from '#lib/api/document-templates.js';
 import {
@@ -62,6 +63,10 @@ export interface TemplateEditor {
 	readonly canRedo: boolean;
 	/** = `edit(standard)`: an ordinary step, it can be undone. */
 	resetToStandard(): void;
+	/** The ready variants of this document (`DocumentTemplate.presets`), as the server gave them. */
+	readonly presets: readonly TemplatePreset[];
+	/** = `resetToStandard` for a ready variant: the template is replaced in one step that can be undone. */
+	applyPreset(template: Template): void;
 	/**
 	 * The errors of own Typst code in the newest preview, set by the preview: those of a refused model
 	 * (a 422), none after any other answer. Replaced as a whole, never changed in place.
@@ -212,6 +217,12 @@ export function createTemplateEditor(
 		},
 		resetToStandard() {
 			edit(ed.record.standard);
+		},
+		get presets() {
+			return ed.record.presets;
+		},
+		applyPreset(template) {
+			edit(template);
 		},
 		get diagnostics() {
 			return diagnostics;

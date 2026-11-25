@@ -1,4 +1,4 @@
-<!-- The properties of a «Поля» block: its rows, each with its title, value, «Скрывать, если пусто» and
+<!-- The properties of a «Поля» block: its rows, «Сетка», each row with its title, value, «Скрывать, если пусто» and
      «Жирная»; «Добавить строку» and «Удалить строку». The rows are dragged to a new order. -->
 <script lang="ts">
 	import Plus from '@lucide/svelte/icons/plus';
@@ -7,6 +7,7 @@
 	import type { FieldRow } from '$api/FieldRow';
 	import { ru } from '#lib/i18n/ru.js';
 	import Button from '#lib/ui/Button.svelte';
+	import Switch from '#lib/ui/Switch.svelte';
 	import SortableList from '#lib/ui/SortableList.svelte';
 	import type { TemplateEditor } from '../editor.svelte.js';
 	import { blockAt, replaceBlock, type BlockPath } from '../ops.js';
@@ -43,6 +44,11 @@
 		);
 	}
 
+	function setGrid(grid: boolean) {
+		if (!block || !body) return;
+		editor.edit(replaceBlock(editor.template, path, { ...block, body: { ...body, grid } as Body }));
+	}
+
 	function change(i: number, patch: Partial<FieldRow>, field?: keyof FieldRow) {
 		if (!body) return;
 		setRows(
@@ -74,6 +80,7 @@
 
 {#if body}
 	<div class="props">
+		<Switch label={t.grid} bind:checked={() => body.grid, setGrid} />
 		<SortableList
 			items={rows}
 			key={(r) => r.id}

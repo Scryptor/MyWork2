@@ -224,6 +224,44 @@ test.describe('the editor', () => {
 		await expect(added).toHaveCount(0);
 	});
 
+	test('mywork2 preset replaces the template and can be undone', async ({ page }, info) => {
+		// The title of the variant of this browser's document (`crates/mw-docs/src/presets.rs`); the row of
+		// the list cuts a long text, so it is found by the start.
+		const title = new RegExp(
+			info.project.name === 'webkit'
+				? '^Текст · Акт выдачи оборудования'
+				: '^Текст · Акт приёма оборудования'
+		);
+		const heading = blocks(page).getByRole('button', { name: title });
+		await openEditor(page, info);
+		await item(page, 'Страница').click();
+		const layout = props(page).getByRole('combobox', { name: 'Раскладка' });
+		await expect(layout).toContainText('2 на лист A4');
+		const preview = page.getByRole('region', { name: 'Превью' });
+		await expect(preview.getByRole('img', { name: /^Страница 1 из \d+$/ })).toBeVisible();
+		const firstPreview = await preview
+			.getByRole('img', { name: /^Страница 1 из \d+$/ })
+			.getAttribute('src');
+
+		await page.getByRole('button', { name: 'Готовые шаблоны' }).click();
+		await page.getByRole('menuitem', { name: 'Как в MyWork 2', exact: true }).click();
+		await expect(
+			page.getByText(/Шаблон заменён: «Как в MyWork 2»\. Отменить — (Ctrl\+Z|⌘Z)/)
+		).toBeVisible();
+		await expect(layout).toContainText('Два рядом на альбомном A4');
+		await expect(heading).toBeVisible();
+		await expect(preview.getByRole('img', { name: /^Страница 1 из \d+$/ })).not.toHaveAttribute(
+			'src',
+			firstPreview ?? ''
+		);
+
+		// Out of the field: the key is the editor's.
+		await page.getByRole('heading', { name: 'Редактор шаблонов' }).click();
+		await page.keyboard.press('ControlOrMeta+z');
+		await expect(layout).toContainText('2 на лист A4');
+		await expect(heading).toHaveCount(0);
+	});
+
 	test('edits_every_block_type', async ({ page, request }, info) => {
 		const { kind } = documentOf(info);
 		const sign = uniq('Подпись');

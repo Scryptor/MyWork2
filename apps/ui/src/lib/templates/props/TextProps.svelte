@@ -1,5 +1,5 @@
 <!-- The properties of a text block: the text (typing in it is one step to undo per pause), its size (empty:
-     the template's), «Жирный», the alignment and «В одну строку». Every change is an edit of the model. -->
+     the template's), «Жирный», the alignment, «В одну строку», «В рамке» and «Нумерованный список» (off beside «В одну строку»). Every change is an edit of the model. -->
 <script lang="ts">
 	import type { Align } from '$api/Align';
 	import type { BlockBody } from '$api/BlockBody';
@@ -69,6 +69,13 @@
 			label={t.oneLine}
 			hint={t.oneLineHint}
 			bind:checked={() => body.one_line, (v) => set({ one_line: v })}
+		/>
+		<Switch label={t.frame} bind:checked={() => body.frame, (v) => set({ frame: v })} />
+		<Switch
+			label={t.numbered}
+			hint={body.one_line ? t.numberedOffHint : undefined}
+			disabled={body.one_line}
+			bind:checked={() => body.numbered, (v) => set({ numbered: v })}
 		/>
 	</div>
 {/if}

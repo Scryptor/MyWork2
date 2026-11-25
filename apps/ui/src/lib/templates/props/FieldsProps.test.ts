@@ -119,4 +119,17 @@ describe('FieldsProps', () => {
 		await new Promise((r) => setTimeout(r, 500));
 		expect(rows().map((r) => r.label)).toEqual(['А', 'В', 'Б']);
 	});
+
+	it('«Сетка» switches the grid of the table', async () => {
+		const { editor } = setup([row('Клиент')]);
+		const grid = () => {
+			const b = editor.template.blocks[0]!.body;
+			return b.type === 'fields' && b.grid;
+		};
+		expect(grid()).toBe(false);
+		await userEvent.click(screen.getByRole('switch', { name: 'Сетка' }));
+		expect(grid()).toBe(true);
+		await userEvent.click(screen.getByRole('switch', { name: 'Сетка' }));
+		expect(grid()).toBe(false);
+	});
 });

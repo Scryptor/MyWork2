@@ -1,6 +1,6 @@
 <!-- The properties of the page: its size (A4, A5 or its own in millimetres), «Альбомная», the margins, the
      layout of the copies (only those the document allows) and the base size of the text. «2 на лист A4»
-     needs A4 in portrait: with it the size is not chosen. A sticker is printed on the label of «Печать»
+     needs A4 in portrait, «Два рядом» A4 in landscape: with them the size is not chosen. A sticker is printed on the label of «Печать»
      (the page of the template does not count then): it only says which one. -->
 <script lang="ts">
 	import type { Layout } from '$api/Layout';
@@ -36,10 +36,11 @@
 	/** A label is printed in the size of «Печать», one copy: it has no other layout (decision 7). */
 	const onLabel = $derived(isLabel(template.kind));
 	const layouts = $derived<Layout[]>(
-		onLabel ? ['one_per_page'] : ['two_per_a4', 'sheet_per_copy', 'one_per_page']
+		onLabel ? ['one_per_page'] : ['two_per_a4', 'two_across', 'sheet_per_copy', 'one_per_page']
 	);
 	const layoutItems = $derived(layouts.map((value) => ({ value, label: t.layouts[value] })));
 	const twoPerA4 = $derived(template.layout === 'two_per_a4');
+	const twoAcross = $derived(template.layout === 'two_across');
 
 	function edit(next: Template, key?: string) {
 		editor.edit(next, key);
@@ -67,8 +68,13 @@
 	function chooseLayout(layout: Layout | null) {
 		if (layout === null || layout === template.layout) return;
 		// Two copies on one sheet are two halves of an A4 in portrait.
+		// Two copies side by side are two halves of an A4 in landscape.
 		const next =
-			layout === 'two_per_a4' ? { ...page, size: 'a4' as const, landscape: false } : page;
+			layout === 'two_per_a4'
+				? { ...page, size: 'a4' as const, landscape: false }
+				: layout === 'two_across'
+					? { ...page, size: 'a4' as const, landscape: true }
+					: page;
 		edit({ ...template, layout, page: next });
 	}
 
@@ -99,6 +105,8 @@
 		</p>
 	{:else if twoPerA4}
 		<p class="note">{t.twoPerA4Page}</p>
+	{:else if twoAcross}
+		<p class="note">{t.twoAcrossPage}</p>
 	{:else}
 		<div class="field">
 			<span class="label">{t.size}</span>

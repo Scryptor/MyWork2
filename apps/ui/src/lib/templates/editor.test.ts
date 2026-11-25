@@ -167,6 +167,22 @@ describe('createTemplateEditor', () => {
 		ed.dispose();
 	});
 
+	it('applyPreset replaces the template as one step that can be undone', async () => {
+		const own = withText(STANDARD, 'Своя строка');
+		const server = fakeServer(own);
+		const ed = createTemplateEditor(server.current, { api: server.api });
+		const preset = withText(STANDARD, 'Как в MyWork 2');
+
+		ed.applyPreset(preset);
+		expect(ed.template).toEqual(preset);
+		await settle();
+		expect(server.current.template).toEqual(preset);
+
+		ed.undo();
+		expect(ed.template).toEqual(own);
+		ed.dispose();
+	});
+
 	it('an edit undone before it is written sends nothing', async () => {
 		const server = fakeServer();
 		const ed = createTemplateEditor(server.current, { api: server.api, delayMs: 600 });

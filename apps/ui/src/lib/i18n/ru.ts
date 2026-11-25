@@ -2189,8 +2189,9 @@ export const ru = {
 			one_per_page: 'Один экземпляр',
 			sheet_per_copy: '1 на лист',
 			two_per_a4: '2 на лист A4',
-			two_across: '2 рядом на листе A4'
+			two_across: 'Два рядом на альбомном A4'
 		} satisfies Record<Layout, string>,
+		twoAcrossPage: 'Лист A4 в альбомной ориентации: так печатается «Два рядом на альбомном A4»',
 		twoPerA4Page: 'Лист A4 в книжной ориентации: так печатается «2 на лист A4»',
 		/** A sticker: the page is the label of «Настройки → Печать» on this computer. */
 		labelPage: (size: string) =>
@@ -2207,6 +2208,13 @@ export const ru = {
 		aligns: { left: 'Слева', center: 'По центру', right: 'Справа' } satisfies Record<Align, string>,
 		oneLine: 'В одну строку',
 		oneLineHint: 'Не переносится: что не поместилось, обрезается',
+		frame: 'В рамке',
+		numbered: 'Нумерованный список',
+		numberedOffHint: 'Не действует для текста в одну строку',
+		grid: 'Сетка',
+		presets: 'Готовые шаблоны',
+		presetApplied: (name: string, undoKey: string) =>
+			`Шаблон заменён: «${name}». Отменить — ${undoKey}`,
 		copies: 'Экземпляры',
 		copiesOneCopyHint: 'В раскладке «Один экземпляр» этот блок не печатается',
 		copyFilters: {

@@ -5,6 +5,8 @@
      show one part at a time. Ctrl/⌘Z outside the fields undoes a step of the template (newer than the
      toasts' own Ctrl/⌘Z, so it wins while the editor is open). -->
 <script lang="ts">
+	import ChevronDown from '@lucide/svelte/icons/chevron-down';
+	import LayoutTemplate from '@lucide/svelte/icons/layout-template';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import Redo2 from '@lucide/svelte/icons/redo-2';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
@@ -14,7 +16,7 @@
 	import type { DocumentKind } from '$api/DocumentKind';
 	import { listTemplates } from '#lib/api/document-templates.js';
 	import { listOrders } from '#lib/api/orders.js';
-	import { registerHotkey } from '#lib/design/hotkeys.svelte.js';
+	import { isMac, registerHotkey } from '#lib/design/hotkeys.svelte.js';
 	import { display } from '#lib/design/prefs.svelte.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import SaveIndicator from '#lib/orders/SaveIndicator.svelte';
@@ -23,6 +25,7 @@
 	import Button from '#lib/ui/Button.svelte';
 	import Callout from '#lib/ui/Callout.svelte';
 	import Combobox from '#lib/ui/Combobox.svelte';
+	import DropdownMenu, { type MenuItem } from '#lib/ui/DropdownMenu.svelte';
 	import IconButton from '#lib/ui/IconButton.svelte';
 	import SegmentedControl from '#lib/ui/SegmentedControl.svelte';
 	import Select from '#lib/ui/Select.svelte';
@@ -33,11 +36,24 @@
 	import Properties from './Properties.svelte';
 	import TemplateFileMenu from './TemplateFileMenu.svelte';
 	import TemplatePreview from './TemplatePreview.svelte';
+	import { toast } from '#lib/ui/toast/toast.svelte.js';
 
 	let { editor }: { editor: TemplateEditor } = $props();
 
 	const t = ru.templates;
 	const kind = $derived(editor.kind);
+
+	// «Готовые шаблоны»: the variants the server offers for this document; one replaces the template as a
+	// step of the history, which the toast names how to undo.
+	const presetItems = $derived<MenuItem[]>(
+		editor.presets.map((p) => ({
+			label: p.name,
+			onselect: () => {
+				editor.applyPreset(p.template);
+				toast.show({ message: t.presetApplied(p.name, isMac() ? '⌘Z' : 'Ctrl+Z') });
+			}
+		}))
+	);
 
 	// «Документ»: every document with a template; the one shown until the list comes.
 	let kinds = $state.raw<DocumentKind[]>([]);
@@ -149,6 +165,13 @@
 					onclick={() => editor.redo()}
 				/>
 				<TemplateFileMenu {editor} onmisfit={(m) => (misfit = m)} />
+				{#if presetItems.length > 0}
+					<DropdownMenu items={presetItems} label={t.presets}>
+						{#snippet trigger(props)}
+							<Button {...props} icon={LayoutTemplate} iconEnd={ChevronDown}>{t.presets}</Button>
+						{/snippet}
+					</DropdownMenu>
+				{/if}
 				<Button
 					icon={RotateCcw}
 					disabled={editor.isStandard}
