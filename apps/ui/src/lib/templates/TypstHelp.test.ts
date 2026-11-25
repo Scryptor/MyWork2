@@ -41,6 +41,21 @@ describe('TypstHelp', () => {
 		expect(pre.tagName).toBe('PRE');
 	});
 
+	it('points to the badges under the editor, not to lists it does not have', async () => {
+		render(TypstHelp, { open: true });
+		const dialog = await screen.findByRole('dialog', { name: 'Справка по Typst-коду' });
+		expect(dialog.textContent).toContain('Текст примеров можно выделить и скопировать');
+		expect(dialog.textContent).not.toContain('скопировать в редактор');
+		expect(
+			within(dialog).getByText(
+				'v("ключ") печатает поле заказа. Готовый код поля вставляет бейдж «Другое поле…» под редактором (или бейджи «Номер заказа» и др.).'
+			)
+		).toBeTruthy();
+		expect(
+			within(dialog).getByText(/готовый код вставляет бейдж «QR-код …» под редактором/i)
+		).toBeTruthy();
+	});
+
 	it('Esc closes it', async () => {
 		render(TypstHelp, { open: true });
 		await screen.findByRole('dialog', { name: 'Справка по Typst-коду' });
