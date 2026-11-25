@@ -39,6 +39,7 @@ const FLAG_PERMISSIONS: &[(&str, &[Permission])] = &[
             Permission::SettingsManage,
             Permission::UsersManage,
             Permission::AuditView,
+            Permission::DataExport,
         ],
     ),
     // `sms` и `dates` в MyWork 3 соответствия не имеют.
@@ -357,6 +358,9 @@ mod tests {
         );
         assert_eq!(roles[0].permissions, PermissionSet::all());
         assert_eq!(roles[1].permissions, PermissionSet::all());
+        // Флаг `settings` открывает и выгрузку; без него (группа «Мастера») права нет.
+        assert!(roles[1].permissions.contains(Permission::DataExport));
+        assert!(!roles[2].permissions.contains(Permission::DataExport));
         assert_eq!(
             roles[2].permissions,
             PermissionSet::from_codes(["orders_edit", "clients_view", "clients_edit"])

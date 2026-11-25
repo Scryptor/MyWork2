@@ -13,6 +13,7 @@ mod catalogs;
 mod clients;
 mod document_templates;
 mod documents;
+mod exports;
 mod headers;
 mod legacy_import;
 mod logo;
@@ -39,6 +40,7 @@ pub(crate) fn api_routes() -> OpenApiRouter<AppState> {
         .merge(order_routes())
         .merge(document_routes())
         .merge(report_routes())
+        .merge(export_routes())
         .merge(user_routes())
         .merge(legacy_import_routes())
 }
@@ -179,6 +181,14 @@ fn report_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(reports::order_report))
         .routes(routes!(reports::order_report_xlsx))
         .routes(routes!(reports::moves_report))
+}
+
+/// Выгрузки списков в Excel.
+#[inline(never)]
+fn export_routes() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(exports::export_orders))
+        .routes(routes!(exports::export_clients))
 }
 
 /// Документы и шаблоны документов.

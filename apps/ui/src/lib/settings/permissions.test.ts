@@ -20,7 +20,7 @@ const serverLabels = new Map(
 
 describe('permissions', () => {
 	it('names every right as the server does', () => {
-		expect(serverLabels.size).toBe(17);
+		expect(serverLabels.size).toBe(18);
 		for (const [code, label] of serverLabels) {
 			expect(ru.permissions[code as Permission].label, code).toBe(label);
 		}
@@ -31,6 +31,13 @@ describe('permissions', () => {
 		expect(new Set(all).size).toBe(all.length);
 		expect([...all].sort()).toEqual([...serverLabels.keys()].sort());
 		for (const code of all) expect(ru.permissions[code].hint.length, code).toBeGreaterThan(0);
+	});
+
+	it('keeps «Выгрузка» with the reports', () => {
+		expect(PERMISSION_GROUPS.find((g) => g.id === 'reports')?.permissions).toEqual([
+			'reports_view',
+			'data_export'
+		]);
 	});
 
 	it('names users with the right ending', () => {

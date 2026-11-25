@@ -1,13 +1,12 @@
 //! Excel-файл отчёта по заказам: листы «Итоги», разрез и «Заказы».
 
-use chrono::NaiveDate;
 use mw_db::entity::{service_point, user};
 use mw_domain::money::Money;
 use mw_domain::permission::Permission;
 use sea_orm::EntityTrait;
 
 use super::xlsx::{Cell, Column, Sheet, workbook};
-use super::{EXPORT_ROWS_MAX, ExportFile, XLSX_CONTENT_TYPE, ensure_rows};
+use super::{EXPORT_ROWS_MAX, ExportFile, XLSX_CONTENT_TYPE, dmy, ensure_rows};
 use crate::reports::orders::{ReportOrderRow, groups};
 use crate::{Actor, Core, CoreError, OrderReport, ReportFilter, ReportGroupBy, ReportTotals};
 
@@ -21,10 +20,6 @@ struct FilterLabels {
     device_type: Option<String>,
     brand: Option<String>,
     source: Option<String>,
-}
-
-fn dmy(date: NaiveDate) -> String {
-    date.format("%d.%m.%Y").to_string()
 }
 
 /// Период словами: «01.11.2026–30.11.2026», «с 01.11.2026», «по 30.11.2026»; без границ — `None`.

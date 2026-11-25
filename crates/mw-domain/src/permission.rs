@@ -10,6 +10,7 @@ code_enum! {
         OrdersDelete => "orders_delete",
         OrderDatesEdit => "order_dates_edit",
         ReportsView => "reports_view",
+        DataExport => "data_export",
         StockView => "stock_view",
         StockCreate => "stock_create",
         StockEdit => "stock_edit",
@@ -26,12 +27,13 @@ code_enum! {
 }
 
 impl Permission {
-    pub const ALL: [Permission; 17] = [
+    pub const ALL: [Permission; 18] = [
         Self::OrdersCreate,
         Self::OrdersEdit,
         Self::OrdersDelete,
         Self::OrderDatesEdit,
         Self::ReportsView,
+        Self::DataExport,
         Self::StockView,
         Self::StockCreate,
         Self::StockEdit,
@@ -53,6 +55,7 @@ impl Permission {
             Self::OrdersDelete => "Удаление заказов",
             Self::OrderDatesEdit => "Изменение дат заказов",
             Self::ReportsView => "Отчёты",
+            Self::DataExport => "Выгрузка заказов, клиентов и контактов",
             Self::StockView => "Просмотр склада",
             Self::StockCreate => "Добавление на склад",
             Self::StockEdit => "Изменение склада",
@@ -128,6 +131,10 @@ mod tests {
             serde_json::to_string(&set).unwrap(),
             r#"["orders_create","users_manage"]"#
         );
-        assert_eq!(PermissionSet::all().iter().count(), 17);
+        assert_eq!(PermissionSet::all().iter().count(), 18);
+        assert_eq!(
+            Permission::DataExport.label_ru(),
+            "Выгрузка заказов, клиентов и контактов"
+        );
     }
 }

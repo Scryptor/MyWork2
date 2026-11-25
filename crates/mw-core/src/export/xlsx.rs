@@ -32,8 +32,7 @@ pub(crate) enum Cell {
     Text(String),
     Int(i64),
     Money(Money),
-    /// Дата без времени; её понадобятся выгрузкам списков (отчёт пока пишет `Time`).
-    #[allow(dead_code)]
+    /// Дата без времени.
     Day(NaiveDate),
     Time(NaiveDateTime),
 }

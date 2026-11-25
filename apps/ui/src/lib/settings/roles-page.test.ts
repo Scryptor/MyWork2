@@ -69,7 +69,7 @@ describe('«Роли»', () => {
 		for (const g of ['Заказы', 'Клиенты', 'Склад', 'Отчёты', 'Настройки и пользователи']) {
 			expect(within(dialog).getByRole('group', { name: g })).toBeInTheDocument();
 		}
-		expect(within(dialog).getAllByRole('checkbox')).toHaveLength(17);
+		expect(within(dialog).getAllByRole('checkbox')).toHaveLength(18);
 		expect(within(dialog).getByRole('checkbox', { name: 'Изменение заказов' })).toBeChecked();
 		expect(within(dialog).getByRole('checkbox', { name: 'Отчёты' })).not.toBeChecked();
 		await ui.click(within(dialog).getByRole('checkbox', { name: 'Добавление заказов' }));

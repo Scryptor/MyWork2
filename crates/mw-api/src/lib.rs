@@ -28,14 +28,14 @@ pub use auth::{ACCOUNT_FAILURE_LIMIT, FAILURE_WINDOW_SECS, IP_FAILURE_LIMIT, OPE
 pub use contract::export_typescript;
 pub use dto::{
     AboutInfo, AttachmentNameQuery, AuditListQuery, AuditPage, BarcodeQuery, BlockCode,
-    BlockCodeRequest, CaptionPatch, ChangePasswordRequest, ClientListQuery, ClientPage,
-    CurrentUser, DictionaryListQuery, DictionaryValue, DocumentBatch, DocumentFormat,
+    BlockCodeRequest, CaptionPatch, ChangePasswordRequest, ClientExportQuery, ClientListQuery,
+    ClientPage, CurrentUser, DictionaryListQuery, DictionaryValue, DocumentBatch, DocumentFormat,
     DocumentPages, DocumentQuery, HistoryQuery, IncludeArchived, LegacyImportCheck,
     LegacyImportStart, LoginRequest, LoginResponse, MovesReportQuery, NewServicePoint,
-    NextOrderNumber, OrderCommentPage, OrderCommentQuery, OrderListQuery, OrderPage,
-    OrderReportQuery, OrderSummaryQuery, OrderValuesQuery, PageQuery, PhoneQuery, ReorderRequest,
-    ServerInfo, SetPasswordRequest, StatusChange, StockListQuery, StockPage, TemplatePreview,
-    VersionParam,
+    NextOrderNumber, OrderCommentPage, OrderCommentQuery, OrderExportQuery, OrderListQuery,
+    OrderPage, OrderReportQuery, OrderSummaryQuery, OrderValuesQuery, PageQuery, PhoneQuery,
+    ReorderRequest, ServerInfo, SetPasswordRequest, StatusChange, StockListQuery, StockPage,
+    TemplatePreview, VersionParam,
 };
 pub use error::{ErrorBody, ErrorCode, ErrorField};
 pub use state::ApiConfig;

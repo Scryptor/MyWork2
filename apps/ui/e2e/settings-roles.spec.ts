@@ -165,7 +165,7 @@ test('each right has a hint that says what it allows now, and Esc closes it', as
 	await page.goto('/settings/roles');
 	await page.getByRole('button', { name: 'Изменить: Мастер' }).click();
 	const dialog = page.getByRole('dialog', { name: 'Роль', exact: true });
-	await expect(dialog.getByRole('button', { name: /^Что такое «/ })).toHaveCount(17);
+	await expect(dialog.getByRole('button', { name: /^Что такое «/ })).toHaveCount(18);
 	await dialog.getByRole('button', { name: 'Что такое «Просмотр склада»' }).click();
 	const hint = page.getByRole('dialog', { name: 'Просмотр склада', exact: true });
 	await expect(hint).toContainText('Открывать раздел «Склад»');

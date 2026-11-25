@@ -159,7 +159,7 @@ async fn users_without_sign_in_do_not_keep_admin_access() -> Result<(), CoreErro
         };
         assert_validation(
             t.core
-                .update_role(&admin(), admin_role, 1, only_orders.clone())
+                .update_role(&admin(), admin_role, 2, only_orders.clone())
                 .await,
             &[("permissions", "last_admin")],
         );
@@ -173,7 +173,7 @@ async fn users_without_sign_in_do_not_keep_admin_access() -> Result<(), CoreErro
             .await?;
         assert!(!boss.can_sign_in, "{}", t.label);
         t.core
-            .update_role(&admin(), admin_role, 1, only_orders)
+            .update_role(&admin(), admin_role, 2, only_orders)
             .await?;
         assert!(!t.core.is_open_mode().await?);
     }
@@ -574,7 +574,7 @@ async fn last_role_with_users_manage_is_not_deleted() -> Result<(), CoreError> {
         let admin_role = role_id_by_name(&t.core, "Администратор").await;
         // Свежая база в режиме без входа: пользователей нет, но без этой роли не создать администратора.
         assert!(t.core.is_open_mode().await?);
-        match t.core.delete_role(&admin(), admin_role, 1).await {
+        match t.core.delete_role(&admin(), admin_role, 2).await {
             Err(CoreError::InUse(message)) => assert_eq!(message, LAST, "{}", t.label),
             other => panic!("{}: ожидался отказ, получено {other:?}", t.label),
         }
@@ -588,7 +588,7 @@ async fn last_role_with_users_manage_is_not_deleted() -> Result<(), CoreError> {
                 },
             )
             .await?;
-        t.core.delete_role(&admin(), admin_role, 1).await?;
+        t.core.delete_role(&admin(), admin_role, 2).await?;
         match t.core.delete_role(&admin(), chiefs.id, 1).await {
             Err(CoreError::InUse(message)) => assert_eq!(message, LAST, "{}", t.label),
             other => panic!("{}: ожидался отказ, получено {other:?}", t.label),
@@ -617,7 +617,7 @@ async fn last_role_keeps_users_manage() -> Result<(), CoreError> {
         assert!(t.core.is_open_mode().await?);
         match t
             .core
-            .update_role(&admin(), admin_role, 1, only_orders())
+            .update_role(&admin(), admin_role, 2, only_orders())
             .await
         {
             Err(CoreError::InUse(message)) => assert_eq!(message, LAST, "{}", t.label),
@@ -628,7 +628,7 @@ async fn last_role_keeps_users_manage() -> Result<(), CoreError> {
             .update_role(
                 &admin(),
                 admin_role,
-                1,
+                2,
                 RolePatch {
                     name: Some("Админы".into()),
                     ..Default::default()
@@ -646,7 +646,7 @@ async fn last_role_keeps_users_manage() -> Result<(), CoreError> {
             )
             .await?;
         t.core
-            .update_role(&admin(), admin_role, 2, only_orders())
+            .update_role(&admin(), admin_role, 3, only_orders())
             .await?;
         match t
             .core

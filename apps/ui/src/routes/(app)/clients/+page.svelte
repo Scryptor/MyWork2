@@ -13,6 +13,7 @@
 	import { serverClock } from '#lib/api/server-clock.svelte.js';
 	import ClientPanel from '#lib/clients/ClientPanel.svelte';
 	import MergeDialog from '#lib/clients/MergeDialog.svelte';
+	import ExportClientsMenu from '#lib/export/ExportClientsMenu.svelte';
 	import { clientColumns, phonesText } from '#lib/clients/columns.js';
 	import { createClientList } from '#lib/clients/list.svelte.js';
 	import {
@@ -246,12 +247,15 @@
 <div class="clients" class:phone={display.phone}>
 	<h1 class="title">{t.title}</h1>
 	{#if display.phone}
-		<div class="toolbar">{@render filterField()}</div>
+		<div class="toolbar">
+			{@render filterField()}<ExportClientsMenu {query} />
+		</div>
 		{@render chips()}
 	{:else}
 		<div class="toolbar">
 			{@render filterField()}
 			{@render chips()}
+			<ExportClientsMenu {query} />
 			<span class="count num" aria-live="polite">
 				{#if !list.loading || list.rows.length > 0}{countLabel(list.total, t.forms)}{/if}
 			</span>

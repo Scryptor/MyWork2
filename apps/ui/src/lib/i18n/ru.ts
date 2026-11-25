@@ -46,6 +46,10 @@ const permissionTexts: Record<Permission, { label: string; hint: string | string
 		label: 'Отчёты',
 		hint: 'Пока ничего не открывает: отчётов в программе ещё нет, они появятся позже. Право можно отметить заранее.'
 	},
+	data_export: {
+		label: 'Выгрузка заказов, клиентов и контактов',
+		hint: 'Выгружать списки заказов и клиентов в файл Excel кнопкой «В Excel». Клиентов выгружают вместе с правом «Просмотр клиентов».'
+	},
 	stock_view: {
 		label: 'Просмотр склада',
 		hint: [
@@ -1080,6 +1084,12 @@ export const ru = {
 		sizeUp: 'Крупнее',
 		sizeDown: 'Мельче',
 		sizeAuto: 'Размер по экрану'
+	},
+	/** «В Excel» of the lists of orders and clients. */
+	exports: {
+		toExcel: 'В Excel',
+		menu: 'Выгрузить',
+		failed: 'Не удалось выгрузить файл'
 	},
 	reports: {
 		title: 'Отчёты',

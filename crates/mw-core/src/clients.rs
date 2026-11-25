@@ -10,7 +10,7 @@ use sea_orm::ExprTrait;
 use sea_orm::sea_query::{Expr, Order, Query};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseTransaction, EntityTrait, NotSet,
-    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Select, Set,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
@@ -660,39 +660,9 @@ impl Core {
     ) -> Result<Page<ClientListItem>, CoreError> {
         actor.require_any(&[Permission::ClientsView, Permission::OrdersCreate])?;
         validate_page(limit, offset)?;
-        let backend = self.db.get_database_backend();
-        let mut select = client::Entity::find().filter(client::Column::DeletedAt.is_null());
-        for token in search_tokens(&filter.query) {
-            select = select.filter(
-                Expr::col(client::Column::SearchText)
-                    .like(sea_orm::sea_query::LikeExpr::new(like_contains(&token)).escape('\\')),
-            );
-        }
-        if filter.duplicates {
-            select = select.filter(Expr::cust(HAS_SIMILAR_SQL));
-        }
+        let select = client_filtered(filter);
         let total = select.clone().count(&self.db).await?;
-        let dir = |descending: bool| if descending { Order::Desc } else { Order::Asc };
-        let select = if filter.duplicates {
-            select.order_by_asc(text_sort(backend, client::Column::NameKey.into_expr()))
-        } else {
-            let s = filter.sort;
-            match s.field {
-                ClientSortField::Name => select.order_by(
-                    text_sort(backend, client::Column::NameKey.into_expr()),
-                    dir(s.descending),
-                ),
-                ClientSortField::OrdersCount => {
-                    select.order_by(Expr::cust(ORDERS_COUNT_SQL), dir(s.descending))
-                }
-                ClientSortField::LastOrder => select
-                    .order_by(Expr::cust(format!("{LAST_ORDER_SQL} IS NULL")), Order::Asc)
-                    .order_by(Expr::cust(LAST_ORDER_SQL), dir(s.descending)),
-            }
-        };
-        let models = select
-            .order_by_asc(text_sort(backend, client::Column::SearchText.into_expr()))
-            .order_by_asc(client::Column::Id)
+        let models = client_ordered(select, self.db.get_database_backend(), filter)
             .limit(limit)
             .offset(offset)
             .all(&self.db)
@@ -743,6 +713,50 @@ impl Core {
             .await?;
         with_phones(&self.db, models).await
     }
+}
+
+/// Условия списка клиентов; общие для списка и выгрузки.
+pub(crate) fn client_filtered(filter: &ClientFilter) -> Select<client::Entity> {
+    let mut select = client::Entity::find().filter(client::Column::DeletedAt.is_null());
+    for token in search_tokens(&filter.query) {
+        select = select.filter(
+            Expr::col(client::Column::SearchText)
+                .like(sea_orm::sea_query::LikeExpr::new(like_contains(&token)).escape('\\')),
+        );
+    }
+    if filter.duplicates {
+        select = select.filter(Expr::cust(HAS_SIMILAR_SQL));
+    }
+    select
+}
+
+/// Порядок списка и выгрузки клиентов; последние ключи — поисковый текст и номер.
+pub(crate) fn client_ordered(
+    select: Select<client::Entity>,
+    backend: sea_orm::DatabaseBackend,
+    filter: &ClientFilter,
+) -> Select<client::Entity> {
+    let dir = |descending: bool| if descending { Order::Desc } else { Order::Asc };
+    let select = if filter.duplicates {
+        select.order_by_asc(text_sort(backend, client::Column::NameKey.into_expr()))
+    } else {
+        let s = filter.sort;
+        match s.field {
+            ClientSortField::Name => select.order_by(
+                text_sort(backend, client::Column::NameKey.into_expr()),
+                dir(s.descending),
+            ),
+            ClientSortField::OrdersCount => {
+                select.order_by(Expr::cust(ORDERS_COUNT_SQL), dir(s.descending))
+            }
+            ClientSortField::LastOrder => select
+                .order_by(Expr::cust(format!("{LAST_ORDER_SQL} IS NULL")), Order::Asc)
+                .order_by(Expr::cust(LAST_ORDER_SQL), dir(s.descending)),
+        }
+    };
+    select
+        .order_by_asc(text_sort(backend, client::Column::SearchText.into_expr()))
+        .order_by_asc(client::Column::Id)
 }
 
 pub(crate) fn display_name<'a>(full_name: &'a str, phones: &'a [ClientPhone]) -> &'a str {

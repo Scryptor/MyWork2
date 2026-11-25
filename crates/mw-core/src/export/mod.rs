@@ -3,6 +3,8 @@
 use crate::CoreError;
 use mw_domain::validation::FieldError;
 
+pub(crate) mod clients;
+pub(crate) mod orders;
 pub(crate) mod report;
 pub(crate) mod xlsx;
 
@@ -25,6 +27,11 @@ pub struct ExportFile {
     pub ascii_name: &'static str,
     pub content_type: &'static str,
     pub bytes: Vec<u8>,
+}
+
+/// Дата в именах файлов: «25.11.2026».
+pub(crate) fn dmy(date: chrono::NaiveDate) -> String {
+    date.format("%d.%m.%Y").to_string()
 }
 
 /// Отказывает, если строк больше предела.

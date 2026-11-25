@@ -22,6 +22,7 @@ mod m20261124_000002_stock_data;
 mod m20261124_000003_device_pattern;
 mod m20261125_000001_firm_links;
 mod m20261125_000002_orders_issued_at_index;
+mod m20261125_000003_data_export_permission;
 
 pub struct Migrator;
 
@@ -47,6 +48,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261124_000003_device_pattern::Migration),
             Box::new(m20261125_000001_firm_links::Migration),
             Box::new(m20261125_000002_orders_issued_at_index::Migration),
+            Box::new(m20261125_000003_data_export_permission::Migration),
         ]
     }
 }

@@ -301,6 +301,18 @@ fn sort_key(
     }
 }
 
+/// Порядок списка и выгрузки: поле сортировки, затем номер по убыванию.
+fn order_rows(q: &mut SelectStatement, backend: sea_orm::DatabaseBackend, sort: OrderSort) {
+    let (key, nulls) = sort_key(backend, sort.field);
+    let direction = if sort.descending {
+        Order::Desc
+    } else {
+        Order::Asc
+    };
+    q.order_by_expr_with_nulls(key, direction, nulls)
+        .order_by_expr(o(order::Column::Id), Order::Desc);
+}
+
 impl Core {
     /// Диагностика дольше `diagnostics_overdue_days` суток (для списка и сводки).
     pub(super) fn overdue_diagnostics_cond(&self) -> SimpleExpr {
@@ -361,21 +373,16 @@ impl Core {
             .collect())
     }
 
-    /// Список заказов. Права не нужны, но `include_deleted` требует `orders_delete`.
-    pub async fn list_orders(
+    /// Условия списка заказов; общие для списка и выгрузки. `include_deleted` требует
+    /// `orders_delete`.
+    pub(crate) fn order_list_condition(
         &self,
         actor: &Actor,
         filter: &OrderFilter,
-        sort: OrderSort,
-        limit: u64,
-        offset: u64,
-    ) -> Result<Page<OrderListItem>, CoreError> {
+    ) -> Result<Condition, CoreError> {
         if filter.include_deleted {
             actor.require(Permission::OrdersDelete)?;
         }
-        validate_page(limit, offset)?;
-        let backend = self.db.get_database_backend();
-
         let mut cond = Condition::all();
         if !filter.include_deleted {
             cond = cond.add(o(order::Column::DeletedAt).is_null());
@@ -440,6 +447,22 @@ impl Core {
             cond = cond.add(o(order::Column::IssuedAt).lte(t));
         }
 
+        Ok(cond)
+    }
+
+    /// Список заказов. Права не нужны, но `include_deleted` требует `orders_delete`.
+    pub async fn list_orders(
+        &self,
+        actor: &Actor,
+        filter: &OrderFilter,
+        sort: OrderSort,
+        limit: u64,
+        offset: u64,
+    ) -> Result<Page<OrderListItem>, CoreError> {
+        let cond = self.order_list_condition(actor, filter)?;
+        validate_page(limit, offset)?;
+        let backend = self.db.get_database_backend();
+
         let mut count = base(cond.clone());
         count.expr(Func::count(Expr::col(Asterisk)));
         let row = self
@@ -450,20 +473,27 @@ impl Core {
         let total = u64::try_from(row.try_get_by_index::<i64>(0)?).unwrap_or(0);
 
         let mut q = base(cond);
-        let (key, nulls) = sort_key(backend, sort.field);
-        let direction = if sort.descending {
-            Order::Desc
-        } else {
-            Order::Asc
-        };
-        q.order_by_expr_with_nulls(key, direction, nulls)
-            .order_by_expr(o(order::Column::Id), Order::Desc)
-            .limit(limit)
-            .offset(offset);
+        order_rows(&mut q, backend, sort);
+        q.limit(limit).offset(offset);
         Ok(Page {
             items: self.select_items(q).await?,
             total,
         })
+    }
+
+    /// Строки списка для выгрузки: те же условия и порядок, без страниц; не больше `max` строк.
+    pub(crate) async fn list_orders_capped(
+        &self,
+        actor: &Actor,
+        filter: &OrderFilter,
+        sort: OrderSort,
+        max: u64,
+    ) -> Result<Vec<OrderListItem>, CoreError> {
+        let cond = self.order_list_condition(actor, filter)?;
+        let mut q = base(cond);
+        order_rows(&mut q, self.db.get_database_backend(), sort);
+        q.limit(max);
+        self.select_items(q).await
     }
 
     /// Поиск по штрихкоду сканера среди неудалённых заказов; старые коды могли совпасть.

@@ -236,7 +236,63 @@ async fn builtin_roles_get_stock_view_only_when_untouched() {
             (set(&["orders_create"]), 1),
             "{label}"
         );
+        // Администратору склад не нужен — у него есть всё; версия 2 — от права «Выгрузка».
         let admin = role(&db, "Администратор").await;
-        assert_eq!(admin.1, 1, "{label}: администратора миграция не трогает");
+        assert_eq!(admin.1, 2, "{label}: только право «Выгрузка»");
+    }
+}
+
+/// Миграций до права «Выгрузка».
+const BEFORE_DATA_EXPORT: u32 = 18;
+
+const ALL_17: &str = r#"["orders_create","orders_edit","orders_delete","order_dates_edit","reports_view","stock_view","stock_create","stock_edit","stock_delete","clients_view","clients_create","clients_edit","clients_delete","clients_merge","settings_manage","users_manage","audit_view"]"#;
+
+#[tokio::test]
+async fn data_export_goes_to_roles_with_all_seventeen_rights() {
+    for (label, db) in all_backends_up_to(BEFORE_DATA_EXPORT).await {
+        // Администратор под другим именем: те же 17 прав в другом порядке.
+        let shuffled = r#"["audit_view","orders_create","orders_edit","orders_delete","order_dates_edit","reports_view","stock_view","stock_create","stock_edit","stock_delete","clients_view","clients_create","clients_edit","clients_delete","clients_merge","settings_manage","users_manage"]"#;
+        exec(
+            &db,
+            &format!("INSERT INTO roles (name, permissions, version) VALUES ('Директор', '{shuffled}', 1)"),
+        )
+        .await;
+        let without_audit = ALL_17.replace(r#","audit_view""#, "");
+        exec(
+            &db,
+            &format!("INSERT INTO roles (name, permissions, version) VALUES ('Без журнала', '{without_audit}', 1)"),
+        )
+        .await;
+        mw_db::migrate(&db).await.unwrap();
+        let mut all: BTreeSet<String> = serde_json::from_str(ALL_17).unwrap();
+        all.insert("data_export".to_owned());
+        assert_eq!(
+            role(&db, "Администратор").await,
+            (all.clone(), 2),
+            "{label}"
+        );
+        assert_eq!(role(&db, "Директор").await, (all, 2), "{label}");
+        let raw = db
+            .query_one_raw(Statement::from_string(
+                db.get_database_backend(),
+                "SELECT permissions FROM roles WHERE name = 'Администратор'",
+            ))
+            .await
+            .unwrap()
+            .unwrap();
+        let raw: String = raw.try_get_by_index(0).unwrap();
+        assert!(
+            raw.contains(r#""reports_view","data_export","stock_view""#),
+            "{label}: {raw}"
+        );
+        for name in ["Мастер", "Приёмщик"] {
+            assert!(
+                !role(&db, name).await.0.contains("data_export"),
+                "{label}: {name}"
+            );
+        }
+        let (without, version) = role(&db, "Без журнала").await;
+        assert!(!without.contains("data_export"), "{label}");
+        assert_eq!(version, 1, "{label}");
     }
 }

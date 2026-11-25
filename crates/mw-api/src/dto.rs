@@ -211,6 +211,37 @@ impl ClientListQuery {
     }
 }
 
+/// Параметры выгрузки клиентов: поиск и порядок списка клиентов, без страницы.
+#[derive(Debug, Clone, Default, Deserialize, TS, IntoParams)]
+#[serde(deny_unknown_fields)]
+#[ts(optional_fields)]
+#[into_params(parameter_in = Query)]
+pub struct ClientExportQuery {
+    /// Часть имени или телефона; без учёта регистра. Пусто — все клиенты.
+    pub query: Option<String>,
+    /// Поле сортировки; по умолчанию дата последнего заказа, новые сверху, без заказов в конце.
+    pub sort: Option<mw_core::ClientSortField>,
+    /// Обратный порядок; действует только вместе с `sort`, по умолчанию `false`.
+    pub descending: Option<bool>,
+    /// Только клиенты, у которых есть похожий (порядок по имени); по умолчанию `false`.
+    pub duplicates: Option<bool>,
+}
+
+impl ClientExportQuery {
+    /// Условия для ядра — те же, что строит список клиентов.
+    pub fn filter(&self) -> mw_core::ClientFilter {
+        ClientListQuery {
+            query: self.query.clone(),
+            sort: self.sort,
+            descending: self.descending,
+            duplicates: self.duplicates,
+            limit: None,
+            offset: None,
+        }
+        .filter()
+    }
+}
+
 /// Условия отчёта по заказам; пустые `device_type`, `brand` и `source` — без фильтра.
 #[derive(Debug, Clone, Default, Deserialize, TS, IntoParams)]
 #[serde(deny_unknown_fields)]
@@ -380,6 +411,86 @@ impl From<mw_core::Page<mw_core::ClientListItem>> for ClientPage {
             items: p.items,
             total: p.total,
         }
+    }
+}
+
+/// Параметры выгрузки заказов: фильтры и сортировка списка заказов, без страницы.
+#[derive(Debug, Clone, Default, Deserialize, TS, IntoParams)]
+#[serde(deny_unknown_fields)]
+#[ts(optional_fields)]
+#[into_params(parameter_in = Query)]
+pub struct OrderExportQuery {
+    /// Слова поиска по тексту заказа и клиента; все слова должны найтись. Пусто — без поиска.
+    pub query: Option<String>,
+    /// Только эти статусы (параметр можно повторять); пусто — любые.
+    pub status_ids: Option<Vec<i64>>,
+    /// Только эта точка обслуживания.
+    pub service_point_id: Option<i64>,
+    /// Только заказы этого клиента.
+    pub client_id: Option<i64>,
+    /// Нужно ли звонить клиенту; не указано — любые.
+    pub need_call: Option<bool>,
+    /// Нужны ли запчасти; не указано — любые.
+    pub need_parts: Option<bool>,
+    /// Выданные или находящиеся в сервисе; по умолчанию любые.
+    pub issued: Option<mw_core::IssuedFilter>,
+    /// Только с просроченной диагностикой; по умолчанию `false`.
+    pub overdue_diagnostics: Option<bool>,
+    /// Показывать и удалённые (право `orders_delete`); по умолчанию `false`.
+    pub include_deleted: Option<bool>,
+    /// Только этот тип устройства (без учёта регистра).
+    pub device_type: Option<String>,
+    /// Только этот бренд (без учёта регистра).
+    pub brand: Option<String>,
+    /// Только этот мастер — пользователь.
+    pub master_user_id: Option<i64>,
+    /// Только мастер с этим именем в заказе (без учёта регистра); для старых сохранённых видов
+    /// списка — новый выбор идёт по `master_user_id`.
+    pub master: Option<String>,
+    /// Принят не раньше (включительно), местное время без смещения.
+    pub received_from: Option<NaiveDateTime>,
+    /// Принят не позже (включительно), местное время без смещения.
+    pub received_to: Option<NaiveDateTime>,
+    /// Выдан не раньше (включительно), местное время без смещения.
+    pub issued_from: Option<NaiveDateTime>,
+    /// Выдан не позже (включительно), местное время без смещения.
+    pub issued_to: Option<NaiveDateTime>,
+    /// Только «давно готовые»; по умолчанию `false`.
+    pub stale_ready: Option<bool>,
+    /// Поле сортировки; по умолчанию дата приёма, новые сверху.
+    pub sort: Option<mw_core::OrderSortField>,
+    /// Обратный порядок; действует только вместе с `sort`, по умолчанию `false`.
+    pub descending: Option<bool>,
+}
+
+impl OrderExportQuery {
+    /// Фильтр и порядок для ядра — те же, что строит список заказов.
+    pub fn into_filter_and_sort(self) -> (mw_core::OrderFilter, mw_core::OrderSort) {
+        OrderListQuery {
+            query: self.query,
+            status_ids: self.status_ids,
+            service_point_id: self.service_point_id,
+            client_id: self.client_id,
+            need_call: self.need_call,
+            need_parts: self.need_parts,
+            issued: self.issued,
+            overdue_diagnostics: self.overdue_diagnostics,
+            include_deleted: self.include_deleted,
+            device_type: self.device_type,
+            brand: self.brand,
+            master_user_id: self.master_user_id,
+            master: self.master,
+            received_from: self.received_from,
+            received_to: self.received_to,
+            issued_from: self.issued_from,
+            issued_to: self.issued_to,
+            stale_ready: self.stale_ready,
+            sort: self.sort,
+            descending: self.descending,
+            limit: None,
+            offset: None,
+        }
+        .into_filter_and_sort()
     }
 }
 

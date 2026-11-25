@@ -127,7 +127,7 @@ async fn open_mode_only_on_loopback_and_only_without_users() {
             "{}",
             t.label
         );
-        assert_eq!(me.body["permissions"].as_array().unwrap().len(), 17);
+        assert_eq!(me.body["permissions"].as_array().unwrap().len(), 18);
         assert_eq!(
             t.get("/api/v1/auth/me", Some(&"0".repeat(64))).await.status,
             401

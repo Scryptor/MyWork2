@@ -110,6 +110,8 @@ pub fn export_typescript(dir: &Path) -> Result<(), ts_rs::ExportError> {
     mw_core::StockImportSummary::export_all(&cfg)?;
     DocumentQuery::export_all(&cfg)?;
     crate::OrderReportQuery::export_all(&cfg)?;
+    crate::OrderExportQuery::export_all(&cfg)?;
+    crate::ClientExportQuery::export_all(&cfg)?;
     mw_core::OrderReport::export_all(&cfg)?;
     crate::MovesReportQuery::export_all(&cfg)?;
     mw_core::MovesReport::export_all(&cfg)?;

@@ -3,4 +3,4 @@
 /**
  * Право доступа. Порядок объявления определяет порядок в наборе и в JSON.
  */
-export type Permission = "orders_create" | "orders_edit" | "orders_delete" | "order_dates_edit" | "reports_view" | "stock_view" | "stock_create" | "stock_edit" | "stock_delete" | "clients_view" | "clients_create" | "clients_edit" | "clients_delete" | "clients_merge" | "settings_manage" | "users_manage" | "audit_view";
+export type Permission = "orders_create" | "orders_edit" | "orders_delete" | "order_dates_edit" | "reports_view" | "data_export" | "stock_view" | "stock_create" | "stock_edit" | "stock_delete" | "clients_view" | "clients_create" | "clients_edit" | "clients_delete" | "clients_merge" | "settings_manage" | "users_manage" | "audit_view";

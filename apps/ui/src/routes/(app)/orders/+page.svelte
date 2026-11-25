@@ -34,6 +34,7 @@
 	import { performBulk, type BulkChange } from '#lib/orders/bulk.js';
 	import { orderColumns } from '#lib/orders/columns.js';
 	import { onOrderChanged } from '#lib/orders/events.js';
+	import ExportOrdersButton from '#lib/export/ExportOrdersButton.svelte';
 	import FiltersMenu from '#lib/orders/FiltersMenu.svelte';
 	import { createOrderList } from '#lib/orders/list.svelte.js';
 	import { orderPanel } from '#lib/orders/panel.svelte.js';
@@ -459,13 +460,16 @@
 <div class="orders" class:phone={display.phone}>
 	<h1 class="title">{t.title}</h1>
 	{#if display.phone}
-		<div class="toolbar">{@render filterField()}{@render filtersMenu()}</div>
+		<div class="toolbar">
+			{@render filterField()}{@render filtersMenu()}<ExportOrdersButton {query} />
+		</div>
 		{@render quickFilters()}
 	{:else}
 		{@render quickFilters()}
 		<div class="toolbar">
 			{@render filterField()}
 			{@render filtersMenu()}
+			<ExportOrdersButton {query} />
 			<span class="count num" aria-live="polite">
 				{#if !list.loading || list.rows.length > 0}{countLabel(list.total, t.forms)}{/if}
 			</span>

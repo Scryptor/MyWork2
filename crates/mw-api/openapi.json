@@ -2026,6 +2026,319 @@
         ]
       }
     },
+    "/api/v1/exports/clients": {
+      "get": {
+        "tags": [
+          "Выгрузки"
+        ],
+        "summary": "Клиенты файлом Excel: поиск и порядок как у списка клиентов, без страниц (права `data_export`\nи `clients_view`). Больше 50 000 клиентов — 422 `rows`/`too_many_rows`.",
+        "operationId": "export_clients",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "description": "Часть имени или телефона; без учёта регистра. Пусто — все клиенты.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "description": "Поле сортировки; по умолчанию дата последнего заказа, новые сверху, без заказов в конце.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/ClientSortField"
+            }
+          },
+          {
+            "name": "descending",
+            "in": "query",
+            "description": "Обратный порядок; действует только вместе с `sort`, по умолчанию `false`.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "duplicates",
+            "in": "query",
+            "description": "Только клиенты, у которых есть похожий (порядок по имени); по умолчанию `false`.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Файл Excel",
+            "content": {
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/exports/orders": {
+      "get": {
+        "tags": [
+          "Выгрузки"
+        ],
+        "summary": "Заказы файлом Excel: фильтр и порядок как у списка заказов, без страниц (право `data_export`).\nБольше 50 000 заказов — 422 `rows`/`too_many_rows`.",
+        "operationId": "export_orders",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "description": "Слова поиска по тексту заказа и клиента; все слова должны найтись. Пусто — без поиска.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status_ids",
+            "in": "query",
+            "description": "Только эти статусы (параметр можно повторять); пусто — любые.",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "format": "int64"
+              }
+            }
+          },
+          {
+            "name": "service_point_id",
+            "in": "query",
+            "description": "Только эта точка обслуживания.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "description": "Только заказы этого клиента.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "need_call",
+            "in": "query",
+            "description": "Нужно ли звонить клиенту; не указано — любые.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "need_parts",
+            "in": "query",
+            "description": "Нужны ли запчасти; не указано — любые.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "issued",
+            "in": "query",
+            "description": "Выданные или находящиеся в сервисе; по умолчанию любые.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/IssuedFilter"
+            }
+          },
+          {
+            "name": "overdue_diagnostics",
+            "in": "query",
+            "description": "Только с просроченной диагностикой; по умолчанию `false`.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "include_deleted",
+            "in": "query",
+            "description": "Показывать и удалённые (право `orders_delete`); по умолчанию `false`.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "device_type",
+            "in": "query",
+            "description": "Только этот тип устройства (без учёта регистра).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "brand",
+            "in": "query",
+            "description": "Только этот бренд (без учёта регистра).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "master_user_id",
+            "in": "query",
+            "description": "Только этот мастер — пользователь.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "master",
+            "in": "query",
+            "description": "Только мастер с этим именем в заказе (без учёта регистра); для старых сохранённых видов\nсписка — новый выбор идёт по `master_user_id`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "received_from",
+            "in": "query",
+            "description": "Принят не раньше (включительно), местное время без смещения.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "received_to",
+            "in": "query",
+            "description": "Принят не позже (включительно), местное время без смещения.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "issued_from",
+            "in": "query",
+            "description": "Выдан не раньше (включительно), местное время без смещения.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "issued_to",
+            "in": "query",
+            "description": "Выдан не позже (включительно), местное время без смещения.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "stale_ready",
+            "in": "query",
+            "description": "Только «давно готовые»; по умолчанию `false`.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "description": "Поле сортировки; по умолчанию дата приёма, новые сверху.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/OrderSortField"
+            }
+          },
+          {
+            "name": "descending",
+            "in": "query",
+            "description": "Обратный порядок; действует только вместе с `sort`, по умолчанию `false`.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Файл Excel",
+            "content": {
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/intake-drafts/{key}": {
       "delete": {
         "tags": [
@@ -9808,6 +10121,7 @@
           "orders_delete",
           "order_dates_edit",
           "reports_view",
+          "data_export",
           "stock_view",
           "stock_create",
           "stock_edit",

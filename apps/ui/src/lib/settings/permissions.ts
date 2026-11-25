@@ -30,7 +30,7 @@ export const PERMISSION_GROUPS: readonly PermissionGroup[] = [
 		label: ru.roles.groups.stock,
 		permissions: ['stock_view', 'stock_create', 'stock_edit', 'stock_delete']
 	},
-	{ id: 'reports', label: ru.roles.groups.reports, permissions: ['reports_view'] },
+	{ id: 'reports', label: ru.roles.groups.reports, permissions: ['reports_view', 'data_export'] },
 	{
 		id: 'settings',
 		label: ru.roles.groups.settings,

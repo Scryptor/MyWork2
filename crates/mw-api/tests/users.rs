@@ -132,7 +132,7 @@ async fn last_admin_is_protected_over_http() {
         let r = t
             .send(
                 Method::PATCH,
-                &format!("/api/v1/roles/{admin_role}?version=1"),
+                &format!("/api/v1/roles/{admin_role}?version=2"),
                 Some(&admin),
                 Some(json!({ "permissions": ["orders_create"] })),
             )
@@ -283,7 +283,7 @@ async fn last_users_manage_role_is_not_deleted_over_http() {
         let r = t
             .send(
                 Method::DELETE,
-                &format!("/api/v1/roles/{admin_role}?version=1"),
+                &format!("/api/v1/roles/{admin_role}?version=2"),
                 None,
                 None,
             )
@@ -308,7 +308,7 @@ async fn last_users_manage_role_keeps_the_permission_over_http() {
         let r = t
             .send(
                 Method::PATCH,
-                &format!("/api/v1/roles/{admin_role}?version=1"),
+                &format!("/api/v1/roles/{admin_role}?version=2"),
                 None,
                 Some(json!({ "permissions": ["orders_create"] })),
             )

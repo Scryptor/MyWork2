@@ -114,7 +114,7 @@ async fn users_validation_and_last_admin_guard() -> Result<(), CoreError> {
                 .update_role(
                     &admin(),
                     admin_role,
-                    1,
+                    2,
                     RolePatch {
                         permissions: Some(PermissionSet::from_codes(["orders_create"])),
                         ..Default::default()
