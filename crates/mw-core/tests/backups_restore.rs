@@ -176,6 +176,19 @@ async fn check_restored(env: &Env, files_a: &[String], files_ab: &[String], safe
         serde_json::from_slice(&std::fs::read(dir.join("mywork-backup.json")).unwrap()).unwrap();
     assert_eq!(manifest["kind"], "before_restore");
     assert_eq!(manifest["created_at"], "2026-03-10T12:30:00");
+    let before = files(&dir);
+    assert!(before.contains(&"mywork.db".to_owned()));
+    assert!(
+        before
+            .iter()
+            .all(|f| !f.ends_with("-wal") && !f.ends_with("-shm")),
+        "{before:?}"
+    );
+    let check = mw_db::backup::inspect_copy(&dir.join("mywork.db"))
+        .await
+        .unwrap();
+    assert!(check.intact && check.unknown_migrations.is_empty());
+    assert_eq!(files(&dir), before);
     let old = mw_db::connect(&mw_db::sqlite_url(&dir.join("mywork.db")))
         .await
         .unwrap();
@@ -413,11 +426,35 @@ async fn cancel_and_delete_with_a_pending_restore() {
             validation(e),
             [("name".to_owned(), "backup_pending".to_owned())]
         );
-        std::fs::write(env.data.join(RESTORE_RESULT), b"{}").ok();
+        let result = mw_core::backups::BackupRestoreResult {
+            ok: false,
+            copy: p.core.backup_overview(&who).await.unwrap().copies[0].clone(),
+            requested_at: p.core.backup_overview(&who).await.unwrap().copies[0].created_at,
+            requested_by: "Тест".to_owned(),
+            safety: None,
+            error: Some("x".to_owned()),
+        };
+        std::fs::write(
+            env.data.join(RESTORE_RESULT),
+            serde_json::to_vec(&result).unwrap(),
+        )
+        .unwrap();
+        assert!(
+            p.core
+                .backup_overview(&who)
+                .await
+                .unwrap()
+                .last_restore
+                .is_some()
+        );
+        std::fs::create_dir_all(env.data.join(RESTORE_STAGING)).unwrap();
+        std::fs::write(env.data.join(RESTORE_STAGING).join("x"), b"x").unwrap();
         p.core.cancel_restore(&who).await.unwrap();
         let overview = p.core.backup_overview(&who).await.unwrap();
         assert!(overview.pending.is_none());
         assert!(overview.last_restore.is_none());
+        assert!(!env.data.join(RESTORE_RESULT).exists());
+        assert!(!env.data.join(RESTORE_STAGING).exists());
         assert_eq!(count_audit(&p.core, "backup.restore_cancelled").await, 1);
         // Повторная отмена без отметки ничего не пишет.
         p.core.cancel_restore(&who).await.unwrap();
@@ -467,4 +504,87 @@ async fn restore_needs_both_rights() {
             ));
         }
     }
+}
+
+/// Копия B с тремя заказами: проверка по содержимому, что восстановилась именно она.
+async fn make_copy_of_three(core: &Core) -> String {
+    let who = admin();
+    core.create_order(&who, sample_new_order()).await.unwrap();
+    let n = orders(core).await;
+    assert_eq!(n, 3, "в базе должно быть три заказа");
+    core.create_backup(&who, BackupKind::Manual)
+        .await
+        .unwrap()
+        .name
+}
+
+#[tokio::test]
+async fn a_stale_staging_never_decides_a_later_restore() {
+    for env in envs().await {
+        if !env.sqlite() {
+            continue;
+        }
+        let who = admin();
+        // (a) Остановка после `copied`, отмена и запрос другой копии.
+        let p = prepare(&env).await;
+        p.core.request_restore(&who, &p.name).await.unwrap();
+        let data = env.data.clone();
+        close(p.core, p.db).await;
+        assert!(
+            apply_pending_restore_until(&data, RestoreStop::AfterCopied)
+                .await
+                .is_err()
+        );
+        assert!(data.join(RESTORE_STAGING).exists());
+        let (core, db) = env.open().await;
+        core.cancel_restore(&who).await.unwrap();
+        assert!(!data.join(RESTORE_STAGING).exists());
+        let b = make_copy_of_three(&core).await;
+        // Остаток снова на месте: отметка его не принимает.
+        core.request_restore(&who, &b).await.unwrap();
+        close(core, db).await;
+        let result = apply_pending_restore(&data).await.unwrap().unwrap();
+        assert!(result.ok);
+        assert_eq!(result.copy.name, b);
+        let (core, db) = env.open().await;
+        assert_eq!(orders(&core).await, 3);
+        close(core, db).await;
+    }
+    for env in envs().await {
+        if !env.sqlite() {
+            continue;
+        }
+        let who = admin();
+        // (b) Шаг `moved_aside` от законченного восстановления и новый запрос.
+        let p = prepare(&env).await;
+        p.core.request_restore(&who, &p.name).await.unwrap();
+        let data = env.data.clone();
+        close(p.core, p.db).await;
+        assert!(
+            apply_pending_restore_until(&data, RestoreStop::AfterMovedAside)
+                .await
+                .is_err()
+        );
+        let stale = std::fs::read(data.join(RESTORE_STAGING).join("phase.json")).unwrap();
+        assert!(apply_pending_restore(&data).await.unwrap().unwrap().ok);
+        let (core, db) = env.open().await;
+        assert_eq!(orders(&core).await, 1);
+        let b = make_copy_of_three_from_one(&core).await;
+        core.request_restore(&who, &b).await.unwrap();
+        close(core, db).await;
+        std::fs::create_dir_all(data.join(RESTORE_STAGING)).unwrap();
+        std::fs::write(data.join(RESTORE_STAGING).join("phase.json"), stale).unwrap();
+        let result = apply_pending_restore(&data).await.unwrap().unwrap();
+        assert!(result.ok);
+        assert_eq!(result.copy.name, b);
+        let (core, db) = env.open().await;
+        assert_eq!(orders(&core).await, 3);
+        close(core, db).await;
+    }
+}
+
+async fn make_copy_of_three_from_one(core: &Core) -> String {
+    let who = admin();
+    core.create_order(&who, sample_new_order()).await.unwrap();
+    make_copy_of_three(core).await
 }

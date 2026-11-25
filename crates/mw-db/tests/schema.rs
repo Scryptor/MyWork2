@@ -402,6 +402,17 @@ async fn inspect_tells_good_damaged_and_newer_copies() {
     assert!(check.intact);
     assert!(check.unknown_migrations.is_empty());
     let header_before = std::fs::read(&good).unwrap()[..32].to_vec();
+    let listing = |dir: &std::path::Path| {
+        let mut v: Vec<_> = std::fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        v.sort();
+        v
+    };
+    let files_before = listing(dir.path());
+    mw_db::backup::inspect_copy(&good).await.unwrap();
+    assert_eq!(listing(dir.path()), files_before, "осмотр оставил файлы");
 
     let broken = dir.path().join("broken.db");
     let noise: Vec<u8> = (0..4096u32).map(|i| (i * 37 % 251) as u8).collect();
@@ -435,6 +446,39 @@ async fn inspect_tells_good_damaged_and_newer_copies() {
     let missing = dir.path().join("missing.db");
     assert!(mw_db::backup::inspect_copy(&missing).await.is_err());
     assert!(!missing.exists());
+}
+
+#[tokio::test]
+async fn make_single_file_folds_the_wal_into_the_base() {
+    let dir = tempfile::tempdir().unwrap();
+    let live = dir.path().join("live.db");
+    let db = mw_db::connect(&mw_db::sqlite_url(&live)).await.unwrap();
+    mw_db::migrate(&db).await.unwrap();
+    // Копируем файлы, пока соединение открыто: журнал WAL ещё не слит.
+    let moved = dir.path().join("moved");
+    std::fs::create_dir_all(&moved).unwrap();
+    for name in ["live.db", "live.db-wal"] {
+        std::fs::copy(
+            dir.path().join(name),
+            moved.join(name.replace("live", "mywork")),
+        )
+        .unwrap();
+    }
+    let target = moved.join("mywork.db");
+    mw_db::backup::make_single_file(&target).await.unwrap();
+    mw_db::backup::make_single_file(&target).await.unwrap();
+    let mut names: Vec<_> = std::fs::read_dir(&moved)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    assert_eq!(names, ["mywork.db"]);
+    let check = mw_db::backup::inspect_copy(&target).await.unwrap();
+    assert!(check.intact && check.unknown_migrations.is_empty());
+    let header = std::fs::read(&target).unwrap();
+    assert_eq!((header[18], header[19]), (1, 1), "обычный журнал");
+    let after = mw_db::connect(&mw_db::sqlite_url(&target)).await.unwrap();
+    assert_eq!(status::Entity::find().count(&after).await.unwrap(), 8);
 }
 
 async fn put_setting_row(db: &DatabaseConnection, key: &str, value: &str) {

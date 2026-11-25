@@ -105,3 +105,31 @@ pub async fn inspect_copy(path: &Path) -> Result<CopyCheck, DbErr> {
         unknown_migrations,
     })
 }
+
+/// Сводит копию базы к одному файлу: переносит журнал WAL в основной файл и возвращает
+/// обычный журнал. Одно обычное соединение на запись, без `connect` (он включает WAL).
+/// Повторный вызов безопасен.
+pub async fn make_single_file(path: &Path) -> Result<(), DbErr> {
+    use sea_orm::sqlx::sqlite::SqliteConnectOptions;
+    use sea_orm::sqlx::{ConnectOptions, Connection};
+
+    let map = |e: sea_orm::sqlx::Error| DbErr::Custom(e.to_string());
+    let mut conn = SqliteConnectOptions::new()
+        .filename(path)
+        .create_if_missing(false)
+        .connect()
+        .await
+        .map_err(map)?;
+    let done = async {
+        sea_orm::sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
+            .execute(&mut conn)
+            .await?;
+        sea_orm::sqlx::query("PRAGMA journal_mode=DELETE")
+            .execute(&mut conn)
+            .await?;
+        Ok::<_, sea_orm::sqlx::Error>(())
+    }
+    .await;
+    conn.close().await.map_err(map)?;
+    done.map_err(map)
+}

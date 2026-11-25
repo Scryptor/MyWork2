@@ -48,6 +48,15 @@ struct Phase {
     phase: String,
     /// Имя страховочной копии.
     safety: String,
+    /// Чья это подготовка: копия и время запроса отметки.
+    copy_path: PathBuf,
+    requested_at: NaiveDateTime,
+}
+
+impl Phase {
+    fn belongs_to(&self, marker: &Marker) -> bool {
+        self.copy_path == marker.copy_path && self.requested_at == marker.requested_at
+    }
 }
 
 /// Где остановить восстановление (только для тестов): сразу после записи шага.
@@ -165,6 +174,14 @@ fn write_marker(
         requested_at,
         requested_by: requested_by.to_owned(),
     };
+    // Пока программа работает, `.restore/` — только остаток прежней попытки.
+    remove_dir_checked(&data_dir.join(RESTORE_STAGING)).map_err(|e| {
+        io_err(
+            "не удалось убрать остатки восстановления",
+            &data_dir.join(RESTORE_STAGING),
+            e,
+        )
+    })?;
     let path = data_dir.join(RESTORE_MARKER);
     write_json(&path, &marker)
         .map_err(|e| io_err("не удалось записать отметку восстановления", &path, e))?;
@@ -212,7 +229,10 @@ impl Core {
         )
         .await?;
         let pending = write_marker(&data_dir, &path, &copy, at, &actor.name)?;
-        tx.commit().await?;
+        if let Err(e) = tx.commit().await {
+            std::fs::remove_file(data_dir.join(RESTORE_MARKER)).ok();
+            return Err(e.into());
+        }
         Ok(pending)
     }
 
@@ -247,6 +267,13 @@ impl Core {
                 Err(e) => return Err(io_err("не удалось убрать файл", &path, e)),
             }
         }
+        remove_dir_checked(&data_dir.join(RESTORE_STAGING)).map_err(|e| {
+            io_err(
+                "не удалось убрать остатки восстановления",
+                &data_dir.join(RESTORE_STAGING),
+                e,
+            )
+        })?;
         tx.commit().await?;
         Ok(())
     }
@@ -315,6 +342,10 @@ async fn apply(
     };
     let staging = data_dir.join(RESTORE_STAGING);
     let mut phase = read_json::<Phase>(&staging.join(PHASE_FILE));
+    if phase.as_ref().is_some_and(|p| !p.belongs_to(&marker)) {
+        // Шаг от другой отметки: подготовка начинается заново.
+        phase = None;
+    }
 
     if phase.is_none() {
         match prepare(data_dir, &marker, &staging).await {
@@ -322,6 +353,8 @@ async fn apply(
                 let p = Phase {
                     phase: PHASE_COPIED.to_owned(),
                     safety,
+                    copy_path: marker.copy_path.clone(),
+                    requested_at: marker.requested_at,
                 };
                 write_phase(&staging, &p)?;
                 phase = Some(p);
@@ -341,7 +374,15 @@ async fn apply(
             marker.clone(),
             phase.safety.clone(),
         );
-        run_blocking(move || move_aside(&d, &s, &m, &safety)).await?;
+        let (d2, safety2) = (d.clone(), safety.clone());
+        run_blocking(move || move_aside(&d, &s, &safety)).await?;
+        let kept = default_backups_dir(&d2).join(&safety2).join(DB_FILE);
+        if kept.is_file()
+            && let Err(e) = mw_db::backup::make_single_file(&kept).await
+        {
+            tracing::warn!(error = %e, "страховочная копия осталась с журналом WAL");
+        }
+        run_blocking(move || write_safety_manifest(&d2, &m, &safety2)).await?;
         phase.phase = PHASE_MOVED_ASIDE.to_owned();
         write_phase(&staging, &phase)?;
         if stop_after == Some(PHASE_MOVED_ASIDE) {
@@ -458,12 +499,7 @@ fn exists(path: &Path) -> bool {
 }
 
 /// Шаг 2: прежние база и вложения уходят в страховочную копию; переносится только то, что ещё на месте.
-fn move_aside(
-    data_dir: &Path,
-    staging: &Path,
-    marker: &Marker,
-    safety: &str,
-) -> Result<(), CoreError> {
+fn move_aside(data_dir: &Path, staging: &Path, safety: &str) -> Result<(), CoreError> {
     let safety_dir = default_backups_dir(data_dir).join(safety);
     let fail = |e: std::io::Error| {
         CoreError::Internal(format!(
@@ -480,6 +516,19 @@ fn move_aside(
             std::fs::rename(&from, safety_dir.join(name)).map_err(fail)?;
         }
     }
+    Ok(())
+}
+
+/// Описание страховочной копии: после сведения базы к одному файлу, чтобы размер был итоговым.
+fn write_safety_manifest(data_dir: &Path, marker: &Marker, safety: &str) -> Result<(), CoreError> {
+    let safety_dir = default_backups_dir(data_dir).join(safety);
+    let fail = |e: std::io::Error| {
+        CoreError::Internal(format!(
+            "Восстановление не закончено: не удалось записать описание {} ({e}). \
+             Следующий запуск продолжит.",
+            safety_dir.display()
+        ))
+    };
     let (files, files_bytes) = tree_stats(&safety_dir.join(ATTACHMENTS));
     let manifest = Manifest {
         format: MANIFEST_FORMAT,
