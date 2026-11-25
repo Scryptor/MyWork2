@@ -21,7 +21,7 @@ test('makes_restores_and_deletes_a_copy', async ({ page }) => {
 	await expect(list.getByRole('listitem')).toHaveCount(1);
 	await expect(list.getByText('Вручную')).toBeVisible();
 
-	await list.getByRole('button', { name: 'Восстановить…' }).click();
+	await list.getByRole('button', { name: /^Восстановить копию от/ }).click();
 	const dialog = page.getByRole('alertdialog');
 	await expect(dialog.getByText('Восстановить данные из копии?')).toBeVisible();
 	await dialog.getByRole('button', { name: 'Восстановить', exact: true }).click();
@@ -33,7 +33,7 @@ test('makes_restores_and_deletes_a_copy', async ({ page }) => {
 	await page.getByRole('button', { name: 'Отменить восстановление' }).click();
 	await expect(page.getByText(/при следующем запуске программы/)).toHaveCount(0);
 
-	await list.getByRole('button', { name: 'Удалить' }).click();
+	await list.getByRole('button', { name: /^Удалить копию от/ }).click();
 	await page.getByRole('alertdialog').getByRole('button', { name: 'Удалить', exact: true }).click();
 	await expect(page.getByText('Вручную')).toHaveCount(0);
 	await expect(page.getByText('Копий пока нет')).toBeVisible();

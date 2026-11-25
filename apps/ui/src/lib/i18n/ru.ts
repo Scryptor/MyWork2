@@ -1775,6 +1775,8 @@ export const ru = {
 		none: 'Копий пока нет',
 		restore: 'Восстановить…',
 		remove: 'Удалить',
+		restoreLabel: (date: string) => `Восстановить копию от ${date}…`,
+		removeLabel: (date: string) => `Удалить копию от ${date}`,
 		kinds: { auto: 'Авто', manual: 'Вручную', before_restore: 'Перед восстановлением' },
 		fileForms: ['файл', 'файла', 'файлов'],
 		size: (size: string, files: string) => `${size} · ${files}`,

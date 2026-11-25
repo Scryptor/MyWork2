@@ -180,11 +180,27 @@ describe('the copies', () => {
 		);
 		api.deleteBackup.mockResolvedValue(undefined);
 		render(Page);
-		await user.click(await screen.findByRole('button', { name: 'Удалить' }));
+		await user.click(await screen.findByRole('button', { name: /^Удалить копию от/ }));
 		const dialog = await screen.findByRole('alertdialog');
 		expect(dialog).toHaveTextContent('Копия от 25 ноября 2026, 10:00 удалится без возврата.');
 		await user.click(within(dialog).getByRole('button', { name: 'Удалить' }));
 		await waitFor(() => expect(api.deleteBackup).toHaveBeenCalledWith('c1'));
+	});
+
+	it('opens the dialog of the same copy again after «Отмена»', async () => {
+		const user = userEvent.setup();
+		api.getBackups.mockResolvedValue(
+			overview({ copies: [copy('c1', 'manual', '2026-11-25T10:00:00')] })
+		);
+		render(Page);
+		for (const button of [/^Удалить копию от/, /^Восстановить копию от/]) {
+			for (let i = 0; i < 2; i++) {
+				await user.click(await screen.findByRole('button', { name: button }));
+				const dialog = await screen.findByRole('alertdialog');
+				await user.click(within(dialog).getByRole('button', { name: 'Отмена' }));
+				await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+			}
+		}
 	});
 
 	it('leaves «Восстановить…» and «Удалить» to «Настройки» with «Пользователи»', async () => {
@@ -194,8 +210,8 @@ describe('the copies', () => {
 		);
 		render(Page);
 		await screen.findByText('Вручную');
-		expect(screen.queryByRole('button', { name: 'Восстановить…' })).toBeNull();
-		expect(screen.queryByRole('button', { name: 'Удалить' })).toBeNull();
+		expect(screen.queryByRole('button', { name: /^Восстановить копию от/ })).toBeNull();
+		expect(screen.queryByRole('button', { name: /^Удалить копию от/ })).toBeNull();
 	});
 });
 
@@ -223,7 +239,7 @@ describe('the restore', () => {
 			.mockResolvedValue(overview({ pending }));
 		api.requestRestore.mockResolvedValue(pending);
 		render(Page);
-		await user.click(await screen.findByRole('button', { name: 'Восстановить…' }));
+		await user.click(await screen.findByRole('button', { name: /^Восстановить копию от/ }));
 		const dialog = await screen.findByRole('alertdialog');
 		expect(dialog).toHaveTextContent('Восстановить данные из копии?');
 		expect(dialog).toHaveTextContent(
@@ -390,14 +406,28 @@ describe('the settings of the copies', () => {
 		await waitFor(() => expect(api.updateBackupSettings).toHaveBeenCalledWith({ auto: false }));
 	});
 
-	it('keeps an error under its field', async () => {
-		const user = userEvent.setup();
+	it('keeps the error of the server under its field', async () => {
+		vi.useFakeTimers({ shouldAdvanceTime: true });
+		const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 		api.updateBackupSettings.mockRejectedValue(validation('keep', 'out_of_range', 'Слишком много'));
+		render(Page);
+		const field = await screen.findByRole('textbox', { name: 'Хранить автокопий' });
+		await user.clear(field);
+		await user.type(field, '50');
+		expect(screen.queryByText('От 1 до 100')).toBeNull();
+		await vi.advanceTimersByTimeAsync(700);
+		await waitFor(() => expect(api.updateBackupSettings).toHaveBeenCalledWith({ keep: 50 }));
+		expect(await screen.findByText('От 1 до 100')).toBeInTheDocument();
+	});
+
+	it('refuses a number out of range without asking the server', async () => {
+		const user = userEvent.setup();
 		render(Page);
 		const field = await screen.findByRole('textbox', { name: 'Хранить автокопий' });
 		await user.clear(field);
 		await user.type(field, '500');
 		expect(await screen.findByText('От 1 до 100')).toBeInTheDocument();
+		expect(api.updateBackupSettings).not.toHaveBeenCalled();
 	});
 
 	it('shows the text of the server under the folder', async () => {

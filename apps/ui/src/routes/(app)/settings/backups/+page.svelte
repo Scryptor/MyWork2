@@ -204,10 +204,17 @@
 								<span class="size">{sizeOf(c)}</span>
 								{#if mayChange}
 									<span class="row-actions">
-										<Button size="sm" onclick={() => (restoring = c)}>{t.restore}</Button>
-										<Button size="sm" variant="ghost" onclick={() => (removing = c)}>
-											{t.remove}
-										</Button>
+										<Button
+											size="sm"
+											aria-label={t.restoreLabel(formatFull(c.created_at))}
+											onclick={() => (restoring = c)}>{t.restore}</Button
+										>
+										<Button
+											size="sm"
+											variant="ghost"
+											aria-label={t.removeLabel(formatFull(c.created_at))}
+											onclick={() => (removing = c)}>{t.remove}</Button
+										>
 									</span>
 								{/if}
 							</li>
@@ -222,7 +229,7 @@
 {#if restoring}
 	{@const target = restoring}
 	<ConfirmDialog
-		open
+		bind:open={() => restoring !== null, (v) => !v && (restoring = null)}
 		tone="primary"
 		title={t.restoreTitle}
 		description={t.restoreText(formatFull(target.created_at))}
@@ -233,7 +240,7 @@
 {#if removing}
 	{@const target = removing}
 	<ConfirmDialog
-		open
+		bind:open={() => removing !== null, (v) => !v && (removing = null)}
 		title={t.removeTitle}
 		description={t.removeText(formatFull(target.created_at))}
 		confirmLabel={t.removeConfirm}
