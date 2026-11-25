@@ -5873,9 +5873,7 @@
           "firm_phone",
           "firm_details",
           "firm_legal_details",
-          "firm_telegram",
-          "firm_google_maps",
-          "firm_yandex_maps",
+          "firm_links",
           "intake_terms",
           "issue_terms",
           "timezone",
@@ -5916,13 +5914,16 @@
             "type": "string",
             "description": "Данные фирмы (адрес, часы работы)."
           },
-          "firm_google_maps": {
-            "type": "string",
-            "description": "Ссылка на фирму на Google Картах (пусто или `http://`/`https://`)."
-          },
           "firm_legal_details": {
             "type": "string",
             "description": "Реквизиты фирмы."
+          },
+          "firm_links": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FirmLink"
+            },
+            "description": "Ссылки фирмы для QR-кодов: встроенные и свои, не больше 20."
           },
           "firm_name": {
             "type": "string",
@@ -5931,14 +5932,6 @@
           "firm_phone": {
             "type": "string",
             "description": "Телефон фирмы."
-          },
-          "firm_telegram": {
-            "type": "string",
-            "description": "Ссылка на Telegram фирмы (пусто или `http://`/`https://`)."
-          },
-          "firm_yandex_maps": {
-            "type": "string",
-            "description": "Ссылка на фирму на Яндекс Картах (пусто или `http://`/`https://`)."
           },
           "intake_required_fields": {
             "type": "boolean",
@@ -7414,6 +7407,35 @@
             "minimum": 0
           }
         }
+      },
+      "FirmLink": {
+        "type": "object",
+        "description": "Ссылка фирмы. Тот же тип — во входе и в выходе.",
+        "required": [
+          "id",
+          "name",
+          "url",
+          "enabled"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Включена ли ссылка: выключенная печатается пустой."
+          },
+          "id": {
+            "type": "string",
+            "description": "Стабильный код `[a-z0-9_]`, 1–40 знаков; от названия не зависит."
+          },
+          "name": {
+            "type": "string",
+            "description": "Название для людей, 1–60 знаков, без учёта регистра не повторяется."
+          },
+          "url": {
+            "type": "string",
+            "description": "Адрес: пусто или `http://`/`https://`, до 500 знаков."
+          }
+        },
+        "additionalProperties": false
       },
       "FirmLogo": {
         "type": "object",
@@ -9612,13 +9634,16 @@
             "type": "string",
             "description": "Данные фирмы (адрес, часы работы)."
           },
-          "firm_google_maps": {
-            "type": "string",
-            "description": "Ссылка на фирму на Google Картах (пусто или `http://`/`https://`)."
-          },
           "firm_legal_details": {
             "type": "string",
             "description": "Реквизиты фирмы."
+          },
+          "firm_links": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FirmLink"
+            },
+            "description": "Ссылки фирмы для QR-кодов; список заменяется целиком."
           },
           "firm_name": {
             "type": "string",
@@ -9627,14 +9652,6 @@
           "firm_phone": {
             "type": "string",
             "description": "Телефон фирмы."
-          },
-          "firm_telegram": {
-            "type": "string",
-            "description": "Ссылка на Telegram фирмы (пусто или `http://`/`https://`)."
-          },
-          "firm_yandex_maps": {
-            "type": "string",
-            "description": "Ссылка на фирму на Яндекс Картах (пусто или `http://`/`https://`)."
           },
           "intake_required_fields": {
             "type": "boolean",

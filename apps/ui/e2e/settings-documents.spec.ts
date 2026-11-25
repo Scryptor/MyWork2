@@ -72,27 +72,63 @@ test('the details and the terms are saved as they are typed and are there after 
 	}
 });
 
-test('qr links are saved and checked', async ({ page, request }) => {
+test('firm links: builtins, own link, switch off', async ({ page, request }) => {
 	const before = await currentSettings(request);
-	const link = `https://t.me/example_${uniq()}`;
+	const address = `https://t.me/example_${uniq()}`;
+	const own = `ВКонтакте ${uniq()}`;
+	const row = (name: string) => page.getByRole('group', { name, exact: true });
 	try {
 		await page.goto('/settings/documents');
 		await expect(page.getByRole('heading', { name: 'Ссылки для QR-кодов' })).toBeVisible();
-		await expect(page.getByRole('textbox', { name: 'Google Карты', exact: true })).toBeVisible();
-		await expect(page.getByRole('textbox', { name: 'Яндекс Карты', exact: true })).toBeVisible();
-		const telegram = page.getByRole('textbox', { name: 'Telegram', exact: true });
+		for (const name of ['Яндекс Карты', '2ГИС', 'Telegram', 'MAX']) {
+			await expect(row(name)).toBeVisible();
+			await expect(row(name).getByRole('button', { name: 'Удалить ссылку' })).toHaveCount(0);
+		}
+
+		const telegram = row('Telegram').getByRole('textbox', { name: 'Адрес', exact: true });
 		await telegram.fill('t.me/example');
 		await telegram.blur();
 		await expect(page.getByText('Нужна ссылка целиком, с https://')).toBeVisible();
-
-		await telegram.fill(link);
+		await telegram.fill(address);
 		await telegram.blur();
 		await expect(page.getByText('Нужна ссылка целиком, с https://')).toHaveCount(0);
-		await expect.poll(async () => (await currentSettings(request)).firm_telegram).toBe(link);
+
+		await page.getByRole('button', { name: 'Добавить ссылку' }).click();
+		const added = row('Новая ссылка');
+		await added.getByRole('textbox', { name: 'Название', exact: true }).fill(own);
+		await row(own)
+			.getByRole('textbox', { name: 'Адрес', exact: true })
+			.fill('https://vk.com/example');
+		await row(own).getByRole('textbox', { name: 'Адрес', exact: true }).blur();
+		await expect(row(own).getByRole('button', { name: 'Удалить ссылку' })).toBeVisible();
+
+		await row('2ГИС').getByRole('switch', { name: 'Включена' }).uncheck();
+		await expect(page.getByRole('status').filter({ hasText: 'Сохранено' })).toBeVisible();
+
+		await expect
+			.poll(async () => {
+				const links = (await currentSettings(request)).firm_links;
+				return [
+					links.find((l) => l.id === 'telegram')?.url,
+					links.find((l) => l.name === own)?.url,
+					links.find((l) => l.id === '2gis')?.enabled
+				];
+			})
+			.toEqual([address, 'https://vk.com/example', false]);
+
 		await page.reload();
-		await expect(page.getByRole('textbox', { name: 'Telegram', exact: true })).toHaveValue(link);
+		await expect(row('Telegram').getByRole('textbox', { name: 'Адрес', exact: true })).toHaveValue(
+			address
+		);
+		await expect(row(own).getByRole('textbox', { name: 'Адрес', exact: true })).toHaveValue(
+			'https://vk.com/example'
+		);
+		await expect(row('2ГИС').getByRole('switch', { name: 'Включена' })).not.toBeChecked();
+		await expect(row('Яндекс Карты').getByRole('button', { name: 'Удалить ссылку' })).toHaveCount(
+			0
+		);
 	} finally {
-		const restore = { firm_telegram: before.firm_telegram };
+		const restore = { firm_links: before.firm_links };
 		expect((await request.patch('/api/v1/settings', { data: restore })).ok()).toBe(true);
 	}
 });

@@ -4,6 +4,7 @@ use chrono_tz::Tz;
 use mw_db::entity::{service_point, setting};
 use mw_domain::dictionary::DictionaryKind;
 use mw_domain::issue::IssueRequirement;
+use mw_domain::links::{FirmLink, default_links, normalize_links};
 use mw_domain::permission::Permission;
 use mw_domain::search::normalize_search;
 use mw_domain::validation::FieldError;
@@ -46,12 +47,8 @@ pub struct AppSettings {
     pub firm_details: String,
     /// Реквизиты фирмы.
     pub firm_legal_details: String,
-    /// Ссылка на Telegram фирмы (пусто или `http://`/`https://`).
-    pub firm_telegram: String,
-    /// Ссылка на фирму на Google Картах (пусто или `http://`/`https://`).
-    pub firm_google_maps: String,
-    /// Ссылка на фирму на Яндекс Картах (пусто или `http://`/`https://`).
-    pub firm_yandex_maps: String,
+    /// Ссылки фирмы для QR-кодов: встроенные и свои, не больше 20.
+    pub firm_links: Vec<FirmLink>,
     /// Условия приёма (текст акта приёма).
     pub intake_terms: String,
     /// Условия выдачи (текст акта выдачи).
@@ -78,9 +75,7 @@ impl Default for AppSettings {
             firm_phone: String::new(),
             firm_details: String::new(),
             firm_legal_details: String::new(),
-            firm_telegram: String::new(),
-            firm_google_maps: String::new(),
-            firm_yandex_maps: String::new(),
+            firm_links: default_links(),
             intake_terms: String::new(),
             issue_terms: String::new(),
             timezone: "UTC".to_owned(),
@@ -144,18 +139,10 @@ pub struct SettingsPatch {
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
     pub firm_legal_details: Option<String>,
-    /// Ссылка на Telegram фирмы (пусто или `http://`/`https://`).
+    /// Ссылки фирмы для QR-кодов; список заменяется целиком.
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
-    pub firm_telegram: Option<String>,
-    /// Ссылка на фирму на Google Картах (пусто или `http://`/`https://`).
-    #[serde(default, deserialize_with = "crate::patch::present")]
-    #[schema(nullable = false)]
-    pub firm_google_maps: Option<String>,
-    /// Ссылка на фирму на Яндекс Картах (пусто или `http://`/`https://`).
-    #[serde(default, deserialize_with = "crate::patch::present")]
-    #[schema(nullable = false)]
-    pub firm_yandex_maps: Option<String>,
+    pub firm_links: Option<Vec<FirmLink>>,
     /// Условия приёма (текст акта приёма).
     #[serde(default, deserialize_with = "crate::patch::present")]
     #[schema(nullable = false)]
@@ -193,9 +180,7 @@ fn keep_differences(p: &mut SettingsPatch, c: &AppSettings) {
     keep(&mut p.firm_phone, &c.firm_phone);
     keep(&mut p.firm_details, &c.firm_details);
     keep(&mut p.firm_legal_details, &c.firm_legal_details);
-    keep(&mut p.firm_telegram, &c.firm_telegram);
-    keep(&mut p.firm_google_maps, &c.firm_google_maps);
-    keep(&mut p.firm_yandex_maps, &c.firm_yandex_maps);
+    keep(&mut p.firm_links, &c.firm_links);
     keep(&mut p.intake_terms, &c.intake_terms);
     keep(&mut p.issue_terms, &c.issue_terms);
     keep(&mut p.timezone, &c.timezone);
@@ -239,9 +224,7 @@ pub(crate) async fn load(conn: &impl ConnectionTrait) -> Result<AppSettings, Cor
         firm_phone: get(&rows, "firm_phone").unwrap_or(d.firm_phone),
         firm_details: get(&rows, "firm_details").unwrap_or(d.firm_details),
         firm_legal_details: get(&rows, "firm_legal_details").unwrap_or(d.firm_legal_details),
-        firm_telegram: get(&rows, "firm_telegram").unwrap_or(d.firm_telegram),
-        firm_google_maps: get(&rows, "firm_google_maps").unwrap_or(d.firm_google_maps),
-        firm_yandex_maps: get(&rows, "firm_yandex_maps").unwrap_or(d.firm_yandex_maps),
+        firm_links: get(&rows, "firm_links").unwrap_or(d.firm_links),
         intake_terms: get(&rows, "intake_terms").unwrap_or(d.intake_terms),
         issue_terms: get(&rows, "issue_terms").unwrap_or(d.issue_terms),
         timezone: get(&rows, "timezone").unwrap_or(d.timezone),
@@ -423,19 +406,6 @@ pub(crate) fn validate(
     {
         errors.push(FieldError::new("timezone", "invalid"));
     }
-    for (field, value) in [
-        ("firm_telegram", &p.firm_telegram),
-        ("firm_google_maps", &p.firm_google_maps),
-        ("firm_yandex_maps", &p.firm_yandex_maps),
-    ] {
-        if let Some(v) = value.as_deref().filter(|v| !v.is_empty()) {
-            if v.chars().count() > 500 {
-                errors.push(FieldError::new(field, "too_long"));
-            } else if !is_http_link(v) {
-                errors.push(FieldError::new(field, "not_a_link"));
-            }
-        }
-    }
     if let Some(list) = &p.issue_required {
         let unique: HashSet<_> = list.iter().collect();
         if unique.len() != list.len() {
@@ -447,17 +417,6 @@ pub(crate) fn validate(
     } else {
         Err(CoreError::Validation(errors))
     }
-}
-
-/// Ссылка: `http://` или `https://` (любой регистр) и после них хоть что-то, без пробельных и
-/// управляющих знаков.
-fn is_http_link(v: &str) -> bool {
-    let lower = v.to_lowercase();
-    let rest = lower
-        .strip_prefix("http://")
-        .or_else(|| lower.strip_prefix("https://"));
-    rest.is_some_and(|rest| !rest.is_empty())
-        && !v.chars().any(|c| c.is_whitespace() || c.is_control())
 }
 
 impl Core {
@@ -474,9 +433,6 @@ impl Core {
             &mut patch.firm_phone,
             &mut patch.firm_details,
             &mut patch.firm_legal_details,
-            &mut patch.firm_telegram,
-            &mut patch.firm_google_maps,
-            &mut patch.firm_yandex_maps,
             &mut patch.intake_terms,
             &mut patch.issue_terms,
         ]
@@ -487,6 +443,9 @@ impl Core {
         }
 
         patch.issue_required = patch.issue_required.map(in_enum_order);
+        if let Some(list) = patch.firm_links.take() {
+            patch.firm_links = Some(normalize_links(list).map_err(CoreError::Validation)?);
+        }
 
         let tx = self.begin_write().await?;
         let current = load(&tx).await?;
@@ -609,29 +568,13 @@ impl Core {
                 json!(v),
             );
         }
-        for (key, label, v, cur) in [
-            (
-                "firm_telegram",
-                "Telegram",
-                &patch.firm_telegram,
-                &current.firm_telegram,
-            ),
-            (
-                "firm_google_maps",
-                "Google Карты",
-                &patch.firm_google_maps,
-                &current.firm_google_maps,
-            ),
-            (
-                "firm_yandex_maps",
-                "Яндекс Карты",
-                &patch.firm_yandex_maps,
-                &current.firm_yandex_maps,
-            ),
-        ] {
-            if let Some(v) = v {
-                apply(key, label, v != cur, json!(v));
-            }
+        if let Some(v) = &patch.firm_links {
+            apply(
+                "firm_links",
+                "ссылки для QR-кодов",
+                *v != current.firm_links,
+                json!(v),
+            );
         }
         if let Some(v) = &patch.intake_terms {
             apply(

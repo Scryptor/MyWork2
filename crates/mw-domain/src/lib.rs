@@ -55,6 +55,7 @@ pub mod dictionary;
 pub mod document_template;
 pub mod documents;
 pub mod issue;
+pub mod links;
 pub mod money;
 pub mod pages;
 pub mod pattern;

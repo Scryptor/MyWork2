@@ -5,28 +5,29 @@ import { ru } from '#lib/i18n/ru.js';
 export type QrBody = Extract<BlockBody, { type: 'qr' }>;
 export type QrPreset = 'telegram' | 'google_maps' | 'yandex_maps';
 
-/** The firm's links a «QR-код» block starts from: the substitution, the setting it comes from, the caption. */
+/** The firm's links a «QR-код» block starts from: the substitution, the id of its link in the list, the caption. */
 export const QR_PRESETS: Record<
 	QrPreset,
 	{
 		link: string;
-		setting: 'firm_telegram' | 'firm_google_maps' | 'firm_yandex_maps';
+		/** The id of the link in `firm_links`. */
+		id: string;
 		caption: string;
 	}
 > = {
 	telegram: {
 		link: '{фирма.телеграм}',
-		setting: 'firm_telegram',
+		id: 'telegram',
 		caption: ru.templates.defaults.qrCaptions.telegram
 	},
 	google_maps: {
 		link: '{фирма.гугл_карты}',
-		setting: 'firm_google_maps',
+		id: 'google_maps',
 		caption: ru.templates.defaults.qrCaptions.google_maps
 	},
 	yandex_maps: {
 		link: '{фирма.яндекс_карты}',
-		setting: 'firm_yandex_maps',
+		id: 'yandex_maps',
 		caption: ru.templates.defaults.qrCaptions.yandex_maps
 	}
 };

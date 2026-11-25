@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AppSettings } from '$api/AppSettings';
+import type { FirmLink } from '$api/FirmLink';
 import type { SettingsPatch } from '$api/SettingsPatch';
 import { ApiError } from '#lib/api/client.js';
 import { discardQueues, hasUnsaved, settleQueues } from '#lib/app/session-reset.js';
@@ -112,20 +113,26 @@ describe('createSettingsEditor', () => {
 		expect(editor.pendingFields()).toEqual(['ready_stale_days']);
 	});
 
-	it('a link that is not a link, and a link that is too long, are said in words of the field', async () => {
+	it('a mistake in a row of the list is said under its path, in words of the field', async () => {
 		make();
-		save.mockRejectedValueOnce(validation('firm_telegram', 'not_a_link'));
-		editor.edit('firm_telegram', 't.me/example');
+		const row: FirmLink = { id: 'telegram', name: 'Telegram', url: 't.me/example', enabled: true };
+		const list = [row];
+		save.mockRejectedValueOnce(validation('firm_links.0.url', 'not_a_link'));
+		editor.edit('firm_links', list);
 		await vi.advanceTimersByTimeAsync(700);
-		expect(editor.fieldError('firm_telegram')).toBe('Нужна ссылка целиком, с https://');
-		save.mockRejectedValueOnce(validation('firm_google_maps', 'too_long'));
-		editor.edit('firm_google_maps', 'https://' + 'a'.repeat(500));
+		expect(editor.fieldError('firm_links.0.url')).toBe('Нужна ссылка целиком, с https://');
+		expect(save).toHaveBeenCalledTimes(1);
+		save.mockRejectedValueOnce(validation('firm_links.0.url', 'too_long'));
+		editor.edit('firm_links', [{ ...row, url: 'https://' + 'a'.repeat(500) }]);
 		await vi.advanceTimersByTimeAsync(700);
-		expect(editor.fieldError('firm_google_maps')).toBe('Не длиннее 500 знаков');
-		save.mockRejectedValueOnce(validation('firm_yandex_maps', 'too_long'));
-		editor.edit('firm_yandex_maps', 'https://' + 'a'.repeat(500));
+		expect(editor.fieldError('firm_links.0.url')).toBe('Не длиннее 500 знаков');
+		save.mockRejectedValueOnce(validation('firm_links.0.name', 'duplicate'));
+		editor.edit('firm_links', [{ ...row, name: 'MAX' }]);
 		await vi.advanceTimersByTimeAsync(700);
-		expect(editor.fieldError('firm_yandex_maps')).toBe('Не длиннее 500 знаков');
+		expect(editor.fieldError('firm_links.0.name')).toBe('Такое название уже есть');
+		// An edit of the list clears the mistakes of its rows.
+		editor.edit('firm_links', [{ ...row, name: 'Telegram' }]);
+		expect(editor.fieldError('firm_links.0.name')).toBeUndefined();
 	});
 
 	it('a typed time zone is sent as it is: the server decides if it exists', async () => {

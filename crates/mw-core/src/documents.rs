@@ -679,6 +679,16 @@ impl Core {
     }
 }
 
+/// Адрес ссылки фирмы по `id`; выключенная или отсутствующая — пусто.
+fn link_url(settings: &AppSettings, id: &str) -> String {
+    settings
+        .firm_links
+        .iter()
+        .find(|l| l.id == id && l.enabled)
+        .map(|l| l.url.clone())
+        .unwrap_or_default()
+}
+
 /// Поля фирмы и точки: реквизиты и договоры — простым текстом ([`plain_text`]); сохранённые
 /// настройки не меняются.
 fn firm_values(settings: &AppSettings, point: &str) -> BTreeMap<String, String> {
@@ -688,9 +698,9 @@ fn firm_values(settings: &AppSettings, point: &str) -> BTreeMap<String, String> 
         ("firm.details", plain_text(&settings.firm_details)),
         ("firm.legal", plain_text(&settings.firm_legal_details)),
         ("firm.intake_terms", plain_text(&settings.intake_terms)),
-        ("firm.telegram", settings.firm_telegram.clone()),
-        ("firm.google_maps", settings.firm_google_maps.clone()),
-        ("firm.yandex_maps", settings.firm_yandex_maps.clone()),
+        ("firm.telegram", link_url(settings, "telegram")),
+        ("firm.google_maps", link_url(settings, "google_maps")),
+        ("firm.yandex_maps", link_url(settings, "yandex_maps")),
         ("firm.issue_terms", plain_text(&settings.issue_terms)),
         ("point.name", point.to_owned()),
     ]
@@ -1168,6 +1178,41 @@ mod tests {
         core.create_user(&admin(), user).await.unwrap().id
     }
 
+    /// Список ссылок с адресами для трёх старых полей документа (Google Карты — своя ссылка).
+    fn links_with_urls() -> Vec<mw_domain::links::FirmLink> {
+        let mut list = mw_domain::links::default_links();
+        list[0].url = "https://yandex.ru/maps/?text=example".into();
+        list[2].url = "https://t.me/example_service".into();
+        list.push(mw_domain::links::FirmLink {
+            id: "google_maps".into(),
+            name: "Google Карты".into(),
+            url: "https://maps.google.com/?q=example".into(),
+            enabled: true,
+        });
+        list
+    }
+
+    /// Старые поля `firm.*` берутся из списка ссылок; выключенная ссылка даёт пустое значение.
+    #[tokio::test]
+    async fn firm_values_come_from_the_link_list() {
+        let mut settings = AppSettings {
+            firm_links: links_with_urls(),
+            ..AppSettings::default()
+        };
+        let v = firm_values(&settings, "");
+        assert_eq!(v["firm.telegram"], "https://t.me/example_service");
+        assert_eq!(v["firm.google_maps"], "https://maps.google.com/?q=example");
+        assert_eq!(
+            v["firm.yandex_maps"],
+            "https://yandex.ru/maps/?text=example"
+        );
+        settings.firm_links[2].enabled = false;
+        settings.firm_links.remove(4);
+        let v = firm_values(&settings, "");
+        assert_eq!(v["firm.telegram"], "");
+        assert_eq!(v["firm.google_maps"], "");
+    }
+
     /// Каждое поле реестра заполняется из заказа: у полностью заполненного выданного заказа пустых нет.
     #[tokio::test]
     async fn every_field_is_filled_from_a_full_order() {
@@ -1182,9 +1227,7 @@ mod tests {
                 firm_phone: Some("+7 900 000-00-01".into()),
                 firm_details: Some("ул. Мастеров, 5".into()),
                 firm_legal_details: Some("ИНН 000000000000".into()),
-                firm_telegram: Some("https://t.me/example_service".into()),
-                firm_google_maps: Some("https://maps.google.com/?q=example".into()),
-                firm_yandex_maps: Some("https://yandex.ru/maps/?text=example".into()),
+                firm_links: Some(links_with_urls()),
                 intake_terms: Some("Принято на диагностику.".into()),
                 issue_terms: Some("Претензий нет.".into()),
                 ..Default::default()

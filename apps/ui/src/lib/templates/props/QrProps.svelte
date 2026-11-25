@@ -25,7 +25,10 @@
 	const body = $derived(block?.body.type === 'qr' ? block.body : null);
 	const key = $derived(path.join('.'));
 	const preset = $derived(body ? qrPreset(body.link) : null);
-	const unset = $derived(preset !== null && !app.settings[QR_PRESETS[preset].setting]?.trim());
+	const unset = $derived(
+		preset !== null &&
+			!app.settings.firm_links.find((l) => l.id === QR_PRESETS[preset].id)?.url.trim()
+	);
 	let linkField = $state<HTMLInputElement | null>(null);
 	/**
 	 * The link written here as «своя» (by «Своя ссылка» or in the field; the one the block opened with,

@@ -1425,7 +1425,11 @@ async fn firm_links_print_as_text() -> Result<(), CoreError> {
             .update_settings(
                 &admin(),
                 SettingsPatch {
-                    firm_telegram: Some("https://t.me/example_service".into()),
+                    firm_links: Some({
+                        let mut list = mw_domain::links::default_links();
+                        list[2].url = "https://t.me/example_service".into();
+                        list
+                    }),
                     ..Default::default()
                 },
             )

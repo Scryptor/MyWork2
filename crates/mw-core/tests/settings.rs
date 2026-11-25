@@ -5,6 +5,7 @@ use std::sync::Arc;
 use chrono::{TimeZone, Utc};
 use common::*;
 use mw_core::{Core, CoreError, FixedClock, SettingsPatch};
+use mw_domain::links::{FirmLink, default_links};
 use mw_domain::permission::Permission;
 use mw_domain::validation::FieldError;
 
@@ -351,77 +352,96 @@ async fn issue_required_is_a_set_in_enum_order() -> Result<(), CoreError> {
     Ok(())
 }
 
+fn links_patch(list: Vec<FirmLink>) -> SettingsPatch {
+    SettingsPatch {
+        firm_links: Some(list),
+        ..Default::default()
+    }
+}
+
+fn own(id: &str, name: &str, url: &str) -> FirmLink {
+    FirmLink {
+        id: id.into(),
+        name: name.into(),
+        url: url.into(),
+        enabled: true,
+    }
+}
+
 #[tokio::test]
-async fn firm_links_are_validated_trimmed_and_audited() -> Result<(), CoreError> {
+async fn firm_links_default_to_the_builtins() {
     for t in cores().await {
-        let one = |f: &dyn Fn(&mut SettingsPatch)| {
-            let mut p = SettingsPatch::default();
-            f(&mut p);
-            p
-        };
+        assert_eq!(t.core.settings().firm_links, default_links(), "{}", t.label);
+    }
+}
+
+#[tokio::test]
+async fn firm_links_patch_replaces_the_list_and_journals_once() -> Result<(), CoreError> {
+    for t in cores().await {
+        let mut list = default_links();
+        list[1].enabled = false;
+        list[2].url = "  https://t.me/example_service ".into();
+        list.push(own("link_k3x9", "ВКонтакте", "https://vk.com/example"));
         let s = t
             .core
-            .update_settings(
-                &admin(),
-                one(&|p| p.firm_telegram = Some("  https://t.me/example_service ".into())),
-            )
+            .update_settings(&admin(), links_patch(list.clone()))
             .await?;
-        assert_eq!(
-            s.firm_telegram, "https://t.me/example_service",
+        list[2].url = "https://t.me/example_service".into();
+        assert_eq!(s.firm_links, list, "{}", t.label);
+        assert_eq!(t.core.settings().firm_links, list, "{}", t.label);
+        assert_eq!(count_audit(&t.core, "settings.updated").await, 1);
+        assert!(
+            audit_json(&t.core, "settings.updated")
+                .await
+                .contains("ссылки для QR-кодов"),
             "{}",
             t.label
         );
-        assert_eq!(count_audit(&t.core, "settings.updated").await, 1);
-        // Та же ссылка — не правка.
+        // Тот же список — не правка.
         t.core
-            .update_settings(
-                &admin(),
-                one(&|p| p.firm_telegram = Some("https://t.me/example_service".into())),
-            )
+            .update_settings(&admin(), links_patch(list.clone()))
             .await?;
         assert_eq!(count_audit(&t.core, "settings.updated").await, 1);
-        for bad in [
-            "t.me/servis",
-            "@servis",
-            "https://t.me/a b",
-            "ftp://example.com",
-            "https://",
-            "HTTP://",
-        ] {
-            assert_validation(
-                t.core
-                    .update_settings(&admin(), one(&|p| p.firm_google_maps = Some(bad.into())))
-                    .await,
-                &[("firm_google_maps", "not_a_link")],
-            );
-        }
-        // 500 знаков (не байт) — можно, 501 — уже длинно.
-        let base = "https://example.com/";
-        let longest = format!("{base}{}", "я".repeat(500 - base.len()));
-        let s = t
-            .core
-            .update_settings(
-                &admin(),
-                one(&|p| p.firm_yandex_maps = Some(longest.clone())),
-            )
-            .await?;
-        assert_eq!(s.firm_yandex_maps, longest, "{}", t.label);
-        let long = format!("{longest}я");
-        assert_validation(
-            t.core
-                .update_settings(&admin(), one(&|p| p.firm_yandex_maps = Some(long.clone())))
-                .await,
-            &[("firm_yandex_maps", "too_long")],
-        );
-        t.core
-            .update_settings(&admin(), one(&|p| p.firm_yandex_maps = Some(String::new())))
-            .await?;
-        t.core
-            .update_settings(
-                &admin(),
-                one(&|p| p.firm_telegram = Some("HTTPS://t.me/x".into())),
-            )
-            .await?;
     }
     Ok(())
+}
+
+#[tokio::test]
+async fn firm_links_patch_errors_come_with_paths() -> Result<(), CoreError> {
+    for t in cores().await {
+        let mut no_telegram = default_links();
+        no_telegram.remove(2);
+        assert_validation(
+            t.core
+                .update_settings(&admin(), links_patch(no_telegram))
+                .await,
+            &[("firm_links", "builtin_missing")],
+        );
+        let mut bad = default_links();
+        bad[0].url = "t.me/servis".into();
+        assert_validation(
+            t.core.update_settings(&admin(), links_patch(bad)).await,
+            &[("firm_links.0.url", "not_a_link")],
+        );
+        // Регистр схемы не важен, как и раньше.
+        let mut ok = default_links();
+        ok[2].url = "HTTPS://t.me/x".into();
+        t.core.update_settings(&admin(), links_patch(ok)).await?;
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn firm_links_need_settings_manage() {
+    for t in cores().await {
+        let res = t
+            .core
+            .update_settings(&actor_with(&[]), links_patch(default_links()))
+            .await;
+        assert!(
+            matches!(res, Err(CoreError::Forbidden(Permission::SettingsManage))),
+            "{}",
+            t.label
+        );
+    }
 }

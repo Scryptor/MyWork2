@@ -7,9 +7,7 @@ import { editorOf, templateOf } from '../editor-fixtures.test-helper.js';
 import QrProps from './QrProps.svelte';
 
 const settings = vi.hoisted(() => ({
-	firm_telegram: '' as string,
-	firm_google_maps: '',
-	firm_yandex_maps: ''
+	firm_links: [{ id: 'telegram', name: 'Telegram', url: '', enabled: true }]
 }));
 vi.mock('#lib/app/context.svelte.js', () => ({ app: { settings } }));
 
@@ -19,7 +17,7 @@ beforeAll(() => {
 	Element.prototype.scrollIntoView ??= () => {};
 });
 beforeEach(() => {
-	settings.firm_telegram = '';
+	settings.firm_links[0]!.url = '';
 });
 
 const qr = (link: string): Block => ({
@@ -149,7 +147,7 @@ describe('QrProps', () => {
 	});
 
 	it('a filled setting shows no hint', () => {
-		settings.firm_telegram = 'https://t.me/firm';
+		settings.firm_links[0]!.url = 'https://t.me/firm';
 		setup('{фирма.телеграм}');
 		expect(screen.queryByText(/не печатается/)).toBeNull();
 	});

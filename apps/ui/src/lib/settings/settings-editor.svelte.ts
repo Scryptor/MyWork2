@@ -15,8 +15,17 @@ export type SettingsField = keyof SettingsPatch;
 /** Fields kept as a whole number: what is typed stays in `drafts` until the field is left. */
 const INTEGER = /^\d+$/;
 
-/** The firm's links printed as QR codes. */
-const LINKS: readonly SettingsField[] = ['firm_telegram', 'firm_google_maps', 'firm_yandex_maps'];
+/** The field of a patch a path of the server belongs to: `firm_links.2.url` is `firm_links`. */
+const fieldOfPath = (path: string) => path.split('.')[0];
+
+/** What the server meant by a code in the list of links: the path says the row and the field. */
+function linkMessage(path: string, code: string, fallback: string): string {
+	const part = path.split('.')[2];
+	if (code === 'too_long') return part === 'name' ? t.linkNameTooLong : t.linkTooLong;
+	if (code === 'duplicate') return part === 'name' ? t.linkNameTaken : fallback;
+	if (code === 'too_many') return t.linkTooMany;
+	return fallback;
+}
 
 /** What the server meant by a code in a field, in words of this field. */
 function fieldMessage(field: string, code: string, fallback: string): string {
@@ -28,7 +37,7 @@ function fieldMessage(field: string, code: string, fallback: string): string {
 		if (field === 'currency_symbol') return t.currencyLong;
 	}
 	if (code === 'not_a_link') return t.notALink;
-	if (code === 'too_long' && LINKS.some((link) => link === field)) return t.linkTooLong;
+	if (fieldOfPath(field) === 'firm_links') return linkMessage(field, code, fallback);
 	if (code === 'invalid') {
 		if (field === 'timezone') return t.unknownTimezone;
 		if (field === 'default_service_point_id') return t.unknownPoint;
@@ -61,7 +70,8 @@ export interface SettingsEditor {
 	draft(field: SettingsField, server: number): string;
 	/** The field is left: its draft goes, and the mistake that was only about the draft with it. */
 	leave(field: SettingsField): void;
-	fieldError(field: SettingsField): string | undefined;
+	/** A field or a path of the server inside it (`firm_links.2.url`). */
+	fieldError(field: string): string | undefined;
 	/** Some fields have a mistake (of the server or of what was typed), and it is not a failure of the whole save. */
 	readonly fieldsFailed: boolean;
 	pendingFields(): string[];
@@ -115,7 +125,7 @@ export function createSettingsEditor(opts: {
 				await send(patch);
 			} catch (e) {
 				if (!(e instanceof ApiError) || e.code !== 'validation' || !e.body) throw e;
-				const bad = e.body.fields.map((f) => f.field);
+				const bad = e.body.fields.map((f) => fieldOfPath(f.field));
 				for (const f of e.body.fields) setError(f.field, fieldMessage(f.field, f.code, f.message));
 				// The server takes a patch whole or not at all: what is right goes again without the wrong.
 				const rest = Object.fromEntries(
@@ -133,7 +143,11 @@ export function createSettingsEditor(opts: {
 
 	const unset = (field: SettingsField) => {
 		clearLocal(field);
-		setError(field, undefined);
+		// The mistakes of a list sit under the paths of its rows.
+		const rest = Object.fromEntries(
+			Object.entries(errors).filter(([path]) => fieldOfPath(path) !== field)
+		);
+		if (Object.keys(rest).length !== Object.keys(errors).length) errors = rest;
 	};
 
 	/** Text typed and not yet left goes into the queue too: signing out sends it. */
