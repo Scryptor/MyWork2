@@ -26,7 +26,10 @@
 	const block = $derived(blockAt(editor.template, path));
 	const body = $derived(block?.body.type === 'text' ? block.body : null);
 	const key = $derived(path.join('.'));
-	/** A numbered list (not in one line, where the numbering is off) is always left-aligned. */
+	/**
+	 * A numbered list (not in one line, where the numbering is off) is always left-aligned: the choice
+	 * shows «Слева» and is off; the block keeps its own alignment for when the numbering goes.
+	 */
 	const listAligned = $derived(body !== null && body.numbered && !body.one_line);
 	let field = $state<HTMLTextAreaElement | null>(null);
 
@@ -68,7 +71,7 @@
 				options={aligns}
 				disabled={listAligned}
 				hint={listAligned ? t.numberedAlignHint : undefined}
-				bind:value={() => body.align, (v) => set({ align: v })}
+				bind:value={() => (listAligned ? 'left' : body.align), (v) => set({ align: v })}
 			/>
 		</div>
 		<Switch

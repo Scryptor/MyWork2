@@ -66,6 +66,8 @@ describe('TextProps: the alignment of a numbered list', () => {
 			'Нумерованный список всегда по левому краю'
 		);
 		for (const radio of radios()) expect(radio).toBeDisabled();
+		// It shows how the list is printed; the block keeps its own alignment.
+		expect(screen.getByRole('radio', { name: 'Слева' })).toBeChecked();
 	});
 
 	it('works for a plain text and for a numbered one in one line (numbering is off there)', async () => {
