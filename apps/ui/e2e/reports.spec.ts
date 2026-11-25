@@ -16,6 +16,7 @@ import {
 	statusId,
 	uniq
 } from './support/api';
+import { downloadName } from './support/download';
 import { adminOrigin } from './support/fresh';
 
 // «Отчёты»: the orders A, Б, В of `report_sums_issued_orders` (crates/mw-core/tests/reports.rs) made through
@@ -184,10 +185,7 @@ test('the report counts the issued orders: tiles, table, grouping, address and f
 			page.waitForEvent('download'),
 			page.getByRole('button', { name: 'В Excel' }).click()
 		]);
-		// WebKit on a Mac gives the name with letters taken apart («ё» as «е» and a mark): the same letters.
-		expect(download.suggestedFilename().normalize('NFC')).toBe(
-			'Отчёт по заказам за всё время.xlsx'
-		);
+		expect(downloadName(download)).toBe('Отчёт по заказам за всё время.xlsx');
 		const path = await download.path();
 		expect(statSync(path).size).toBeGreaterThan(0);
 	});

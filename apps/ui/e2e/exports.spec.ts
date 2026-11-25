@@ -1,6 +1,7 @@
 import { readFileSync, statSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { createClient, createOrder, uniq } from './support/api';
+import { downloadName } from './support/download';
 
 // «В Excel» of the lists of orders and clients on the server of 4173 (open mode: every right). Each test names its
 // data with a marker of its own and narrows the list to it, so the file is the narrowed list.
@@ -18,8 +19,7 @@ test('«В Excel» of the orders gives a file named «Заказы …»', async
 		page.waitForEvent('download'),
 		page.getByRole('button', { name: 'В Excel' }).click()
 	]);
-	// WebKit on a Mac gives the name with letters taken apart: the same letters.
-	const name = download.suggestedFilename().normalize('NFC');
+	const name = downloadName(download);
 	expect(name.startsWith('Заказы ')).toBe(true);
 	expect(name.endsWith('.xlsx')).toBe(true);
 	expect(statSync(await download.path()).size).toBeGreaterThan(0);
@@ -41,7 +41,7 @@ test('«Выгрузить» → «В Excel» of the clients gives a file named 
 		page.waitForEvent('download'),
 		page.getByRole('menuitem', { name: 'В Excel' }).click()
 	]);
-	const name = download.suggestedFilename().normalize('NFC');
+	const name = downloadName(download);
 	expect(name.startsWith('Клиенты ')).toBe(true);
 	expect(name.endsWith('.xlsx')).toBe(true);
 	expect(statSync(await download.path()).size).toBeGreaterThan(0);
@@ -71,7 +71,7 @@ for (const [format, extension, start] of [
 			page.waitForEvent('download'),
 			dialog.getByRole('button', { name: 'Выгрузить' }).click()
 		]);
-		const name = download.suggestedFilename().normalize('NFC');
+		const name = downloadName(download);
 		expect(name.startsWith('Контакты ')).toBe(true);
 		expect(name.endsWith(extension)).toBe(true);
 		const text = readFileSync(await download.path(), 'utf8');
