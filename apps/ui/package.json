@@ -50,6 +50,7 @@
 		"@tauri-apps/api": "2.12.5",
 		"@tauri-apps/plugin-dialog": "2.8.4",
 		"bits-ui": "2.21.0",
+		"echarts": "6.1.0",
 		"svelte": "5.57.3"
 	},
 	"engines": {

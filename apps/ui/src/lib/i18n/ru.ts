@@ -388,6 +388,19 @@ export const ru = {
 		back: 'Назад',
 		understood: 'Понятно'
 	},
+	period: {
+		label: 'Период',
+		today: 'Сегодня',
+		week: 'Неделя',
+		month: 'Месяц',
+		last_month: 'Прошлый месяц',
+		year: 'Год',
+		all: 'Всё время',
+		custom: 'Свой период',
+		from: 'С',
+		to: 'По',
+		reversed: 'Начало периода позже конца'
+	},
 	api: { offline: 'Нет связи с сервером', failed: 'Не удалось выполнить запрос' },
 	flags: { needCall: 'Позвонить', needParts: 'Заказать запчасть', blacklisted: 'Чёрный список' },
 	fields: {

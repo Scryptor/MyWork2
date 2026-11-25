@@ -31,6 +31,10 @@
 	--info-soft: #e8effd;
 	--info-text: #1a438f;
 	--scrim: rgb(34 32 28 / 0.28);
+	/* Chart tones: 1 revenue, 2 costs, 3 profit. */
+	--chart-1: #0b7a6d;
+	--chart-2: #c2570c;
+	--chart-3: #3a64c8;
 	--st-gray-bg: #eeece8;
 	--st-gray-fg: #4d4842;
 	--st-gray-dot: #8a837b;
@@ -162,6 +166,9 @@
 	--info-soft: #1a2643;
 	--info-text: #8fb0ff;
 	--scrim: rgb(0 0 0 / 0.5);
+	--chart-1: #2bb3a0;
+	--chart-2: #f09a55;
+	--chart-3: #7ba3f5;
 	--st-gray-bg: #2c2925;
 	--st-gray-fg: #c9c3bb;
 	--st-gray-dot: #8a837b;

@@ -3,6 +3,7 @@
 	import { prefs } from '#lib/design/prefs.svelte.js';
 	import { SegmentedControl } from '#lib/ui/index.js';
 	import Basics from './sections/Basics.svelte';
+	import Charts from './sections/Charts.svelte';
 	import Fields from './sections/Fields.svelte';
 	import Layers from './sections/Layers.svelte';
 	import Media from './sections/Media.svelte';
@@ -96,6 +97,11 @@
 	<section id="ordering">
 		<h2>Порядок и цвет</h2>
 		<Ordering />
+	</section>
+
+	<section id="charts">
+		<h2>Графики и период</h2>
+		<Charts />
 	</section>
 
 	<section id="media">
