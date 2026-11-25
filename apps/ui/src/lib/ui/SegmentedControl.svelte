@@ -5,18 +5,29 @@
 		value = $bindable(),
 		options,
 		label,
-		size = 'md'
+		size = 'md',
+		hint,
+		disabled = false
 	}: {
 		value: T;
 		options: { value: T; label: string; icon?: Component }[];
 		label: string;
 		size?: 'sm' | 'md';
+		/** A line under the choice; with `disabled` — why it cannot be changed. */
+		hint?: string;
+		disabled?: boolean;
 	} = $props();
 
 	const name = $props.id();
 </script>
 
-<div class="seg {size}" role="radiogroup" aria-label={label}>
+<div
+	class="seg {size}"
+	class:disabled
+	role="radiogroup"
+	aria-label={label}
+	aria-describedby={hint ? `${name}-hint` : undefined}
+>
 	{#each options as o (o.value)}
 		{@const Icon = o.icon}
 		<label class:on={value === o.value}>
@@ -25,6 +36,7 @@
 				{name}
 				value={o.value}
 				checked={value === o.value}
+				{disabled}
 				onchange={() => (value = o.value)}
 			/>
 			{#if Icon}<Icon size={14} aria-hidden="true" />{/if}
@@ -32,6 +44,7 @@
 		</label>
 	{/each}
 </div>
+{#if hint}<span class="hint" id="{name}-hint">{hint}</span>{/if}
 
 <style>
 	/* Wraps rather than stick out of a narrow box (six sizes in «Внешний вид» on a phone). */
@@ -87,5 +100,21 @@
 	label:has(input:focus-visible) {
 		outline: 2px solid var(--focus);
 		outline-offset: 1px;
+	}
+	.disabled {
+		opacity: 0.5;
+	}
+	.disabled label,
+	.disabled input {
+		cursor: not-allowed;
+	}
+	.disabled label:hover:not(.on) {
+		background: none;
+	}
+	.hint {
+		display: block;
+		margin-top: var(--space-1);
+		font-size: var(--text-sm);
+		color: var(--text-3);
 	}
 </style>

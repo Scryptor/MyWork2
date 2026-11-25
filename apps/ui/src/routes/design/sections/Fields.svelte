@@ -182,6 +182,13 @@
 	<Switch bind:checked={swOff} label="Отключён" disabled />
 	<SegmentedControl bind:value={seg} options={URGENCY} label="Срочность" />
 	<SegmentedControl bind:value={segSm} options={URGENCY} label="Срочность, компактно" size="sm" />
+	<SegmentedControl
+		value="normal"
+		options={URGENCY}
+		label="Срочность, недоступно"
+		disabled
+		hint="Заказ уже выдан"
+	/>
 </div>
 
 <h3>Выбор</h3>

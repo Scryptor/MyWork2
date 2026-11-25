@@ -2213,6 +2213,7 @@ export const ru = {
 		frame: 'В рамке',
 		numbered: 'Нумерованный список',
 		numberedOffHint: 'Не действует для текста в одну строку',
+		numberedAlignHint: 'Нумерованный список всегда по левому краю',
 		grid: 'Сетка',
 		presets: 'Готовые шаблоны',
 		presetApplied: (name: string, undoKey: string) =>

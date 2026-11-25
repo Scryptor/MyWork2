@@ -1,5 +1,7 @@
 <!-- The properties of a text block: the text (typing in it is one step to undo per pause), its size (empty:
-     the template's), «Жирный», the alignment, «В одну строку», «В рамке» and «Нумерованный список» (off beside «В одну строку»). Every change is an edit of the model. -->
+     the template's), «Жирный», the alignment (off for a numbered list: it is always on the left), «В одну
+     строку», «В рамке» and «Нумерованный список» (off beside «В одну строку»). Every change is an edit of
+     the model. -->
 <script lang="ts">
 	import type { Align } from '$api/Align';
 	import type { BlockBody } from '$api/BlockBody';
@@ -24,6 +26,8 @@
 	const block = $derived(blockAt(editor.template, path));
 	const body = $derived(block?.body.type === 'text' ? block.body : null);
 	const key = $derived(path.join('.'));
+	/** A numbered list (not in one line, where the numbering is off) is always left-aligned. */
+	const listAligned = $derived(body !== null && body.numbered && !body.one_line);
 	let field = $state<HTMLTextAreaElement | null>(null);
 
 	/** A change of the text block; typed fields pass their key, so their keys make one step. */
@@ -62,6 +66,8 @@
 			<SegmentedControl
 				label={t.align}
 				options={aligns}
+				disabled={listAligned}
+				hint={listAligned ? t.numberedAlignHint : undefined}
 				bind:value={() => body.align, (v) => set({ align: v })}
 			/>
 		</div>

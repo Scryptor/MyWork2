@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/svelte';
+import { cleanup, render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import type { Block } from '$api/Block';
@@ -54,5 +54,28 @@ describe('TextProps: the frame and the numbered list', () => {
 		setup();
 		expect(screen.getByRole('switch', { name: /Нумерованный список/ })).toBeEnabled();
 		expect(screen.queryByText('Не действует для текста в одну строку')).toBeNull();
+	});
+});
+
+describe('TextProps: the alignment of a numbered list', () => {
+	const radios = () => screen.getAllByRole('radio');
+
+	it('is off for a numbered list, with the reason: the list is always on the left', () => {
+		setup({ numbered: true, align: 'center' });
+		expect(screen.getByRole('radiogroup', { name: 'Выравнивание' })).toHaveAccessibleDescription(
+			'Нумерованный список всегда по левому краю'
+		);
+		for (const radio of radios()) expect(radio).toBeDisabled();
+	});
+
+	it('works for a plain text and for a numbered one in one line (numbering is off there)', async () => {
+		const { body } = setup({ numbered: true, one_line: true });
+		expect(screen.queryByText('Нумерованный список всегда по левому краю')).toBeNull();
+		await userEvent.click(screen.getByRole('radio', { name: 'По центру' }));
+		expect(body().align).toBe('center');
+		cleanup();
+		setup();
+		for (const radio of radios()) expect(radio).toBeEnabled();
+		expect(screen.queryByText('Нумерованный список всегда по левому краю')).toBeNull();
 	});
 });
