@@ -217,9 +217,10 @@ impl Generator {
             BlockBody::Fields { rows, grid } => {
                 out.push_str("{\nlet cells = ()\n");
                 for row in rows {
-                    field_row(out, row);
+                    field_row(out, row, *grid);
                 }
-                // A blank form gets room to write and only its lines to write on.
+                // A blank form gets room to write and only its lines to write on; in a grid the cells
+                // are the room, so they get no lines (see `field_row`).
                 let stroke = if *grid {
                     "0.4pt".to_owned()
                 } else {
@@ -498,13 +499,16 @@ fn column_width(width_mm: f64, count: usize, gap_mm: f32) -> f64 {
     (width_mm - f64::from(gap_mm) * (count - 1.0)) / count
 }
 
-/// Appends a row to the `cells` of a fields table, under the row's `hide_if_empty` condition.
-fn field_row(out: &mut String, row: &FieldRow) {
+/// Appends a row to the `cells` of a fields table, under the row's `hide_if_empty` condition. In a
+/// `grid` an empty value of a blank form is an empty cell, without a line to write on over its border.
+fn field_row(out: &mut String, row: &FieldRow, grid: bool) {
     let value = pieces(&row.value, true);
-    let (label, value_expr) = (
-        literal_expr(&row.label),
-        text_expr(&row.value, TextMode::Wrap),
-    );
+    let mode = if grid {
+        TextMode::NoLine
+    } else {
+        TextMode::Wrap
+    };
+    let (label, value_expr) = (literal_expr(&row.label), text_expr(&row.value, mode));
     let cells = if row.bold {
         format!("cells += (text(weight: \"bold\", {label}), text(weight: \"bold\", {value_expr}))")
     } else {

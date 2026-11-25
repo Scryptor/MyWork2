@@ -80,6 +80,8 @@ pub(super) enum TextMode {
     Wrap,
     /// [`TextMode::Wrap`] with short lines to write on (centred text).
     ShortLine,
+    /// [`TextMode::Wrap`] without lines to write on: a cell of a grid is the room to write in.
+    NoLine,
     /// One line: values through `v1`, line breaks as spaces.
     OneLine,
 }
@@ -106,6 +108,7 @@ fn pieces_expr(pieces: &[Piece], mode: TextMode) -> String {
                 match mode {
                     TextMode::Wrap => format!("v({key})"),
                     TextMode::ShortLine => format!("v({key}, line: short-line)"),
+                    TextMode::NoLine => format!("v({key}, line: none)"),
                     TextMode::OneLine => format!("v1({key})"),
                 }
             }

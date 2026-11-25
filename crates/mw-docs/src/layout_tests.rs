@@ -1049,6 +1049,39 @@ fn numbered_text_keeps_lines_that_start_with_a_decimal_or_a_date() {
     );
 }
 
+/// В пустом бланке с сеткой место для письма даёт сама ячейка: линии для письма поверх рамки не рисуются.
+#[test]
+fn a_blank_grid_has_no_lines_to_write_on() {
+    let opts = sticker_options(None, None);
+    let shapes = |grid, blank| {
+        // Жирная строка и значение с текстом рядом с полем — тоже без линий.
+        let rows = [
+            ("{заказ.устройство}", false),
+            ("{клиент.фио}", true),
+            ("{заказ.оценка} руб.", false),
+        ]
+        .iter()
+        .map(|(value, bold)| FieldRow {
+            value: (*value).to_owned(),
+            ..row("Поле", *bold)
+        })
+        .collect();
+        let mut t = rows_template(rows);
+        if let BlockBody::Fields { grid: g, .. } = &mut t.blocks[0].body {
+            *g = grid;
+        }
+        let data = DocumentData {
+            blank,
+            ..DocumentData::default()
+        };
+        count_shapes(&render(&t, &data, &opts).expect("renders"))
+    };
+    // Без сетки у бланка нет рамок, только линии для письма — по одной на ячейку значения.
+    assert_eq!(shapes(false, true), 3);
+    // С сеткой — только рамки, как у той же таблицы с данными.
+    assert_eq!(shapes(true, true), shapes(true, false));
+}
+
 #[test]
 fn grid_fields_draw_every_border() {
     let opts = sticker_options(None, None);
