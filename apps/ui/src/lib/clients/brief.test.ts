@@ -17,9 +17,12 @@ const issued = item(41, {
 	prepayment: 0
 });
 
+const ISSUED = { name: 'Выдан', kind: 'issued' } as const;
+const IN_WORK = { name: 'В работе', kind: 'open' } as const;
+
 describe('orderBrief', () => {
 	it('an issued order: device, malfunction, total, discount and the day it was issued', () => {
-		expect(orderBrief(issued, 'Выдан')).toEqual({
+		expect(orderBrief(issued, ISSUED)).toEqual({
 			title: '№ 41 · ' + formatDate(issued.received_at),
 			lines: [
 				'Samsung Galaxy A52',
@@ -33,7 +36,7 @@ describe('orderBrief', () => {
 
 	it('no total says so; no discount, no line; a prepayment comes after the total', () => {
 		const o = { ...issued, final_price: null, discount: 0, prepayment: 50000 };
-		expect(orderBrief(o, 'Выдан').lines).toEqual([
+		expect(orderBrief(o, ISSUED).lines).toEqual([
 			'Samsung Galaxy A52',
 			'Не включается',
 			'Итог не указан',
@@ -44,7 +47,7 @@ describe('orderBrief', () => {
 
 	it('an order not issued shows its status instead; a blank malfunction has no line', () => {
 		const o = { ...issued, issued_at: null, malfunction: '  ' };
-		expect(orderBrief(o, 'Диагностика').lines).toEqual([
+		expect(orderBrief(o, { name: 'Диагностика', kind: 'diagnostics' }).lines).toEqual([
 			'Samsung Galaxy A52',
 			'Итог: ' + rub('2 500'),
 			'Скидка: ' + rub('200'),
@@ -52,27 +55,54 @@ describe('orderBrief', () => {
 		]);
 	});
 
-	it('no status name, no line for it', () => {
+	it('an order back in work after it was issued (a warranty return): its status, and when it was issued', () => {
+		expect(orderBrief(issued, IN_WORK).lines.slice(-2)).toEqual([
+			'В работе',
+			'Выдавался ' + formatDate(issued.issued_at!)
+		]);
+	});
+
+	it('an issued status without the day of the issue: the status', () => {
 		const o = { ...issued, issued_at: null };
-		expect(orderBrief(o, '').lines.at(-1)).toBe('Скидка: ' + rub('200'));
+		expect(orderBrief(o, ISSUED).lines.at(-1)).toBe('Выдан');
+	});
+
+	it('statuses not loaded: no line for the status; an issue is told as one that was', () => {
+		expect(orderBrief({ ...issued, issued_at: null }, undefined).lines.at(-1)).toBe(
+			'Скидка: ' + rub('200')
+		);
+		expect(orderBrief(issued, undefined).lines.at(-1)).toBe(
+			'Выдавался ' + formatDate(issued.issued_at!)
+		);
 	});
 
 	it('a malfunction that starts with empty lines shows its first written line', () => {
 		const o = { ...issued, malfunction: '\n  Разбит экран  \nи корпус' };
-		expect(orderBrief(o, 'Выдан').lines[1]).toBe('Разбит экран');
+		expect(orderBrief(o, ISSUED).lines[1]).toBe('Разбит экран');
 	});
 });
 
 describe('phoneLine', () => {
 	it('the total and the day it was issued', () => {
-		expect(phoneLine(issued)).toBe(rub('2 500') + ' · выдан ' + formatDate(issued.issued_at!));
+		expect(phoneLine(issued, 'issued')).toBe(
+			rub('2 500') + ' · выдан ' + formatDate(issued.issued_at!)
+		);
+	});
+
+	it('back in work after it was issued: «выдавался», beside the badge of its status', () => {
+		expect(phoneLine(issued, 'open')).toBe(
+			rub('2 500') + ' · выдавался ' + formatDate(issued.issued_at!)
+		);
+		expect(phoneLine(issued, undefined)).toBe(
+			rub('2 500') + ' · выдавался ' + formatDate(issued.issued_at!)
+		);
 	});
 
 	it('only what there is: no total, not issued, nothing', () => {
-		expect(phoneLine({ ...issued, final_price: null })).toBe(
+		expect(phoneLine({ ...issued, final_price: null }, 'issued')).toBe(
 			'выдан ' + formatDate(issued.issued_at!)
 		);
-		expect(phoneLine({ ...issued, issued_at: null })).toBe(rub('2 500'));
-		expect(phoneLine({ ...issued, final_price: null, issued_at: null })).toBe('');
+		expect(phoneLine({ ...issued, issued_at: null }, 'ready')).toBe(rub('2 500'));
+		expect(phoneLine({ ...issued, final_price: null, issued_at: null }, 'open')).toBe('');
 	});
 });

@@ -7,8 +7,11 @@ import { createPagedList } from '#lib/app/paged-list.svelte.js';
 
 export { PAGE_SIZE } from '#lib/app/paged-list.svelte.js';
 
-/** The fields of a row that come from the order itself; the client's stay as the list has them. */
-function withOrder(row: OrderListItem, o: Order): OrderListItem {
+/**
+ * The fields of a row that come from the order itself; the client's stay as the list has them. The list
+ * of orders and the client's card take a changed order into its row with it.
+ */
+export function withOrder(row: OrderListItem, o: Order): OrderListItem {
 	return {
 		...row,
 		received_at: o.received_at,

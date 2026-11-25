@@ -1,7 +1,8 @@
 <!-- «Заказы клиента» of the client panel (spec 6.6): the newest orders, issued too, as № · date · device ·
      status. A click opens the order's panel; orders changed or accepted meanwhile come again. More than
      fit here: «все» shows them on «Заказы». The pointer resting on an order shows its brief (device,
-     malfunction, money, issued); a phone has no hover, and its row shows the total and the day issued. -->
+     malfunction, money, issued); a phone or a touch screen has no hover, and its row shows the total and
+     the day issued under the device. -->
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import type { OrderListItem } from '$api/OrderListItem';
@@ -13,6 +14,7 @@
 	import { formatFull, formatRelative } from '#lib/format/date.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import { onOrderChanged } from '#lib/orders/events.js';
+	import { withOrder } from '#lib/orders/list.svelte.js';
 	import { deviceOf } from '#lib/orders/view.js';
 	import Button from '#lib/ui/Button.svelte';
 	import HoverCard from '#lib/ui/HoverCard.svelte';
@@ -65,19 +67,7 @@
 			const at = orders?.findIndex((r) => r.id === o.id) ?? -1;
 			const row = orders?.[at];
 			if (!orders || !row || o.version < row.version) return;
-			orders = orders.with(at, {
-				...row,
-				status_id: o.status_id,
-				issued_at: o.issued_at,
-				device_type: o.device_type,
-				brand: o.brand,
-				model: o.model,
-				malfunction: o.malfunction,
-				prepayment: o.prepayment,
-				final_price: o.final_price,
-				discount: o.discount,
-				version: o.version
-			});
+			orders = orders.with(at, withOrder(row, o));
 		})
 	);
 </script>
@@ -85,7 +75,7 @@
 <!-- `props`: of the hover card that the row is the trigger of; none on a phone. -->
 {#snippet row(o: OrderListItem, props: Record<string, unknown>)}
 	{@const s = app.statusById(o.status_id)}
-	{@const second = display.phone ? phoneLine(o) : ''}
+	{@const second = phoneLine(o, s?.kind)}
 	<button {...props} type="button" class="order" onclick={() => onopen(o.id)}>
 		<span class="number num">№ {o.id}</span>
 		<span class="when num" title={formatFull(o.received_at)}
@@ -122,7 +112,7 @@
 					{:else}
 						<HoverCard>
 							{#snippet trigger(props)}{@render row(o, props)}{/snippet}
-							{@const brief = orderBrief(o, app.statusById(o.status_id)?.name ?? '')}
+							{@const brief = orderBrief(o, app.statusById(o.status_id))}
 							<div class="brief">
 								<strong class="num">{brief.title}</strong>
 								{#each brief.lines as line, i (i)}<span>{line}</span>{/each}
@@ -193,9 +183,17 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
+	/* The brief as a line of the row where there is no hover to open its card: a phone, a touch screen
+	   of any width (a tablet). A tap opens the order. */
 	.second {
+		display: none;
 		color: var(--text-3);
 		font-size: var(--text-sm);
+	}
+	@media (hover: none) {
+		.second {
+			display: block;
+		}
 	}
 	.brief {
 		display: flex;
@@ -220,5 +218,8 @@
 	}
 	:global([data-width='xs']) .when {
 		display: none;
+	}
+	:global([data-width='xs']) .second {
+		display: block;
 	}
 </style>

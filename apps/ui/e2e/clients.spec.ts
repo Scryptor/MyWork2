@@ -302,6 +302,8 @@ test('hovering an earlier order shows its brief', async ({ page, request }) => {
 		.getByRole('list', { name: 'Заказы клиента' })
 		.getByRole('button', { name: new RegExp(`^№ ${o.id}(?!\\d)`) });
 	const total = page.getByText('Итог: 2 500 ₽', { exact: true });
+	// With hover the row has no second line: the card tells it.
+	await expect(row.getByText('2 500 ₽', { exact: true })).toBeHidden();
 	await row.hover();
 	await expect(total).toBeVisible();
 	await expect(page.getByText('Скидка: 200 ₽', { exact: true })).toBeVisible();
@@ -488,7 +490,7 @@ test.describe('on a phone', () => {
 		const row = panel
 			.getByRole('list', { name: 'Заказы клиента' })
 			.getByRole('button', { name: new RegExp(`^№ ${o.id}(?!\\d)`) });
-		await expect(row).toContainText('2 500 ₽');
+		await expect(row.getByText('2 500 ₽', { exact: true })).toBeVisible();
 		await row.hover();
 		await page.waitForTimeout(600);
 		await expect(page.getByText('Скидка: 200 ₽', { exact: true })).toHaveCount(0);
@@ -519,6 +521,27 @@ test.describe('on a phone', () => {
 		await orderPanelOf(page, older.id).getByRole('link', { name: '← к клиенту' }).click();
 		await expect(orderPanelOf(page, older.id)).toBeHidden();
 		await expect(panelOf(page, name)).toBeVisible();
+	});
+});
+
+// A tablet, or a touch laptop in tablet mode: as wide as a computer, and no hover to open the brief.
+test.describe('on a touch screen as wide as a computer', () => {
+	test.use({ hasTouch: true });
+
+	test('an earlier order shows its total under the device: no hover opens its brief', async ({
+		page,
+		request
+	}) => {
+		const name = clientName();
+		const o = await createOrder(request, { clientName: name, model: uniq('M') });
+		await patchOrder(request, o.id, { final_price: 250000 });
+		const panel = await openPanel(page, o.client_id, name);
+		await expect(page.locator('html')).not.toHaveAttribute('data-width', 'xs');
+		expect(await page.evaluate(() => matchMedia('(hover: none)').matches)).toBe(true);
+		const row = panel
+			.getByRole('list', { name: 'Заказы клиента' })
+			.getByRole('button', { name: new RegExp(`^№ ${o.id}(?!\\d)`) });
+		await expect(row.getByText('2 500 ₽', { exact: true })).toBeVisible();
 	});
 });
 

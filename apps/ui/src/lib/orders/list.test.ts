@@ -3,7 +3,7 @@ import type { OrderPage } from '$api/OrderPage';
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '#lib/api/client.js';
 import { item, order } from '#lib/app/fixtures.test-helper.js';
-import { PAGE_SIZE, createOrderList } from './list.svelte.js';
+import { PAGE_SIZE, createOrderList, withOrder } from './list.svelte.js';
 
 interface Call {
 	q: OrderListQuery;
@@ -182,5 +182,26 @@ describe('createOrderList', () => {
 		const now = list.rows;
 		list.replace(order(42, { version: 5 }));
 		expect(list.rows).toBe(now);
+	});
+});
+
+describe('withOrder', () => {
+	// The client's card takes a changed order into its row the same way.
+	it('takes the order fields a row shows, the day it was received too; the client fields stay', () => {
+		const row = item(7, { client_name: 'ТЕСТОВ ИВАН', received_at: '2026-11-15T10:24:00' });
+		const o = order(7, {
+			client_id: 999,
+			received_at: '2026-11-14T09:00:00',
+			issued_at: '2026-11-20T12:00:00',
+			discount: 20000,
+			version: 4
+		});
+		expect(withOrder(row, o)).toEqual({
+			...row,
+			received_at: '2026-11-14T09:00:00',
+			issued_at: '2026-11-20T12:00:00',
+			discount: 20000,
+			version: 4
+		});
 	});
 });
