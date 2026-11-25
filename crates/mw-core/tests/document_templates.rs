@@ -682,3 +682,39 @@ async fn document_fields_list_the_links() {
         assert_eq!(all.last().unwrap().key, "link.site", "{}", t.label);
     }
 }
+
+#[tokio::test]
+async fn template_lists_its_presets() -> Result<(), CoreError> {
+    for t in cores().await {
+        let got = t
+            .core
+            .get_document_template(&admin(), DocumentKind::IntakeAct)
+            .await?;
+        assert_eq!(got.presets.len(), 1, "{}", t.label);
+        assert_eq!(got.presets[0].id, "mywork2");
+        assert_eq!(got.presets[0].name, "Как в MyWork 2");
+        let sticker = t
+            .core
+            .get_document_template(&admin(), DocumentKind::Sticker)
+            .await?;
+        assert!(sticker.presets.is_empty());
+        // Вариант сохраняется как обычный шаблон и печатается на одном листе.
+        let kind = DocumentKind::IssueAct;
+        let preset = t
+            .core
+            .get_document_template(&admin(), kind)
+            .await?
+            .presets
+            .remove(0);
+        let saved = t
+            .core
+            .save_document_template(&admin(), kind, save(preset.template.clone(), 0))
+            .await?;
+        assert!(saved.custom, "{}", t.label);
+        assert_eq!(saved.template, preset.template);
+        let rendered = t.core.render_document(&admin(), sample(kind, None)).await?;
+        assert_eq!(rendered.page_count(), 1, "{}", t.label);
+        assert!(rendered.text().contains("К оплате"), "{}", t.label);
+    }
+    Ok(())
+}

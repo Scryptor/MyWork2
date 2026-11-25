@@ -47,7 +47,9 @@ pub use core::Core;
 pub use dictionaries::{
     DictionaryItem, DictionaryItemPatch, DictionaryMerge, DictionaryRename, RewriteResult,
 };
-pub use document_templates::{DocumentField, DocumentTemplate, DocumentTemplateInfo, TemplateSave};
+pub use document_templates::{
+    DocumentField, DocumentTemplate, DocumentTemplateInfo, TemplatePreset, TemplateSave,
+};
 pub use error::CoreError;
 pub use import::{
     DatabaseKind, ExtraCostsChange, ImportBundle, ImportMode, ImportSummary, ImportTarget,

@@ -57,7 +57,8 @@ function fakeServer(template: Template = STANDARD) {
 		standard: STANDARD,
 		custom: JSON.stringify(template) !== JSON.stringify(STANDARD),
 		version: 0,
-		updated_at: null
+		updated_at: null,
+		presets: []
 	};
 	let gate: Promise<void> = Promise.resolve();
 	let open = () => {};

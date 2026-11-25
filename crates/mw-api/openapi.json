@@ -7194,7 +7194,8 @@
           "standard",
           "custom",
           "version",
-          "updated_at"
+          "updated_at",
+          "presets"
         ],
         "properties": {
           "custom": {
@@ -7208,6 +7209,13 @@
           },
           "kind": {
             "$ref": "#/components/schemas/DocumentKind"
+          },
+          "presets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TemplatePreset"
+            },
+            "description": "Готовые варианты шаблона этого вида (пусто у наклейки и калибровки)."
           },
           "standard": {
             "$ref": "#/components/schemas/Template",
@@ -10133,6 +10141,26 @@
           }
         },
         "additionalProperties": false
+      },
+      "TemplatePreset": {
+        "type": "object",
+        "description": "Готовый вариант шаблона: его можно выбрать в редакторе вместо текущего.",
+        "required": [
+          "id",
+          "name",
+          "template"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "template": {
+            "$ref": "#/components/schemas/Template"
+          }
+        }
       },
       "TemplatePreview": {
         "type": "object",

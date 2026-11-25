@@ -9,7 +9,7 @@ use std::sync::Mutex;
 
 use chrono::NaiveDateTime;
 use mw_db::entity::document_template;
-use mw_docs::standard_template;
+use mw_docs::{presets, standard_template};
 use mw_domain::document_template::{Template, TemplateFile};
 use mw_domain::documents::DocumentKind;
 use mw_domain::permission::Permission;
@@ -39,6 +39,16 @@ pub struct DocumentTemplate {
     /// Когда сохранён, местное время предприятия; `None` — не сохраняли.
     #[schema(required = true)]
     pub updated_at: Option<NaiveDateTime>,
+    /// Готовые варианты шаблона этого вида (пусто у наклейки и калибровки).
+    pub presets: Vec<TemplatePreset>,
+}
+
+/// Готовый вариант шаблона: его можно выбрать в редакторе вместо текущего.
+#[derive(Debug, Clone, PartialEq, Serialize, ts_rs::TS, utoipa::ToSchema)]
+pub struct TemplatePreset {
+    pub id: String,
+    pub name: String,
+    pub template: Template,
 }
 
 /// Строка списка шаблонов.
@@ -129,6 +139,14 @@ fn assemble(kind: DocumentKind, row: Option<&document_template::Model>) -> Docum
         standard,
         version: row.map_or(0, |r| r.version),
         updated_at: row.map(|r| r.updated_at),
+        presets: presets(kind)
+            .into_iter()
+            .map(|p| TemplatePreset {
+                id: p.id.to_owned(),
+                name: p.name.to_owned(),
+                template: p.template,
+            })
+            .collect(),
     }
 }
 

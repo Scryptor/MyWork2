@@ -65,7 +65,8 @@ function editorOf(blocks: Block[]) {
 		standard: template,
 		custom: false,
 		version: 0,
-		updated_at: null
+		updated_at: null,
+		presets: []
 	};
 	const api: TemplateEditorApi = {
 		getTemplate: async () => initial,

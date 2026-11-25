@@ -108,14 +108,14 @@ pub fn sample_data(kind: DocumentKind) -> DocumentData {
     }
 }
 
-fn both(body: BlockBody) -> Block {
+pub(crate) fn both(body: BlockBody) -> Block {
     Block {
         copies: CopyFilter::Both,
         body,
     }
 }
 
-fn text(text: &str, size_pt: Option<f32>, bold: bool, align: Align) -> Block {
+pub(crate) fn text(text: &str, size_pt: Option<f32>, bold: bool, align: Align) -> Block {
     both(BlockBody::Text {
         text: text.to_owned(),
         size_pt,
@@ -127,7 +127,7 @@ fn text(text: &str, size_pt: Option<f32>, bold: bool, align: Align) -> Block {
     })
 }
 
-fn row(label: &str, value: &str) -> FieldRow {
+pub(crate) fn row(label: &str, value: &str) -> FieldRow {
     FieldRow {
         label: label.to_owned(),
         value: value.to_owned(),
@@ -136,7 +136,7 @@ fn row(label: &str, value: &str) -> FieldRow {
     }
 }
 
-fn optional_row(label: &str, value: &str) -> FieldRow {
+pub(crate) fn optional_row(label: &str, value: &str) -> FieldRow {
     FieldRow {
         hide_if_empty: true,
         ..row(label, value)
@@ -305,7 +305,7 @@ fn label_page(margin_mm: f32) -> PageSetup {
     }
 }
 
-fn margins(mm: f32) -> Margins {
+pub(crate) fn margins(mm: f32) -> Margins {
     Margins {
         top: mm,
         right: mm,

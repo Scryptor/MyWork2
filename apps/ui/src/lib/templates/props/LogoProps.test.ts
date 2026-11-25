@@ -29,7 +29,8 @@ function editor() {
 		standard: template,
 		custom: false,
 		version: 0,
-		updated_at: null
+		updated_at: null,
+		presets: []
 	};
 	const tapi: TemplateEditorApi = {
 		getTemplate: async () => initial,
