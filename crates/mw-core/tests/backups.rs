@@ -707,3 +707,55 @@ async fn a_copy_that_cannot_be_deleted_is_an_error_and_not_logged() {
         assert_eq!(count_audit(&t.core, "backup.deleted").await, 0);
     }
 }
+
+/// Ежедневная чистка не удаляет копию, которая ждёт восстановления; удаление проверяет ожидание уже под
+/// замком копий.
+#[tokio::test]
+async fn pruning_keeps_the_copy_waiting_for_a_restore() {
+    for t in cores().await {
+        if !t.sqlite() {
+            check_refusal(&t).await;
+            continue;
+        }
+        let who = admin();
+        t.core
+            .update_backup_settings(
+                &who,
+                BackupSettingsPatch {
+                    keep: Some(1),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        let auto = |day| {
+            t.at(day, 10);
+            let core = t.core.clone();
+            async move { core.run_auto_backup_if_due().await.unwrap().unwrap().name }
+        };
+        let first = auto(1).await;
+        t.core.request_restore(&who, &first).await.unwrap();
+        let second = auto(2).await;
+        assert!(t.backups().join(&first).is_dir(), "ждущая копия цела");
+        let third = auto(3).await;
+        assert!(t.backups().join(&first).is_dir(), "ждущая копия цела");
+        assert!(!t.backups().join(&second).exists());
+
+        let held = t.core.hold_backup_lock_for_tests().unwrap();
+        assert!(
+            matches!(
+                t.core.delete_backup(&who, &first).await,
+                Err(CoreError::InUse(_))
+            ),
+            "сначала замок копий, потом проверка ожидания"
+        );
+        drop(held);
+        let e = t.core.delete_backup(&who, &first).await.unwrap_err();
+        assert_eq!(validation(e), [("name".into(), "backup_pending".into())]);
+
+        t.core.cancel_restore(&who).await.unwrap();
+        let fourth = auto(4).await;
+        let present = names(&t.backups());
+        assert_eq!(present, [fourth], "{third} и {first} убраны");
+    }
+}

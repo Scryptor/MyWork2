@@ -14,9 +14,10 @@ use sea_orm::DatabaseBackend;
 use serde::{Deserialize, Serialize};
 use tokio::sync::OwnedMutexGuard;
 
-use copy::{list_copies, unique_name};
+use copy::{ListedCopy, list_copies, sort_copies, unique_name};
 pub use restore::{
-    RESTORE_MARKER, RESTORE_RESULT, RESTORE_STAGING, apply_pending_restore, schedule_restore,
+    RESTORE_MARKER, RESTORE_RESULT, RESTORE_STAGING, apply_pending_restore, pending_restore,
+    schedule_restore,
 };
 #[cfg(any(test, feature = "testing"))]
 pub use restore::{RestoreStop, apply_pending_restore_until};
@@ -265,6 +266,37 @@ impl Core {
         }
     }
 
+    /// Копии для списка, восстановления и удаления: из папки `backups_root`, а при своей папке — ещё
+    /// страховочные копии из папки по умолчанию (они всегда ложатся туда, решение 6). При одинаковом имени
+    /// берётся копия своей папки. Новые сверху.
+    fn listed_copies(&self) -> Result<(PathBuf, Option<String>, Vec<ListedCopy>), CoreError> {
+        let data_dir = self.backups_data_dir()?;
+        let (dir, problem) = self.backups_root()?;
+        let mut copies = list_copies(&dir);
+        let default = default_backups_dir(data_dir);
+        if dir != default {
+            let own: std::collections::HashSet<String> =
+                copies.iter().map(|(_, c, _)| c.name.clone()).collect();
+            copies.extend(
+                list_copies(&default).into_iter().filter(|(_, c, _)| {
+                    c.kind == BackupKind::BeforeRestore && !own.contains(&c.name)
+                }),
+            );
+            sort_copies(&mut copies);
+        }
+        Ok((dir, problem, copies))
+    }
+
+    /// Папка копии из списка по имени; нет такой — `backup_missing`.
+    fn find_copy(&self, name: &str) -> Result<PathBuf, CoreError> {
+        let (_, _, copies) = self.listed_copies()?;
+        copies
+            .into_iter()
+            .find(|(_, c, _)| c.name == name)
+            .map(|(path, _, _)| path)
+            .ok_or_else(|| CoreError::Validation(vec![FieldError::new("name", "backup_missing")]))
+    }
+
     /// Канонический путь папки данных: так копия помечает, чья она.
     fn backup_source(data_dir: &Path) -> String {
         std::fs::canonicalize(data_dir)
@@ -283,9 +315,9 @@ impl Core {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clone();
-        let (folder, folder_problem, copies) = match (reason, self.backups_root()) {
-            (None, Ok((dir, problem))) => {
-                let copies = list_copies(&dir).into_iter().map(|(_, c, _)| c).collect();
+        let (folder, folder_problem, copies) = match (reason, self.listed_copies()) {
+            (None, Ok((dir, problem, copies))) => {
+                let copies = copies.into_iter().map(|(_, c, _)| c).collect();
                 (dir, problem, copies)
             }
             _ => (
@@ -309,7 +341,8 @@ impl Core {
             folder_problem,
             copies,
             job,
-            pending: data_dir_if(reason, self.data_dir.as_deref()).and_then(restore::read_pending),
+            pending: data_dir_if(reason, self.data_dir.as_deref())
+                .and_then(restore::pending_restore),
             last_restore: data_dir_if(reason, self.data_dir.as_deref())
                 .and_then(restore::read_last_result),
             legacy,
@@ -617,9 +650,13 @@ impl Core {
             .await?;
         let keep = usize::from(settings.keep);
         let prune_dir = dir;
-        tokio::task::spawn_blocking(move || copy::prune_auto(&prune_dir, &source, keep))
-            .await
-            .map_err(|e| CoreError::Internal(e.to_string()))?;
+        // Отметка читается под замком копий: запрос восстановления его тоже берёт.
+        let pending = restore::pending_copy_path(&data_dir);
+        tokio::task::spawn_blocking(move || {
+            copy::prune_auto(&prune_dir, &source, keep, pending.as_deref())
+        })
+        .await
+        .map_err(|e| CoreError::Internal(e.to_string()))?;
         Ok(Some(copy))
     }
 
@@ -627,24 +664,16 @@ impl Core {
     pub async fn delete_backup(&self, actor: &Actor, name: &str) -> Result<(), CoreError> {
         actor.require(Permission::UsersManage)?;
         actor.require(Permission::SettingsManage)?;
-        self.backups_data_dir()?;
-        let (dir, _) = self.backups_root()?;
-        let Some((path, _, _)) = list_copies(&dir)
-            .into_iter()
-            .find(|(_, c, _)| c.name == name)
-        else {
-            return Err(CoreError::Validation(vec![FieldError::new(
-                "name",
-                "backup_missing",
-            )]));
-        };
-        if restore::pending_copy_path(self.backups_data_dir()?).is_some_and(|p| p == path) {
+        let data_dir = self.backups_data_dir()?.to_path_buf();
+        // Под замком копий: запрос восстановления и чистка автокопий не идут одновременно с удалением.
+        let _guard = self.backup_guard()?;
+        let path = self.find_copy(name)?;
+        if restore::pending_copy_path(&data_dir).is_some_and(|p| p == path) {
             return Err(CoreError::Validation(vec![FieldError::new(
                 "name",
                 "backup_pending",
             )]));
         }
-        let _guard = self.backup_guard()?;
         tokio::task::spawn_blocking(move || copy::remove_dir_checked(&path))
             .await
             .map_err(|e| CoreError::Internal(e.to_string()))?

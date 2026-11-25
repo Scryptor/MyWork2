@@ -197,12 +197,9 @@ fn create_admin_on(data: &std::path::Path, login: &str) {
     );
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn backup_and_restore_commands_bring_the_data_back() {
-    let dir = tempfile::tempdir().unwrap();
-    let data = dir.path().join("data");
-    create_admin_on(&data, "first");
-    let output = run_on(&data, &["backup".as_ref()], "");
+/// `mw-server backup`; возвращает путь копии.
+fn backup_on(data: &std::path::Path) -> std::path::PathBuf {
+    let output = run_on(data, &["backup".as_ref()], "");
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     assert_eq!(
         output.status.code(),
@@ -219,6 +216,22 @@ async fn backup_and_restore_commands_bring_the_data_back() {
     let copy = std::path::PathBuf::from(&path);
     assert!(copy.is_absolute(), "{path}");
     assert!(copy.join("mywork-backup.json").is_file(), "{path}");
+    copy
+}
+
+fn requested_at() -> chrono::NaiveDateTime {
+    chrono::NaiveDate::from_ymd_opt(2026, 3, 10)
+        .unwrap()
+        .and_hms_opt(12, 30, 0)
+        .unwrap()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn backup_and_restore_commands_bring_the_data_back() {
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("data");
+    create_admin_on(&data, "first");
+    let copy = backup_on(&data);
 
     create_admin_on(&data, "second");
     assert_eq!(logins(&data).await, ["first", "second"]);
@@ -248,4 +261,134 @@ fn restore_refuses_a_folder_without_a_copy() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_ne!(output.status.code(), Some(0));
     assert!(stderr.contains("Такой копии нет"), "{stderr}");
+}
+
+const UNFINISHED: &str =
+    "Восстановление данных не закончено — запустите программу, она его продолжит";
+
+/// Пока восстановление не закончено (`restore.json`), команды, открывающие базу папки данных, отказывают:
+/// шаг 2 мог уже перенести базу, и подключение создало бы на её месте пустую.
+#[tokio::test(flavor = "multi_thread")]
+async fn commands_refuse_while_a_restore_is_unfinished() {
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("data");
+    let old = tempfile::tempdir().unwrap();
+    create_admin_on(&data, "first");
+    let copy = backup_on(&data);
+    mw_core::backups::schedule_restore(&data, &copy, requested_at(), "Тест")
+        .await
+        .unwrap();
+    // Шаг 2 перенёс базу и оборвался.
+    std::fs::rename(data.join("mywork.db"), dir.path().join("moved.db")).unwrap();
+    let commands: [&[&std::ffi::OsStr]; 3] = [
+        &["create-admin".as_ref(), "--login".as_ref(), "boss".as_ref()],
+        &["backup".as_ref()],
+        &["import-legacy".as_ref(), old.path().as_os_str()],
+    ];
+    for args in commands {
+        let output = run_on(&data, args, "test-password-1\n");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert_eq!(output.status.code(), Some(1), "{args:?}: {stderr}");
+        assert!(stderr.contains(UNFINISHED), "{args:?}: {stderr}");
+        assert!(
+            !data.join("mywork.db").exists(),
+            "{args:?}: пустая база не создана"
+        );
+    }
+    assert!(data.join(mw_core::backups::RESTORE_MARKER).exists());
+}
+
+/// Папки страховочных копий в папке копий по умолчанию.
+fn safety_copies(data: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let mut out = Vec::new();
+    for entry in std::fs::read_dir(data.join("backups")).unwrap() {
+        let path = entry.unwrap().path();
+        let Ok(bytes) = std::fs::read(path.join("mywork-backup.json")) else {
+            continue;
+        };
+        let manifest: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        if manifest["kind"] == "before_restore" {
+            out.push(path);
+        }
+    }
+    out
+}
+
+/// Прежнее восстановление оборвалось после шага 2: `restore` сначала доводит его, и прежние данные не
+/// расходятся по двум страховочным копиям (вторая — без базы).
+#[tokio::test(flavor = "multi_thread")]
+async fn restore_finishes_an_unfinished_restore_first() {
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("data");
+    create_admin_on(&data, "first");
+    let copy = backup_on(&data);
+    create_admin_on(&data, "second");
+    mw_core::backups::schedule_restore(&data, &copy, requested_at(), "Тест")
+        .await
+        .unwrap();
+    assert!(
+        mw_core::backups::apply_pending_restore_until(
+            &data,
+            mw_core::backups::RestoreStop::AfterMovedAside
+        )
+        .await
+        .is_err()
+    );
+    assert!(!data.join("mywork.db").exists());
+
+    let output = run_on(&data, &["restore".as_ref(), copy.as_os_str()], "");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{stdout} {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let safety = safety_copies(&data);
+    assert_eq!(safety.len(), 2, "{safety:?}");
+    for dir in &safety {
+        assert!(dir.join("mywork.db").is_file(), "{}", dir.display());
+    }
+    assert_eq!(logins(&data).await, ["first"]);
+    assert!(
+        stdout.contains("Прежнее восстановление закончено"),
+        "{stdout}"
+    );
+    assert!(!data.join(mw_core::backups::RESTORE_MARKER).exists());
+}
+
+/// Прежнее восстановление не доводится (базы нет ни на месте, ни в подготовке): `restore` выводит ошибку,
+/// выходит с ненулевым кодом и нового восстановления не начинает.
+#[tokio::test(flavor = "multi_thread")]
+async fn restore_stops_when_the_unfinished_restore_fails() {
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("data");
+    create_admin_on(&data, "first");
+    let copy = backup_on(&data);
+    mw_core::backups::schedule_restore(&data, &copy, requested_at(), "Тест")
+        .await
+        .unwrap();
+    assert!(
+        mw_core::backups::apply_pending_restore_until(
+            &data,
+            mw_core::backups::RestoreStop::AfterMovedAside
+        )
+        .await
+        .is_err()
+    );
+    std::fs::remove_file(
+        data.join(mw_core::backups::RESTORE_STAGING)
+            .join("mywork.db"),
+    )
+    .unwrap();
+    let output = run_on(&data, &["restore".as_ref(), copy.as_os_str()], "");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(1), "{stderr}");
+    assert!(
+        stderr.contains("Прежнее восстановление не закончено"),
+        "{stderr}"
+    );
+    assert_eq!(safety_copies(&data).len(), 1);
+    assert!(!data.join("mywork.db").exists());
+    assert!(data.join(mw_core::backups::RESTORE_MARKER).exists());
 }

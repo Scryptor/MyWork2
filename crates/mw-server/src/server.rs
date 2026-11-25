@@ -21,10 +21,23 @@ pub struct Server {
     grace: std::time::Duration,
 }
 
+/// Отказ открыть базу папки данных, пока восстановление из копии не закончено.
+pub(crate) const RESTORE_UNFINISHED: &str =
+    "Восстановление данных не закончено — запустите программу, она его продолжит";
+
 /// Подключает базу и применяет миграции; сообщение ошибки не содержит адреса базы.
+///
+/// Базу папки данных не открывает, пока есть отметка восстановления (`restore.json`): шаг 2 мог уже
+/// перенести базу в страховочную копию, и подключение создало бы на её месте пустую. Запуск сервера
+/// (`Server::start`) сначала доводит восстановление, и отметки к этому месту уже нет.
 pub(crate) async fn connect_and_migrate(
     config: &Config,
 ) -> Result<DatabaseConnection, ServerError> {
+    if config.database_url.is_none()
+        && mw_core::backups::pending_restore(&config.data_dir).is_some()
+    {
+        return Err(ServerError::Config(RESTORE_UNFINISHED.into()));
+    }
     std::fs::create_dir_all(&config.data_dir).map_err(|source| ServerError::Io {
         context: format!(
             "не удалось создать папку данных {}",
@@ -269,32 +282,43 @@ pub(crate) fn core_message(error: &CoreError) -> String {
 }
 
 /// Выполняет ждущее восстановление (только для базы в папке данных). Ошибка шагов 2–3 — ошибка запуска:
-/// отметка остаётся, а базу не подключаем, чтобы не создать пустую.
+/// отметка остаётся, а базу не подключаем, чтобы не создать пустую. В журнал работы — начало и итог, только
+/// с именем копии.
 async fn apply_restore_on_start(
     config: &Config,
 ) -> Result<Option<BackupRestoreResult>, ServerError> {
     if config.database_url.is_some() {
         return Ok(None);
     }
-    mw_core::backups::apply_pending_restore(&config.data_dir)
+    let Some(pending) = mw_core::backups::pending_restore(&config.data_dir) else {
+        return Ok(None);
+    };
+    let name = pending.copy.name;
+    tracing::info!("восстанавливаю данные из копии {name}…");
+    let result = mw_core::backups::apply_pending_restore(&config.data_dir)
         .await
-        .map_err(|e| ServerError::Config(core_message(&e)))
+        .map_err(|e| {
+            tracing::error!(
+                "восстановление из копии {name} не закончено, программа не запущена; следующий запуск продолжит"
+            );
+            ServerError::Config(core_message(&e))
+        })?;
+    match &result {
+        Some(r) if r.ok => tracing::info!(
+            "данные восстановлены из копии {name}; прежние данные сохранены в копии «{}»",
+            r.safety.as_deref().unwrap_or("-")
+        ),
+        Some(r) => tracing::warn!(
+            "восстановление из копии {name} не выполнено, данные прежние: {}",
+            r.error.as_deref().unwrap_or("причина не указана")
+        ),
+        None => {}
+    }
+    Ok(result)
 }
 
-/// Пишет итог восстановления в лог и в журнал действий; без данных клиентов.
+/// Пишет удавшееся восстановление в журнал действий.
 async fn record_restore(core: &Core, result: &BackupRestoreResult) {
-    let date = result.copy.created_at.format("%d.%m.%Y %H:%M");
-    if !result.ok {
-        tracing::warn!(
-            "восстановление из копии от {date} не выполнено, данные прежние: {}",
-            result.error.as_deref().unwrap_or("причина не указана")
-        );
-        return;
-    }
-    tracing::info!(
-        "данные восстановлены из копии от {date}; прежние данные сохранены в папке «{}»",
-        result.safety.as_deref().unwrap_or("-")
-    );
     if let Err(e) = core.record_restore(result).await {
         tracing::warn!("восстановление не записано в журнал действий: {e}");
     }

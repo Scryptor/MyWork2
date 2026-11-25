@@ -8,7 +8,7 @@ use std::sync::Arc;
 use chrono::{TimeZone, Utc};
 use common::*;
 use mw_core::backups::{
-    BackupKind, RESTORE_MARKER, RESTORE_RESULT, RESTORE_STAGING, RestoreStop,
+    BackupKind, BackupSettingsPatch, RESTORE_MARKER, RESTORE_RESULT, RESTORE_STAGING, RestoreStop,
     apply_pending_restore, apply_pending_restore_until,
 };
 use mw_core::{Core, CoreError, FixedClock};
@@ -102,6 +102,11 @@ impl Env {
 
     /// Открывает ядро; SQLite — файл в папке данных (миграции применяются при открытии).
     async fn open(&self) -> (Core, DatabaseConnection) {
+        self.open_with(clock()).await
+    }
+
+    /// То же со своими часами.
+    async fn open_with(&self, clock: Arc<FixedClock>) -> (Core, DatabaseConnection) {
         let db = match &self.pg {
             Some(db) => db.clone(),
             None => {
@@ -112,13 +117,29 @@ impl Env {
                 db
             }
         };
-        let core = Core::open(db.clone(), clock(), "UTC")
+        let core = Core::open(db.clone(), clock, "UTC")
             .await
             .unwrap()
             .with_attachments_dir(self.data.clone())
             .with_backups();
         (core, db)
     }
+}
+
+/// Имя страховочной копии из шага `.restore/phase.json`.
+fn safety_of_phase(data: &Path) -> String {
+    let phase: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(data.join(RESTORE_STAGING).join("phase.json")).unwrap(),
+    )
+    .unwrap();
+    phase["safety"].as_str().unwrap().to_owned()
+}
+
+async fn orders_in(base: &Path) -> u64 {
+    let db = mw_db::connect(&mw_db::sqlite_url(base)).await.unwrap();
+    let n = order::Entity::find().count(&db).await.unwrap();
+    db.close().await.unwrap();
+    n
 }
 
 async fn close(core: Core, db: DatabaseConnection) {
@@ -587,4 +608,222 @@ async fn make_copy_of_three_from_one(core: &Core) -> String {
     let who = admin();
     core.create_order(&who, sample_new_order()).await.unwrap();
     make_copy_of_three(core).await
+}
+
+/// Шаг 2 перенёс базу и упал на вложениях (на Windows папку держит Проводник), потом в папке данных
+/// появилась новая база: следующий запуск отказывает и страховочную базу не затирает.
+#[tokio::test]
+async fn a_new_base_after_a_broken_step_two_never_replaces_the_safety_copy() {
+    for env in envs().await {
+        if !env.sqlite() {
+            refusal(&env).await;
+            continue;
+        }
+        let p = prepare(&env).await;
+        p.core.request_restore(&admin(), &p.name).await.unwrap();
+        let data = env.data.clone();
+        let files_ab = p.files_ab.clone();
+        close(p.core, p.db).await;
+        assert!(
+            apply_pending_restore_until(&data, RestoreStop::AfterCopied)
+                .await
+                .is_err()
+        );
+        let safety = env.backups().join(safety_of_phase(&data));
+        std::fs::create_dir_all(&safety).unwrap();
+        for name in ["mywork.db", "mywork.db-wal", "mywork.db-shm"] {
+            if data.join(name).exists() {
+                std::fs::rename(data.join(name), safety.join(name)).unwrap();
+            }
+        }
+        // Подключение к папке данных создаёт пустую базу.
+        let (core, db) = env.open().await;
+        assert_eq!(orders(&core).await, 0);
+        close(core, db).await;
+
+        let e = apply_pending_restore(&data).await.unwrap_err();
+        let text = e.to_string();
+        assert!(text.contains("страховочная копия цела"), "{text}");
+        assert_eq!(orders_in(&safety.join("mywork.db")).await, 2);
+        assert_eq!(orders_in(&data.join("mywork.db")).await, 0);
+        assert_eq!(files(&data.join("attachments")), files_ab);
+        assert!(!safety.join("attachments").exists());
+        assert!(data.join(RESTORE_MARKER).exists());
+    }
+}
+
+/// После шага 3 базы на месте нет (её не оказалось в `.restore/`): это ошибка, а не успех — иначе
+/// подключение создало бы пустую базу.
+#[tokio::test]
+async fn a_restore_without_the_base_in_place_is_not_a_success() {
+    for env in envs().await {
+        if !env.sqlite() {
+            refusal(&env).await;
+            continue;
+        }
+        let p = prepare(&env).await;
+        p.core.request_restore(&admin(), &p.name).await.unwrap();
+        let data = env.data.clone();
+        close(p.core, p.db).await;
+        assert!(
+            apply_pending_restore_until(&data, RestoreStop::AfterMovedAside)
+                .await
+                .is_err()
+        );
+        std::fs::remove_file(data.join(RESTORE_STAGING).join("mywork.db")).unwrap();
+        let e = apply_pending_restore(&data).await.unwrap_err();
+        let text = e.to_string();
+        assert!(text.contains("Восстановление не закончено"), "{text}");
+        assert!(!data.join("mywork.db").exists());
+        assert!(data.join(RESTORE_MARKER).exists());
+        assert!(!data.join(RESTORE_RESULT).exists());
+    }
+}
+
+/// Своя папка копий: страховочная копия ложится в папку по умолчанию, а список её всё равно показывает (общий
+/// порядок, новые сверху) — её можно восстановить и удалить. Прочие копии папки по умолчанию не видны; при
+/// одинаковом имени берётся копия выбранной папки.
+#[tokio::test]
+async fn the_safety_copy_is_listed_with_a_folder_of_own() {
+    for env in envs().await {
+        if !env.sqlite() {
+            refusal(&env).await;
+            continue;
+        }
+        let who = admin();
+        let (core, db) = env.open().await;
+        core.create_order(&who, sample_new_order()).await.unwrap();
+        let in_default = core
+            .create_backup(&who, BackupKind::Manual)
+            .await
+            .unwrap()
+            .name;
+        let own = tempfile::tempdir().unwrap();
+        core.update_backup_settings(
+            &who,
+            BackupSettingsPatch {
+                folder: Some(Some(own.path().to_string_lossy().into_owned())),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        let copy = core
+            .create_backup(&who, BackupKind::Manual)
+            .await
+            .unwrap()
+            .name;
+        assert_eq!(copy, in_default, "имена в разных папках совпадают");
+        core.create_order(&who, sample_new_order()).await.unwrap();
+        close(core, db).await;
+
+        // Восстановление запрошено минутой позже копии.
+        let later = Arc::new(FixedClock::new(
+            Utc.with_ymd_and_hms(2026, 3, 10, 12, 31, 0).unwrap(),
+        ));
+        let (core, db) = env.open_with(later.clone()).await;
+        core.request_restore(&who, &copy).await.unwrap();
+        close(core, db).await;
+        let result = apply_pending_restore(&env.data).await.unwrap().unwrap();
+        assert!(result.ok, "{:?}", result.error);
+        let safety = result.safety.unwrap();
+        assert!(env.backups().join(&safety).is_dir());
+
+        let (core, db) = env.open_with(later).await;
+        assert_eq!(orders(&core).await, 1);
+        let overview = core.backup_overview(&who).await.unwrap();
+        assert_eq!(overview.folder, own.path().to_string_lossy());
+        let listed: Vec<_> = overview
+            .copies
+            .iter()
+            .map(|c| (c.name.clone(), c.kind))
+            .collect();
+        assert_eq!(
+            listed,
+            [
+                (safety.clone(), BackupKind::BeforeRestore),
+                (copy.clone(), BackupKind::Manual)
+            ]
+        );
+
+        let pending = core.request_restore(&who, &safety).await.unwrap();
+        assert_eq!(pending.copy.name, safety);
+        let e = core.delete_backup(&who, &safety).await.unwrap_err();
+        assert_eq!(
+            validation(e),
+            [("name".to_owned(), "backup_pending".to_owned())]
+        );
+        core.cancel_restore(&who).await.unwrap();
+        core.delete_backup(&who, &safety).await.unwrap();
+        assert!(!env.backups().join(&safety).exists());
+
+        // Одинаковые имена: в списке и для удаления — копия выбранной папки.
+        let manifest_path = env.backups().join(&in_default).join("mywork-backup.json");
+        let mut manifest: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&manifest_path).unwrap()).unwrap();
+        manifest["kind"] = "before_restore".into();
+        std::fs::write(&manifest_path, manifest.to_string()).unwrap();
+        let listed: Vec<_> = core
+            .backup_overview(&who)
+            .await
+            .unwrap()
+            .copies
+            .into_iter()
+            .map(|c| (c.name, c.kind))
+            .collect();
+        assert_eq!(listed, [(copy.clone(), BackupKind::Manual)]);
+        core.delete_backup(&who, &copy).await.unwrap();
+        assert!(!own.path().join(&copy).exists());
+        assert!(env.backups().join(&in_default).exists());
+        close(core, db).await;
+    }
+}
+
+/// Новый запрос восстановления стирает итог прошлого: иначе на экране обе выноски, и «Скрыть» итога
+/// молча отменило бы новый запрос.
+#[tokio::test]
+async fn a_new_request_clears_the_last_result() {
+    for env in envs().await {
+        if !env.sqlite() {
+            refusal(&env).await;
+            continue;
+        }
+        let p = prepare(&env).await;
+        let who = admin();
+        p.core.request_restore(&who, &p.name).await.unwrap();
+        let data = env.data.clone();
+        let name = p.name.clone();
+        close(p.core, p.db).await;
+        assert!(apply_pending_restore(&data).await.unwrap().unwrap().ok);
+        let result = std::fs::read(data.join(RESTORE_RESULT)).unwrap();
+
+        let (core, db) = env.open().await;
+        assert!(
+            core.backup_overview(&who)
+                .await
+                .unwrap()
+                .last_restore
+                .is_some()
+        );
+        core.request_restore(&who, &name).await.unwrap();
+        let overview = core.backup_overview(&who).await.unwrap();
+        assert!(overview.pending.is_some());
+        assert!(overview.last_restore.is_none());
+        assert!(!data.join(RESTORE_RESULT).exists());
+        close(core, db).await;
+
+        // Запрос командой — так же.
+        std::fs::remove_file(data.join(RESTORE_MARKER)).unwrap();
+        std::fs::write(data.join(RESTORE_RESULT), &result).unwrap();
+        mw_core::backups::schedule_restore(
+            &data,
+            &env.backups().join(&name),
+            "2026-03-10T12:30:00".parse().unwrap(),
+            "Тест",
+        )
+        .await
+        .unwrap();
+        assert!(data.join(RESTORE_MARKER).exists());
+        assert!(!data.join(RESTORE_RESULT).exists());
+    }
 }

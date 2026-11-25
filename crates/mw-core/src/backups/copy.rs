@@ -43,11 +43,37 @@ impl Manifest {
 
 pub(crate) fn write_manifest(dir: &Path, manifest: &Manifest) -> std::io::Result<()> {
     let bytes = serde_json::to_vec_pretty(manifest).map_err(std::io::Error::other)?;
-    std::fs::write(dir.join(MANIFEST_FILE), bytes)
+    write_synced(&dir.join(MANIFEST_FILE), &bytes)
+}
+
+/// Пишет файл через временный рядом: данные сбрасываются на диск (`sync_all`) до переименования, чтобы
+/// после отключения питания на месте файла не оказался пустой.
+pub(crate) fn write_synced(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let tmp = path.with_extension("tmp");
+    let result = (|| {
+        let mut file = std::fs::File::create(&tmp)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        drop(file);
+        std::fs::rename(&tmp, path)
+    })();
+    if result.is_err() {
+        std::fs::remove_file(&tmp).ok();
+    }
+    result
+}
+
+/// Копия в списке: папка, копия для экрана, описание.
+pub(crate) type ListedCopy = (PathBuf, BackupCopy, Manifest);
+
+/// Новые сверху; при одном времени — по имени.
+pub(crate) fn sort_copies(copies: &mut [ListedCopy]) {
+    copies.sort_by(|a, b| (b.1.created_at, &b.1.name).cmp(&(a.1.created_at, &a.1.name)));
 }
 
 /// Копии папки: только настоящие папки с понятным описанием; новые сверху.
-pub(crate) fn list_copies(dir: &Path) -> Vec<(PathBuf, BackupCopy, Manifest)> {
+pub(crate) fn list_copies(dir: &Path) -> Vec<ListedCopy> {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return Vec::new();
     };
@@ -69,7 +95,7 @@ pub(crate) fn list_copies(dir: &Path) -> Vec<(PathBuf, BackupCopy, Manifest)> {
         };
         out.push((path, manifest.to_copy(&name), manifest));
     }
-    out.sort_by(|a, b| (b.1.created_at, &b.1.name).cmp(&(a.1.created_at, &a.1.name)));
+    sort_copies(&mut out);
     out
 }
 
@@ -169,12 +195,16 @@ pub(crate) fn finish_copy(
     })
 }
 
-/// Оставляет `keep` последних автокопий этой папки данных; остальное не трогает.
-pub(crate) fn prune_auto(dir: &Path, source: &str, keep: usize) {
+/// Оставляет `keep` последних автокопий этой папки данных; остальное не трогает. Копию, которая ждёт
+/// восстановления (`pending`), не удаляет никогда.
+pub(crate) fn prune_auto(dir: &Path, source: &str, keep: usize, pending: Option<&Path>) {
     let own_auto = list_copies(dir)
         .into_iter()
         .filter(|(_, c, m)| c.kind == BackupKind::Auto && m.source == source);
     for (path, _, _) in own_auto.skip(keep) {
+        if pending == Some(path.as_path()) {
+            continue;
+        }
         remove_dir(&path);
     }
 }

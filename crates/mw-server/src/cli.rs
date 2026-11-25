@@ -295,9 +295,33 @@ async fn run_backup(config: &Config) -> Result<(), ServerError> {
 }
 
 /// `mw-server restore <папка>`: под замком папки данных. Запрос и выполнение — сразу, без перезапуска.
+/// Оборванное прежнее восстановление сначала доводится до конца: новый запрос стёр бы его подготовку, и
+/// прежние данные разошлись бы по двум страховочным копиям. Не доводится — ошибка, новое не начинается.
 async fn run_restore(config: &Config, copy: PathBuf) -> Result<(), ServerError> {
     require_data_dir_base(config)?;
     let _lock = lock_data_dir(config)?;
+    let previous = mw_core::backups::apply_pending_restore(&config.data_dir)
+        .await
+        .map_err(|e| {
+            ServerError::Config(format!(
+                "Прежнее восстановление не закончено, новое не начато: {}",
+                core_message(&e)
+            ))
+        })?;
+    if let Some(previous) = previous {
+        if previous.ok {
+            record_in_audit(config, &previous).await;
+            println!(
+                "Прежнее восстановление закончено. {}",
+                restored_line(config, &previous)
+            );
+        } else {
+            println!(
+                "Прежнее восстановление не выполнено, данные прежние: {}",
+                previous.error.as_deref().unwrap_or("причина не указана")
+            );
+        }
+    }
     let requested_at = request_time(config).await;
     let copy = std::fs::canonicalize(&copy).unwrap_or(copy);
     mw_core::backups::schedule_restore(&config.data_dir, &copy, requested_at, CLI_WHO)
@@ -314,10 +338,16 @@ async fn run_restore(config: &Config, copy: PathBuf) -> Result<(), ServerError> 
                 .unwrap_or_else(|| "копия не подошла, данные прежние".into()),
         ));
     }
-    // Запись в журнал действий: сервер при запуске её уже не сделает, отметка снята.
+    record_in_audit(config, &result).await;
+    println!("{}", restored_line(config, &result));
+    Ok(())
+}
+
+/// Запись удавшегося восстановления в журнал действий: сервер при запуске её уже не сделает, отметка снята.
+async fn record_in_audit(config: &Config, result: &mw_core::BackupRestoreResult) {
     match open_core(config).await {
         Ok((core, db)) => {
-            if let Err(e) = core.record_restore(&result).await {
+            if let Err(e) = core.record_restore(result).await {
                 tracing::warn!("восстановление не записано в журнал действий: {e}");
             }
             drop(core);
@@ -325,6 +355,10 @@ async fn run_restore(config: &Config, copy: PathBuf) -> Result<(), ServerError> 
         }
         Err(e) => tracing::warn!("восстановление не записано в журнал действий: {e}"),
     }
+}
+
+/// «Данные восстановлены из копии от …. Прежние данные: <папка>».
+fn restored_line(config: &Config, result: &mw_core::BackupRestoreResult) -> String {
     let mut line = format!(
         "Данные восстановлены из копии от {}.",
         result.copy.created_at.format("%d.%m.%Y %H:%M")
@@ -336,8 +370,7 @@ async fn run_restore(config: &Config, copy: PathBuf) -> Result<(), ServerError> 
             .join(safety);
         line.push_str(&format!(" Прежние данные: {}", path.display()));
     }
-    println!("{line}");
-    Ok(())
+    line
 }
 
 /// Время запроса: часы текущей базы (местное время предприятия). Команда нужна и тогда, когда база не

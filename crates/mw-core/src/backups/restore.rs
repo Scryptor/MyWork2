@@ -9,7 +9,9 @@ use mw_domain::validation::FieldError;
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
-use super::copy::{MANIFEST_FORMAT, Manifest, remove_dir_checked, unique_name, write_manifest};
+use super::copy::{
+    MANIFEST_FORMAT, Manifest, remove_dir_checked, unique_name, write_manifest, write_synced,
+};
 use super::{
     BackupCopy, BackupKind, BackupRestorePending, BackupRestoreResult, MANIFEST_FILE,
     default_backups_dir,
@@ -83,22 +85,27 @@ fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Option<T> {
     }
 }
 
-/// Пишет JSON во временный файл рядом и переименовывает его.
+/// Пишет JSON во временный файл рядом, сбрасывает его на диск и переименовывает.
 fn write_json<T: Serialize>(path: &Path, value: &T) -> std::io::Result<()> {
-    let tmp = path.with_extension("tmp");
     let bytes = serde_json::to_vec_pretty(value).map_err(std::io::Error::other)?;
-    std::fs::write(&tmp, bytes)?;
-    std::fs::rename(&tmp, path).inspect_err(|_| {
-        std::fs::remove_file(&tmp).ok();
-    })
+    write_synced(path, &bytes)
+}
+
+/// Удаляет файл; «уже нет» не ошибка.
+fn remove_file_checked(path: &Path) -> std::io::Result<()> {
+    match std::fs::remove_file(path) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+        _ => Ok(()),
+    }
 }
 
 fn read_marker(data_dir: &Path) -> Option<Marker> {
     read_json(&data_dir.join(RESTORE_MARKER))
 }
 
-/// Ждущее восстановление.
-pub(crate) fn read_pending(data_dir: &Path) -> Option<BackupRestorePending> {
+/// Ждущее восстановление (отметка `restore.json`); пока оно есть, базу папки данных открывать нельзя:
+/// шаг 2 мог уже её перенести.
+pub fn pending_restore(data_dir: &Path) -> Option<BackupRestorePending> {
     read_marker(data_dir).map(|m| BackupRestorePending {
         copy: m.copy,
         requested_at: m.requested_at,
@@ -182,6 +189,15 @@ fn write_marker(
             e,
         )
     })?;
+    // Итог прошлого восстановления уходит до новой отметки: иначе «Скрыть» итога отменило бы новый запрос.
+    let result_path = data_dir.join(RESTORE_RESULT);
+    remove_file_checked(&result_path).map_err(|e| {
+        io_err(
+            "не удалось убрать итог прошлого восстановления",
+            &result_path,
+            e,
+        )
+    })?;
     let path = data_dir.join(RESTORE_MARKER);
     write_json(&path, &marker)
         .map_err(|e| io_err("не удалось записать отметку восстановления", &path, e))?;
@@ -202,14 +218,7 @@ impl Core {
         actor.require(Permission::UsersManage)?;
         actor.require(Permission::SettingsManage)?;
         let data_dir = self.backups_data_dir()?.to_path_buf();
-        let (dir, _) = self.backups_root()?;
-        let Some(path) = super::list_copies(&dir)
-            .into_iter()
-            .find(|(_, c, _)| c.name == name)
-            .map(|(path, _, _)| path)
-        else {
-            return Err(bad("backup_missing"));
-        };
+        let path = self.find_copy(name)?;
         let _guard = self.backup_guard()?;
         let copy = check_copy(&path).await.map_err(bad)?;
         let at = self.now();
@@ -241,7 +250,7 @@ impl Core {
         actor.require(Permission::UsersManage)?;
         actor.require(Permission::SettingsManage)?;
         let data_dir = self.backups_data_dir()?.to_path_buf();
-        let pending = read_pending(&data_dir);
+        let pending = pending_restore(&data_dir);
         let tx = self.begin_write().await?;
         if let Some(pending) = &pending {
             write_audit(
@@ -261,11 +270,7 @@ impl Core {
         }
         for file in [RESTORE_MARKER, RESTORE_RESULT] {
             let path = data_dir.join(file);
-            match std::fs::remove_file(&path) {
-                Ok(()) => {}
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-                Err(e) => return Err(io_err("не удалось убрать файл", &path, e)),
-            }
+            remove_file_checked(&path).map_err(|e| io_err("не удалось убрать файл", &path, e))?;
         }
         remove_dir_checked(&data_dir.join(RESTORE_STAGING)).map_err(|e| {
             io_err(
@@ -392,6 +397,14 @@ async fn apply(
 
     let (d, s) = (data_dir.to_path_buf(), staging.clone());
     run_blocking(move || move_into_place(&d, &s)).await?;
+    // Без базы на месте подключение создало бы пустую: это не успех.
+    if !data_dir.join(DB_FILE).is_file() {
+        return Err(CoreError::Internal(format!(
+            "Восстановление не закончено: после переноса копии в папке данных нет базы {DB_FILE}. \
+             Прежние данные — в страховочной копии {}.",
+            default_backups_dir(data_dir).join(&phase.safety).display()
+        )));
+    }
     let result = BackupRestoreResult {
         ok: true,
         copy: marker.copy.clone(),
@@ -499,6 +512,8 @@ fn exists(path: &Path) -> bool {
 }
 
 /// Шаг 2: прежние база и вложения уходят в страховочную копию; переносится только то, что ещё на месте.
+/// Поверх того, что уже лежит в страховочной копии, не переносится ничего: там прежние данные, а в папке
+/// данных после оборванного шага может оказаться новая пустая база.
 fn move_aside(data_dir: &Path, staging: &Path, safety: &str) -> Result<(), CoreError> {
     let safety_dir = default_backups_dir(data_dir).join(safety);
     let fail = |e: std::io::Error| {
@@ -509,12 +524,29 @@ fn move_aside(data_dir: &Path, staging: &Path, safety: &str) -> Result<(), CoreE
             staging.display()
         ))
     };
+    let taken = |name: &str| {
+        CoreError::Internal(format!(
+            "Восстановление не закончено: {name} есть и в папке данных, и в страховочной копии {}. \
+             Чтобы не затереть страховочную копию, ничего не перенесено: данные на месте, \
+             страховочная копия цела.",
+            safety_dir.display()
+        ))
+    };
     std::fs::create_dir_all(&safety_dir).map_err(fail)?;
-    for name in [DB_FILE, DB_WAL, DB_SHM, ATTACHMENTS] {
-        let from = data_dir.join(name);
-        if exists(&from) {
-            std::fs::rename(&from, safety_dir.join(name)).map_err(fail)?;
+    let present: Vec<&str> = [DB_FILE, DB_WAL, DB_SHM, ATTACHMENTS]
+        .into_iter()
+        .filter(|name| exists(&data_dir.join(name)))
+        .collect();
+    if let Some(name) = present.iter().find(|name| exists(&safety_dir.join(name))) {
+        return Err(taken(name));
+    }
+    for name in present {
+        let to = safety_dir.join(name);
+        // `rename` заменил бы файл на месте: проверка ещё раз прямо перед переносом.
+        if exists(&to) {
+            return Err(taken(name));
         }
+        std::fs::rename(data_dir.join(name), &to).map_err(fail)?;
     }
     Ok(())
 }
