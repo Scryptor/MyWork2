@@ -453,7 +453,7 @@ impl Core {
     /// Копия под блокировкой: ход, сборка, запись в журнал для ручной.
     async fn run_backup(
         &self,
-        _guard: OwnedMutexGuard<()>,
+        _guard: &OwnedMutexGuard<()>,
         kind: BackupKind,
         dir: PathBuf,
         actor: Option<&Actor>,
@@ -488,6 +488,12 @@ impl Core {
         result
     }
 
+    /// Только для тестов: занимает «одну копию за раз», пока жив возвращённый знак.
+    #[cfg(any(test, feature = "testing"))]
+    pub fn hold_backup_lock_for_tests(&self) -> Result<Box<dyn std::any::Any + Send>, CoreError> {
+        Ok(Box::new(self.backup_guard()?))
+    }
+
     /// Делает копию и ждёт её конца.
     pub async fn create_backup(
         &self,
@@ -502,7 +508,7 @@ impl Core {
         };
         let guard = self.backup_guard()?;
         self.job_begin(kind, None);
-        self.run_backup(guard, kind, dir, Some(actor)).await
+        self.run_backup(&guard, kind, dir, Some(actor)).await
     }
 
     /// Ручная копия фоном: сразу возвращает ход.
@@ -515,7 +521,7 @@ impl Core {
         let core = self.clone();
         let actor = actor.clone();
         self.spawn_background(async move {
-            core.run_backup(guard, BackupKind::Manual, dir, Some(&actor))
+            core.run_backup(&guard, BackupKind::Manual, dir, Some(&actor))
                 .await
                 .ok();
         });
@@ -552,7 +558,7 @@ impl Core {
             }),
         );
         let copy = self
-            .run_backup(guard, BackupKind::Auto, dir.clone(), None)
+            .run_backup(&guard, BackupKind::Auto, dir.clone(), None)
             .await?;
         let keep = usize::from(settings.keep);
         let prune_dir = dir;
@@ -578,9 +584,10 @@ impl Core {
             )]));
         };
         let _guard = self.backup_guard()?;
-        tokio::task::spawn_blocking(move || copy::remove_dir(&path))
+        tokio::task::spawn_blocking(move || copy::remove_dir_checked(&path))
             .await
-            .map_err(|e| CoreError::Internal(e.to_string()))?;
+            .map_err(|e| CoreError::Internal(e.to_string()))?
+            .map_err(|e| CoreError::Internal(format!("не удалось удалить копию: {e}")))?;
         let tx = self.begin_write().await?;
         write_audit(
             &tx,

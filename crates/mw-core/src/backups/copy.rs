@@ -102,10 +102,17 @@ pub(crate) fn remove_partials(dir: &Path) {
     }
 }
 
+/// Удаляет папку; «уже нет» не ошибка.
+pub(crate) fn remove_dir_checked(path: &Path) -> std::io::Result<()> {
+    match std::fs::remove_dir_all(path) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+        _ => Ok(()),
+    }
+}
+
+/// Удаляет папку, как получится: ошибка только в журнал работы (недоделанные копии, хранение N).
 pub(crate) fn remove_dir(path: &Path) {
-    if let Err(e) = std::fs::remove_dir_all(path)
-        && e.kind() != std::io::ErrorKind::NotFound
-    {
+    if let Err(e) = remove_dir_checked(path) {
         tracing::warn!(path = %path.display(), error = %e, "папка копии не удалена");
     }
 }

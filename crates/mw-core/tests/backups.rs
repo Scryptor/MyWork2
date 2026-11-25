@@ -661,13 +661,49 @@ async fn a_second_copy_while_one_runs_is_refused() {
             check_refusal(&t).await;
             continue;
         }
-        let _ = t.core.start_backup(&admin()).await.unwrap();
-        match t.core.create_backup(&admin(), BackupKind::Manual).await {
-            Err(CoreError::InUse(m)) => assert_eq!(m, "Копия уже делается — дождитесь её"),
-            // Первая копия могла уже закончиться: тогда вторая прошла.
-            Ok(_) => {}
-            Err(other) => panic!("{other:?}"),
+        let held = t.core.hold_backup_lock_for_tests().unwrap();
+        for result in [
+            t.core.create_backup(&admin(), BackupKind::Manual).await,
+            t.core.start_backup(&admin()).await.map(|_| unreachable!()),
+        ] {
+            match result {
+                Err(CoreError::InUse(m)) => assert_eq!(m, "Копия уже делается — дождитесь её"),
+                other => panic!("{other:?}"),
+            }
         }
-        t.core.wait_background(Duration::from_secs(10)).await;
+        assert!(t.core.run_auto_backup_if_due().await.unwrap().is_none());
+        assert!(t.backups().read_dir().is_err() || names(&t.backups()).is_empty());
+        drop(held);
+        t.core
+            .create_backup(&admin(), BackupKind::Manual)
+            .await
+            .unwrap();
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_copy_that_cannot_be_deleted_is_an_error_and_not_logged() {
+    use std::os::unix::fs::PermissionsExt;
+    for t in cores().await {
+        if !t.sqlite() {
+            continue;
+        }
+        let copy = t
+            .core
+            .create_backup(&admin(), BackupKind::Manual)
+            .await
+            .unwrap();
+        let dir = t.backups().join(&copy.name);
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o555)).unwrap();
+        let root = std::fs::File::create(dir.join("probe")).is_ok();
+        let result = t.core.delete_backup(&admin(), &copy.name).await;
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+        if root {
+            continue;
+        }
+        assert!(matches!(result, Err(CoreError::Internal(_))), "{result:?}");
+        assert!(dir.exists());
+        assert_eq!(count_audit(&t.core, "backup.deleted").await, 0);
     }
 }
