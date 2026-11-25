@@ -215,6 +215,7 @@ fn field_error_messages_are_russian() {
         "too_many_pages",
         "too_many_pixels",
         "requires_a4",
+        "requires_a4_landscape",
         "not_allowed",
         "nested_columns",
         "fill_in_columns",

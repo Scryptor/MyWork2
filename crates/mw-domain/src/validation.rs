@@ -3,8 +3,8 @@ use serde::{Deserialize, Serialize};
 /// Ошибка валидации поля: имя поля и машинный код (`required`, `invalid`, `too_short`,
 /// `duplicate`, `out_of_range`, `estimate_range`, `deleted`, `last_admin`, `last_issued_status`,
 /// `comma`, `changes_term`, `stale`, `closed`, `too_many`, `too_long`, `too_large`, `no_room`, `text_budget`, `code_budget`, `typst_error`, `code_timeout`, `code_crashed`, `too_slow`, `code_unavailable`, `too_many_pages`, `too_many_pixels`, `requires_a4`,
-/// `not_allowed`, `nested_columns`, `fill_in_columns`, `unsupported`, `mismatch`, `not_editable`,
-/// `not_enough_stock`).
+/// `requires_a4_landscape`, `not_allowed`, `nested_columns`, `fill_in_columns`, `unsupported`,
+/// `mismatch`, `not_editable`, `not_enough_stock`, `builtin_missing`, `not_a_link`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
 pub struct FieldError {
     /// Имя поля запроса.
@@ -96,6 +96,9 @@ impl FieldError {
             "requires_a4" => {
                 "Раскладка «2 на лист A4» — только для страницы A4 в книжной ориентации"
             }
+            "requires_a4_landscape" => {
+                "Раскладка «Два рядом на альбомном A4» — только для A4 в альбомной ориентации"
+            }
             "not_allowed" => "Не подходит для этого документа",
             "nested_columns" => "Колонки нельзя вкладывать в колонки",
             "fill_in_columns" => "Растягивать штрихкод на высоту нельзя внутри колонок",
@@ -141,6 +144,19 @@ mod tests {
         assert_ne!(
             FieldError::new("logo", "unsupported").message_ru(),
             FieldError::new("file", "unsupported").message_ru()
+        );
+    }
+
+    /// Обе раскладки «на A4» называют ориентацию, которой ждут, — и при импорте файла шаблона тоже.
+    #[test]
+    fn a4_layouts_name_their_orientation() {
+        assert_eq!(
+            FieldError::new("layout", "requires_a4").message_ru(),
+            "Раскладка «2 на лист A4» — только для страницы A4 в книжной ориентации"
+        );
+        assert_eq!(
+            FieldError::new("layout", "requires_a4_landscape").message_ru(),
+            "Раскладка «Два рядом на альбомном A4» — только для A4 в альбомной ориентации"
         );
     }
 
