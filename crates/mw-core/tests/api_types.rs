@@ -241,6 +241,14 @@ fn field_error_messages_are_russian() {
         "mismatch",
         "not_editable",
         "period_reversed",
+        "folder_relative",
+        "folder_missing",
+        "folder_inside_data",
+        "folder_read_only",
+        "backup_missing",
+        "backup_damaged",
+        "backup_too_new",
+        "backup_pending",
     ] {
         assert!(
             FieldError::new("x", code)

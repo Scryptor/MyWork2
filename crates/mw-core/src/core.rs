@@ -53,6 +53,12 @@ pub struct Core {
     pub(crate) shutdown: CancellationToken,
     /// Порядок обновления кэша настроек (см. `Core::commit_with_settings`).
     pub(crate) settings_gate: Arc<tokio::sync::Mutex<()>>,
+    /// Резервные копии включены (`with_backups`).
+    pub(crate) backups_on: bool,
+    /// Одна копия за раз.
+    pub(crate) backup_lock: Arc<tokio::sync::Mutex<()>>,
+    /// Ход последней копии с запуска.
+    pub(crate) backup_job: Arc<std::sync::Mutex<Option<crate::backups::BackupJob>>>,
 }
 
 impl Core {
@@ -79,6 +85,9 @@ impl Core {
             background: TaskTracker::new(),
             shutdown: CancellationToken::new(),
             settings_gate: Arc::new(tokio::sync::Mutex::new(())),
+            backups_on: false,
+            backup_lock: Arc::new(tokio::sync::Mutex::new(())),
+            backup_job: Arc::new(std::sync::Mutex::new(None)),
         })
     }
 

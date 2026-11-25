@@ -4,6 +4,7 @@ mod actor;
 pub mod attachments;
 mod audit;
 mod auth;
+pub mod backups;
 mod clients;
 mod clients_merge;
 mod clock;
@@ -38,6 +39,10 @@ pub use auth::{
     LAST_SEEN_THROTTLE_SECS, MAX_CONCURRENT_PASSWORD_HASHES, MIN_PASSWORD_CHARS, MasterUser,
     NewRole, NewUser, PasswordScheme, Role, RolePatch, SESSION_IDLE_DAYS, Session, User, UserPatch,
     hash_password, legacy_sha1_hex, verify_password,
+};
+pub use backups::{
+    BackupCopy, BackupJob, BackupKind, BackupLegacySettings, BackupOverview, BackupRestorePending,
+    BackupRestoreResult, BackupSettings, BackupSettingsPatch,
 };
 pub use clients::{
     Client, ClientFilter, ClientListItem, ClientPatch, ClientPhone, ClientSort, ClientSortField,

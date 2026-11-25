@@ -4,6 +4,7 @@ mod drafts;
 mod logo;
 mod photo;
 mod store;
+pub(crate) mod tree;
 
 use std::path::PathBuf;
 

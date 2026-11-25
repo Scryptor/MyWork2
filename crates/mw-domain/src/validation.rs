@@ -5,7 +5,8 @@ use serde::{Deserialize, Serialize};
 /// `comma`, `changes_term`, `stale`, `closed`, `too_many`, `too_long`, `too_large`, `no_room`, `text_budget`, `code_budget`, `typst_error`, `code_timeout`, `code_crashed`, `too_slow`, `code_unavailable`, `too_many_pages`, `too_many_pixels`, `requires_a4`,
 /// `requires_a4_landscape`, `not_allowed`, `nested_columns`, `fill_in_columns`, `unsupported`,
 /// `mismatch`, `not_editable`, `not_enough_stock`, `builtin_missing`, `not_a_link`, `period_reversed`,
-/// `too_many_rows`, `nothing_to_export`).
+/// `too_many_rows`, `nothing_to_export`, `folder_relative`, `folder_missing`, `folder_inside_data`,
+/// `folder_read_only`, `backup_missing`, `backup_damaged`, `backup_too_new`, `backup_pending`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
 pub struct FieldError {
     /// Имя поля запроса.
@@ -112,6 +113,18 @@ impl FieldError {
                 "Слишком много строк для одного файла — не больше 50 000, сузьте выборку"
             }
             "nothing_to_export" => "Нет клиентов с телефонами для выгрузки",
+            "folder_relative" => "Укажите полный путь к папке",
+            "folder_missing" => "Такой папки нет на этом компьютере",
+            "folder_inside_data" => {
+                "Папка копий не может лежать внутри папки данных — выберите другую или оставьте папку по умолчанию"
+            }
+            "folder_read_only" => "В эту папку нельзя записать",
+            "backup_missing" => "Такой копии нет",
+            "backup_damaged" => "Копия повреждена — выберите другую",
+            "backup_too_new" => {
+                "Копия сделана более новой версией программы — сначала обновите программу"
+            }
+            "backup_pending" => "Эта копия ждёт восстановления — сначала отмените его",
             _ => "Недопустимое значение",
         }
     }
