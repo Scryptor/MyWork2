@@ -580,6 +580,8 @@ pub fn sample_bundle() -> mw_core::ImportBundle {
     o5.issued_at = Some(dt(2015, 3, 7, 0, 0));
     o5.final_price = Some(Money::from_rubles(1500));
     o5.warranty = "30 дней".into();
+    o5.prepayment = Money::from_rubles(500);
+    o5.prepaid_at = Some(dt(2015, 3, 5, 14, 20));
     o5.barcode = "123456789012".into();
     let mut o6 = order(6, 7, "Куплен", dt(2015, 3, 6, 9, 5));
     o6.deleted_at = Some(dt(2015, 3, 8, 10, 0));

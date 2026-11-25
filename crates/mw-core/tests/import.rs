@@ -159,6 +159,66 @@ async fn import_into_empty_database_keeps_numbers_and_continues_them() {
     }
 }
 
+/// Предоплата MyWork 2 становится перенесённым платежом, как при переносе предоплаты в базе.
+#[tokio::test]
+async fn legacy_prepayment_becomes_a_payment() {
+    use mw_db::entity::{order, order_payment};
+    use sea_orm::QueryOrder;
+    for t in cores().await {
+        t.core
+            .import_bundle(&admin(), sample_bundle(), ImportMode::IntoEmpty)
+            .await
+            .unwrap();
+        let rows = order_payment::Entity::find()
+            .order_by_asc(order_payment::Column::Id)
+            .all(t.core.db())
+            .await
+            .unwrap();
+        assert_eq!(rows.len(), 1, "{}", t.label);
+        let p = &rows[0];
+        let stamp = chrono::NaiveDate::from_ymd_opt(2015, 3, 5)
+            .unwrap()
+            .and_hms_opt(14, 20, 0)
+            .unwrap();
+        assert_eq!(
+            (
+                p.order_id,
+                p.day,
+                p.amount,
+                p.legacy,
+                p.stage.as_str(),
+                p.received_by.as_str(),
+                p.added_by_name.as_str(),
+                p.added_by_id,
+                p.added_at,
+                p.request_key.as_deref(),
+            ),
+            (
+                5,
+                stamp.date(),
+                50_000,
+                true,
+                "before_issue",
+                "",
+                "",
+                None,
+                stamp,
+                None
+            ),
+            "{}",
+            t.label
+        );
+        let o = t.core.get_order(&admin(), 5).await.unwrap();
+        assert_eq!(o.prepayment, mw_domain::money::Money::from_rubles(500));
+        let stored = order::Entity::find_by_id(5)
+            .one(t.core.db())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored.prepaid_at, None, "{}", t.label);
+    }
+}
+
 /// Склад пакета: позиции с исходными номерами и ключами поиска, запчасти заказов как
 /// перенесённые; остаток позиции не меняется; следующая позиция — с номером пакета.
 #[tokio::test]
@@ -727,12 +787,16 @@ async fn replace_wipes_the_stock_written_after_the_previous_import() {
             .unwrap(),
         0
     );
+    let payments = mw_db::entity::order_payment::Entity::find()
+        .all(core.db())
+        .await
+        .unwrap();
     assert_eq!(
-        mw_db::entity::order_payment::Entity::find()
-            .count(core.db())
-            .await
-            .unwrap(),
-        0
+        payments
+            .iter()
+            .map(|p| (p.order_id, p.legacy))
+            .collect::<Vec<_>>(),
+        [(5, true)]
     );
     assert_eq!((s.stock_items, s.order_parts), (1, 2));
     assert_eq!(core.import_target_state().await.unwrap().stock_items, 1);

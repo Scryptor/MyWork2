@@ -9,6 +9,7 @@ use mw_db::entity::{
 };
 use mw_db::ids::{IdTable, set_next_id};
 use mw_domain::dictionary::{DEFAULT_DICTIONARY, DictionaryKind};
+use mw_domain::payment::PaymentStage;
 use mw_domain::permission::Permission;
 use mw_domain::phone::{normalize_phone, phone_key};
 use mw_domain::search::normalize_search;
@@ -474,15 +475,16 @@ async fn write_clients(conn: &impl ConnectionTrait, b: &ImportBundle) -> Result<
     Ok(phone_count)
 }
 
-/// Заказы и трек-номера; возвращает число трек-номеров.
+/// Заказы, трек-номера и платежи из предоплаты; возвращает число трек-номеров и платежей.
 async fn write_orders(
     conn: &impl ConnectionTrait,
     b: &ImportBundle,
     status_ids: &HashMap<String, i64>,
     point_ids: &HashMap<String, i64>,
-) -> Result<u64, CoreError> {
+) -> Result<(u64, u64), CoreError> {
     let mut orders = Vec::with_capacity(b.orders.len());
     let mut tracking = Vec::new();
+    let mut payments = Vec::new();
     for o in &b.orders {
         let (warranty_text, warranty_days, warranty_months) = warranty_columns(&o.warranty);
         let mut m = order::Model {
@@ -492,7 +494,8 @@ async fn write_orders(
             status_id: status_ids[&o.status],
             received_at: o.received_at,
             issued_at: o.issued_at,
-            prepaid_at: o.prepaid_at,
+            // Предоплата переезжает в платёж ниже; поле заказа больше не пишется.
+            prepaid_at: None,
             device_type: o.device_type.clone(),
             brand: o.brand.clone(),
             model: o.model.clone(),
@@ -535,6 +538,23 @@ async fn write_orders(
         m.search_text = order_search_text(&m);
         set_order_keys(&mut m);
         orders.push(order::ActiveModel::from(m).reset_all());
+        if o.prepayment.kopecks() > 0 {
+            // Как в миграции данных: день и время — дата предоплаты, а без неё — приёма.
+            let stamp = o.prepaid_at.unwrap_or(o.received_at);
+            payments.push(order_payment::ActiveModel {
+                id: NotSet,
+                order_id: Set(o.id),
+                day: Set(stamp.date()),
+                amount: Set(o.prepayment.kopecks()),
+                received_by: Set(String::new()),
+                stage: Set(PaymentStage::BeforeIssue.as_str().to_owned()),
+                added_by_id: Set(None),
+                added_by_name: Set(String::new()),
+                added_at: Set(stamp),
+                legacy: Set(true),
+                request_key: Set(None),
+            });
+        }
         for (i, (number, description)) in o.tracking.iter().enumerate() {
             tracking.push(order_tracking::ActiveModel {
                 id: NotSet,
@@ -546,9 +566,11 @@ async fn write_orders(
         }
     }
     let tracking_count = tracking.len() as u64;
+    let payment_count = payments.len() as u64;
     insert_chunked::<order::Entity>(conn, orders).await?;
     insert_chunked::<order_tracking::Entity>(conn, tracking).await?;
-    Ok(tracking_count)
+    insert_chunked::<order_payment::Entity>(conn, payments).await?;
+    Ok((tracking_count, payment_count))
 }
 
 /// Настройки: стандартные значения, поверх них пакет, часовой пояс прежний.
@@ -777,7 +799,7 @@ impl Core {
         // Стирание убрало и готовые роли: тех, что нет в пакете, добавляем заново.
         let builtin_roles = mw_db::roles::ensure_builtin_roles(tx).await?.len() as u64;
         let phone_count = write_clients(tx, b).await?;
-        let tracking_count = write_orders(tx, b, &status_ids, &point_ids).await?;
+        let (tracking_count, payment_count) = write_orders(tx, b, &status_ids, &point_ids).await?;
 
         let now = self.now();
         write_stock(tx, &b.stock, now).await?;
@@ -890,6 +912,7 @@ impl Core {
         expect_count::<client_phone::Entity>(tx, "телефоны", phone_count).await?;
         expect_count::<order::Entity>(tx, "заказы", b.orders.len() as u64).await?;
         expect_count::<order_tracking::Entity>(tx, "трек-номера", tracking_count).await?;
+        expect_count::<order_payment::Entity>(tx, "платежи", payment_count).await?;
         let stock_items = b.stock.items.len() as u64;
         let order_parts = b.stock.parts.len() as u64;
         expect_count::<stock_item::Entity>(tx, "позиции склада", stock_items).await?;
