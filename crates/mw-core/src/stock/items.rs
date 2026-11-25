@@ -1,13 +1,14 @@
 //! Позиции склада: список, сводка, позиция, добавление, правка, удаление, история.
 
-use mw_db::entity::stock_item;
+use mw_db::entity::{stock_item, stock_place, stock_rack};
 use mw_domain::permission::Permission;
 use mw_domain::search::{like_contains, search_tokens};
+use mw_domain::stock_place::{Grid, PlaceTarget, place_candidates, place_in_rack, rack_part};
 use mw_domain::validation::FieldError;
 use sea_orm::sea_query::{Condition, Expr, ExprTrait, LikeExpr, Order};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseTransaction, EntityTrait, NotSet,
-    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Select, Set,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, QueryTrait, Select, Set,
 };
 use serde_json::{Map, Value, json};
 
@@ -16,8 +17,8 @@ use super::places::{
     resolve_cell,
 };
 use super::{
-    ENTITY, NewStockItem, StockFilter, StockItem, StockItemPatch, StockSortField, StockSummary,
-    deleted_error, display_name, stock_item as to_item, validate,
+    ENTITY, NewStockItem, StockFilter, StockItem, StockItemPatch, StockListing, StockSortField,
+    StockSummary, deleted_error, display_name, stock_item as to_item, validate,
 };
 use crate::page::validate_page;
 use crate::search_index::set_stock_keys;
@@ -75,6 +76,109 @@ pub(super) fn search_condition(query: &str) -> Condition {
     }
 }
 
+/// Место, по которому ищут: шкаф, цель в нём и канонический код.
+pub(super) struct PlaceScope {
+    pub rack_id: i64,
+    pub target: PlaceTarget,
+    pub code: String,
+    /// Слова `query` действуют вместе с местом (место задано явно).
+    pub with_words: bool,
+}
+
+/// Шкаф и цель по коду (как есть или с русской раскладки); первое совпадение — ответ.
+pub(crate) async fn resolve_place(
+    conn: &impl ConnectionTrait,
+    code: &str,
+) -> Result<Option<(i64, PlaceTarget, String)>, CoreError> {
+    let candidates = place_candidates(code);
+    if candidates.is_empty() {
+        return Ok(None);
+    }
+    let racks = stock_rack::Entity::find().all(conn).await?;
+    for candidate in candidates {
+        let Some(rack) = racks.iter().find(|r| r.code == rack_part(&candidate)) else {
+            continue;
+        };
+        let grid = Grid {
+            shelves: rack.shelves,
+            cells_per_shelf: rack.cells_per_shelf,
+        };
+        if let Some(target) = place_in_rack(&candidate, &rack.code, grid) {
+            return Ok(Some((rack.id, target, candidate)));
+        }
+    }
+    Ok(None)
+}
+
+/// Место поиска: явное `place` (неузнанное — ошибка) или весь `query`, если он — код места.
+pub(super) async fn place_scope(
+    conn: &impl ConnectionTrait,
+    filter: &StockFilter,
+) -> Result<Option<PlaceScope>, CoreError> {
+    let (code, with_words) = match &filter.place {
+        Some(code) => (code.as_str(), true),
+        None if !filter.as_text && !filter.query.trim().is_empty() => {
+            (filter.query.as_str(), false)
+        }
+        None => return Ok(None),
+    };
+    match resolve_place(conn, code).await? {
+        Some((rack_id, target, code)) => Ok(Some(PlaceScope {
+            rack_id,
+            target,
+            code,
+            with_words,
+        })),
+        None if with_words => Err(CoreError::Validation(vec![FieldError::new(
+            "place",
+            "no_such_place",
+        )])),
+        None => Ok(None),
+    }
+}
+
+/// Места выбранного шкафа или ячейки.
+pub(super) fn place_rows(scope: &PlaceScope) -> Select<stock_place::Entity> {
+    let mut rows =
+        stock_place::Entity::find().filter(stock_place::Column::RackId.eq(scope.rack_id));
+    if let PlaceTarget::Cell { shelf, cell } = scope.target {
+        rows = rows
+            .filter(stock_place::Column::Shelf.eq(shelf))
+            .filter(stock_place::Column::Cell.eq(cell));
+    }
+    rows
+}
+
+/// Позиции с остатком в месте.
+fn place_condition(scope: &PlaceScope) -> Condition {
+    Condition::all().add(
+        stock_item::Column::Id.in_subquery(
+            place_rows(scope)
+                .select_only()
+                .column(stock_place::Column::StockItemId)
+                .into_query(),
+        ),
+    )
+}
+
+/// Условие списка: место (если узнано) и слова, затем «Докупить».
+pub(super) fn filter_condition(filter: &StockFilter, scope: Option<&PlaceScope>) -> Condition {
+    let mut cond = Condition::all();
+    match scope {
+        Some(s) => {
+            cond = cond.add(place_condition(s));
+            if s.with_words {
+                cond = cond.add(search_condition(&filter.query));
+            }
+        }
+        None => cond = cond.add(search_condition(&filter.query)),
+    }
+    if filter.restock {
+        cond = cond.add(restock_condition());
+    }
+    cond
+}
+
 /// Накопитель различий: поле, русское название, было, стало.
 #[derive(Default)]
 struct Diff {
@@ -116,13 +220,27 @@ impl Core {
         limit: u64,
         offset: u64,
     ) -> Result<Page<StockItem>, CoreError> {
+        let l = self.search_stock(actor, filter, limit, offset).await?;
+        Ok(Page {
+            items: l.items,
+            total: l.total,
+        })
+    }
+
+    /// Поиск склада (право `stock_view`): как `list_stock`, плюс узнанное место. Код места в
+    /// `query` (и с русской раскладки) — только позиции оттуда; `place` — явно, вместе со словами.
+    pub async fn search_stock(
+        &self,
+        actor: &Actor,
+        filter: &StockFilter,
+        limit: u64,
+        offset: u64,
+    ) -> Result<StockListing, CoreError> {
         actor.require(Permission::StockView)?;
         validate_page(limit, offset)?;
         let backend = self.db.get_database_backend();
-        let mut select = live().filter(search_condition(&filter.query));
-        if filter.restock {
-            select = select.filter(restock_condition());
-        }
+        let scope = place_scope(&self.db, filter).await?;
+        let select = live().filter(filter_condition(filter, scope.as_ref()));
         let total = select.clone().count(&self.db).await?;
         let dir = if filter.sort.descending {
             Order::Desc
@@ -152,7 +270,11 @@ impl Core {
                 to_item(m, own)
             })
             .collect();
-        Ok(Page { items, total })
+        Ok(StockListing {
+            items,
+            total,
+            place: scope.map(|s| s.code),
+        })
     }
 
     /// Сводка склада (право `stock_view`): сколько позиций надо докупить.

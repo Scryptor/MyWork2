@@ -11,4 +11,8 @@ query?: string,
 /**
  * Только «Докупить»; по умолчанию `false`.
  */
-restock?: boolean, };
+restock?: boolean, 
+/**
+ * Не узнавать код места в `query`; по умолчанию `false`.
+ */
+as_text?: boolean, };

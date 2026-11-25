@@ -6097,6 +6097,24 @@
             }
           },
           {
+            "name": "place",
+            "in": "query",
+            "description": "Код шкафа или ячейки (`B`, `B-2-4`): только позиции оттуда, слова `query` действуют вместе\nс ним. Неизвестный код — 422 `place`/`no_such_place`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "as_text",
+            "in": "query",
+            "description": "Не узнавать код места в `query`, искать его как слова; по умолчанию `false`. Без этого\nзапрос, равный коду шкафа или ячейки (и с русской раскладки), показывает позиции оттуда.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "sort",
             "in": "query",
             "description": "Поле сортировки; по умолчанию наименование.",
@@ -6231,6 +6249,15 @@
             "name": "restock",
             "in": "query",
             "description": "Только «Докупить»; по умолчанию `false`.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "as_text",
+            "in": "query",
+            "description": "Не узнавать код места в `query`; по умолчанию `false`.",
             "required": false,
             "schema": {
               "type": "boolean"
@@ -12286,7 +12313,8 @@
         "description": "Страница склада.",
         "required": [
           "items",
-          "total"
+          "total",
+          "place"
         ],
         "properties": {
           "items": {
@@ -12295,6 +12323,13 @@
               "$ref": "#/components/schemas/StockItem"
             },
             "description": "Позиции страницы."
+          },
+          "place": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Канонический код узнанного места (шкаф или ячейка), иначе `null`."
           },
           "total": {
             "type": "integer",

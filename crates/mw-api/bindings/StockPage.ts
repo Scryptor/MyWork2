@@ -12,4 +12,8 @@ items: Array<StockItem>,
 /**
  * Сколько позиций подходит всего.
  */
-total: number, };
+total: number, 
+/**
+ * Канонический код узнанного места (шкаф или ячейка), иначе `null`.
+ */
+place: string | null, };

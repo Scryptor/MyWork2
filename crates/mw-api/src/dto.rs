@@ -352,6 +352,12 @@ pub struct StockListQuery {
     pub query: Option<String>,
     /// Только «Докупить»: остаток ниже порога «Докупить при»; по умолчанию `false`.
     pub restock: Option<bool>,
+    /// Код шкафа или ячейки (`B`, `B-2-4`): только позиции оттуда, слова `query` действуют вместе
+    /// с ним. Неизвестный код — 422 `place`/`no_such_place`.
+    pub place: Option<String>,
+    /// Не узнавать код места в `query`, искать его как слова; по умолчанию `false`. Без этого
+    /// запрос, равный коду шкафа или ячейки (и с русской раскладки), показывает позиции оттуда.
+    pub as_text: Option<bool>,
     /// Поле сортировки; по умолчанию наименование.
     pub sort: Option<mw_core::StockSortField>,
     /// Обратный порядок; по умолчанию `false`.
@@ -368,6 +374,8 @@ impl StockListQuery {
         mw_core::StockFilter {
             query: self.query.clone().unwrap_or_default(),
             restock: self.restock.unwrap_or(false),
+            place: self.place.clone(),
+            as_text: self.as_text.unwrap_or(false),
             sort: mw_core::StockSort {
                 field: self.sort.unwrap_or_default(),
                 descending: self.descending.unwrap_or(false),
@@ -386,6 +394,8 @@ pub struct StockRackQuery {
     pub query: Option<String>,
     /// Только «Докупить»; по умолчанию `false`.
     pub restock: Option<bool>,
+    /// Не узнавать код места в `query`; по умолчанию `false`.
+    pub as_text: Option<bool>,
 }
 
 impl StockRackQuery {
@@ -394,6 +404,7 @@ impl StockRackQuery {
         mw_core::StockFilter {
             query: self.query.clone().unwrap_or_default(),
             restock: self.restock.unwrap_or(false),
+            as_text: self.as_text.unwrap_or(false),
             ..Default::default()
         }
     }
@@ -406,13 +417,17 @@ pub struct StockPage {
     pub items: Vec<mw_core::StockItem>,
     /// Сколько позиций подходит всего.
     pub total: u64,
+    /// Канонический код узнанного места (шкаф или ячейка), иначе `null`.
+    #[schema(required = true)]
+    pub place: Option<String>,
 }
 
-impl From<mw_core::Page<mw_core::StockItem>> for StockPage {
-    fn from(p: mw_core::Page<mw_core::StockItem>) -> Self {
+impl From<mw_core::StockListing> for StockPage {
+    fn from(l: mw_core::StockListing) -> Self {
         Self {
-            items: p.items,
-            total: p.total,
+            items: l.items,
+            total: l.total,
+            place: l.place,
         }
     }
 }

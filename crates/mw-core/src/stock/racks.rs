@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use super::StockFilter;
-use super::items::{restock_condition, search_condition};
+use super::items::{filter_condition, place_rows, place_scope};
 use crate::statuses::{check_permutation, check_seen_order};
 use crate::{Actor, Core, CoreError, NewAuditEntry, write_audit};
 
@@ -172,23 +172,43 @@ pub(crate) fn occupied_refusal(code: &str, grid: Grid, cells: &[(i32, i32)]) -> 
     CoreError::InUse(text)
 }
 
-/// Позиции, подходящие под фильтр; `None` — фильтра нет, «найдено» нигде нет.
-fn matching_items(filter: &StockFilter) -> Option<sea_orm::sea_query::SelectStatement> {
-    if filter.query.trim().is_empty() && !filter.restock {
-        return None;
+/// Занятые ячейки, подходящие под фильтр. Узнанное из `query` место — его занятые ячейки
+/// (без «Докупить»); явное место — вместе со словами и «Докупить».
+async fn found_cells(
+    conn: &impl ConnectionTrait,
+    filter: &StockFilter,
+) -> Result<HashSet<(i64, i32, i32)>, CoreError> {
+    let scope = place_scope(conn, filter).await?;
+    let mut places = stock_place::Entity::find();
+    match &scope {
+        Some(s) if !s.with_words => {
+            let live = stock_item::Entity::find()
+                .filter(stock_item::Column::DeletedAt.is_null())
+                .select_only()
+                .column(stock_item::Column::Id)
+                .into_query();
+            places = place_rows(s).filter(stock_place::Column::StockItemId.in_subquery(live));
+        }
+        _ => {
+            let words = !filter.query.trim().is_empty();
+            if scope.is_none() && !words && !filter.restock {
+                return Ok(HashSet::new());
+            }
+            let items = stock_item::Entity::find()
+                .filter(stock_item::Column::DeletedAt.is_null())
+                .filter(filter_condition(filter, scope.as_ref()))
+                .select_only()
+                .column(stock_item::Column::Id)
+                .into_query();
+            places = places.filter(stock_place::Column::StockItemId.in_subquery(items));
+        }
     }
-    let mut select = stock_item::Entity::find()
-        .filter(stock_item::Column::DeletedAt.is_null())
-        .filter(search_condition(&filter.query));
-    if filter.restock {
-        select = select.filter(restock_condition());
-    }
-    Some(
-        select
-            .select_only()
-            .column(stock_item::Column::Id)
-            .into_query(),
-    )
+    Ok(places
+        .all(conn)
+        .await?
+        .into_iter()
+        .map(|p| (p.rack_id, p.shelf, p.cell))
+        .collect())
 }
 
 /// Шкафы с картой: счётчики позиций и признак «найдено» по фильтру.
@@ -201,16 +221,7 @@ async fn build(
     for p in stock_place::Entity::find().all(conn).await? {
         *counts.entry((p.rack_id, p.shelf, p.cell)).or_default() += 1;
     }
-    let mut found: HashSet<(i64, i32, i32)> = HashSet::new();
-    if let Some(items) = matching_items(filter) {
-        for p in stock_place::Entity::find()
-            .filter(stock_place::Column::StockItemId.in_subquery(items))
-            .all(conn)
-            .await?
-        {
-            found.insert((p.rack_id, p.shelf, p.cell));
-        }
-    }
+    let found = found_cells(conn, filter).await?;
     Ok(racks
         .into_iter()
         .map(|r| {

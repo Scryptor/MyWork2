@@ -258,7 +258,21 @@ pub struct StockFilter {
     pub query: String,
     /// Только «Докупить»: остаток ниже порога.
     pub restock: bool,
+    /// Код шкафа или ячейки (явный): только позиции оттуда, слова `query` действуют вместе с ним.
+    pub place: Option<String>,
+    /// Не узнавать код места в `query`: искать его как слова.
+    pub as_text: bool,
     pub sort: StockSort,
+}
+
+/// Ответ поиска склада: страница и узнанное место.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StockListing {
+    pub items: Vec<StockItem>,
+    /// Сколько позиций подходит всего.
+    pub total: u64,
+    /// Канонический код узнанного места (шкаф или ячейка); иначе `None`.
+    pub place: Option<String>,
 }
 
 /// Сводка склада.

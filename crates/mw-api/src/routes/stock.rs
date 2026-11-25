@@ -31,7 +31,7 @@ pub(super) async fn list_stock(
 ) -> Result<Json<StockPage>, ApiError> {
     let page = state
         .core
-        .list_stock(
+        .search_stock(
             &actor,
             &q.filter(),
             q.limit.unwrap_or(DEFAULT_PAGE_LIMIT),

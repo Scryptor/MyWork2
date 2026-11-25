@@ -48,7 +48,7 @@ describe('createStockList', () => {
 			limit: 100,
 			offset: 0
 		});
-		calls[1]!.answer({ items: [item(1), item(2)], total: 2 });
+		calls[1]!.answer({ items: [item(1), item(2)], total: 2, place: null });
 		await flush();
 		expect(list.rows.map((r) => r.id)).toEqual([1, 2]);
 		expect(list.total).toBe(2);

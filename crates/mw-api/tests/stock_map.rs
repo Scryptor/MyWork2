@@ -272,3 +272,56 @@ async fn places_exceed_is_422() {
         assert!(r.body.to_string().contains("places_exceed"), "{}", r.body);
     }
 }
+
+#[tokio::test]
+async fn stock_search_knows_place_codes() {
+    for t in apis(Listen::Network).await {
+        let token = t.token_with("sklad", &ALL).await;
+        let (rack, item) = rack_and_item(&t, &token).await;
+        let r = t
+            .send(
+                Method::POST,
+                &format!("/api/v1/stock/{item}/places"),
+                Some(&token),
+                Some(json!({ "place": { "rack_id": rack, "shelf": 2, "cell": 4 }, "quantity": 6 })),
+            )
+            .await;
+        assert_eq!(r.status, 200, "{}: {}", t.label, r.body);
+
+        let r = t.get("/api/v1/stock?query=%D0%B8-2-4", Some(&token)).await;
+        assert_eq!(
+            (r.status, &r.body["place"]),
+            (200, &json!("B-2-4")),
+            "{}: {}",
+            t.label,
+            r.body
+        );
+        let r = t
+            .get("/api/v1/stock?query=B-2-4&as_text=true", Some(&token))
+            .await;
+        assert_eq!(
+            (r.status, &r.body["place"], &r.body["items"]),
+            (200, &json!(null), &json!([])),
+            "{}: {}",
+            t.label,
+            r.body
+        );
+        let r = t.get("/api/v1/stock?place=nope", Some(&token)).await;
+        assert_eq!(r.status, 422, "{}: {}", t.label, r.body);
+        let text = r.body.to_string();
+        assert!(
+            text.contains("place") && text.contains("no_such_place"),
+            "{}: {text}",
+            t.label
+        );
+        let r = t.get("/api/v1/stock/racks?query=b-2-4", Some(&token)).await;
+        assert_eq!(r.status, 200, "{}: {}", t.label, r.body);
+        let cells = r.body[0]["cells"].as_array().unwrap();
+        let found: Vec<&str> = cells
+            .iter()
+            .filter(|c| c["found"] == json!(true))
+            .map(|c| c["code"].as_str().unwrap())
+            .collect();
+        assert_eq!(found, vec!["B-2-4"], "{}", t.label);
+    }
+}
