@@ -6,10 +6,10 @@ use std::fmt::Debug;
 
 use mw_core::{
     AppSettings, AuditEntry, Client, ClientPatch, ClientRef, DictionaryItem, DictionaryMerge,
-    DictionaryRename, IssuedFilter, MasterUser, NewClient, NewOrder, NewRole, NewStatus, NewUser,
-    Order, OrderListItem, OrderPatch, OrderSortField, ReportFilter, ReportGroupBy, RewriteResult,
-    Role, RolePatch, ServicePoint, ServicePointPatch, SettingsPatch, Status, StatusPatch, User,
-    UserPatch,
+    DictionaryRename, IssuedFilter, MasterUser, NewClient, NewOrder, NewRole, NewStatus,
+    NewStockRack, NewUser, Order, OrderListItem, OrderPatch, OrderSortField, ReportFilter,
+    ReportGroupBy, RewriteResult, Role, RolePatch, ServicePoint, ServicePointPatch, SettingsPatch,
+    Status, StatusPatch, StockRackPatch, User, UserPatch,
 };
 use mw_domain::dictionary::DictionaryKind;
 use mw_domain::money::Money;
@@ -53,6 +53,7 @@ const NULLABLE: &[(&str, &str)] = &[
     ("OrderPatch", "estimate_from"),
     ("OrderPatch", "estimate_to"),
     ("OrderPatch", "final_price"),
+    ("StockRackPatch", "service_point_id"),
 ];
 
 /// serde, TypeScript и OpenAPI согласны по каждому полю правки: необязательно, можно ли `null`.
@@ -108,6 +109,7 @@ fn patches_agree_on_absent_null_and_unknown_fields() {
     check_patch::<OrderPatch>();
     check_patch::<UserPatch>();
     check_patch::<RolePatch>();
+    check_patch::<StockRackPatch>();
 }
 
 #[test]
@@ -321,6 +323,9 @@ fn request_bodies_require_every_field() {
     check_new::<NewRole>(json!({ "name": "А", "permissions": ["orders_create"] }));
     check_new::<DictionaryRename>(json!({ "value": "А", "in_orders": true }));
     check_new::<DictionaryMerge>(json!({ "target_id": 1, "source_ids": [2], "in_orders": false }));
+    check_new::<NewStockRack>(
+        json!({ "code": "B", "label": "", "shelves": 3, "cells_per_shelf": 5, "service_point_id": null }),
+    );
     check_new::<NewOrder>(json!({
         "client": { "existing": 1 }, "service_point_id": null, "status_id": null,
         "device_type": "", "brand": "", "model": "", "serial": "", "color": "",

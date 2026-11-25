@@ -376,6 +376,29 @@ impl StockListQuery {
     }
 }
 
+/// Параметры карты склада: те же условия, что у поиска по складу.
+#[derive(Debug, Clone, Default, Deserialize, TS, IntoParams)]
+#[serde(deny_unknown_fields)]
+#[ts(optional_fields)]
+#[into_params(parameter_in = Query)]
+pub struct StockRackQuery {
+    /// Слова поиска, как у списка склада; ячейки с подходящей позицией помечаются.
+    pub query: Option<String>,
+    /// Только «Докупить»; по умолчанию `false`.
+    pub restock: Option<bool>,
+}
+
+impl StockRackQuery {
+    /// Условия для ядра.
+    pub fn filter(&self) -> mw_core::StockFilter {
+        mw_core::StockFilter {
+            query: self.query.clone().unwrap_or_default(),
+            restock: self.restock.unwrap_or(false),
+            ..Default::default()
+        }
+    }
+}
+
 /// Страница склада.
 #[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 pub struct StockPage {

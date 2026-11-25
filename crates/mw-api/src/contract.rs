@@ -11,7 +11,7 @@ use crate::{
     LegacyImportCheck, LegacyImportStart, LoginRequest, LoginResponse, NewServicePoint,
     NextOrderNumber, OrderListQuery, OrderPage, OrderSummaryQuery, OrderValuesQuery, PageQuery,
     PhoneQuery, ReorderRequest, ServerInfo, SetPasswordRequest, StatusChange, StockListQuery,
-    StockPage, VersionParam,
+    StockPage, StockRackQuery, VersionParam,
 };
 
 /// Выгружает в `dir` TS-типы всех корневых типов API вместе с зависимостями
@@ -74,6 +74,11 @@ pub fn export_typescript(dir: &Path) -> Result<(), ts_rs::ExportError> {
     mw_core::StockItemPatch::export_all(&cfg)?;
     mw_core::StockSortField::export_all(&cfg)?;
     mw_core::StockSummary::export_all(&cfg)?;
+    StockRackQuery::export_all(&cfg)?;
+    mw_core::StockRack::export_all(&cfg)?;
+    mw_core::StockCell::export_all(&cfg)?;
+    mw_core::NewStockRack::export_all(&cfg)?;
+    mw_core::StockRackPatch::export_all(&cfg)?;
     mw_core::NewOrderPart::export_all(&cfg)?;
     mw_core::OrderPart::export_all(&cfg)?;
     mw_core::OrderParts::export_all(&cfg)?;

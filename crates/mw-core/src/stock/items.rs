@@ -35,7 +35,7 @@ fn live() -> Select<stock_item::Entity> {
 }
 
 /// «Докупить»: порог задан, а остаток ниже него (как `mw_domain::stock::needs_restock`).
-fn restock_condition() -> Condition {
+pub(super) fn restock_condition() -> Condition {
     Condition::all()
         .add(Expr::col(stock_item::Column::RestockThreshold).gt(0))
         .add(
@@ -54,7 +54,7 @@ fn item_number(query: &str) -> Option<i64> {
 }
 
 /// Все слова запроса есть в тексте позиции, или запрос — её номер.
-fn search_condition(query: &str) -> Condition {
+pub(super) fn search_condition(query: &str) -> Condition {
     let mut words = Condition::all();
     for token in search_tokens(query) {
         words = words.add(

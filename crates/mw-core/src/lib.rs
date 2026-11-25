@@ -85,8 +85,8 @@ pub use settings::{AppSettings, SettingsPatch};
 pub use setup::SetupRequest;
 pub use statuses::{NewStatus, Status, StatusPatch};
 pub use stock::{
-    NewOrderPart, NewStockItem, OrderPart, OrderParts, StockFilter, StockItem, StockItemPatch,
-    StockSort, StockSortField, StockSummary,
+    NewOrderPart, NewStockItem, NewStockRack, OrderPart, OrderParts, StockCell, StockFilter,
+    StockItem, StockItemPatch, StockRack, StockRackPatch, StockSort, StockSortField, StockSummary,
 };
 pub use usage::CatalogUsage;
 

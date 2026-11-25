@@ -35,7 +35,7 @@ pub use dto::{
     NewServicePoint, NextOrderNumber, OrderCommentPage, OrderCommentQuery, OrderExportQuery,
     OrderListQuery, OrderPage, OrderReportQuery, OrderSummaryQuery, OrderValuesQuery, PageQuery,
     PhoneQuery, ReorderRequest, ServerInfo, SetPasswordRequest, StatusChange, StockListQuery,
-    StockPage, TemplatePreview, VersionParam,
+    StockPage, StockRackQuery, TemplatePreview, VersionParam,
 };
 pub use error::{ErrorBody, ErrorCode, ErrorField};
 pub use state::ApiConfig;

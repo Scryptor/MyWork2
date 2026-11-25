@@ -23,6 +23,7 @@ mod orders;
 mod reports;
 mod setup;
 mod stock;
+mod stock_map;
 mod users;
 
 /// Все маршруты API.
@@ -38,6 +39,7 @@ pub(crate) fn api_routes() -> OpenApiRouter<AppState> {
         .merge(catalog_routes())
         .merge(client_routes())
         .merge(stock_routes())
+        .merge(stock_map_routes())
         .merge(order_routes())
         .merge(document_routes())
         .merge(report_routes())
@@ -148,6 +150,21 @@ fn stock_routes() -> OpenApiRouter<AppState> {
         ))
         .routes(routes!(stock::stock_item_history))
         .routes(routes!(stock::list_stock_photos))
+}
+
+/// Карта склада: шкафы.
+#[inline(never)]
+fn stock_map_routes() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(
+            stock_map::list_stock_racks,
+            stock_map::create_stock_rack
+        ))
+        .routes(routes!(stock_map::reorder_stock_racks))
+        .routes(routes!(
+            stock_map::update_stock_rack,
+            stock_map::delete_stock_rack
+        ))
 }
 
 /// Заказы, их журнал, комментарии и запчасти.

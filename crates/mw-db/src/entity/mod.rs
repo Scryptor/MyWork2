@@ -18,4 +18,6 @@ pub mod session;
 pub mod setting;
 pub mod status;
 pub mod stock_item;
+pub mod stock_place;
+pub mod stock_rack;
 pub mod user;

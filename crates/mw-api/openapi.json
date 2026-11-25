@@ -6210,6 +6210,245 @@
         ]
       }
     },
+    "/api/v1/stock/racks": {
+      "get": {
+        "tags": [
+          "Склад"
+        ],
+        "summary": "Шкафы с картой ячеек (право `stock_view`); ячейки с подходящей позицией помечены `found`.",
+        "operationId": "list_stock_racks",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "description": "Слова поиска, как у списка склада; ячейки с подходящей позицией помечаются.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "restock",
+            "in": "query",
+            "description": "Только «Докупить»; по умолчанию `false`.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Шкафы по порядку",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/StockRack"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Склад"
+        ],
+        "summary": "Новый шкаф в конце списка (право `stock_edit`).",
+        "operationId": "create_stock_rack",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewStockRack"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Шкаф добавлен",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StockRack"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/stock/racks/order": {
+      "put": {
+        "tags": [
+          "Склад"
+        ],
+        "summary": "Новый порядок шкафов: нужны номера всех шкафов (право `stock_edit`).",
+        "operationId": "reorder_stock_racks",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReorderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Порядок сохранён"
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/stock/racks/{id}": {
+      "delete": {
+        "tags": [
+          "Склад"
+        ],
+        "summary": "Удаление пустого шкафа насовсем (право `stock_edit`); с запчастями в ячейках — 409.",
+        "operationId": "delete_stock_rack",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер шкафа",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Шкаф удалён"
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "Склад"
+        ],
+        "summary": "Правка шкафа (право `stock_edit`). Ячейки, которых нет в новой сетке, должны быть пусты, иначе 409.",
+        "operationId": "update_stock_rack",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер шкафа",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StockRackPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Шкаф после изменения",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StockRack"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/stock/summary": {
       "get": {
         "tags": [
@@ -9872,6 +10111,46 @@
         },
         "additionalProperties": false
       },
+      "NewStockRack": {
+        "type": "object",
+        "description": "Новый шкаф.",
+        "required": [
+          "code",
+          "label",
+          "shelves",
+          "cells_per_shelf",
+          "service_point_id"
+        ],
+        "properties": {
+          "cells_per_shelf": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Сколько ячеек на полке, 1…20; всего в шкафу не больше 100."
+          },
+          "code": {
+            "type": "string",
+            "description": "Код шкафа."
+          },
+          "label": {
+            "type": "string",
+            "description": "Подпись, до 100 знаков."
+          },
+          "service_point_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Точка обслуживания (не в архиве); `null` — не указана."
+          },
+          "shelves": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Сколько полок, 1…20."
+          }
+        },
+        "additionalProperties": false
+      },
       "NewUser": {
         "type": "object",
         "description": "Данные нового пользователя; пароль в логи не попадает.",
@@ -11508,6 +11787,42 @@
         },
         "additionalProperties": false
       },
+      "StockCell": {
+        "type": "object",
+        "description": "Ячейка шкафа на карте.",
+        "required": [
+          "shelf",
+          "cell",
+          "code",
+          "positions",
+          "found"
+        ],
+        "properties": {
+          "cell": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Номер ячейки на полке, с 1."
+          },
+          "code": {
+            "type": "string",
+            "description": "Код ячейки, например `B-2-4`."
+          },
+          "found": {
+            "type": "boolean",
+            "description": "В ячейке есть позиция, подходящая под поиск или «Докупить»; без фильтра — `false`."
+          },
+          "positions": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Сколько позиций лежит в ячейке."
+          },
+          "shelf": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Номер полки, с 1."
+          }
+        }
+      },
       "StockImportSummary": {
         "type": "object",
         "description": "Итог переноса склада из прошлого импорта.",
@@ -11708,6 +12023,98 @@
             "minimum": 0
           }
         }
+      },
+      "StockRack": {
+        "type": "object",
+        "description": "Шкаф склада со всей сеткой ячеек.",
+        "required": [
+          "id",
+          "code",
+          "label",
+          "shelves",
+          "cells_per_shelf",
+          "service_point_id",
+          "sort_order",
+          "cells"
+        ],
+        "properties": {
+          "cells": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StockCell"
+            },
+            "description": "Все ячейки: полка за полкой, ячейка за ячейкой."
+          },
+          "cells_per_shelf": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Сколько ячеек на каждой полке."
+          },
+          "code": {
+            "type": "string",
+            "description": "Код: заглавные латинские буквы и цифры, до 8 знаков."
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Номер шкафа."
+          },
+          "label": {
+            "type": "string",
+            "description": "Подпись."
+          },
+          "service_point_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Точка обслуживания, где стоит шкаф."
+          },
+          "shelves": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Сколько полок."
+          },
+          "sort_order": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Порядковый номер в списке."
+          }
+        }
+      },
+      "StockRackPatch": {
+        "type": "object",
+        "description": "Частичная правка шкафа; не переданное поле не меняется.",
+        "properties": {
+          "cells_per_shelf": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Сколько ячеек на полке."
+          },
+          "code": {
+            "type": "string",
+            "description": "Код шкафа."
+          },
+          "label": {
+            "type": "string",
+            "description": "Подпись."
+          },
+          "service_point_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Точка обслуживания; `null` — не указана."
+          },
+          "shelves": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Сколько полок."
+          }
+        },
+        "additionalProperties": false
       },
       "StockSortField": {
         "type": "string",

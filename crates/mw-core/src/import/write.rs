@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 use mw_db::entity::{
     attachment, audit_log, client, client_phone, dictionary_item, legacy_import, legacy_row, order,
     order_comment, order_part, order_tracking, role, service_point, session, setting, status,
-    stock_item, user,
+    stock_item, stock_place, stock_rack, user,
 };
 use mw_db::ids::{IdTable, set_next_id};
 use mw_domain::dictionary::{DEFAULT_DICTIONARY, DictionaryKind};
@@ -304,6 +304,7 @@ async fn wipe(conn: &impl ConnectionTrait) -> Result<(), CoreError> {
     order_comment::Entity::delete_many().exec(conn).await?;
     // Запчасти держат заказы и позиции внешними ключами: они стираются раньше.
     order_part::Entity::delete_many().exec(conn).await?;
+    stock_place::Entity::delete_many().exec(conn).await?;
     order::Entity::delete_many().exec(conn).await?;
     stock_item::Entity::delete_many().exec(conn).await?;
     client_phone::Entity::delete_many().exec(conn).await?;
@@ -312,6 +313,8 @@ async fn wipe(conn: &impl ConnectionTrait) -> Result<(), CoreError> {
     role::Entity::delete_many().exec(conn).await?;
     status::Entity::delete_many().exec(conn).await?;
     dictionary_item::Entity::delete_many().exec(conn).await?;
+    // Шкафы ссылаются на точки обслуживания.
+    stock_rack::Entity::delete_many().exec(conn).await?;
     service_point::Entity::delete_many().exec(conn).await?;
     setting::Entity::delete_many()
         .filter(setting::Column::Key.ne("timezone"))

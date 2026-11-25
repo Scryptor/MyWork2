@@ -667,6 +667,19 @@ async fn replace_wipes_the_stock_written_after_the_previous_import() {
     )
     .await
     .unwrap();
+    let point = common::service_point_id_by_name(&core, "Ленина, 1").await;
+    core.create_stock_rack(
+        &admin(),
+        mw_core::NewStockRack {
+            code: "B".into(),
+            label: String::new(),
+            shelves: 1,
+            cells_per_shelf: 1,
+            service_point_id: Some(point),
+        },
+    )
+    .await
+    .unwrap();
     let s = core
         .import_bundle(
             &admin(),
@@ -677,6 +690,12 @@ async fn replace_wipes_the_stock_written_after_the_previous_import() {
         )
         .await
         .unwrap();
+    assert!(
+        core.list_stock_racks(&admin(), &Default::default())
+            .await
+            .unwrap()
+            .is_empty()
+    );
     assert_eq!((s.stock_items, s.order_parts), (1, 2));
     assert_eq!(core.import_target_state().await.unwrap().stock_items, 1);
     assert!(

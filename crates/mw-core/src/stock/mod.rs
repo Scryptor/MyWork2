@@ -4,8 +4,10 @@
 mod items;
 mod parts;
 mod photos;
+mod racks;
 
 pub use parts::{NewOrderPart, OrderPart, OrderParts};
+pub use racks::{NewStockRack, StockCell, StockRack, StockRackPatch};
 
 use chrono::NaiveDateTime;
 use mw_db::entity::stock_item;
