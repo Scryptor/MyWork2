@@ -8,6 +8,7 @@ use axum::response::Response;
 use mw_core::{Attachment, AttachmentFile, AttachmentVariant, Core};
 use tokio_util::io::ReaderStream;
 
+use super::headers::{self, Disposition};
 use crate::auth::CurrentActor;
 use crate::dto::{AttachmentNameQuery, CaptionPatch};
 use crate::error::ApiError;
@@ -272,33 +273,9 @@ const INLINE_TYPES: [&str; 5] = [
 
 fn content_disposition(file: &AttachmentFile) -> String {
     let kind = if INLINE_TYPES.contains(&file.content_type.as_str()) {
-        "inline"
+        Disposition::Inline
     } else {
-        "attachment"
+        Disposition::Attachment
     };
-    format!("{kind}; filename*=UTF-8''{}", percent_encode(&file.name))
-}
-
-/// Процентное кодирование для `filename*` (RFC 5987): всё, кроме `A-Za-z0-9-._~`.
-fn percent_encode(s: &str) -> String {
-    let mut out = String::new();
-    for b in s.bytes() {
-        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'~') {
-            out.push(b as char);
-        } else {
-            out.push_str(&format!("%{b:02X}"));
-        }
-    }
-    out
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn names_are_percent_encoded() {
-        assert_eq!(percent_encode("акт.pdf"), "%D0%B0%D0%BA%D1%82.pdf");
-        assert_eq!(percent_encode("a b\"c'.png"), "a%20b%22c%27.png");
-    }
+    headers::content_disposition(kind, &file.name, None)
 }

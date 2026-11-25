@@ -7,8 +7,9 @@ use std::fmt::Debug;
 use mw_core::{
     AppSettings, AuditEntry, Client, ClientPatch, ClientRef, DictionaryItem, DictionaryMerge,
     DictionaryRename, IssuedFilter, MasterUser, NewClient, NewOrder, NewRole, NewStatus, NewUser,
-    Order, OrderListItem, OrderPatch, OrderSortField, RewriteResult, Role, RolePatch, ServicePoint,
-    ServicePointPatch, SettingsPatch, Status, StatusPatch, User, UserPatch,
+    Order, OrderListItem, OrderPatch, OrderSortField, ReportFilter, ReportGroupBy, RewriteResult,
+    Role, RolePatch, ServicePoint, ServicePointPatch, SettingsPatch, Status, StatusPatch, User,
+    UserPatch,
 };
 use mw_domain::dictionary::DictionaryKind;
 use mw_domain::money::Money;
@@ -107,6 +108,23 @@ fn patches_agree_on_absent_null_and_unknown_fields() {
     check_patch::<OrderPatch>();
     check_patch::<UserPatch>();
     check_patch::<RolePatch>();
+}
+
+#[test]
+fn report_filter_json_semantics() {
+    let f: ReportFilter = serde_json::from_value(json!({ "brand": "Apple" })).unwrap();
+    assert_eq!(f.brand.as_deref(), Some("Apple"));
+    assert_eq!(
+        f.group_by,
+        ReportGroupBy::Master,
+        "по умолчанию — по мастерам"
+    );
+    let f: ReportFilter =
+        serde_json::from_value(json!({ "from": "2026-11-01", "group_by": "service_point" }))
+            .unwrap();
+    assert_eq!(f.from, chrono::NaiveDate::from_ymd_opt(2026, 11, 1));
+    assert_eq!(f.group_by, ReportGroupBy::ServicePoint);
+    assert!(serde_json::from_value::<ReportFilter>(json!({ "brandd": "x" })).is_err());
 }
 
 #[test]

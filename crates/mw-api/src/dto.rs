@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use chrono::NaiveDateTime;
+use chrono::{NaiveDate, NaiveDateTime};
 use mw_core::User;
 use mw_domain::document_template::Template;
 use mw_domain::permission::PermissionSet;
@@ -207,6 +207,47 @@ impl ClientListQuery {
             query: self.query.clone().unwrap_or_default(),
             duplicates: self.duplicates.unwrap_or(false),
             sort,
+        }
+    }
+}
+
+/// Условия отчёта по заказам; пустые `device_type`, `brand` и `source` — без фильтра.
+#[derive(Debug, Clone, Default, Deserialize, TS, IntoParams)]
+#[serde(deny_unknown_fields)]
+#[ts(optional_fields)]
+#[into_params(parameter_in = Query)]
+pub struct OrderReportQuery {
+    /// Первый день периода по дате выдачи, включительно; без параметра — без нижней границы.
+    pub from: Option<NaiveDate>,
+    /// Последний день периода по дате выдачи, включительно; без параметра — без верхней границы.
+    pub to: Option<NaiveDate>,
+    /// Только эта точка обслуживания.
+    pub service_point_id: Option<i64>,
+    /// Только этот мастер (пользователь).
+    pub master_user_id: Option<i64>,
+    /// Только этот тип устройства (без учёта регистра).
+    pub device_type: Option<String>,
+    /// Только этот бренд (без учёта регистра).
+    pub brand: Option<String>,
+    /// Только этот источник клиентов (без учёта регистра).
+    pub source: Option<String>,
+    /// Разрез итогов; по умолчанию по мастерам.
+    pub group_by: Option<mw_core::ReportGroupBy>,
+}
+
+impl OrderReportQuery {
+    /// Условия отчёта для ядра.
+    pub fn filter(&self) -> mw_core::ReportFilter {
+        let text = |v: &Option<String>| v.clone().filter(|v| !v.trim().is_empty());
+        mw_core::ReportFilter {
+            from: self.from,
+            to: self.to,
+            service_point_id: self.service_point_id,
+            master_user_id: self.master_user_id,
+            device_type: text(&self.device_type),
+            brand: text(&self.brand),
+            source: text(&self.source),
+            group_by: self.group_by.unwrap_or_default(),
         }
     }
 }

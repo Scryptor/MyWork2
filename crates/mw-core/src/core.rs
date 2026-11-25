@@ -13,6 +13,7 @@ use tokio_util::task::TaskTracker;
 
 use crate::auth::MAX_CONCURRENT_PASSWORD_HASHES;
 use crate::documents::MAX_CONCURRENT_RENDERS;
+use crate::export::MAX_CONCURRENT_EXPORTS;
 use crate::gate::BlockingGate;
 use crate::settings::{self, AppSettings};
 use crate::{Clock, CoreError};
@@ -40,6 +41,8 @@ pub struct Core {
     pub(crate) hash_gate: BlockingGate,
     /// Рендер документов Typst: каждый занимает ЦП и десятки МиБ памяти.
     pub(crate) render_gate: BlockingGate,
+    /// Построение файлов выгрузки (Excel): каждое держит в памяти всю книгу.
+    pub(crate) export_gate: BlockingGate,
     /// Где строятся шаблоны со своим Typst-кодом.
     pub(crate) code_renderer: CodeRenderer,
     /// Корень папки данных: файлы вложений лежат в `<корень>/attachments`.
@@ -70,6 +73,7 @@ impl Core {
                 "сбой вычисления хэша пароля",
             ),
             render_gate: BlockingGate::new(MAX_CONCURRENT_RENDERS, "сбой построения документа"),
+            export_gate: BlockingGate::new(MAX_CONCURRENT_EXPORTS, "сбой построения файла"),
             code_renderer: CodeRenderer::Missing,
             data_dir: None,
             background: TaskTracker::new(),

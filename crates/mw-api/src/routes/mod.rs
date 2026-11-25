@@ -18,6 +18,7 @@ mod legacy_import;
 mod logo;
 mod meta;
 mod orders;
+mod reports;
 mod setup;
 mod stock;
 mod users;
@@ -37,6 +38,7 @@ pub(crate) fn api_routes() -> OpenApiRouter<AppState> {
         .merge(stock_routes())
         .merge(order_routes())
         .merge(document_routes())
+        .merge(report_routes())
         .merge(user_routes())
         .merge(legacy_import_routes())
 }
@@ -168,6 +170,14 @@ fn order_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(orders::order_parts, orders::add_order_part))
         .routes(routes!(orders::return_order_part))
         .routes(routes!(orders::accept_warranty_case))
+}
+
+/// Отчёты.
+#[inline(never)]
+fn report_routes() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(reports::order_report))
+        .routes(routes!(reports::order_report_xlsx))
 }
 
 /// Документы и шаблоны документов.

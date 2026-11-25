@@ -4,7 +4,8 @@ use serde::{Deserialize, Serialize};
 /// `duplicate`, `out_of_range`, `estimate_range`, `deleted`, `last_admin`, `last_issued_status`,
 /// `comma`, `changes_term`, `stale`, `closed`, `too_many`, `too_long`, `too_large`, `no_room`, `text_budget`, `code_budget`, `typst_error`, `code_timeout`, `code_crashed`, `too_slow`, `code_unavailable`, `too_many_pages`, `too_many_pixels`, `requires_a4`,
 /// `requires_a4_landscape`, `not_allowed`, `nested_columns`, `fill_in_columns`, `unsupported`,
-/// `mismatch`, `not_editable`, `not_enough_stock`, `builtin_missing`, `not_a_link`, `period_reversed`).
+/// `mismatch`, `not_editable`, `not_enough_stock`, `builtin_missing`, `not_a_link`, `period_reversed`,
+/// `too_many_rows`, `nothing_to_export`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
 pub struct FieldError {
     /// Имя поля запроса.
@@ -107,6 +108,10 @@ impl FieldError {
             "not_editable" => "Этот документ не настраивается",
             "not_enough_stock" => "На складе столько нет",
             "period_reversed" => "Начало периода позже конца",
+            "too_many_rows" => {
+                "Слишком много строк для файла (больше 50 000): сузьте выбор и повторите"
+            }
+            "nothing_to_export" => "Нечего выгружать",
             _ => "Недопустимое значение",
         }
     }
@@ -115,6 +120,17 @@ impl FieldError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn export_codes_have_russian_messages() {
+        for code in ["too_many_rows", "nothing_to_export"] {
+            assert_ne!(
+                FieldError::new("rows", code).message_ru(),
+                "Недопустимое значение",
+                "{code}"
+            );
+        }
+    }
 
     #[test]
     fn not_enough_stock_has_its_own_message() {

@@ -4100,6 +4100,239 @@
         ]
       }
     },
+    "/api/v1/reports/orders": {
+      "get": {
+        "tags": [
+          "Отчёты"
+        ],
+        "summary": "Отчёт по выданным заказам: итоги, группы по разрезу и шкала времени (право `reports_view`).",
+        "operationId": "order_report",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Первый день периода по дате выдачи, включительно; без параметра — без нижней границы.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Последний день периода по дате выдачи, включительно; без параметра — без верхней границы.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "service_point_id",
+            "in": "query",
+            "description": "Только эта точка обслуживания.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "master_user_id",
+            "in": "query",
+            "description": "Только этот мастер (пользователь).",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "device_type",
+            "in": "query",
+            "description": "Только этот тип устройства (без учёта регистра).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "brand",
+            "in": "query",
+            "description": "Только этот бренд (без учёта регистра).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "description": "Только этот источник клиентов (без учёта регистра).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "group_by",
+            "in": "query",
+            "description": "Разрез итогов; по умолчанию по мастерам.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/ReportGroupBy"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Отчёт по заказам",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderReport"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/reports/orders/xlsx": {
+      "get": {
+        "tags": [
+          "Отчёты"
+        ],
+        "summary": "Отчёт по заказам файлом Excel: листы «Итоги», разрез и «Заказы» (право `reports_view`).\nБольше 50 000 заказов — 422 `rows`/`too_many_rows`.",
+        "operationId": "order_report_xlsx",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Первый день периода по дате выдачи, включительно; без параметра — без нижней границы.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Последний день периода по дате выдачи, включительно; без параметра — без верхней границы.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "service_point_id",
+            "in": "query",
+            "description": "Только эта точка обслуживания.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "master_user_id",
+            "in": "query",
+            "description": "Только этот мастер (пользователь).",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "device_type",
+            "in": "query",
+            "description": "Только этот тип устройства (без учёта регистра).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "brand",
+            "in": "query",
+            "description": "Только этот бренд (без учёта регистра).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "description": "Только этот источник клиентов (без учёта регистра).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "group_by",
+            "in": "query",
+            "description": "Разрез итогов; по умолчанию по мастерам.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/ReportGroupBy"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Файл Excel",
+            "content": {
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/roles": {
       "get": {
         "tags": [
@@ -9176,6 +9409,47 @@
         },
         "additionalProperties": false
       },
+      "OrderReport": {
+        "type": "object",
+        "description": "Отчёт по выданным заказам.",
+        "required": [
+          "totals",
+          "groups",
+          "step",
+          "timeline",
+          "master_percent"
+        ],
+        "properties": {
+          "groups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReportGroup"
+            },
+            "description": "Группы выбранного разреза: большая выручка сверху."
+          },
+          "master_percent": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Процент оплаты мастеру, по которому посчитаны итоги.",
+            "minimum": 0
+          },
+          "step": {
+            "$ref": "#/components/schemas/ReportStep",
+            "description": "Шаг шкалы времени."
+          },
+          "timeline": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReportPoint"
+            },
+            "description": "Шкала времени; пустые дни и месяцы — нули."
+          },
+          "totals": {
+            "$ref": "#/components/schemas/ReportTotals",
+            "description": "Итоги по всем заказам отчёта."
+          }
+        }
+      },
       "OrderSortField": {
         "type": "string",
         "description": "Поле, по которому сортируется список заказов.",
@@ -9399,52 +9673,109 @@
       },
       "ReportGroup": {
         "type": "object",
-        "description": "Группа предупреждений одного кода.",
+        "description": "Группа разреза.",
         "required": [
-          "code",
-          "severity",
-          "title",
-          "count",
-          "order_ids",
-          "entries",
-          "entries_count"
+          "key",
+          "label",
+          "totals"
         ],
         "properties": {
-          "code": {
-            "$ref": "#/components/schemas/WarningCode"
-          },
-          "count": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 0
-          },
-          "entries": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ReportEntry"
-            },
-            "description": "Предупреждения группы без номера заказа (клиенты, история, файлы, …): первые\n`REPORT_GROUP_ENTRIES` в порядке отчёта. Предупреждения заказов видны по `order_ids`."
-          },
-          "entries_count": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Сколько всего предупреждений группы без номера заказа; `count` — все предупреждения группы.",
-            "minimum": 0
-          },
-          "order_ids": {
-            "type": "array",
-            "items": {
-              "type": "integer",
-              "format": "int64"
-            },
-            "description": "Номера заказов, к которым относятся предупреждения группы, по возрастанию без повторов."
-          },
-          "severity": {
-            "$ref": "#/components/schemas/Severity"
-          },
-          "title": {
+          "key": {
             "type": "string",
-            "description": "Заголовок, как в текстовом отчёте."
+            "description": "Ключ группы (для фильтра и сравнения)."
+          },
+          "label": {
+            "type": "string",
+            "description": "Подпись для человека."
+          },
+          "totals": {
+            "$ref": "#/components/schemas/ReportTotals",
+            "description": "Итоги группы."
+          }
+        }
+      },
+      "ReportGroupBy": {
+        "type": "string",
+        "description": "Разрез отчёта.",
+        "enum": [
+          "master",
+          "service_point",
+          "device_type",
+          "brand",
+          "source"
+        ]
+      },
+      "ReportPoint": {
+        "type": "object",
+        "description": "Точка шкалы времени.",
+        "required": [
+          "start",
+          "totals"
+        ],
+        "properties": {
+          "start": {
+            "type": "string",
+            "format": "date",
+            "description": "День или первое число месяца."
+          },
+          "totals": {
+            "$ref": "#/components/schemas/ReportTotals",
+            "description": "Итоги за этот день или месяц."
+          }
+        }
+      },
+      "ReportStep": {
+        "type": "string",
+        "description": "Шаг шкалы времени.",
+        "enum": [
+          "day",
+          "month"
+        ]
+      },
+      "ReportTotals": {
+        "type": "object",
+        "description": "Итоги по набору заказов.",
+        "required": [
+          "orders",
+          "without_repair",
+          "revenue",
+          "discounts",
+          "costs",
+          "profit",
+          "master_pay"
+        ],
+        "properties": {
+          "costs": {
+            "$ref": "#/components/schemas/Money",
+            "description": "Затраты: расходы и запчасти."
+          },
+          "discounts": {
+            "$ref": "#/components/schemas/Money",
+            "description": "Скидки."
+          },
+          "master_pay": {
+            "$ref": "#/components/schemas/Money",
+            "description": "Оплата мастерам."
+          },
+          "orders": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Сколько заказов.",
+            "minimum": 0
+          },
+          "profit": {
+            "$ref": "#/components/schemas/Money",
+            "description": "Прибыль: выручка минус затраты."
+          },
+          "revenue": {
+            "$ref": "#/components/schemas/Money",
+            "description": "Выручка: итог минус скидка."
+          },
+          "without_repair": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Из них закрыто без ремонта.",
+            "minimum": 0
           }
         }
       },

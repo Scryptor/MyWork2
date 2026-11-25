@@ -13,6 +13,7 @@ mod dictionaries_rewrite;
 mod document_templates;
 pub mod documents;
 mod error;
+mod export;
 mod gate;
 mod import;
 mod legacy_templates;
@@ -52,6 +53,7 @@ pub use document_templates::{
     DocumentField, DocumentTemplate, DocumentTemplateInfo, TemplatePreset, TemplateSave,
 };
 pub use error::CoreError;
+pub use export::{EXPORT_ROWS_MAX, ExportFile};
 pub use import::{
     DatabaseKind, ExtraCostsChange, ImportBundle, ImportMode, ImportSummary, ImportTarget,
     ImportedClient, ImportedHistory, ImportedLegacyRow, ImportedOrder, ImportedOrderPart,

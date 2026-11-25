@@ -58,6 +58,8 @@ typst-pdf = "0.15.1"
 typst-render = "0.15.1"
 typst-layout = "0.15.1"
 comemo = "0.5"
+rust_xlsxwriter = "0.102"
+calamine = "0.38"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

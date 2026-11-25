@@ -32,9 +32,9 @@ pub use dto::{
     CurrentUser, DictionaryListQuery, DictionaryValue, DocumentBatch, DocumentFormat,
     DocumentPages, DocumentQuery, HistoryQuery, IncludeArchived, LegacyImportCheck,
     LegacyImportStart, LoginRequest, LoginResponse, NewServicePoint, NextOrderNumber,
-    OrderCommentPage, OrderCommentQuery, OrderListQuery, OrderPage, OrderSummaryQuery,
-    OrderValuesQuery, PageQuery, PhoneQuery, ReorderRequest, ServerInfo, SetPasswordRequest,
-    StatusChange, StockListQuery, StockPage, TemplatePreview, VersionParam,
+    OrderCommentPage, OrderCommentQuery, OrderListQuery, OrderPage, OrderReportQuery,
+    OrderSummaryQuery, OrderValuesQuery, PageQuery, PhoneQuery, ReorderRequest, ServerInfo,
+    SetPasswordRequest, StatusChange, StockListQuery, StockPage, TemplatePreview, VersionParam,
 };
 pub use error::{ErrorBody, ErrorCode, ErrorField};
 pub use state::ApiConfig;
@@ -159,7 +159,8 @@ impl Modify for CommonDoc {
     mw_core::StockSortField,
     mw_core::OrderValueField,
     mw_domain::documents::DocumentKind,
-    dto::DocumentFormat
+    dto::DocumentFormat,
+    mw_core::ReportGroupBy
 )))]
 struct ApiDoc;
 

@@ -142,8 +142,6 @@ pub struct OrderReport {
 }
 
 /// Заказ отчёта со всем, что нужно листу «Заказы» в Excel.
-// Поля читает выгрузка в Excel (следующая задача плана); отчёт использует только часть.
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub(crate) struct ReportOrderRow {
     pub id: i64,
@@ -479,6 +477,15 @@ impl Core {
         actor: &Actor,
         filter: &ReportFilter,
     ) -> Result<OrderReport, CoreError> {
+        Ok(self.report_with_rows(actor, filter).await?.0)
+    }
+
+    /// Отчёт и заказы, по которым он посчитан (одна выборка): для файла Excel.
+    pub(crate) async fn report_with_rows(
+        &self,
+        actor: &Actor,
+        filter: &ReportFilter,
+    ) -> Result<(OrderReport, Vec<ReportOrderRow>), CoreError> {
         actor.require(Permission::ReportsView)?;
         if let (Some(from), Some(to)) = (filter.from, filter.to)
             && from > to
@@ -489,19 +496,19 @@ impl Core {
             )]));
         }
         let rows = self.report_rows(filter).await?;
-
         let mut totals = ReportTotals::default();
         for row in &rows {
             totals.add_row(row)?;
         }
         let (step, timeline) = timeline(filter, &rows)?;
-        Ok(OrderReport {
+        let report = OrderReport {
             totals,
             groups: groups(filter.group_by, &rows)?,
             step,
             timeline,
             master_percent: self.settings().master_percent,
-        })
+        };
+        Ok((report, rows))
     }
 }
 
@@ -523,7 +530,10 @@ fn group_key(by: ReportGroupBy, row: &ReportOrderRow) -> String {
     }
 }
 
-fn groups(by: ReportGroupBy, rows: &[ReportOrderRow]) -> Result<Vec<ReportGroup>, CoreError> {
+pub(crate) fn groups(
+    by: ReportGroupBy,
+    rows: &[ReportOrderRow],
+) -> Result<Vec<ReportGroup>, CoreError> {
     let mut spellings = Spellings::default();
     let mut totals: BTreeMap<String, ReportTotals> = BTreeMap::new();
     // Подписи точек и пользователей берутся из строк: они уже подставлены в заказы отчёта.
