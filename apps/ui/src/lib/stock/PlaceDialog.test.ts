@@ -37,7 +37,12 @@ describe('PlaceDialog of a cell', () => {
 				return el;
 			})
 		);
-		expect(document.body).toHaveTextContent('Дисплей iPhone');
+		// The field holds the choice; the list may or may not be open again by now (it follows the text).
+		await waitFor(() =>
+			expect(screen.getByRole('combobox', { name: 'Позиция' })).toHaveValue(
+				'Дисплей iPhone · Арт. 9'
+			)
+		);
 		await ui.click(screen.getByRole('button', { name: 'Положить' }));
 		await waitFor(() =>
 			expect(onsubmit).toHaveBeenCalledWith(9, { rack_id: 2, shelf: 2, cell: 4 }, 4)
