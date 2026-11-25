@@ -1,5 +1,6 @@
 import BookOpen from '@lucide/svelte/icons/book-open';
 import CircleDot from '@lucide/svelte/icons/circle-dot';
+import DatabaseBackup from '@lucide/svelte/icons/database-backup';
 import FileText from '@lucide/svelte/icons/file-text';
 import FolderInput from '@lucide/svelte/icons/folder-input';
 import Info from '@lucide/svelte/icons/info';
@@ -40,5 +41,6 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
 	{ id: 'users', label: ru.settings.users, icon: Users, href: 'settings/users' },
 	{ id: 'roles', label: ru.settings.roles, icon: ShieldCheck, href: 'settings/roles' },
 	{ id: 'import', label: ru.settings.import, icon: FolderInput, href: 'settings/import' },
+	{ id: 'backups', label: ru.settings.backups, icon: DatabaseBackup, href: 'settings/backups' },
 	{ id: 'about', label: ru.settings.about, icon: Info, href: 'settings/about' }
 ];

@@ -24,7 +24,9 @@ export const OWN_PORTS = {
 	/** `settings-logo.spec.ts`: the logo of the firm is uploaded and removed. */
 	logo: { chromium: 4179, webkit: 4180 },
 	/** `template-editor.spec.ts`: the templates of the documents are saved and put back, and stickers and acts are what every printing spec on 4173 renders. */
-	templates: { chromium: 4181, webkit: 4182 }
+	templates: { chromium: 4181, webkit: 4182 },
+	/** `backups.spec.ts`: copies are made, restored (requested) and deleted in the data folder of the base. */
+	backups: { chromium: 4187, webkit: 4188 }
 } as const;
 
 export type OwnKind = keyof typeof OWN_PORTS;
