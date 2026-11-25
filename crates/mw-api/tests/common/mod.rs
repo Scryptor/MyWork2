@@ -72,6 +72,47 @@ pub async fn apis(listen: Listen) -> Vec<TestApi> {
     out
 }
 
+/// Как `apis`, но с резервными копиями: SQLite-база — файл в папке данных (`VACUUM INTO` из базы в
+/// памяти файла не пишет), в `mw-core` включено `with_backups`. PostgreSQL отвечает отказом.
+pub async fn backup_apis(listen: Listen) -> Vec<TestApi> {
+    let addr: SocketAddr = match listen {
+        Listen::Loopback => ([127, 0, 0, 1], 8080).into(),
+        Listen::Network => ([0, 0, 0, 0], 8080).into(),
+    };
+    let mut out = Vec::new();
+    for (label, db) in mw_db::testing::all_backends().await {
+        let clock = Arc::new(FixedClock::new(
+            Utc.with_ymd_and_hms(2026, 11, 11, 9, 0, 0).unwrap(),
+        ));
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        let db = if label == "sqlite" {
+            let db = mw_db::connect(&mw_db::sqlite_url(&dir.path().join("live.db")))
+                .await
+                .unwrap();
+            mw_db::migrate(&db).await.unwrap();
+            db
+        } else {
+            db
+        };
+        let core = Core::open(db, clock.clone(), "UTC")
+            .await
+            .unwrap()
+            .with_attachments_dir(data)
+            .with_backups();
+        let router = router(core.clone(), ApiConfig::for_listen_addr(addr));
+        out.push(TestApi {
+            label,
+            core,
+            clock,
+            router,
+            _attachments: dir,
+        });
+    }
+    out
+}
+
 impl TestApi {
     pub async fn get(&self, path: &str, token: Option<&str>) -> TestResponse {
         self.send(Method::GET, path, token, None).await

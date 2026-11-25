@@ -174,6 +174,15 @@ impl ApiError {
         )
     }
 
+    /// Папка копий лежит на диске сервера — только серверу на loopback.
+    pub(crate) fn backups_local_only() -> Self {
+        Self::new(
+            StatusCode::FORBIDDEN,
+            ErrorCode::Forbidden,
+            "Резервные копии настраиваются на компьютере, где работает сервер",
+        )
+    }
+
     pub(crate) fn import_running() -> Self {
         Self::new(StatusCode::CONFLICT, ErrorCode::Conflict, "Импорт уже идёт")
     }

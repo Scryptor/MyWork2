@@ -1,6 +1,7 @@
 //! Резервные копии: база и файлы вложений в папке копий, автокопия раз в сутки.
 
 mod copy;
+mod legacy;
 mod restore;
 mod settings;
 
@@ -75,13 +76,16 @@ pub struct BackupCopy {
 #[serde(default)]
 pub struct BackupSettings {
     /// Делать автокопию раз в сутки.
+    #[schema(required = true)]
     pub auto: bool,
     /// Сколько последних автокопий хранить, 1–100.
+    #[schema(required = true)]
     pub keep: u16,
     /// Своя папка копий; пусто — папка по умолчанию.
     #[schema(required = true)]
     pub folder: Option<String>,
     /// Пользователь ответил на предложение взять настройки MyWork 2.
+    #[schema(required = true)]
     pub legacy_reviewed: bool,
 }
 
@@ -112,6 +116,22 @@ pub struct BackupSettingsPatch {
     /// Своя папка копий; `null` — папка по умолчанию.
     #[serde(default, deserialize_with = "crate::patch::nullable")]
     pub folder: Option<Option<String>>,
+}
+
+/// Ответ на предложение взять настройки копий MyWork 2.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, ts_rs::TS, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BackupLegacyChoice {
+    /// Взять настройки (`true`) или оставить свои (`false`).
+    pub apply: bool,
+}
+
+/// Какую копию восстановить.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, ts_rs::TS, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BackupRestoreRequest {
+    /// Имя папки копии.
+    pub name: String,
 }
 
 /// Ход последней копии с запуска сервера.
@@ -277,6 +297,10 @@ impl Core {
                 Vec::new(),
             ),
         };
+        let legacy = match reason {
+            None if !settings.legacy_reviewed => self.read_legacy_backup_settings().await?,
+            _ => None,
+        };
         Ok(BackupOverview {
             supported: reason.is_none(),
             reason: reason.map(str::to_owned),
@@ -288,7 +312,7 @@ impl Core {
             pending: data_dir_if(reason, self.data_dir.as_deref()).and_then(restore::read_pending),
             last_restore: data_dir_if(reason, self.data_dir.as_deref())
                 .and_then(restore::read_last_result),
-            legacy: None,
+            legacy,
         })
     }
 
@@ -333,6 +357,19 @@ impl Core {
         if new == old {
             return Ok(old);
         }
+        self.store_backup_settings(actor, &data_dir, &old, &new)
+            .await?;
+        Ok(new)
+    }
+
+    /// Записывает настройки; изменение `auto`, `keep` или `folder` — ещё и в журнал.
+    async fn store_backup_settings(
+        &self,
+        actor: &Actor,
+        data_dir: &Path,
+        old: &BackupSettings,
+        new: &BackupSettings,
+    ) -> Result<(), CoreError> {
         let mut changes = Vec::new();
         if new.auto != old.auto {
             changes.push(format!(
@@ -353,6 +390,13 @@ impl Core {
                 None => "папка по умолчанию".to_owned(),
             });
         }
+        let write = |new: &BackupSettings| {
+            settings::write(data_dir, new)
+                .map_err(|e| CoreError::Internal(format!("не удалось записать настройки: {e}")))
+        };
+        if changes.is_empty() {
+            return write(new);
+        }
         let tx = self.begin_write().await?;
         write_audit(
             &tx,
@@ -370,10 +414,9 @@ impl Core {
             },
         )
         .await?;
-        settings::write(&data_dir, &new)
-            .map_err(|e| CoreError::Internal(format!("не удалось записать настройки: {e}")))?;
+        write(new)?;
         tx.commit().await?;
-        Ok(new)
+        Ok(())
     }
 
     fn backup_guard(&self) -> Result<OwnedMutexGuard<()>, CoreError> {

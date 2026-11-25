@@ -565,6 +565,281 @@
         ]
       }
     },
+    "/api/v1/backups": {
+      "get": {
+        "tags": [
+          "Резервные копии"
+        ],
+        "summary": "Экран копий: настройки, копии в папке (новые сверху), ход последней копии, ждущее\nвосстановление, итог прошлого восстановления и предложение взять настройки MyWork 2. Для\nPostgreSQL и базы по адресу `supported: false` с причиной (право `settings_manage`).",
+        "operationId": "backup_overview",
+        "responses": {
+          "200": {
+            "description": "Копии и настройки",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupOverview"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Резервные копии"
+        ],
+        "summary": "Ручная копия фоном; ход — в `job` ответа `GET /backups`. Копия уже делается — 409 (право\n`settings_manage`).",
+        "operationId": "start_backup",
+        "responses": {
+          "202": {
+            "description": "Копия начата",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupJob"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/backups/legacy": {
+      "post": {
+        "tags": [
+          "Резервные копии"
+        ],
+        "summary": "Ответ на предложение взять настройки копий MyWork 2: `apply: true` берёт автокопию и первую\nподходящую папку, `false` оставляет свои; предложение больше не показывается (право\n`settings_manage`).",
+        "operationId": "choose_legacy_backup",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BackupLegacyChoice"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Настройки после ответа",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupSettings"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/backups/restore": {
+      "post": {
+        "tags": [
+          "Резервные копии"
+        ],
+        "summary": "Просьба восстановить данные из копии при следующем запуске программы; сами данные не меняются\nдо перезапуска (права `settings_manage` и `users_manage`).",
+        "operationId": "request_restore",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BackupRestoreRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Восстановление ждёт перезапуска",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupRestorePending"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Резервные копии"
+        ],
+        "summary": "Отмена ждущего восстановления; ждущего нет — тоже 204 (права `settings_manage` и\n`users_manage`).",
+        "operationId": "cancel_restore",
+        "responses": {
+          "204": {
+            "description": "Восстановление отменено"
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/backups/settings": {
+      "patch": {
+        "tags": [
+          "Резервные копии"
+        ],
+        "summary": "Правка настроек копий. Неверное число копий или папка — 422 с полем `keep` или `folder`\n(право `settings_manage`).",
+        "operationId": "update_backup_settings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BackupSettingsPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Настройки после правки",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupSettings"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/backups/{name}": {
+      "delete": {
+        "tags": [
+          "Резервные копии"
+        ],
+        "summary": "Удаление копии по имени папки. Нет такой копии — 422 `backup_missing`; копия ждёт\nвосстановления — 422 `backup_pending` (права `settings_manage` и `users_manage`).",
+        "operationId": "delete_backup",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "Имя папки копии",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Копия удалена"
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/clients": {
       "get": {
         "tags": [
@@ -6884,6 +7159,372 @@
             "minimum": 0
           }
         }
+      },
+      "BackupCopy": {
+        "type": "object",
+        "description": "Копия в папке копий.",
+        "required": [
+          "name",
+          "kind",
+          "created_at",
+          "app_version",
+          "database_bytes",
+          "files",
+          "files_bytes"
+        ],
+        "properties": {
+          "app_version": {
+            "type": "string",
+            "description": "Версия программы, сделавшей копию."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Когда сделана (местное время предприятия)."
+          },
+          "database_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Размер базы, байт.",
+            "minimum": 0
+          },
+          "files": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Сколько файлов вложений в копии.",
+            "minimum": 0
+          },
+          "files_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Размер файлов вложений, байт.",
+            "minimum": 0
+          },
+          "kind": {
+            "$ref": "#/components/schemas/BackupKind"
+          },
+          "name": {
+            "type": "string",
+            "description": "Имя папки копии."
+          }
+        }
+      },
+      "BackupJob": {
+        "type": "object",
+        "description": "Ход последней копии с запуска сервера.",
+        "required": [
+          "kind",
+          "started_at",
+          "finished_at",
+          "copy",
+          "error",
+          "note"
+        ],
+        "properties": {
+          "copy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Имя готовой копии."
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Что пошло не так."
+          },
+          "finished_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Когда закончилась; пусто — идёт."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/BackupKind"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Пометка: например, копия ушла в папку по умолчанию."
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "BackupKind": {
+        "type": "string",
+        "description": "Вид копии.",
+        "enum": [
+          "auto",
+          "manual",
+          "before_restore"
+        ]
+      },
+      "BackupLegacyChoice": {
+        "type": "object",
+        "description": "Ответ на предложение взять настройки копий MyWork 2.",
+        "required": [
+          "apply"
+        ],
+        "properties": {
+          "apply": {
+            "type": "boolean",
+            "description": "Взять настройки (`true`) или оставить свои (`false`)."
+          }
+        },
+        "additionalProperties": false
+      },
+      "BackupLegacySettings": {
+        "type": "object",
+        "description": "Настройки копий в MyWork 2, которые можно взять.",
+        "required": [
+          "auto",
+          "folders"
+        ],
+        "properties": {
+          "auto": {
+            "type": "boolean"
+          },
+          "folders": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "BackupOverview": {
+        "type": "object",
+        "description": "Всё для экрана «Резервные копии».",
+        "required": [
+          "supported",
+          "reason",
+          "settings",
+          "folder",
+          "folder_problem",
+          "copies",
+          "job",
+          "pending",
+          "last_restore",
+          "legacy"
+        ],
+        "properties": {
+          "copies": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BackupCopy"
+            },
+            "description": "Новые сверху."
+          },
+          "folder": {
+            "type": "string",
+            "description": "Полный путь папки, из которой список."
+          },
+          "folder_problem": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Почему выбранная папка не используется."
+          },
+          "job": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/BackupJob"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "last_restore": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/BackupRestoreResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "legacy": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/BackupLegacySettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pending": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/BackupRestorePending"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "settings": {
+            "$ref": "#/components/schemas/BackupSettings"
+          },
+          "supported": {
+            "type": "boolean"
+          }
+        }
+      },
+      "BackupRestorePending": {
+        "type": "object",
+        "description": "Восстановление, которое ждёт перезапуска программы.",
+        "required": [
+          "copy",
+          "requested_at",
+          "requested_by"
+        ],
+        "properties": {
+          "copy": {
+            "$ref": "#/components/schemas/BackupCopy"
+          },
+          "requested_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "requested_by": {
+            "type": "string"
+          }
+        }
+      },
+      "BackupRestoreRequest": {
+        "type": "object",
+        "description": "Какую копию восстановить.",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Имя папки копии."
+          }
+        },
+        "additionalProperties": false
+      },
+      "BackupRestoreResult": {
+        "type": "object",
+        "description": "Итог последнего восстановления.",
+        "required": [
+          "ok",
+          "copy",
+          "requested_at",
+          "requested_by",
+          "safety",
+          "error"
+        ],
+        "properties": {
+          "copy": {
+            "$ref": "#/components/schemas/BackupCopy"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "requested_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "requested_by": {
+            "type": "string",
+            "description": "Кто запросил восстановление."
+          },
+          "safety": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Имя страховочной копии прежних данных."
+          }
+        }
+      },
+      "BackupSettings": {
+        "type": "object",
+        "description": "Настройки копий.",
+        "required": [
+          "auto",
+          "keep",
+          "folder",
+          "legacy_reviewed"
+        ],
+        "properties": {
+          "auto": {
+            "type": "boolean",
+            "description": "Делать автокопию раз в сутки.",
+            "default": true
+          },
+          "folder": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Своя папка копий; пусто — папка по умолчанию.",
+            "default": null
+          },
+          "keep": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Сколько последних автокопий хранить, 1–100.",
+            "default": 10,
+            "minimum": 0
+          },
+          "legacy_reviewed": {
+            "type": "boolean",
+            "description": "Пользователь ответил на предложение взять настройки MyWork 2.",
+            "default": false
+          }
+        }
+      },
+      "BackupSettingsPatch": {
+        "type": "object",
+        "description": "Правка настроек; не переданное поле не меняется, `folder: null` возвращает папку по умолчанию.",
+        "properties": {
+          "auto": {
+            "type": "boolean",
+            "description": "Делать автокопию раз в сутки."
+          },
+          "folder": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Своя папка копий; `null` — папка по умолчанию."
+          },
+          "keep": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Сколько последних автокопий хранить, 1–100.",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
       },
       "Block": {
         "type": "object",

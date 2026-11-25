@@ -9,6 +9,7 @@ use crate::state::AppState;
 mod attachments;
 mod audit;
 mod auth;
+mod backups;
 mod catalogs;
 mod clients;
 mod document_templates;
@@ -43,6 +44,7 @@ pub(crate) fn api_routes() -> OpenApiRouter<AppState> {
         .merge(export_routes())
         .merge(user_routes())
         .merge(legacy_import_routes())
+        .merge(backup_routes())
 }
 
 /// Вложения, черновики, фото склада и логотип; загрузки — со своим пределом тела.
@@ -240,4 +242,15 @@ fn legacy_import_routes() -> OpenApiRouter<AppState> {
             legacy_import::legacy_stock_state,
             legacy_import::migrate_legacy_stock
         ))
+}
+
+/// Резервные копии.
+#[inline(never)]
+fn backup_routes() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(backups::backup_overview, backups::start_backup))
+        .routes(routes!(backups::update_backup_settings))
+        .routes(routes!(backups::request_restore, backups::cancel_restore))
+        .routes(routes!(backups::choose_legacy_backup))
+        .routes(routes!(backups::delete_backup))
 }

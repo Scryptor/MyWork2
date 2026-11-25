@@ -41,8 +41,9 @@ pub use auth::{
     hash_password, legacy_sha1_hex, verify_password,
 };
 pub use backups::{
-    BackupCopy, BackupJob, BackupKind, BackupLegacySettings, BackupOverview, BackupRestorePending,
-    BackupRestoreResult, BackupSettings, BackupSettingsPatch,
+    BackupCopy, BackupJob, BackupKind, BackupLegacyChoice, BackupLegacySettings, BackupOverview,
+    BackupRestorePending, BackupRestoreRequest, BackupRestoreResult, BackupSettings,
+    BackupSettingsPatch,
 };
 pub use clients::{
     Client, ClientFilter, ClientListItem, ClientPatch, ClientPhone, ClientSort, ClientSortField,

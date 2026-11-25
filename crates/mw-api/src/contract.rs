@@ -108,6 +108,13 @@ pub fn export_typescript(dir: &Path) -> Result<(), ts_rs::ExportError> {
     mw_legacy::ImportReportView::export_all(&cfg)?;
     mw_core::LegacyStockState::export_all(&cfg)?;
     mw_core::StockImportSummary::export_all(&cfg)?;
+    mw_core::BackupOverview::export_all(&cfg)?;
+    mw_core::BackupSettings::export_all(&cfg)?;
+    mw_core::BackupSettingsPatch::export_all(&cfg)?;
+    mw_core::BackupJob::export_all(&cfg)?;
+    mw_core::BackupRestorePending::export_all(&cfg)?;
+    mw_core::BackupRestoreRequest::export_all(&cfg)?;
+    mw_core::BackupLegacyChoice::export_all(&cfg)?;
     DocumentQuery::export_all(&cfg)?;
     crate::OrderReportQuery::export_all(&cfg)?;
     crate::OrderExportQuery::export_all(&cfg)?;
