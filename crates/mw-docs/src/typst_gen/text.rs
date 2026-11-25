@@ -116,6 +116,8 @@ fn pieces_expr(pieces: &[Piece], mode: TextMode) -> String {
 
 /// A Typst code expression for a list: `text` with its substitutions taken as raw values, every
 /// non-empty line (a typed number «1.», «2)» at its start dropped) is an item of a numbered list.
+/// A number is only dropped when no digit follows it: «10.5 мм», «1.1.» and «01.12.2026» stay whole
+/// (Typst's regex has no lookahead, so the character after the number is captured and put back).
 pub(super) fn numbered_expr(text: &str) -> String {
     let parts: Vec<String> = pieces(text, true)
         .iter()
@@ -133,7 +135,7 @@ pub(super) fn numbered_expr(text: &str) -> String {
         parts.join(" + ")
     };
     format!(
-        r#"{{ let items = ({source}).replace("\r\n", "\n").replace("\r", "\n").split("\n").map(l => l.trim().replace(regex("^\\d{{1,3}}[.)]\\s*"), "").trim()).filter(l => l != ""); if items.len() > 0 {{ enum(..items) }} }}"#
+        r#"{{ let items = ({source}).replace("\r\n", "\n").replace("\r", "\n").split("\n").map(l => l.trim().replace(regex("^\\d{{1,3}}[.)](\\D|$)"), m => m.captures.at(0)).trim()).filter(l => l != ""); if items.len() > 0 {{ enum(..items) }} }}"#
     )
 }
 

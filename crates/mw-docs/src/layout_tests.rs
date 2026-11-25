@@ -1016,26 +1016,37 @@ fn framed_text_draws_a_frame() {
     assert!(shapes(true) >= 1);
 }
 
-#[test]
-fn numbered_text_strips_typed_numbers_and_blank_lines() {
+/// The page text of the intake terms `terms` printed by a text block.
+fn terms_page(terms: &str, numbered: bool, one_line: bool) -> String {
     let data = DocumentData {
-        values: [(
-            "firm.intake_terms".to_owned(),
-            "1. Первое\r\n\r\n2) Второе\n  \n12. Третье".to_owned(),
-        )]
-        .into(),
+        values: [("firm.intake_terms".to_owned(), terms.to_owned())].into(),
         ..DocumentData::default()
     };
-    let opts = sticker_options(None, None);
-    let page = |numbered, one_line| {
-        let t = text_with("{фирма.договор_приёма}", false, numbered, one_line);
-        page_texts(&render(&t, &data, &opts).expect("renders")).remove(0)
-    };
-    assert_eq!(page(true, false), "1.Первое2.Второе3.Третье");
-    let plain = page(false, true);
+    let t = text_with("{фирма.договор_приёма}", false, numbered, one_line);
+    let doc = render(&t, &data, &sticker_options(None, None)).expect("renders");
+    page_texts(&doc).remove(0)
+}
+
+#[test]
+fn numbered_text_strips_typed_numbers_and_blank_lines() {
+    let terms = "1. Первое\r\n\r\n2) Второе\n  \n12. Третье\n4.Четвёртое";
+    assert_eq!(
+        terms_page(terms, true, false),
+        "1.Первое2.Второе3.Третье4.Четвёртое"
+    );
+    let plain = terms_page(terms, false, true);
     assert!(!plain.contains("1.1") && !plain.contains("3."), "{plain}");
-    let one = page(true, true);
+    let one = terms_page(terms, true, true);
     assert_eq!(one, plain);
+}
+
+#[test]
+fn numbered_text_keeps_lines_that_start_with_a_decimal_or_a_date() {
+    let terms = "10.5 мм разъём\n1.1. Подпункт\n01.12.2026 — дата\n7)8 штук";
+    assert_eq!(
+        terms_page(terms, true, false),
+        "1.10.5 мм разъём2.1.1. Подпункт3.01.12.2026 — дата4.7)8 штук"
+    );
 }
 
 #[test]

@@ -23,6 +23,20 @@ fn title(kind: DocumentKind) -> &'static str {
     }
 }
 
+/// The starts of the sample terms of `kind`, in order: each is printed as a numbered item.
+fn terms_starts(kind: DocumentKind) -> &'static [&'static str] {
+    match kind {
+        DocumentKind::IssueAct | DocumentKind::WarrantyIssueAct => {
+            &["Устройство получено", "Гарантия распространяется"]
+        }
+        _ => &[
+            "Устройство принято",
+            "Срок диагностики",
+            "Сервис не отвечает",
+        ],
+    }
+}
+
 fn mywork2(kind: DocumentKind) -> mw_docs::Preset {
     let list = presets(kind);
     assert_eq!(list.len(), 1, "{kind:?}");
@@ -63,7 +77,15 @@ fn mywork2_presets_fit_one_landscape_sheet() {
             2,
             "{kind:?}: оба экземпляра"
         );
-        assert!(text.contains("1."), "{kind:?}: условия пронумерованы");
+        let flat = text.replace('\n', "");
+        for (n, start) in terms_starts(kind).iter().enumerate() {
+            let item = format!("{}.{start}", n + 1);
+            assert_eq!(
+                flat.matches(&item).count(),
+                2,
+                "{kind:?}: {item} в {flat:?}"
+            );
+        }
         assert!(text.contains(title(kind)), "{kind:?}: {text:?}");
         assert!(text.contains("Условия обслуживания"), "{kind:?}");
         if matches!(
