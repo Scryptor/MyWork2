@@ -6,12 +6,19 @@ use mw_db::entity::{order, order_part, service_point, status};
 use mw_domain::money::Money;
 use mw_domain::permission::Permission;
 use mw_domain::phone::format_phone;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QuerySelect};
 
 use super::xlsx::{Cell, Column, Sheet, workbook};
 use super::{EXPORT_ROWS_MAX, ExportFile, XLSX_CONTENT_TYPE, dmy, ensure_rows};
 use crate::sql::ID_CHUNK;
 use crate::{Actor, Core, CoreError, OrderFilter, OrderListItem, OrderSort};
+
+/// Поля заказа, которых нет в строке списка.
+struct OrderExtras {
+    work_done: String,
+    extra_costs: i64,
+    warranty_text: String,
+}
 
 const ASCII_NAME: &str = "orders.xlsx";
 
@@ -72,16 +79,32 @@ impl Core {
         Ok(sums)
     }
 
-    /// Остальные поля заказов, которых нет в строке списка.
-    async fn order_models(&self, ids: &[i64]) -> Result<HashMap<i64, order::Model>, CoreError> {
+    /// Остальные поля заказов, которых нет в строке списка. Берутся только нужные столбцы: пароль
+    /// и графический ключ устройства в выгрузку не попадают даже из памяти.
+    async fn order_extras(&self, ids: &[i64]) -> Result<HashMap<i64, OrderExtras>, CoreError> {
         let mut map = HashMap::new();
         for chunk in ids.chunks(ID_CHUNK) {
-            for m in order::Entity::find()
+            let rows: Vec<(i64, String, i64, String)> = order::Entity::find()
+                .select_only()
+                .columns([
+                    order::Column::Id,
+                    order::Column::WorkDone,
+                    order::Column::ExtraCosts,
+                    order::Column::WarrantyText,
+                ])
                 .filter(order::Column::Id.is_in(chunk.iter().copied()))
+                .into_tuple()
                 .all(&self.db)
-                .await?
-            {
-                map.insert(m.id, m);
+                .await?;
+            for (id, work_done, extra_costs, warranty_text) in rows {
+                map.insert(
+                    id,
+                    OrderExtras {
+                        work_done,
+                        extra_costs,
+                        warranty_text,
+                    },
+                );
             }
         }
         Ok(map)
@@ -102,7 +125,7 @@ impl Core {
             .await?;
         ensure_rows(items.len(), EXPORT_ROWS_MAX)?;
         let ids: Vec<i64> = items.iter().map(|i| i.id).collect();
-        let models = self.order_models(&ids).await?;
+        let models = self.order_extras(&ids).await?;
         let parts = self.parts_cost(&ids).await?;
         let statuses: HashMap<i64, String> = status::Entity::find()
             .all(&self.db)
@@ -148,7 +171,7 @@ impl Core {
 
 fn order_row(
     item: &OrderListItem,
-    m: &order::Model,
+    m: &OrderExtras,
     statuses: &HashMap<i64, String>,
     points: &HashMap<i64, String>,
     parts_cost: Money,

@@ -786,7 +786,12 @@ mod tests {
     /// в конце списка, то есть в разных частях запроса.
     #[tokio::test]
     async fn phones_and_order_stats_take_more_ids_than_sqlite_binds() {
-        let db = mw_db::testing::sqlite_memory().await;
+        for (label, db) in mw_db::testing::all_backends().await {
+            check_many_ids(label, &db).await;
+        }
+    }
+
+    async fn check_many_ids(label: &str, db: &sea_orm::DatabaseConnection) {
         let at = NaiveDate::from_ymd_opt(2026, 11, 25)
             .and_then(|d| d.and_hms_opt(10, 0, 0))
             .unwrap();
@@ -798,7 +803,7 @@ mod tests {
                 updated_at: Set(at),
                 ..Default::default()
             }
-            .insert(&db)
+            .insert(db)
             .await
             .unwrap();
             client_phone::ActiveModel {
@@ -809,7 +814,7 @@ mod tests {
                 note: Set(String::new()),
                 ..Default::default()
             }
-            .insert(&db)
+            .insert(db)
             .await
             .unwrap();
             real.push(c.id);
@@ -818,10 +823,10 @@ mod tests {
         ids[0] = real[0];
         let last = ids.len() - 1;
         ids[last] = real[1];
-        let phones = load_phones(&db, &ids).await.unwrap();
-        assert_eq!(phones.len(), 2);
+        let phones = load_phones(db, &ids).await.unwrap();
+        assert_eq!(phones.len(), 2, "{label}");
         assert_eq!(phones[&real[1]][0].phone, "79211234567");
-        assert!(order_stats(&db, &ids).await.unwrap().is_empty());
+        assert!(order_stats(db, &ids).await.unwrap().is_empty());
     }
 
     /// План SQLite для фильтра «Похожие»: строки `detail` из `EXPLAIN QUERY PLAN`.

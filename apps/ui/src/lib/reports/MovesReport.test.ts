@@ -58,6 +58,18 @@ describe('MovesReport', () => {
 		expect(onorder).toHaveBeenCalledWith(7, [7, 5]);
 	});
 
+	it('an order that moved twice is one neighbour of the panel', async () => {
+		const onorder = show(
+			report({
+				items: [item({ order_id: 7 }), item({ order_id: 5 }), item({ order_id: 7 })],
+				total: 3
+			})
+		);
+		const rows = within(screen.getByRole('table', { name: 'Перемещения' })).getAllByRole('row');
+		await userEvent.click(within(rows[2]!).getByRole('button', { name: '№ 5' }));
+		expect(onorder).toHaveBeenCalledWith(5, [7, 5]);
+	});
+
 	it('says how many are shown when there are more', () => {
 		show(report({ total: 612 }));
 		expect(screen.getByText('Показаны последние 2 из 612')).toBeInTheDocument();

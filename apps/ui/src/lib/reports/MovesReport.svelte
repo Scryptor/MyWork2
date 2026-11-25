@@ -16,7 +16,8 @@
 	} = $props();
 
 	const t = ru.reports;
-	const ids = $derived(report.items.map((i) => i.order_id));
+	// An order that moved twice is one neighbour: the first occurrence stays.
+	const ids = $derived([...new Set(report.items.map((i) => i.order_id))]);
 </script>
 
 {#if report.total === 0}

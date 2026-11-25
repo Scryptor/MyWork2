@@ -6,8 +6,9 @@
 	import type { ContactsFormat } from '$api/ContactsFormat';
 	import { errorReason } from '#lib/api/client.js';
 	import { downloadContacts } from '#lib/api/exports.js';
+	import { serverClock } from '#lib/api/server-clock.svelte.js';
 	import { submitShortcut } from '#lib/design/hotkeys.svelte.js';
-	import { isoDay, nowLocal } from '#lib/format/date.js';
+	import { isoDay } from '#lib/format/date.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import Button from '#lib/ui/Button.svelte';
 	import Callout from '#lib/ui/Callout.svelte';
@@ -18,7 +19,7 @@
 	let { open = $bindable(false), query }: { open: boolean; query: ClientExportQuery } = $props();
 
 	const t = ru.exports.contacts;
-	/** The day of the last successful export, in the browser of this computer. */
+	/** The day of the last successful export (the enterprise's day by the server's clock), kept in the browser of this computer. */
 	const STORAGE_KEY = 'mw.contactsExportedOn';
 
 	function lastExportDay(): string | null {
@@ -32,7 +33,7 @@
 
 	function rememberToday() {
 		try {
-			localStorage.setItem(STORAGE_KEY, isoDay(nowLocal()));
+			localStorage.setItem(STORAGE_KEY, isoDay(serverClock.now()));
 		} catch {
 			// No storage (a private window): the next time simply starts from «Все из списка».
 		}

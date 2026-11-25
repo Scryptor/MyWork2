@@ -146,7 +146,8 @@ pub struct OrderReport {
 pub(crate) struct ReportOrderRow {
     pub id: i64,
     pub received_at: NaiveDateTime,
-    pub issued_at: NaiveDateTime,
+    /// `None` — выдан без даты выдачи (в шкалу времени не попадает).
+    pub issued_at: Option<NaiveDateTime>,
     pub client_name: String,
     /// Основной телефон клиента (первый); пусто, если телефонов нет.
     pub phone: String,
@@ -386,9 +387,7 @@ impl Core {
             rows.push(ReportOrderRow {
                 id,
                 received_at: r.try_get_by_index(1)?,
-                issued_at: issued_at.ok_or_else(|| {
-                    CoreError::Internal("у выданного заказа нет даты выдачи".into())
-                })?,
+                issued_at,
                 client_name: r.try_get_by_index(17)?,
                 phone: r
                     .try_get_by_index::<Option<String>>(19)?
@@ -591,8 +590,14 @@ fn timeline(
     filter: &ReportFilter,
     rows: &[ReportOrderRow],
 ) -> Result<(ReportStep, Vec<ReportPoint>), CoreError> {
-    let first = rows.first().map(|r| r.issued_at.date());
-    let last = rows.last().map(|r| r.issued_at.date());
+    // Заказы без даты выдачи (в «всё время») на шкалу не попадают; сортировка БД ставит их
+    // в начало или в конец, поэтому границы — по заказам с датой.
+    let first = rows.iter().find_map(|r| r.issued_at).map(|d| d.date());
+    let last = rows
+        .iter()
+        .rev()
+        .find_map(|r| r.issued_at)
+        .map(|d| d.date());
     let all_time = filter.from.is_none() && filter.to.is_none();
     let (Some(mut start), Some(mut end)) = (filter.from.or(first), filter.to.or(last)) else {
         return Ok((ReportStep::Month, Vec::new()));
@@ -645,9 +650,12 @@ fn timeline(
     // Строки идут по возрастанию даты, точки тоже: один проход.
     let mut index = 0;
     for row in rows {
+        let Some(issued) = row.issued_at else {
+            continue;
+        };
         let at = match step {
-            ReportStep::Day => row.issued_at.date(),
-            ReportStep::Month => month_start(row.issued_at.date()),
+            ReportStep::Day => issued.date(),
+            ReportStep::Month => month_start(issued.date()),
         };
         while index < points.len() && points[index].start < at {
             index += 1;

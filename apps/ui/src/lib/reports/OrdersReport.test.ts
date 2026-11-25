@@ -56,6 +56,13 @@ describe('OrdersReport', () => {
 		expect(within(tiles).getByText('50 % прибыли')).toBeInTheDocument();
 	});
 
+	it('the scrolling table is a named region the keyboard can reach', () => {
+		show(report());
+		const region = screen.getByRole('region', { name: /Итоги по группам/ });
+		expect(region).toHaveAttribute('tabindex', '0');
+		expect(within(region).getByRole('table', { name: 'Итоги по группам' })).toBeInTheDocument();
+	});
+
 	it('the table has the groups and the last row «Итого»', () => {
 		show(report());
 		const rows = within(screen.getByRole('table', { name: 'Итоги по группам' })).getAllByRole(

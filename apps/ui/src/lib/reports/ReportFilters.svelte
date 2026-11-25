@@ -28,8 +28,9 @@
 		/** The enterprise's local day: «Свой период» starts from the period chosen before it. */
 		today: string;
 		exporting?: boolean;
-		/** A change as a function of the latest view: two quick changes do not undo each other. */
-		onchange: (change: (v: ReportView) => ReportView) => void;
+		/** A change as a function of the latest view: two quick changes do not undo each other.
+		 *  `replace` — typed text rewrites the entry of the history instead of adding one. */
+		onchange: (change: (v: ReportView) => ReportView, replace?: boolean) => void;
 		onexport: () => void;
 	} = $props();
 
@@ -132,7 +133,7 @@
 			clearTimeout(timer);
 			const value = text.trim() || undefined;
 			if (value === view[field]) return;
-			onchange((v) => ({ ...v, [field]: value }));
+			onchange((v) => ({ ...v, [field]: value }), true);
 		}
 		return {
 			get text() {
@@ -215,7 +216,10 @@
 				}
 			/>
 			<div class="export">
-				<Button icon={FileSpreadsheet} onclick={onexport} disabled={exporting}>{t.toExcel}</Button>
+				{#if app.can('data_export')}
+					<Button icon={FileSpreadsheet} onclick={onexport} disabled={exporting}>{t.toExcel}</Button
+					>
+				{/if}
 			</div>
 		{/if}
 	</div>

@@ -57,7 +57,7 @@ for (const [format, extension, start] of [
 	}) => {
 		const marker = uniq('Контакт');
 		const client = await createClient(request, { full_name: `Контактов ${marker}` });
-		const phone = client.phones[0].phone;
+		const phone = client.phones[0]!.phone;
 		await page.goto('/clients');
 		await filterOf(page).fill(marker);
 		await expect(

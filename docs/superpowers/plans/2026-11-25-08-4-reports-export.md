@@ -1,6 +1,6 @@
 # План 8.4. Отчёты и экспорт
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** раздел «Отчёты» и выгрузки:
 - отчёт по выданным заказам за период: число заказов, выручка, затраты, прибыль, «без ремонта», оплата мастерам; разрез по мастеру, точке, типу, бренду или источнику; графики и таблица;
@@ -69,7 +69,7 @@
    - Миграция данных дописывает его каждой роли, у которой есть все 17 прежних прав, то есть «Администратору».
    - «Мастер» и «Приёмщик» его не получают.
    - Импорт MyWork 2: флаг `settings` даёт и `DataExport`, потому что контакты в MyWork 2 выгружались из «Настроек».
-   - Отчёт в Excel — под `reports_view`: кто видит отчёт, тот может его сохранить.
+   - Отчёт в Excel — под `reports_view`; файл отчёта требует ещё и «Выгрузку», потому что его лист «Заказы» несёт клиентов и телефоны (итоговое ревью).
 9. **Выгрузки списков** берут фильтр и порядок экрана: заказы — фильтры списка заказов, клиенты — поиск и «Похожие».
    - Не больше `EXPORT_ROWS_MAX = 50 000` строк, иначе ошибка `too_many_rows`.
    - Пароль и графический ключ устройства в выгрузки не попадают никогда.
@@ -526,7 +526,7 @@
 - Create: `crates/mw-core/src/export/contacts.rs`
 - Modify: `crates/mw-api/src/routes/exports.rs`, `crates/mw-api/src/dto.rs` (`ContactsExportQuery`)
 - Create: `apps/ui/src/lib/clients/ContactsExportDialog.svelte`; Modify: `apps/ui/src/routes/(app)/clients/+page.svelte` (пункт «Контакты для телефона…»), `apps/ui/src/lib/api/exports.ts`, `ru.ts`
-- Modify: `docs/superpowers/plans/README.md`, этот план (все `- [x]` → `- [x]`)
+- Modify: `docs/superpowers/plans/README.md`, этот план (все `- [ ]` → `- [x]`)
 - Test: `crates/mw-domain/src/contacts.rs` (модульные), `crates/mw-core/tests/exports.rs`, `crates/mw-api/tests/exports.rs`, `apps/ui/src/lib/clients/ContactsExportDialog.test.ts`, `apps/ui/e2e/exports.spec.ts`
 - Modify: `crates/mw-api/openapi.json`, `bindings/*`
 
@@ -595,7 +595,7 @@
     - заметку «несколько платежей по заказу…» перенести из «План 8.4» в новую «План 8.7 (платежи по заказу)»;
     - пометить сделанными «отчёты по источнику — без учёта регистра» и «подсказка о проценте мастера»;
     - идея «Перемещение заказа между точками» → `[x]` с «Сделано в плане 8.4: отчёт «Перемещения»; статуса «в пути» нет — переезд мгновенный, свой этап можно завести статусом вида «в работе»»;
-  - в этом плане все `- [x]` → `- [x]`.
+  - в этом плане все `- [ ]` → `- [x]`.
 - [x] **Step 8: Запустить** полный Rust, `npm run verify && npm run test:e2e` → PASS. Обновить контракт.
 - [x] **Step 9: Коммит** `feat: контакты для телефона (CSV и vCard); план 8.4 выполнен`.
 

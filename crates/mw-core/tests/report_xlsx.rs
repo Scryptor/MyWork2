@@ -272,24 +272,25 @@ async fn period_and_group_name_the_file_and_sheets() -> Result<(), CoreError> {
 }
 
 #[tokio::test]
-async fn report_xlsx_needs_reports_view() -> Result<(), CoreError> {
+async fn report_xlsx_needs_reports_view_and_data_export() -> Result<(), CoreError> {
     for t in cores().await {
-        let res = t
-            .core
-            .order_report_xlsx(
-                &actor_with(&[Permission::StockView]),
-                &ReportFilter::default(),
-            )
-            .await;
-        assert!(
-            matches!(res, Err(CoreError::Forbidden(Permission::ReportsView))),
-            "{}: {res:?}",
-            t.label
-        );
+        let f = ReportFilter::default();
+        for (perms, missing) in [
+            (vec![Permission::StockView], Permission::ReportsView),
+            (vec![Permission::ReportsView], Permission::DataExport),
+            (vec![Permission::DataExport], Permission::ReportsView),
+        ] {
+            let res = t.core.order_report_xlsx(&actor_with(&perms), &f).await;
+            assert!(
+                matches!(&res, Err(CoreError::Forbidden(p)) if *p == missing),
+                "{}: {perms:?}: {res:?}",
+                t.label
+            );
+        }
         t.core
             .order_report_xlsx(
-                &actor_with(&[Permission::ReportsView]),
-                &ReportFilter::default(),
+                &actor_with(&[Permission::ReportsView, Permission::DataExport]),
+                &f,
             )
             .await?;
         let reversed = ReportFilter {
@@ -301,6 +302,80 @@ async fn report_xlsx_needs_reports_view() -> Result<(), CoreError> {
             t.core.order_report_xlsx(&admin(), &reversed).await,
             &[("to", "period_reversed")],
         );
+    }
+    Ok(())
+}
+
+/// Выданный без даты выдачи («Не ставить») виден в «всё время»: в итогах и листе «Заказы» (пустые
+/// «Выдан» и «Дней в сервисе»), но не на шкале времени; при закрытой границе его нет.
+#[tokio::test]
+async fn issued_without_issue_date_is_in_all_time_report() -> Result<(), CoreError> {
+    for t in cores().await {
+        let brand = "Без-Даты";
+        seed(&t, brand).await?;
+        let o = t
+            .core
+            .create_order(
+                &admin(),
+                NewOrder {
+                    brand: brand.into(),
+                    ..sample_new_order()
+                },
+            )
+            .await?;
+        let o = t
+            .core
+            .update_order(
+                &admin(),
+                o.id,
+                o.version,
+                OrderPatch {
+                    final_price: Some(Some(rub(70))),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        let issued = status_id_by_kind(&t.core, mw_domain::status::StatusKind::Issued).await;
+        let o = t
+            .core
+            .change_status_with(&admin(), o.id, o.version, issued, false)
+            .await?;
+        assert!(o.issued_at.is_none(), "{}", t.label);
+
+        let f = filter(brand);
+        let report = t.core.order_report(&admin(), &f).await?;
+        assert_eq!(report.totals.orders, 3, "{}", t.label);
+        assert_eq!(report.totals.revenue, rub(1470), "{}", t.label);
+        let in_groups: u64 = report.groups.iter().map(|g| g.totals.orders).sum();
+        assert_eq!(in_groups, 3, "{}", t.label);
+        let on_timeline: u64 = report.timeline.iter().map(|p| p.totals.orders).sum();
+        assert_eq!(on_timeline, 2, "{}", t.label);
+
+        let file = t.core.order_report_xlsx(&admin(), &f).await?;
+        let mut book = open(file.bytes);
+        let orders = book.worksheet_range("Заказы").unwrap();
+        let head: Vec<String> = orders.rows().next().unwrap().iter().map(text).collect();
+        let col = |name: &str| head.iter().position(|h| h == name).unwrap();
+        let body: Vec<_> = orders.rows().skip(1).collect();
+        assert_eq!(body.len(), 3, "{}", t.label);
+        let row = body
+            .iter()
+            .find(|r| num(&r[col("№ заказа")]) == o.id as f64)
+            .unwrap();
+        assert_eq!(text(&row[col("Выдан")]), "");
+        assert_eq!(text(&row[col("Дней в сервисе")]), "");
+
+        // Закрытая граница: дата неизвестна, заказ не входит.
+        let bounded = ReportFilter {
+            from: NaiveDate::from_ymd_opt(2000, 1, 1),
+            to: NaiveDate::from_ymd_opt(2100, 1, 1),
+            ..f
+        };
+        let report = t.core.order_report(&admin(), &bounded).await?;
+        assert_eq!(report.totals.orders, 2, "{}", t.label);
+        let file = t.core.order_report_xlsx(&admin(), &bounded).await?;
+        let mut book = open(file.bytes);
+        assert_eq!(book.worksheet_range("Заказы").unwrap().rows().count(), 3);
     }
     Ok(())
 }

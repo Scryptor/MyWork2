@@ -173,8 +173,10 @@ fn orders_sheet(rows: &[ReportOrderRow]) -> Sheet {
                 vec![
                     Cell::Int(r.id),
                     Cell::Time(r.received_at),
-                    Cell::Time(r.issued_at),
-                    Cell::Int((r.issued_at.date() - r.received_at.date()).num_days()),
+                    r.issued_at.map_or(Cell::Empty, Cell::Time),
+                    r.issued_at.map_or(Cell::Empty, |at| {
+                        Cell::Int((at.date() - r.received_at.date()).num_days())
+                    }),
                     text(&r.client_name),
                     text(&r.phone),
                     text(&r.device_type),
@@ -252,13 +254,15 @@ impl Core {
         Ok(labels)
     }
 
-    /// Отчёт по заказам файлом Excel; нужно право «Отчёты». Листы: «Итоги», разрез и «Заказы».
+    /// Отчёт по заказам файлом Excel; нужны права «Отчёты» и «Выгрузка» (лист «Заказы» несёт
+    /// клиентов и телефоны). Листы: «Итоги», разрез и «Заказы».
     pub async fn order_report_xlsx(
         &self,
         actor: &Actor,
         filter: &ReportFilter,
     ) -> Result<ExportFile, CoreError> {
         actor.require(Permission::ReportsView)?;
+        actor.require(Permission::DataExport)?;
         let (report, rows) = self.report_with_rows(actor, filter).await?;
         ensure_rows(rows.len(), EXPORT_ROWS_MAX)?;
         let labels = self.report_filter_labels(filter, &rows).await?;

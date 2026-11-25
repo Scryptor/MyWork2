@@ -1,4 +1,4 @@
-<!-- «Выгрузить» of the clients' list: the menu with «В Excel» and «Контакты для телефона…»; only with «data_export». -->
+<!-- «Выгрузить» of the clients' list: the menu with «В Excel» and «Контакты для телефона…»; only with «data_export» and «clients_view». -->
 <script lang="ts">
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import Contact from '@lucide/svelte/icons/contact';
@@ -35,7 +35,7 @@
 	]);
 </script>
 
-{#if app.can('data_export')}
+{#if app.can('data_export') && app.can('clients_view')}
 	<DropdownMenu {items} label={ru.exports.menu}>
 		{#snippet trigger(props)}
 			<Button {...props} iconEnd={ChevronDown} {busy} disabled={busy}>{ru.exports.menu}</Button>

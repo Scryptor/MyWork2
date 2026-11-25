@@ -2,6 +2,7 @@ import { render, screen, waitFor } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '#lib/api/client.js';
+import { serverClock } from '#lib/api/server-clock.svelte.js';
 
 const api = vi.hoisted(() => ({ downloadContacts: vi.fn() }));
 vi.mock('#lib/api/exports.js', () => api);
@@ -48,17 +49,15 @@ describe('«Контакты для телефона»', () => {
 	});
 
 	it('sends the format and the day, then remembers today', async () => {
+		serverClock.sync('2031-05-06T23:30:00');
 		localStorage.setItem(KEY, '2026-11-20');
 		open();
 		await userEvent.click(screen.getByRole('button', { name: 'Выгрузить' }));
 		await waitFor(() =>
 			expect(api.downloadContacts).toHaveBeenCalledWith({ query: 'и' }, 'csv', '2026-11-20')
 		);
-		const today = new Date();
-		const pad = (n: number) => String(n).padStart(2, '0');
-		expect(localStorage.getItem(KEY)).toBe(
-			`${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`
-		);
+		// The enterprise's day by the server's clock (here a day far from the browser's own).
+		expect(localStorage.getItem(KEY)).toBe('2031-05-06');
 	});
 
 	it("keeps the dialog and tells the server's reason under the form", async () => {

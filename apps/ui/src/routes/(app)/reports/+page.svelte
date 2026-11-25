@@ -54,12 +54,13 @@
 
 	// The view the address is going to have: a change made before the last one has arrived builds on it.
 	let pending: ReportView | null = null;
-	function navigate(change: (v: ReportView) => ReportView) {
+	function navigate(change: (v: ReportView) => ReportView, replace = false) {
 		const next = change(pending ?? view);
 		const search = reportViewToSearch(next);
 		if (search === reportViewToSearch(pending ?? view)) return;
 		pending = next;
 		const arrived = goto(search ? resolve(`reports?${search}`) : resolve('reports'), {
+			replace,
 			reset: false
 		});
 		void arrived.finally(() => {

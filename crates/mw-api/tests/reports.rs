@@ -97,6 +97,9 @@ async fn report_endpoint_returns_totals() {
         assert_eq!(r.status, 403, "{}", t.label);
         let r = t.get("/api/v1/reports/orders/xlsx", Some(&plain)).await;
         assert_eq!(r.status, 403, "{}", t.label);
+        // Отчёт без права «Выгрузка» файлом не выгрузить, хотя на экране он виден.
+        let r = t.get("/api/v1/reports/orders/xlsx", Some(&token)).await;
+        assert_eq!(r.status, 403, "{}: {}", t.label, r.body);
         let r = t.get("/api/v1/reports/orders", None).await;
         assert_eq!(r.status, 401, "{}", t.label);
 
@@ -119,7 +122,9 @@ async fn report_endpoint_returns_totals() {
 #[tokio::test]
 async fn report_xlsx_has_a_russian_file_name() {
     for t in apis(Listen::Network).await {
-        let token = t.token_with("otchet", &[Permission::ReportsView]).await;
+        let token = t
+            .token_with("otchet", &[Permission::ReportsView, Permission::DataExport])
+            .await;
         let (status, headers, body) = t
             .get_raw(
                 "/api/v1/reports/orders/xlsx?from=2026-11-01&to=2026-11-30",

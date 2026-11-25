@@ -7,9 +7,12 @@ import { toast } from '#lib/ui/toast/toast.svelte.js';
 // «В Excel» of the lists: there only with «data_export», and a refusal of the server is a toast.
 const api = vi.hoisted(() => ({ downloadOrders: vi.fn(), downloadClients: vi.fn() }));
 vi.mock('#lib/api/exports.js', () => api);
-const rights = vi.hoisted(() => ({ export: true }));
+const rights = vi.hoisted(() => ({ export: true, clients: true }));
 vi.mock('#lib/app/context.svelte.js', () => ({
-	app: { can: (p: string) => p !== 'data_export' || rights.export }
+	app: {
+		can: (p: string) =>
+			(p !== 'data_export' || rights.export) && (p !== 'clients_view' || rights.clients)
+	}
 }));
 
 import ExportClientsMenu from './ExportClientsMenu.svelte';
@@ -19,6 +22,7 @@ beforeEach(() => {
 	api.downloadOrders.mockReset().mockResolvedValue(undefined);
 	api.downloadClients.mockReset().mockResolvedValue(undefined);
 	rights.export = true;
+	rights.clients = true;
 	for (const t of toast.items) toast.dismiss(t.id);
 });
 
@@ -63,7 +67,7 @@ describe('«Выгрузить» of the clients', () => {
 		await userEvent.keyboard('{Enter}');
 		const items = await screen.findAllByRole('menuitem', { hidden: true });
 		expect(items.map((i) => i.textContent?.trim())).toEqual(['В Excel', 'Контакты для телефона…']);
-		const item = items[0];
+		const item = items[0]!;
 		item.focus();
 		await userEvent.keyboard('{Enter}');
 		expect(api.downloadClients).toHaveBeenCalledWith({ query: 'и' });
@@ -71,6 +75,12 @@ describe('«Выгрузить» of the clients', () => {
 
 	it('is not there without the right', () => {
 		rights.export = false;
+		render(ExportClientsMenu, { query: {} });
+		expect(screen.queryByRole('button', { name: 'Выгрузить' })).toBeNull();
+	});
+
+	it('is not there without «clients_view»: the page opens with «orders_create» alone', () => {
+		rights.clients = false;
 		render(ExportClientsMenu, { query: {} });
 		expect(screen.queryByRole('button', { name: 'Выгрузить' })).toBeNull();
 	});

@@ -146,7 +146,9 @@
 				height={groupHeight}
 			/>
 		</section>
-		<section class="block scroll">
+		<!-- A named section is a region; the keyboard reaches the scrolling table through it. -->
+		<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+		<section class="block scroll" aria-label={t.groupsRegion} tabindex="0">
 			<table aria-label={t.groupsTable}>
 				<thead>
 					<tr>
