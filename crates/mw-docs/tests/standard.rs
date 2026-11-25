@@ -326,8 +326,24 @@ fn sample_data_comes_from_the_field_samples() {
             field.key
         );
     }
+    // The links: the samples under the keys of the links and of the three old names.
+    for (id, url) in mw_docs::fields::LINK_SAMPLES {
+        assert_eq!(
+            data.values.get(&format!("link.{id}")).map(String::as_str),
+            Some(url),
+            "{id}"
+        );
+    }
+    for legacy in mw_docs::fields::LEGACY_LINKS {
+        assert_eq!(
+            data.values.get(legacy.key),
+            data.values.get(&format!("link.{}", legacy.id))
+        );
+        assert!(data.values.contains_key(legacy.key), "{}", legacy.key);
+    }
     let blank = sample_data(DocumentKind::BlankIntakeAct);
     assert!(blank.values.contains_key("firm.name"));
+    assert!(blank.values.contains_key("link.telegram"));
     assert!(
         blank
             .values

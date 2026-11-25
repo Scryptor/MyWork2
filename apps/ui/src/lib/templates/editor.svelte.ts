@@ -6,6 +6,7 @@ import type { CodeDiagnostic } from '$api/CodeDiagnostic';
 import type { DocumentKind } from '$api/DocumentKind';
 import type { DocumentTemplate } from '$api/DocumentTemplate';
 import type { ErrorField } from '$api/ErrorField';
+import type { FirmLink } from '$api/FirmLink';
 import type { Template } from '$api/Template';
 import { ApiError } from '#lib/api/client.js';
 import { getTemplate, saveTemplate } from '#lib/api/document-templates.js';
@@ -20,7 +21,7 @@ import { sameValue } from '#lib/orders/merge.js';
 import { toast } from '#lib/ui/toast/toast.svelte.js';
 import { createHistory } from './history.svelte.js';
 import { blockAt, type BlockPath } from './ops.js';
-import { qrPreset } from './qr.js';
+import { qrLinkId } from './qr.js';
 
 const t = ru.templates;
 
@@ -270,7 +271,7 @@ function start(text: string): string {
 }
 
 /** A row of the list of blocks: the type and what tells it from others, «Текст · Акт приёма №…». */
-export function blockLabel(block: Block): string {
+export function blockLabel(block: Block, links: readonly FirmLink[] = []): string {
 	const b = block.body;
 	const type = t.blockTypes[b.type];
 	let detail = '';
@@ -284,8 +285,11 @@ export function blockLabel(block: Block): string {
 		);
 	else if (b.type === 'columns') detail = String(b.columns.length);
 	else if (b.type === 'qr') {
-		const preset = qrPreset(b.link);
-		detail = preset === null ? start(b.link) : t.qrPresets[preset];
+		const id = qrLinkId(b.link);
+		detail =
+			id === null
+				? start(b.link)
+				: (links.find((l) => l.id === id)?.name ?? t.qrLinkNames[id] ?? id);
 	}
 	return detail ? `${type} · ${detail}` : type;
 }

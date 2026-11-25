@@ -7,7 +7,12 @@ import { editorOf, templateOf } from '../editor-fixtures.test-helper.js';
 import QrProps from './QrProps.svelte';
 
 const settings = vi.hoisted(() => ({
-	firm_links: [{ id: 'telegram', name: 'Telegram', url: '', enabled: true }]
+	firm_links: [
+		{ id: 'yandex_maps', name: 'Яндекс Карты', url: '', enabled: true },
+		{ id: 'telegram', name: 'Telegram', url: '', enabled: true },
+		{ id: 'link_site', name: 'Сайт', url: 'https://example.com', enabled: true },
+		{ id: 'link_off', name: 'Старый сайт', url: 'https://example.org', enabled: false }
+	]
 }));
 vi.mock('#lib/app/context.svelte.js', () => ({ app: { settings } }));
 
@@ -17,7 +22,7 @@ beforeAll(() => {
 	Element.prototype.scrollIntoView ??= () => {};
 });
 beforeEach(() => {
-	settings.firm_links[0]!.url = '';
+	settings.firm_links[1]!.url = '';
 });
 
 const qr = (link: string): Block => ({
@@ -46,7 +51,7 @@ function setup(link: string) {
 
 describe('QrProps', () => {
 	it('«Своя ссылка» shows the link field and starts it from https://', async () => {
-		const { body } = setup('{фирма.телеграм}');
+		const { body } = setup('{ссылка.telegram}');
 		expect(screen.queryByRole('textbox', { name: 'Ссылка' })).toBeNull();
 		// Opened from the keyboard: jsdom does not place the list, so its options are hidden.
 		screen.getByRole('combobox', { name: 'Откуда ссылка' }).focus();
@@ -74,42 +79,72 @@ describe('QrProps', () => {
 		const { body } = setup('https://a.b');
 		const field = screen.getByRole('textbox', { name: 'Ссылка' });
 		await userEvent.clear(field);
-		await userEvent.type(field, '{{фирма.телеграм}');
-		expect(body().link).toBe('{фирма.телеграм}');
+		await userEvent.type(field, '{{ссылка.telegram}');
+		expect(body().link).toBe('{ссылка.telegram}');
 		expect(screen.getByRole('textbox', { name: 'Ссылка' })).toBe(field);
 		expect(field).toHaveFocus();
 		await userEvent.type(field, '?start=1');
-		expect(body().link).toBe('{фирма.телеграм}?start=1');
+		expect(body().link).toBe('{ссылка.telegram}?start=1');
 	});
 
 	it('«Своя ссылка» chosen again keeps the link typed', async () => {
 		const { body } = setup('https://a.b');
 		const field = screen.getByRole('textbox', { name: 'Ссылка' });
 		await userEvent.clear(field);
-		await userEvent.type(field, '{{фирма.телеграм}');
+		await userEvent.type(field, '{{ссылка.telegram}');
 		await choose('Своя ссылка');
-		expect(body().link).toBe('{фирма.телеграм}');
-		expect(screen.getByRole('textbox', { name: 'Ссылка' })).toHaveValue('{фирма.телеграм}');
+		expect(body().link).toBe('{ссылка.telegram}');
+		expect(screen.getByRole('textbox', { name: 'Ссылка' })).toHaveValue('{ссылка.telegram}');
 	});
 
 	it('an undo back to a firm link shows it as the firm one', async () => {
-		const { editor, body } = setup('{фирма.телеграм}');
+		const { editor, body } = setup('{ссылка.telegram}');
 		await choose('Своя ссылка');
 		expect(body().link).toBe('https://');
 		editor.undo();
 		await tick();
-		expect(body().link).toBe('{фирма.телеграм}');
+		expect(body().link).toBe('{ссылка.telegram}');
 		expect(screen.queryByRole('textbox', { name: 'Ссылка' })).toBeNull();
-		expect(screen.getByRole('combobox', { name: 'Откуда ссылка' })).toHaveTextContent(
-			'Telegram фирмы'
-		);
+		expect(screen.getByRole('combobox', { name: 'Откуда ссылка' })).toHaveTextContent('Telegram');
 	});
 
-	it('a preset chosen in the list hides the field', async () => {
+	it('a link chosen in the list hides the field', async () => {
 		const { body } = setup('https://a.b');
-		await choose('Google Карты фирмы');
-		expect(body().link).toBe('{фирма.гугл_карты}');
+		await choose('Сайт');
+		expect(body().link).toBe('{ссылка.link_site}');
 		expect(screen.queryByRole('textbox', { name: 'Ссылка' })).toBeNull();
+	});
+
+	it('lists the links of the settings in their order, then «Своя ссылка»', async () => {
+		setup('{ссылка.telegram}');
+		screen.getByRole('combobox', { name: 'Откуда ссылка' }).focus();
+		await userEvent.keyboard('{Enter}');
+		const options = await screen.findAllByRole('option', { hidden: true });
+		expect(options.map((o) => o.textContent?.trim())).toEqual([
+			'Яндекс Карты',
+			'Telegram',
+			'Сайт',
+			'Старый сайт (выключена)',
+			'Своя ссылка'
+		]);
+	});
+
+	it('a link of an old block that the list lacks is shown by its id, with a hint', () => {
+		setup('{фирма.гугл_карты}');
+		expect(screen.getByRole('combobox', { name: 'Откуда ссылка' })).toHaveTextContent(
+			'google_maps'
+		);
+		expect(screen.getByText(/Ссылки «google_maps» нет в списке/)).toBeInTheDocument();
+		expect(screen.getByRole('link', { name: 'Документы и реквизиты' })).toBeInTheDocument();
+	});
+
+	it('a link that is switched off shows a hint with a link to the settings', () => {
+		setup('{ссылка.link_off}');
+		expect(screen.getByText(/Ссылка выключена — QR-код не печатается/)).toBeInTheDocument();
+		expect(screen.getByRole('link', { name: 'Документы и реквизиты' })).toHaveAttribute(
+			'href',
+			expect.stringContaining('settings/documents')
+		);
 	});
 
 	it('a link of its own is typed into the field', async () => {
@@ -120,7 +155,7 @@ describe('QrProps', () => {
 	});
 
 	it('an edit of the size writes size_mm', async () => {
-		const { body } = setup('{фирма.телеграм}');
+		const { body } = setup('{ссылка.telegram}');
 		const field = screen.getByRole('textbox', { name: 'Размер, мм' });
 		await userEvent.clear(field);
 		await userEvent.type(field, '35');
@@ -128,7 +163,7 @@ describe('QrProps', () => {
 	});
 
 	it('the caption and the alignment are edited too', async () => {
-		const { body } = setup('{фирма.телеграм}');
+		const { body } = setup('{ссылка.telegram}');
 		const field = screen.getByRole('textbox', { name: 'Подпись под кодом' });
 		await userEvent.clear(field);
 		await userEvent.type(field, 'Привет');
@@ -137,8 +172,8 @@ describe('QrProps', () => {
 		expect(body().align).toBe('right');
 	});
 
-	it('an empty setting of the preset shows a hint with a link to the settings', () => {
-		setup('{фирма.телеграм}');
+	it('an empty address of the link shows a hint with a link to the settings', () => {
+		setup('{ссылка.telegram}');
 		expect(screen.getByText(/Ссылка не заполнена — код не печатается/)).toBeInTheDocument();
 		expect(screen.getByRole('link', { name: 'Документы и реквизиты' })).toHaveAttribute(
 			'href',
@@ -147,8 +182,8 @@ describe('QrProps', () => {
 	});
 
 	it('a filled setting shows no hint', () => {
-		settings.firm_links[0]!.url = 'https://t.me/firm';
-		setup('{фирма.телеграм}');
+		settings.firm_links[1]!.url = 'https://t.me/firm';
+		setup('{ссылка.telegram}');
 		expect(screen.queryByText(/не печатается/)).toBeNull();
 	});
 

@@ -9,6 +9,8 @@ import { toast } from '#lib/ui/toast/toast.svelte.js';
 import BlockList from './BlockListHarness.test-helper.svelte';
 import { createTemplateEditor, type TemplateEditorApi } from './editor.svelte.js';
 
+vi.mock('#lib/app/context.svelte.js', () => ({ app: { settings: { firm_links: [] } } }));
+
 const blockCode = vi.hoisted(() => vi.fn());
 vi.mock('#lib/api/document-templates.js', async (original) => ({
 	...(await original<typeof import('#lib/api/document-templates.js')>()),

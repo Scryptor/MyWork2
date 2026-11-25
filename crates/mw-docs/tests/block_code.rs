@@ -325,7 +325,7 @@ fn qr_block_with_preset_becomes_code() {
     );
     let code = block_code(&t, &[1]).expect("a preset QR converts");
     assert!(
-        code.contains("qr-image") || code.contains("image(\"qr-firm.google_maps.svg\""),
+        code.contains("qr-image") || code.contains("image(\"qr-link.google_maps.svg\""),
         "{code}"
     );
     let data = sample_data(DocumentKind::IntakeAct);

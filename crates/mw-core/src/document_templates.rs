@@ -276,8 +276,22 @@ impl Core {
             .ok_or_else(|| CoreError::Validation(vec![FieldError::new("path", "code_unavailable")]))
     }
 
-    /// Поля подстановки в порядке меню.
+    /// Поля подстановки в порядке меню: поля реестра, затем ссылки фирмы из настроек по порядку.
     pub fn document_fields(&self) -> Vec<DocumentField> {
+        use mw_docs::fields::{LINK_KEY_PREFIX, LINK_PLACEHOLDER_PREFIX};
+        let links = self
+            .settings()
+            .firm_links
+            .into_iter()
+            .map(|link| DocumentField {
+                key: format!("{LINK_KEY_PREFIX}{}", link.id),
+                placeholder: format!("{LINK_PLACEHOLDER_PREFIX}{}", link.id),
+                label: if link.enabled {
+                    format!("Ссылка: {}", link.name)
+                } else {
+                    format!("Ссылка: {} (выключена)", link.name)
+                },
+            });
         mw_docs::fields::fields()
             .iter()
             .map(|f| DocumentField {
@@ -285,6 +299,7 @@ impl Core {
                 placeholder: f.placeholder.to_owned(),
                 label: f.label.to_owned(),
             })
+            .chain(links)
             .collect()
     }
 

@@ -103,26 +103,42 @@ async function restoreStandard(request: APIRequestContext, info: TestInfo) {
 test.describe('the editor', () => {
 	test.afterEach(({ request }, info) => restoreStandard(request, info));
 
-	test('qr block is added, previewed and saved', async ({ page, request }, info) => {
+	test('qr block picks a link from the list', async ({ page, request }, info) => {
 		const { kind } = documentOf(info);
 		const link = `https://example.com/${uniq('qr')}`;
-		await openEditor(page, info);
-		await addBlock(page, 'QR-код');
-		await expect(item(page, 'QR-код · Telegram фирмы')).toBeVisible();
-		const preview = page.getByRole('region', { name: 'Превью' });
-		await expect(preview.getByRole('img', { name: /^Страница 1 из \d+$/ })).toBeVisible();
-		await expect(page.getByText('Шаблон не построен')).toHaveCount(0);
+		const name = `Сайт ${uniq()}`;
+		const before = (await (await request.get('/api/v1/settings')).json()) as {
+			firm_links: { id: string; name: string; url: string; enabled: boolean }[];
+		};
+		try {
+			const added = { id: `link_${Date.now().toString(36)}`, name, url: link, enabled: true };
+			const patch = await request.patch('/api/v1/settings', {
+				data: { firm_links: [...before.firm_links, added] }
+			});
+			expect(patch.ok()).toBe(true);
+			await openEditor(page, info);
+			await addBlock(page, 'QR-код');
+			await expect(item(page, 'QR-код · Telegram')).toBeVisible();
+			const preview = page.getByRole('region', { name: 'Превью' });
+			await expect(preview.getByRole('img', { name: /^Страница 1 из \d+$/ })).toBeVisible();
+			await expect(page.getByText('Шаблон не построен')).toHaveCount(0);
 
-		await props(page).getByRole('combobox', { name: 'Откуда ссылка' }).click();
-		await page.getByRole('option', { name: 'Своя ссылка' }).click();
-		await props(page).getByRole('textbox', { name: 'Ссылка' }).fill(link);
-		await expect
-			.poll(async () => JSON.stringify((await fetchTemplate(request, kind)).template))
-			.toContain(link);
+			await props(page).getByRole('combobox', { name: 'Откуда ссылка' }).click();
+			await page.getByRole('option', { name }).click();
+			await expect(item(page, `QR-код · ${name}`)).toBeVisible();
+			await expect(props(page).getByRole('textbox', { name: 'Ссылка' })).toHaveCount(0);
+			await expect
+				.poll(async () => JSON.stringify((await fetchTemplate(request, kind)).template))
+				.toContain(`{ссылка.${added.id}}`);
+			await expect(preview.getByRole('img', { name: /^Страница 1 из \d+$/ })).toBeVisible();
 
-		await page.reload();
-		await item(page, `QR-код · ${link}`).click();
-		await expect(props(page).getByRole('textbox', { name: 'Ссылка' })).toHaveValue(link);
+			await props(page).getByRole('combobox', { name: 'Откуда ссылка' }).click();
+			await page.getByRole('option', { name: 'Своя ссылка' }).click();
+			await expect(props(page).getByRole('textbox', { name: 'Ссылка' })).toHaveValue('https://');
+		} finally {
+			const restore = { firm_links: before.firm_links };
+			expect((await request.patch('/api/v1/settings', { data: restore })).ok()).toBe(true);
+		}
 	});
 
 	test('opens_from_documents_settings', async ({ page }, info) => {

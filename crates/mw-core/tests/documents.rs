@@ -1461,6 +1461,213 @@ async fn firm_links_print_as_text() -> Result<(), CoreError> {
     Ok(())
 }
 
+fn link_text(text: &str) -> mw_domain::document_template::Block {
+    use mw_domain::document_template::{Align, Block, BlockBody, CopyFilter};
+    Block {
+        copies: CopyFilter::Both,
+        body: BlockBody::Text {
+            text: text.into(),
+            size_pt: None,
+            bold: false,
+            align: Align::Left,
+            one_line: false,
+        },
+    }
+}
+
+fn link_qr(link: &str) -> mw_domain::document_template::Block {
+    use mw_domain::document_template::{Align, Block, BlockBody, CopyFilter};
+    Block {
+        copies: CopyFilter::Both,
+        body: BlockBody::Qr {
+            link: link.into(),
+            size_mm: 20.0,
+            caption: String::new(),
+            align: Align::Left,
+        },
+    }
+}
+
+fn links_patch(list: Vec<mw_domain::links::FirmLink>) -> SettingsPatch {
+    SettingsPatch {
+        firm_links: Some(list),
+        ..Default::default()
+    }
+}
+
+fn firm_link(id: &str, name: &str, url: &str, enabled: bool) -> mw_domain::links::FirmLink {
+    mw_domain::links::FirmLink {
+        id: id.into(),
+        name: name.into(),
+        url: url.into(),
+        enabled,
+    }
+}
+
+/// Лист заказа по черновику из `blocks` на месте блоков стандартного акта приёма.
+async fn blocks_png(
+    t: &TestCore,
+    order_id: i64,
+    blocks: Vec<mw_domain::document_template::Block>,
+) -> Vec<Vec<u8>> {
+    let mut template = mw_docs::standard_template(DocumentKind::IntakeAct);
+    template.blocks = blocks;
+    let req = DocumentRequest {
+        sample: false,
+        order_id: Some(order_id),
+        ..draft_request(template)
+    };
+    png_pages(t, req).await.unwrap()
+}
+
+/// Шаблон, написанный до списка ссылок, печатает те же адреса: QR и текст по старым именам и
+/// `firm.*` в своём коде.
+#[tokio::test]
+async fn legacy_link_substitutions_print_as_before() -> Result<(), CoreError> {
+    for t in code_cores().await {
+        let mut list = mw_domain::links::default_links();
+        list[0].url = "https://yandex.ru/maps/?text=example".into();
+        list[2].url = "https://t.me/example_service".into();
+        list.push(firm_link(
+            "google_maps",
+            "Google Карты",
+            "https://maps.google.com/?q=example",
+            true,
+        ));
+        t.core.update_settings(&admin(), links_patch(list)).await?;
+        let order = t.core.create_order(&admin(), sample_new_order()).await?;
+        let qr = || link_qr("{фирма.телеграм}");
+        let text = || link_text("{фирма.яндекс_карты}");
+        let code = |qr_call: &str| code_block(&format!("#v(\"firm.google_maps\") {qr_call}"));
+        let call = "#qr-image(\"firm.telegram\", 20mm)";
+        let full = vec![qr(), text(), code(call)];
+        let doc = t
+            .core
+            .render_document(&admin(), {
+                let mut template = mw_docs::standard_template(DocumentKind::IntakeAct);
+                template.blocks = full.clone();
+                DocumentRequest {
+                    sample: false,
+                    order_id: Some(order.id),
+                    ..draft_request(template)
+                }
+            })
+            .await?;
+        let out = doc.text();
+        assert!(
+            out.contains("https://yandex.ru/maps/?text=example"),
+            "{}: {out:?}",
+            t.label
+        );
+        assert!(
+            out.contains("https://maps.google.com/?q=example"),
+            "{}: {out:?}",
+            t.label
+        );
+        let all = blocks_png(&t, order.id, full).await;
+        let no_block = blocks_png(&t, order.id, vec![text(), code(call)]).await;
+        let no_call = blocks_png(&t, order.id, vec![qr(), text(), code("")]).await;
+        assert_ne!(all, no_block, "{}: нет QR-блока", t.label);
+        assert_ne!(all, no_call, "{}: нет qr-image", t.label);
+    }
+    Ok(())
+}
+
+/// Переименование и перестановка ссылки шаблонам не мешают: они знают её по `id`.
+#[tokio::test]
+async fn renamed_link_keeps_printing() -> Result<(), CoreError> {
+    for t in cores().await {
+        let mut list = mw_domain::links::default_links();
+        list[2].url = "https://t.me/example_service".into();
+        t.core
+            .update_settings(&admin(), links_patch(list.clone()))
+            .await?;
+        let order = t.core.create_order(&admin(), sample_new_order()).await?;
+        let with = || vec![link_qr("{ссылка.telegram}")];
+        let before = blocks_png(&t, order.id, with()).await;
+        let none = blocks_png(&t, order.id, vec![]).await;
+        assert_ne!(before, none, "{}: QR печатается", t.label);
+        let mut telegram = list.remove(2);
+        telegram.name = "Наш Telegram".into();
+        list.push(telegram);
+        t.core.update_settings(&admin(), links_patch(list)).await?;
+        assert_eq!(
+            blocks_png(&t, order.id, with()).await,
+            before,
+            "{}",
+            t.label
+        );
+    }
+    Ok(())
+}
+
+/// Выключенная ссылка пуста в документах и в образце; `{ссылка.<нет такой>}` — тоже пусто, а не текст.
+#[tokio::test]
+async fn disabled_link_is_empty_in_documents() -> Result<(), CoreError> {
+    for t in cores().await {
+        let mut list = mw_domain::links::default_links();
+        list[2].url = "https://t.me/example_service".into();
+        t.core
+            .update_settings(&admin(), links_patch(list.clone()))
+            .await?;
+        let order = t.core.create_order(&admin(), sample_new_order()).await?;
+        let template = |text: &str| {
+            let mut template = mw_docs::standard_template(DocumentKind::IntakeAct);
+            template.blocks = vec![link_text(text)];
+            template
+        };
+        let probe = "T={ссылка.telegram}|F={фирма.телеграм}|G={ссылка.link_gone}.";
+        let on = DocumentRequest {
+            sample: false,
+            order_id: Some(order.id),
+            ..draft_request(template(probe))
+        };
+        let out = text(&t, on).await;
+        assert!(
+            out.contains("T=https://t.me/example_service|F=https://t.me/example_service|G=."),
+            "{}: {out:?}",
+            t.label
+        );
+        list[2].enabled = false;
+        t.core.update_settings(&admin(), links_patch(list)).await?;
+        for sample in [false, true] {
+            let req = DocumentRequest {
+                sample,
+                order_id: (!sample).then_some(order.id),
+                ..draft_request(template(probe))
+            };
+            let out = text(&t, req).await;
+            assert!(
+                out.contains("T=|F=|G=."),
+                "{} sample={sample}: {out:?}",
+                t.label
+            );
+        }
+    }
+    Ok(())
+}
+
+/// Образец: адрес включённой ссылки из настроек, иначе пример; пример свой у каждой ссылки.
+#[tokio::test]
+async fn sample_links_come_from_settings_or_examples() -> Result<(), CoreError> {
+    for t in cores().await {
+        let mut list = mw_domain::links::default_links();
+        list[0].url = "https://yandex.ru/maps/?text=mine".into();
+        t.core.update_settings(&admin(), links_patch(list)).await?;
+        let mut template = mw_docs::standard_template(DocumentKind::IntakeAct);
+        template.blocks = vec![link_text(
+            "Y={ссылка.yandex_maps}|T={ссылка.telegram}|C={ссылка.link_own}",
+        )];
+        let out = text(&t, draft_request(template)).await;
+        assert!(
+            out.contains("Y=https://yandex.ru/maps/?text=mine|T=https://t.me/example_service|C="),
+            "{}: {out:?}",
+            t.label
+        );
+    }
+    Ok(())
+}
+
 /// Акт приёма, где каждый экземпляр на своём листе: документ из двух страниц без своего кода.
 fn sheet_per_copy_act() -> mw_domain::document_template::Template {
     let mut template = mw_docs::standard_template(DocumentKind::IntakeAct);

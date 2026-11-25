@@ -10,6 +10,7 @@ use std::time::Duration;
 
 use chrono::{Datelike, NaiveDate};
 use mw_db::entity::service_point;
+use mw_docs::fields::{LEGACY_LINKS, LINK_KEY_PREFIX, LINK_SAMPLES};
 use mw_docs::{
     DocsError, DocumentData, FontSources, Job, JobBytes, JobLimits, JobOutput, JobResult,
     RenderOptions, RenderPool, WorkerLimits, sample_data, standard_template,
@@ -653,8 +654,14 @@ impl Core {
                 (None, true) => {
                     let point = self.point_name(settings.default_service_point_id).await?;
                     let mut data = sample_data(req.kind);
-                    let own = firm_values(&settings, &point)
+                    // Ссылки образца — из настроек: выключенных нет, у включённых без адреса пример.
+                    data.values.retain(|key, _| {
+                        !key.starts_with(LINK_KEY_PREFIX)
+                            && !LEGACY_LINKS.iter().any(|l| l.key == key)
+                    });
+                    let own = link_values(&settings, true)
                         .into_iter()
+                        .chain(firm_values(&settings, &point))
                         .filter(|(_, value)| !value.trim().is_empty());
                     data.values.extend(own);
                     Ok(data)
@@ -679,14 +686,30 @@ impl Core {
     }
 }
 
-/// Адрес ссылки фирмы по `id`; выключенная или отсутствующая — пусто.
-fn link_url(settings: &AppSettings, id: &str) -> String {
-    settings
-        .firm_links
-        .iter()
-        .find(|l| l.id == id && l.enabled)
-        .map(|l| l.url.clone())
-        .unwrap_or_default()
+/// Значения ссылок фирмы: `link.<id>` для каждой включённой ссылки (выключенных нет) и три старых
+/// ключа `firm.*` (пусто, если ссылка выключена или её нет). С `examples` у включённой ссылки без
+/// адреса стоит пример из `LINK_SAMPLES`, если он есть, — для образца.
+fn link_values(settings: &AppSettings, examples: bool) -> BTreeMap<String, String> {
+    let mut values = BTreeMap::new();
+    for link in settings.firm_links.iter().filter(|l| l.enabled) {
+        let url = if link.url.is_empty() && examples {
+            LINK_SAMPLES
+                .iter()
+                .find(|(id, _)| *id == link.id)
+                .map_or("", |(_, url)| *url)
+        } else {
+            link.url.as_str()
+        };
+        values.insert(format!("{LINK_KEY_PREFIX}{}", link.id), url.to_owned());
+    }
+    for legacy in LEGACY_LINKS {
+        let url = values
+            .get(&format!("{LINK_KEY_PREFIX}{}", legacy.id))
+            .cloned()
+            .unwrap_or_default();
+        values.insert(legacy.key.to_owned(), url);
+    }
+    values
 }
 
 /// Поля фирмы и точки: реквизиты и договоры — простым текстом ([`plain_text`]); сохранённые
@@ -698,14 +721,12 @@ fn firm_values(settings: &AppSettings, point: &str) -> BTreeMap<String, String> 
         ("firm.details", plain_text(&settings.firm_details)),
         ("firm.legal", plain_text(&settings.firm_legal_details)),
         ("firm.intake_terms", plain_text(&settings.intake_terms)),
-        ("firm.telegram", link_url(settings, "telegram")),
-        ("firm.google_maps", link_url(settings, "google_maps")),
-        ("firm.yandex_maps", link_url(settings, "yandex_maps")),
         ("firm.issue_terms", plain_text(&settings.issue_terms)),
         ("point.name", point.to_owned()),
     ]
     .into_iter()
     .map(|(key, value)| (key.to_owned(), value))
+    .chain(link_values(settings, false))
     .collect()
 }
 
@@ -1213,6 +1234,16 @@ mod tests {
         assert_eq!(v["firm.google_maps"], "");
     }
 
+    /// Ключи реестра и ключи ссылок: `link.<id>` включённых ссылок и старые `firm.*` из `legacy`.
+    fn keys_with_links(links: &[&str], legacy: &[&str]) -> BTreeSet<String> {
+        fields()
+            .iter()
+            .map(|f| f.key.to_owned())
+            .chain(links.iter().map(|id| format!("link.{id}")))
+            .chain(legacy.iter().map(|id| format!("firm.{id}")))
+            .collect()
+    }
+
     /// Каждое поле реестра заполняется из заказа: у полностью заполненного выданного заказа пустых нет.
     #[tokio::test]
     async fn every_field_is_filled_from_a_full_order() {
@@ -1279,13 +1310,19 @@ mod tests {
                 .document_data(&admin(), &request(DocumentKind::IssueAct, Some(order.id)))
                 .await
                 .unwrap();
-            let keys: BTreeSet<&str> = data.values.keys().map(String::as_str).collect();
-            let all: BTreeSet<&str> = fields().iter().map(|f| f.key).collect();
+            let keys: BTreeSet<String> = data.values.keys().cloned().collect();
+            let all = keys_with_links(
+                &["yandex_maps", "2gis", "telegram", "max", "google_maps"],
+                &["telegram", "google_maps", "yandex_maps"],
+            );
             assert_eq!(keys, all, "{label}");
             let empty: Vec<&String> = data
                 .values
                 .iter()
-                .filter(|(_, v)| v.trim().is_empty())
+                // Встроенные ссылки без адреса пусты.
+                .filter(|(k, v)| {
+                    v.trim().is_empty() && !matches!(k.as_str(), "link.2gis" | "link.max")
+                })
                 .map(|(k, _)| k)
                 .collect();
             assert!(empty.is_empty(), "{label}: пустые {empty:?}");
@@ -1395,12 +1432,14 @@ mod tests {
                 .document_data(&admin(), &request(DocumentKind::BlankIntakeAct, None))
                 .await
                 .unwrap();
-            let own: BTreeSet<&str> = fields()
-                .iter()
-                .map(|f| f.key)
-                .filter(|k| !k.starts_with("order.") && !k.starts_with("client."))
-                .collect();
-            let keys: BTreeSet<&str> = data.values.keys().map(String::as_str).collect();
+            let own: BTreeSet<String> = keys_with_links(
+                &["yandex_maps", "2gis", "telegram", "max"],
+                &["telegram", "google_maps", "yandex_maps"],
+            )
+            .into_iter()
+            .filter(|k| !k.starts_with("order.") && !k.starts_with("client."))
+            .collect();
+            let keys: BTreeSet<String> = data.values.keys().cloned().collect();
             assert_eq!(keys, own, "{label}");
             assert_eq!(data.values["firm.name"], "Сервис", "{label}");
             assert_eq!(data.values["point.name"], "Центральная", "{label}");
@@ -1440,8 +1479,12 @@ mod tests {
             };
             let data = core.document_data(&admin(), &sample).await.unwrap();
             let expected = sample_data(DocumentKind::IssueAct);
-            let keys: BTreeSet<&str> = data.values.keys().map(String::as_str).collect();
-            let all: BTreeSet<&str> = fields().iter().map(|f| f.key).collect();
+            let keys: BTreeSet<String> = data.values.keys().cloned().collect();
+            // Ссылки по умолчанию включены; Google Карт в списке нет, значит, нет и `firm.google_maps`.
+            let all = keys_with_links(
+                &["yandex_maps", "2gis", "telegram", "max"],
+                &["telegram", "yandex_maps"],
+            );
             assert_eq!(keys, all, "{label}");
             for (key, value) in &data.values {
                 let wanted = match key.as_str() {

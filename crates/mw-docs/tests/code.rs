@@ -360,7 +360,7 @@ fn code_with_empty_firm_link_prints_nothing() {
     );
     let mut data = sample_data(DocumentKind::IntakeAct);
     data.values
-        .insert("firm.telegram".to_owned(), String::new());
+        .insert("link.telegram".to_owned(), String::new());
     let png = rendered(&t, &data).png_pages(300).expect("png");
     assert!(decode_all(&png[0]).is_empty());
 }

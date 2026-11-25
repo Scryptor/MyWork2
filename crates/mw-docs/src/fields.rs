@@ -1,5 +1,6 @@
 //! Substitution fields: `{заказ.номер}` in template text is the value `order.number` of the document data.
 
+use mw_domain::links::is_link_id;
 use mw_domain::search::normalize_search;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,10 +35,51 @@ const fn field(
 
 const NOT_SET: &str = "Не указан";
 
-/// Keys of the firm-link fields, in the order of the menu.
-pub const FIRM_LINKS: [&str; 3] = ["firm.telegram", "firm.google_maps", "firm.yandex_maps"];
+/// The key of a firm link in `DocumentData::values`: `link.<id>`.
+pub const LINK_KEY_PREFIX: &str = "link.";
+/// The name of a firm link in template text: `{ссылка.<id>}`.
+pub const LINK_PLACEHOLDER_PREFIX: &str = "ссылка.";
 
-static FIELDS: [FieldDef; 38] = [
+/// A link of the firm that older templates write under its former name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LegacyLink {
+    /// The former key in `DocumentData::values`; it is still filled for the author's code.
+    pub key: &'static str,
+    /// The former name in template text.
+    pub placeholder: &'static str,
+    /// The `id` of the link it now stands for.
+    pub id: &'static str,
+}
+
+/// The three links that were fields before the list of links.
+pub const LEGACY_LINKS: [LegacyLink; 3] = [
+    LegacyLink {
+        key: "firm.telegram",
+        placeholder: "фирма.телеграм",
+        id: "telegram",
+    },
+    LegacyLink {
+        key: "firm.google_maps",
+        placeholder: "фирма.гугл_карты",
+        id: "google_maps",
+    },
+    LegacyLink {
+        key: "firm.yandex_maps",
+        placeholder: "фирма.яндекс_карты",
+        id: "yandex_maps",
+    },
+];
+
+/// Sample addresses of the links by `id`, for sample documents.
+pub const LINK_SAMPLES: [(&str, &str); 5] = [
+    ("yandex_maps", "https://yandex.ru/maps/?text=example"),
+    ("2gis", "https://2gis.ru/example"),
+    ("telegram", "https://t.me/example_service"),
+    ("max", "https://max.ru/example_service"),
+    ("google_maps", "https://maps.google.com/?q=example"),
+];
+
+static FIELDS: [FieldDef; 35] = [
     field("order.number", "заказ.номер", "Номер заказа", "1234", ""),
     field(
         "order.barcode",
@@ -215,27 +257,6 @@ static FIELDS: [FieldDef; 38] = [
         "",
     ),
     field(
-        "firm.telegram",
-        "фирма.телеграм",
-        "Telegram фирмы",
-        "https://t.me/example_service",
-        "",
-    ),
-    field(
-        "firm.google_maps",
-        "фирма.гугл_карты",
-        "Фирма на Google Картах",
-        "https://maps.google.com/?q=example",
-        "",
-    ),
-    field(
-        "firm.yandex_maps",
-        "фирма.яндекс_карты",
-        "Фирма на Яндекс Картах",
-        "https://yandex.ru/maps/?text=example",
-        "",
-    ),
-    field(
         "firm.intake_terms",
         "фирма.договор_приёма",
         "Условия приёма (договор)",
@@ -281,6 +302,21 @@ pub fn field_by_placeholder(name: &str) -> Option<&'static FieldDef> {
         .find(|f| normalize_search(f.placeholder) == wanted)
 }
 
+/// The key (`link.<id>`) of the link written in template text as `{name}`: `{ссылка.<id>}`, or the
+/// former name of one of the three old links. Case does not matter, «ё» = «е». Any well-formed `id`
+/// is a link, whether the firm has it or not: a link that is missing or off is just empty.
+pub fn link_by_placeholder(name: &str) -> Option<String> {
+    let wanted = normalize_search(name);
+    if let Some(legacy) = LEGACY_LINKS
+        .iter()
+        .find(|l| normalize_search(l.placeholder) == wanted)
+    {
+        return Some(format!("{LINK_KEY_PREFIX}{}", legacy.id));
+    }
+    let id = wanted.strip_prefix(&normalize_search(LINK_PLACEHOLDER_PREFIX))?;
+    is_link_id(id).then(|| format!("{LINK_KEY_PREFIX}{id}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -313,33 +349,49 @@ mod tests {
     }
 
     #[test]
-    fn firm_links_follow_legal_details() {
-        let key = |name| field_by_placeholder(name).map(|f| f.key);
-        assert_eq!(key("фирма.телеграм"), Some("firm.telegram"));
-        assert_eq!(key("фирма.гугл_карты"), Some("firm.google_maps"));
-        assert_eq!(key("Фирма.Яндекс_Карты"), Some("firm.yandex_maps"));
-        assert_eq!(FIELDS.len(), 38);
-        let at = FIELDS.iter().position(|f| f.key == "firm.legal").unwrap();
-        let next: Vec<_> = FIELDS[at + 1..at + 4].iter().map(|f| f.key).collect();
-        assert_eq!(next, FIRM_LINKS);
-        let sample = |k| {
-            FIELDS
-                .iter()
-                .find(|f| f.key == k)
-                .map(|f| (f.sample, f.empty))
-        };
+    fn link_fields_are_not_static() {
+        assert_eq!(FIELDS.len(), 35);
+        for key in ["firm.telegram", "firm.google_maps", "firm.yandex_maps"] {
+            assert!(FIELDS.iter().all(|f| f.key != key), "{key}");
+        }
+        assert_eq!(field_by_placeholder("фирма.телеграм").map(|f| f.key), None);
+    }
+
+    #[test]
+    fn link_placeholders_resolve() {
+        let key = |name| link_by_placeholder(name);
+        assert_eq!(key("ссылка.telegram").as_deref(), Some("link.telegram"));
+        assert_eq!(key("Ссылка.2gis").as_deref(), Some("link.2gis"));
+        assert_eq!(key("фирма.телеграм").as_deref(), Some("link.telegram"));
+        assert_eq!(key("Фирма.Гугл_Карты").as_deref(), Some("link.google_maps"));
         assert_eq!(
-            sample("firm.telegram"),
-            Some(("https://t.me/example_service", ""))
+            key("фирма.яндекс_карты").as_deref(),
+            Some("link.yandex_maps")
         );
+        assert_eq!(key("ссылка.Bad-Id"), None);
+        assert_eq!(key("ссылка."), None);
+        assert_eq!(key("ссылка"), None);
+        assert_eq!(key("заказ.номер"), None);
+        // A well-formed id of no link is still a link.
+        assert_eq!(key("ссылка.link_gone").as_deref(), Some("link.link_gone"));
+    }
+
+    #[test]
+    fn link_samples_are_example_addresses_in_the_font() {
+        let ids: Vec<_> = LINK_SAMPLES.iter().map(|(id, _)| *id).collect();
         assert_eq!(
-            sample("firm.google_maps"),
-            Some(("https://maps.google.com/?q=example", ""))
+            ids,
+            ["yandex_maps", "2gis", "telegram", "max", "google_maps"]
         );
-        assert_eq!(
-            sample("firm.yandex_maps"),
-            Some(("https://yandex.ru/maps/?text=example", ""))
-        );
+        for (id, url) in LINK_SAMPLES {
+            assert!(mw_domain::links::is_link_id(id));
+            assert!(mw_domain::links::is_http_link(url), "{url}");
+            assert!(url.contains("example"), "{url}");
+        }
+        for legacy in LEGACY_LINKS {
+            assert!(LINK_SAMPLES.iter().any(|(id, _)| *id == legacy.id));
+            assert_eq!(legacy.key, format!("firm.{}", legacy.id));
+        }
     }
 
     /// Пароль и графический ключ — сразу после серийного номера; пустые не печатаются ничем.

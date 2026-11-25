@@ -44,7 +44,7 @@ describe('newBlock', () => {
 			logo: { type: 'logo', width_mm: 40, height_mm: 15, align: 'left' },
 			qr: {
 				type: 'qr',
-				link: '{фирма.телеграм}',
+				link: '{ссылка.telegram}',
 				size_mm: 20,
 				caption: 'Мы в Telegram',
 				align: 'center'

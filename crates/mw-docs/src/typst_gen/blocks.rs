@@ -488,10 +488,7 @@ fn field_row(out: &mut String, row: &FieldRow) {
     };
     let keys: Vec<String> = value
         .iter()
-        .filter_map(|p| match p {
-            Piece::Field(f) => Some(format!("filled({})", typst_str(f.key))),
-            _ => None,
-        })
+        .filter_map(|p| p.key().map(|key| format!("filled({})", typst_str(key))))
         .collect();
     let has_text = value
         .iter()

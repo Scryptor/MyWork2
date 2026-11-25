@@ -2104,12 +2104,14 @@ export const ru = {
 			signatureLeft: 'Подпись сервиса',
 			signatureRight: 'Подпись клиента',
 			code: '// Свой Typst-код: v("ключ") — значение поля, copy — экземпляр\n#v("order.number")\n',
-			/** The caption of a «QR-код» block of a firm's link. */
+			/** The caption of a «QR-код» block of a link of the firm, by its id (Google Maps: old blocks). */
 			qrCaptions: {
+				yandex_maps: 'Мы на Яндекс Картах',
+				'2gis': 'Мы в 2ГИС',
 				telegram: 'Мы в Telegram',
-				google_maps: 'Мы на Google Картах',
-				yandex_maps: 'Мы на Яндекс Картах'
-			}
+				max: 'Мы в MAX',
+				google_maps: 'Мы на Google Картах'
+			} as { telegram: string } & Record<string, string>
 		},
 		title: 'Редактор шаблонов',
 		editButton: 'Изменить',
@@ -2219,7 +2221,7 @@ export const ru = {
 		insertFieldSearch: 'Поле',
 		code: 'Typst-код',
 		codeHelp:
-			'Код Typst на месте блока. Доступны: v("order.number") и v1(…) — значения полей, data.values — все значения, copy — "service", "client" или "single", vspace(…) — отступ, image("logo.png"), когда есть data.logo, qr-image("firm.telegram", 25mm) — QR-код ссылки фирмы (firm.google_maps, firm.yandex_maps). Штрихкод — блоком «Штрихкод». Предел — 5 секунд на документ.',
+			'Код Typst на месте блока. Доступны: v("order.number") и v1(…) — значения полей, data.values — все значения, copy — "service", "client" или "single", vspace(…) — отступ, image("logo.png"), когда есть data.logo, qr-image("link.telegram", 25mm) — QR-код ссылки фирмы по её коду (link.yandex_maps, link.2gis, …; старые firm.telegram, firm.google_maps, firm.yandex_maps тоже понятны). Штрихкод — блоком «Штрихкод». Предел — 5 секунд на документ.',
 		fieldRow: (n: number) => `Строка ${n}`,
 		rowLabel: 'Название',
 		rowValue: 'Значение',
@@ -2235,16 +2237,23 @@ export const ru = {
 		documentsSettingsLink: 'Документы и реквизиты',
 		qrSource: 'Откуда ссылка',
 		qrLink: 'Ссылка',
-		qrPresets: {
-			telegram: 'Telegram фирмы',
-			google_maps: 'Google Карты фирмы',
-			yandex_maps: 'Яндекс Карты фирмы',
-			custom: 'Своя ссылка'
-		},
+		qrCustom: 'Своя ссылка',
+		/** A link in the list of «Откуда ссылка» that is switched off. */
+		qrLinkOffItem: (name: string) => `${name} (выключена)`,
+		/** The names of the links in the list of blocks when the list of links is not at hand. */
+		qrLinkNames: {
+			yandex_maps: 'Яндекс Карты',
+			'2gis': '2ГИС',
+			telegram: 'Telegram',
+			max: 'MAX',
+			google_maps: 'Google Карты'
+		} as Record<string, string>,
 		qrLinkHint: 'Можно вставить поле, например {заказ.номер}',
 		qrSize: 'Размер, мм',
 		qrCaption: 'Подпись под кодом',
 		qrMissing: 'Ссылка не заполнена — код не печатается.',
+		qrLinkOff: 'Ссылка выключена — QR-код не печатается.',
+		qrLinkGone: (id: string) => `Ссылки «${id}» нет в списке — QR-код не печатается.`,
 		barcodeHeight: 'Высота, мм',
 		barcodeDigits: 'Цифры под штрихкодом',
 		barcodeStretch: 'Растянуть по ширине',

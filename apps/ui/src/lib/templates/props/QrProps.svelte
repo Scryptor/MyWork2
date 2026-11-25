@@ -1,6 +1,7 @@
-<!-- The properties of a QR code: where the link comes from (a link of the firm or one's own, with fields
-     of the order), the side of the square in millimetres, the caption under it and the alignment. A link
-     of the firm that is not filled in prints nothing: the hint says so and leads to where it is set. -->
+<!-- The properties of a QR code: where the link comes from (a link of the firm's list or one's own, with
+     fields of the order), the side of the square in millimetres, the caption under it and the alignment. A
+     link of the firm that is empty, switched off or gone from the list prints nothing: the hint says so
+     and leads to where the links are set. -->
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { resolve } from '$app/paths';
@@ -15,7 +16,7 @@
 	import type { TemplateEditor } from '../editor.svelte.js';
 	import InsertField from '../InsertField.svelte';
 	import { blockAt, replaceBlock, type BlockPath } from '../ops.js';
-	import { choosePreset, qrPreset, QR_PRESETS, type QrBody, type QrPreset } from '../qr.js';
+	import { chooseLink, qrLinkId, type QrBody } from '../qr.js';
 	import NumberField from './NumberField.svelte';
 
 	let { editor, path }: { editor: TemplateEditor; path: BlockPath } = $props();
@@ -24,20 +25,26 @@
 	const block = $derived(blockAt(editor.template, path));
 	const body = $derived(block?.body.type === 'qr' ? block.body : null);
 	const key = $derived(path.join('.'));
-	const preset = $derived(body ? qrPreset(body.link) : null);
-	const unset = $derived(
-		preset !== null &&
-			!app.settings.firm_links.find((l) => l.id === QR_PRESETS[preset].id)?.url.trim()
-	);
+	const links = $derived(app.settings.firm_links);
+	/** The id of the link of the list the block takes, null for a link of its own. */
+	const linkId = $derived(body ? qrLinkId(body.link) : null);
+	const firmLink = $derived(links.find((l) => l.id === linkId));
+	/** What keeps the code from printing, as the hint says it. */
+	const problem = $derived.by(() => {
+		if (linkId === null) return null;
+		if (!firmLink) return t.qrLinkGone(linkId);
+		if (!firmLink.enabled) return t.qrLinkOff;
+		return firmLink.url.trim() ? null : t.qrMissing;
+	});
 	let linkField = $state<HTMLInputElement | null>(null);
 	/**
 	 * The link written here as «своя» (by «Своя ссылка» or in the field; the one the block opened with,
 	 * when it is not a firm's): while the block's link is still it, the link stays «своя» even when it
-	 * reads as a firm's one, so the field does not vanish under the caret. A preset picked in the list
+	 * reads as a firm's one, so the field does not vanish under the caret. A link picked in the list
 	 * ends it; so does an undo to another link, which shows as what it is.
 	 */
-	let own = $state<string | null>(untrack(() => (body && preset === null ? body.link : null)));
-	const custom = $derived(preset === null || (body !== null && own === body.link));
+	let own = $state<string | null>(untrack(() => (body && linkId === null ? body.link : null)));
+	const custom = $derived(linkId === null || (body !== null && own === body.link));
 
 	/** The link typed (or a field put) into the field. */
 	function write(link: string) {
@@ -55,19 +62,21 @@
 		);
 	}
 
-	function choose(value: QrPreset | 'custom' | null) {
+	function choose(value: string | null) {
 		if (!block || !body || value === null) return;
 		// «Своя ссылка» again leaves the link as it is typed.
 		if (value === 'custom' && custom) return;
-		const next = choosePreset(body, value);
+		const next = chooseLink(body, value, links);
 		own = value === 'custom' ? next.link : null;
 		editor.edit(replaceBlock(editor.template, path, { ...block, body: next }));
 	}
 
-	const sources = [...(Object.keys(QR_PRESETS) as QrPreset[]), 'custom' as const].map((value) => ({
-		value,
-		label: t.qrPresets[value]
-	}));
+	/** The links of the list in their order, the one of an old block that the list lacks (by its id), «своя ссылка». */
+	const sources = $derived([
+		...links.map((l) => ({ value: l.id, label: l.enabled ? l.name : t.qrLinkOffItem(l.name) })),
+		...(linkId !== null && !firmLink ? [{ value: linkId, label: linkId }] : []),
+		{ value: 'custom', label: t.qrCustom }
+	]);
 	const ALIGNS: Align[] = ['left', 'center', 'right'];
 	const aligns = ALIGNS.map((value) => ({ value, label: t.aligns[value] }));
 </script>
@@ -77,7 +86,7 @@
 		<Select
 			label={t.qrSource}
 			items={sources}
-			bind:value={() => (custom || preset === null ? 'custom' : preset), choose}
+			bind:value={() => (custom || linkId === null ? 'custom' : linkId), choose}
 		/>
 		{#if custom}
 			<div class="one">
@@ -111,9 +120,9 @@
 				bind:value={() => body.align, (v) => set({ align: v })}
 			/>
 		</div>
-		{#if unset}
+		{#if problem}
 			<Callout tone="info">
-				{t.qrMissing}
+				{problem}
 				<a href={resolve('settings/documents')}>{t.documentsSettingsLink}</a>
 			</Callout>
 		{/if}

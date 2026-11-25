@@ -14,6 +14,7 @@
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import type { Block } from '$api/Block';
 	import { ApiError, errorMessage } from '#lib/api/client.js';
+	import { app } from '#lib/app/context.svelte.js';
 	import { blockCode } from '#lib/api/document-templates.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import { sameValue } from '#lib/orders/merge.js';
@@ -188,7 +189,7 @@
 </script>
 
 {#snippet item(e: Entry)}
-	{@const label = blockLabel(e.block)}
+	{@const label = blockLabel(e.block, app.settings.firm_links)}
 	<div class="row">
 		<button
 			type="button"
@@ -218,7 +219,7 @@
 					<SortableList
 						items={columnEntries(e.index, c, column)}
 						key={(x) => x.key}
-						label={(x) => blockLabel(x.block)}
+						label={(x) => blockLabel(x.block, app.settings.firm_links)}
 						row={item}
 						onreorder={(order) => reorderIn([e.index, c], order)}
 					/>
@@ -242,7 +243,7 @@
 	<SortableList
 		items={tops}
 		key={(e) => e.key}
-		label={(e) => blockLabel(e.block)}
+		label={(e) => blockLabel(e.block, app.settings.firm_links)}
 		row={top}
 		onreorder={(order) => reorderIn([], order)}
 	/>

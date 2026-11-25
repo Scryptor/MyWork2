@@ -6,7 +6,7 @@
 
 use mw_domain::documents::DocumentKind;
 
-use crate::fields::fields;
+use crate::fields::{LEGACY_LINKS, LINK_KEY_PREFIX, LINK_SAMPLES, fields};
 use crate::model::{
     Align, Block, BlockBody, CopyFilter, FieldRow, Layout, Margins, PageSetup, PageSize, Template,
 };
@@ -69,10 +69,22 @@ pub fn standard_template(kind: DocumentKind) -> Template {
 /// blank act gets only the firm's own fields (the rest are lines to write on), the calibration label
 /// nothing.
 pub fn sample_data(kind: DocumentKind) -> DocumentData {
+    // The links: `link.<id>`, and the three old names with the same addresses.
+    let links = || {
+        let linked = LINK_SAMPLES
+            .iter()
+            .map(|(id, url)| (format!("{LINK_KEY_PREFIX}{id}"), (*url).to_owned()));
+        let legacy = LEGACY_LINKS.iter().filter_map(|l| {
+            let (_, url) = LINK_SAMPLES.iter().find(|(id, _)| *id == l.id)?;
+            Some((l.key.to_owned(), (*url).to_owned()))
+        });
+        linked.chain(legacy)
+    };
     let samples = || {
         fields()
             .iter()
             .map(|f| (f.key.to_owned(), f.sample.to_owned()))
+            .chain(links())
     };
     match kind {
         DocumentKind::Calibration => DocumentData::default(),

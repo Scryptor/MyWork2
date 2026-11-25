@@ -1,68 +1,66 @@
 import type { BlockBody } from '$api/BlockBody';
+import type { FirmLink } from '$api/FirmLink';
 import { normalizeSearch } from '#lib/format/search.js';
 import { ru } from '#lib/i18n/ru.js';
 
 export type QrBody = Extract<BlockBody, { type: 'qr' }>;
-export type QrPreset = 'telegram' | 'google_maps' | 'yandex_maps';
 
-/** The firm's links a «QR-код» block starts from: the substitution, the id of its link in the list, the caption. */
-export const QR_PRESETS: Record<
-	QrPreset,
-	{
-		link: string;
-		/** The id of the link in `firm_links`. */
-		id: string;
-		caption: string;
-	}
-> = {
-	telegram: {
-		link: '{фирма.телеграм}',
-		id: 'telegram',
-		caption: ru.templates.defaults.qrCaptions.telegram
-	},
-	google_maps: {
-		link: '{фирма.гугл_карты}',
-		id: 'google_maps',
-		caption: ru.templates.defaults.qrCaptions.google_maps
-	},
-	yandex_maps: {
-		link: '{фирма.яндекс_карты}',
-		id: 'yandex_maps',
-		caption: ru.templates.defaults.qrCaptions.yandex_maps
-	}
+/** The substitution of a link of the list: `{ссылка.<id>}`. */
+export function linkSubstitution(id: string): string {
+	return `{ссылка.${id}}`;
+}
+
+/** The names of the three links that were fields before the list of links, and their ids. */
+const LEGACY_NAMES: Record<string, string> = {
+	'фирма.телеграм': 'telegram',
+	'фирма.гугл_карты': 'google_maps',
+	'фирма.яндекс_карты': 'yandex_maps'
 };
 
-const PRESETS = Object.keys(QR_PRESETS) as QrPreset[];
+const PREFIX = 'ссылка.';
 
 /**
- * The name of a link that is one substitution and spaces around it, as the server reads it: spaces
- * around do not count (`qr_name`), the name in the braces is compared by `normalize_search`
- * (`field_by_placeholder`). Null for any other link.
+ * The id of the link of a block that is one substitution and spaces around it, as the server reads it:
+ * spaces around do not count (`qr_name`), the name in the braces is compared by `normalize_search`
+ * (`link_by_placeholder`). Any well-formed id counts, the list having it or not. Null for any other link.
  */
-function substitution(link: string): string | null {
+export function qrLinkId(link: string): string | null {
 	const name = /^\s*\{([^{}]*)\}\s*$/.exec(link)?.[1];
-	return name === undefined ? null : normalizeSearch(name);
+	if (name === undefined) return null;
+	const wanted = normalizeSearch(name);
+	const legacy = LEGACY_NAMES[wanted];
+	if (legacy !== undefined) return legacy;
+	if (!wanted.startsWith(PREFIX)) return null;
+	const id = wanted.slice(PREFIX.length);
+	return /^[a-z0-9_]{1,40}$/.test(id) ? id : null;
 }
 
-/** The preset whose substitution is the whole link, or null for a link of its own. */
-export function qrPreset(link: string): QrPreset | null {
-	const name = substitution(link);
-	if (name === null) return null;
-	return PRESETS.find((p) => substitution(QR_PRESETS[p].link) === name) ?? null;
+/** The caption a block starts from for `link`: the default text of a built-in link, else its name. */
+export function linkCaption(link: FirmLink): string {
+	return ru.templates.defaults.qrCaptions[link.id] ?? link.name;
 }
 
 /**
- * A preset sets its link and, when the caption is empty or another preset's, its caption; «своя ссылка»
- * starts from `https://` when there was a preset and leaves the caption alone.
+ * A link of the list sets its substitution and, when the caption is empty or another link's, its caption;
+ * «своя ссылка» starts from `https://` when there was a link of the list and leaves the caption alone.
  */
-export function choosePreset(body: QrBody, preset: QrPreset | 'custom'): QrBody {
-	if (preset === 'custom') {
-		return qrPreset(body.link) === null ? body : { ...body, link: 'https://' };
+export function chooseLink(
+	body: QrBody,
+	choice: string | 'custom',
+	links: readonly FirmLink[]
+): QrBody {
+	if (choice === 'custom') {
+		return qrLinkId(body.link) === null ? body : { ...body, link: 'https://' };
 	}
-	const own = body.caption !== '' && !PRESETS.some((p) => QR_PRESETS[p].caption === body.caption);
+	const chosen = links.find((l) => l.id === choice);
+	const known = new Set([
+		...Object.values(ru.templates.defaults.qrCaptions),
+		...links.flatMap((l) => [l.name, linkCaption(l)])
+	]);
+	const own = body.caption !== '' && !known.has(body.caption);
 	return {
 		...body,
-		link: QR_PRESETS[preset].link,
-		caption: own ? body.caption : QR_PRESETS[preset].caption
+		link: linkSubstitution(choice),
+		caption: own ? body.caption : chosen ? linkCaption(chosen) : body.caption
 	};
 }

@@ -358,8 +358,16 @@ describe('blockLabel', () => {
 			copies: 'both',
 			body: { type: 'qr', link, size_mm: 20, caption: '', align: 'center' }
 		});
-		expect(blockLabel(qr('{фирма.телеграм}'))).toBe('QR-код · Telegram фирмы');
-		expect(blockLabel(qr(' {Фирма.Яндекс_Карты} '))).toBe('QR-код · Яндекс Карты фирмы');
+		expect(blockLabel(qr('{ссылка.telegram}'))).toBe('QR-код · Telegram');
+		expect(blockLabel(qr(' {Фирма.Яндекс_Карты} '))).toBe('QR-код · Яндекс Карты');
+		expect(blockLabel(qr('{фирма.гугл_карты}'))).toBe('QR-код · Google Карты');
+		// The name from the list, when the caller has it.
+		expect(
+			blockLabel(qr('{ссылка.link_site}'), [
+				{ id: 'link_site', name: 'Наш сайт', url: '', enabled: true }
+			])
+		).toBe('QR-код · Наш сайт');
+		expect(blockLabel(qr('{ссылка.link_gone}'))).toBe('QR-код · link_gone');
 		expect(blockLabel(qr('https://example.com/o/{заказ.номер}'))).toBe(
 			'QR-код · https://example.com/o/{заказ.номер}'
 		);

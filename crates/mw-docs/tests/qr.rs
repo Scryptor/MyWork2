@@ -289,7 +289,7 @@ fn non_latin_link_round_trips() {
         DocumentKind::IntakeAct,
         vec![qr("{фирма.телеграм}", 30.0, "")],
     );
-    let data = with_value(DocumentKind::IntakeAct, "firm.telegram", link);
+    let data = with_value(DocumentKind::IntakeAct, "link.telegram", link);
     assert_eq!(
         decode_all(&pages(&t, &data, &RenderOptions::default(), 300)[0]),
         [link]
@@ -329,7 +329,7 @@ fn narrow_column_shrinks_the_code() {
     );
     // The side is the column's width: (40 − 2 · 2 − 2) / 2 = 17 mm.
     let markup = to_typst(&t, &opts);
-    for name in ["firm.telegram", "firm.yandex_maps"] {
+    for name in ["link.telegram", "link.yandex_maps"] {
         let image = format!("image(\"qr-{name}.svg\", width: ");
         assert_eq!(markup.matches(&image).count(), 1, "{markup}");
         let (_, rest) = markup.split_once(&image).expect("image");
@@ -346,7 +346,7 @@ fn empty_link_prints_nothing_and_takes_no_room() {
     let without = standard_template(kind);
     let opts = RenderOptions::default();
     for empty in ["", "  "] {
-        let data = with_value(kind, "firm.telegram", empty);
+        let data = with_value(kind, "link.telegram", empty);
         assert!(
             pages(&with, &data, &opts, 300) == pages(&without, &data, &opts, 300),
             "{empty:?}"
@@ -381,7 +381,7 @@ fn one_file_per_name() {
     );
     let opts = RenderOptions::default();
     let markup = to_typst(&t, &opts);
-    assert_eq!(markup.matches("image(\"qr-firm.telegram.svg\"").count(), 2);
+    assert_eq!(markup.matches("image(\"qr-link.telegram.svg\"").count(), 2);
     assert_eq!(markup.matches("\"qr-block-2.svg\"").count(), 1);
     let data = sample_data(DocumentKind::IntakeAct);
     assert_eq!(
@@ -399,4 +399,71 @@ fn markup_has_no_link() {
     let markup = to_typst(&t, &RenderOptions::default());
     assert!(!markup.contains("секрет"), "{markup}");
     assert!(!markup.contains("example.com"), "{markup}");
+}
+
+#[test]
+fn legacy_qr_block_uses_the_link_svg() {
+    let t = small_page(
+        DocumentKind::IntakeAct,
+        vec![qr("{фирма.телеграм}", 30.0, "")],
+    );
+    let opts = RenderOptions::default();
+    assert!(to_typst(&t, &opts).contains("image(\"qr-link.telegram.svg\""));
+    let data = with_value(DocumentKind::IntakeAct, "link.telegram", TELEGRAM);
+    assert_eq!(decode_all(&pages(&t, &data, &opts, 300)[0]), [TELEGRAM]);
+    // The new spelling is the same file.
+    let t = small_page(
+        DocumentKind::IntakeAct,
+        vec![qr("{ссылка.telegram}", 30.0, "")],
+    );
+    assert!(to_typst(&t, &opts).contains("image(\"qr-link.telegram.svg\""));
+    assert_eq!(decode_all(&pages(&t, &data, &opts, 300)[0]), [TELEGRAM]);
+}
+
+#[test]
+fn code_qr_image_accepts_old_and_new_names() {
+    let code = Block {
+        copies: CopyFilter::Both,
+        body: BlockBody::TypstCode {
+            code: "#qr-image(\"firm.telegram\", 20mm)#qr-image(\"link.2gis\", 20mm)".to_owned(),
+        },
+    };
+    let t = small_page(DocumentKind::IntakeAct, vec![code]);
+    let mut data = sample_data(DocumentKind::IntakeAct);
+    data.values
+        .retain(|k, _| !k.starts_with("link.") && !k.starts_with("firm."));
+    data.values
+        .insert("link.telegram".to_owned(), TELEGRAM.to_owned());
+    data.values
+        .insert("link.2gis".to_owned(), "https://2gis.ru/example".to_owned());
+    let found = decode_all(&pages(&t, &data, &RenderOptions::default(), 300)[0]);
+    assert_eq!(found, ["https://2gis.ru/example", TELEGRAM]);
+}
+
+#[test]
+fn disabled_or_missing_link_prints_nothing() {
+    let kind = DocumentKind::IntakeAct;
+    let opts = RenderOptions::default();
+    let without = standard_template(kind);
+    let data = sample_data(kind);
+    let with = act_with(kind, qr("{ссылка.link_gone}", 25.0, "Подпись"));
+    assert!(
+        pages(&with, &data, &opts, 300) == pages(&without, &data, &opts, 300),
+        "a QR of a missing link takes room"
+    );
+    // The text keeps «Мы: », not the placeholder.
+    let text = Block {
+        copies: CopyFilter::Both,
+        body: BlockBody::Text {
+            text: "Мы: {ссылка.link_gone}".to_owned(),
+            size_pt: None,
+            bold: false,
+            align: Align::Left,
+            one_line: false,
+        },
+    };
+    let t = small_page(kind, vec![text]);
+    let out = render(&t, &data, &opts).expect("renders").text();
+    assert!(out.contains("Мы:"), "{out:?}");
+    assert!(!out.contains("link_gone") && !out.contains("{"), "{out:?}");
 }

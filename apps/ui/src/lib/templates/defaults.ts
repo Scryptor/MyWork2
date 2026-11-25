@@ -1,7 +1,7 @@
 import type { Block } from '$api/Block';
 import type { BlockBody } from '$api/BlockBody';
 import { ru } from '#lib/i18n/ru.js';
-import { QR_PRESETS } from './qr.js';
+import { linkSubstitution } from './qr.js';
 
 /** The order of the «Add block» menu; calibration marks are not offered. */
 export const BLOCK_TYPES = [
@@ -41,9 +41,9 @@ function body(type: (typeof BLOCK_TYPES)[number]): BlockBody {
 		case 'qr':
 			return {
 				type,
-				link: QR_PRESETS.telegram.link,
+				link: linkSubstitution('telegram'),
 				size_mm: 20,
-				caption: QR_PRESETS.telegram.caption,
+				caption: d.qrCaptions.telegram,
 				align: 'center'
 			};
 		case 'signatures':

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import type { FirmLink } from '$api/FirmLink';
 import { ru } from '#lib/i18n/ru.js';
-import { choosePreset, qrPreset, QR_PRESETS, type QrBody } from './qr.js';
+import { chooseLink, linkCaption, qrLinkId, type QrBody } from './qr.js';
 
 const body = (link: string, caption: string): QrBody => ({
 	type: 'qr',
@@ -10,64 +11,100 @@ const body = (link: string, caption: string): QrBody => ({
 	align: 'center'
 });
 
-describe('qrPreset', () => {
-	it('knows a link of one firm substitution, whatever the spaces, case and «ё»', () => {
-		expect(qrPreset('{фирма.телеграм}')).toBe('telegram');
-		expect(qrPreset(' {Фирма.Яндекс_Карты} ')).toBe('yandex_maps');
-		expect(qrPreset('{фирма.гугл_карты}')).toBe('google_maps');
+const link = (id: string, name: string, enabled = true): FirmLink => ({
+	id,
+	name,
+	url: '',
+	enabled
+});
+const links = [
+	link('yandex_maps', 'Яндекс Карты'),
+	link('2gis', '2ГИС'),
+	link('telegram', 'Telegram'),
+	link('max', 'MAX'),
+	link('link_site', 'Сайт')
+];
+
+describe('qrLinkId', () => {
+	it('knows a link of one substitution, whatever the spaces, case and «ё»', () => {
+		expect(qrLinkId('{ссылка.2gis}')).toBe('2gis');
+		expect(qrLinkId(' {Ссылка.Telegram} ')).toBe('telegram');
+		expect(qrLinkId(' {Фирма.Телеграм} ')).toBe('telegram');
+		expect(qrLinkId('{фирма.яндекс_карты}')).toBe('yandex_maps');
+		expect(qrLinkId('{фирма.гугл_карты}')).toBe('google_maps');
 	});
 
 	it('reads the name in the braces as the server does: spaces inside, NFC', () => {
-		expect(qrPreset('{ фирма.телеграм }')).toBe('telegram');
-		expect(qrPreset('{\tФирма.Гугл_Карты\n}')).toBe('google_maps');
+		expect(qrLinkId('{ ссылка.telegram }')).toBe('telegram');
+		expect(qrLinkId('{\tФирма.Гугл_Карты\n}')).toBe('google_maps');
 		// «ё» as «е» and a combining diaeresis: NFC makes it «ё», then it is «е».
-		expect(qrPreset('{фирма.тел\u0435\u0308грам}')).toBe('telegram');
-		expect(qrPreset('{фирма. телеграм}')).toBeNull();
-		expect(qrPreset('{ фирма.телеграм }x')).toBeNull();
+		expect(qrLinkId('{фирма.телёграм}')).toBe('telegram');
+		expect(qrLinkId('{фирма. телеграм}')).toBeNull();
+		expect(qrLinkId('{ ссылка.telegram }x')).toBeNull();
+	});
+
+	it('takes any well-formed id, in the list or not', () => {
+		expect(qrLinkId('{ссылка.link_gone}')).toBe('link_gone');
+		expect(qrLinkId('{ссылка.Bad-Id}')).toBeNull();
+		expect(qrLinkId('{ссылка.}')).toBeNull();
 	});
 
 	it('is null for a link of its own or with more than the substitution', () => {
-		expect(qrPreset('https://t.me/x')).toBeNull();
-		expect(qrPreset('{фирма.телеграм}/x')).toBeNull();
-		expect(qrPreset('')).toBeNull();
+		expect(qrLinkId('https://x')).toBeNull();
+		expect(qrLinkId('{ссылка.telegram}/x')).toBeNull();
+		expect(qrLinkId('{заказ.номер}')).toBeNull();
+		expect(qrLinkId('')).toBeNull();
 	});
 });
 
-describe('QR_PRESETS', () => {
-	it('takes its captions from the default texts of the editor', () => {
-		expect(QR_PRESETS.telegram.caption).toBe(ru.templates.defaults.qrCaptions.telegram);
-		expect(QR_PRESETS.google_maps.caption).toBe(ru.templates.defaults.qrCaptions.google_maps);
-		expect(QR_PRESETS.yandex_maps.caption).toBe(ru.templates.defaults.qrCaptions.yandex_maps);
+describe('linkCaption', () => {
+	it('takes the captions of the built-in links and Google Maps from the default texts', () => {
+		const captions = ru.templates.defaults.qrCaptions;
+		expect(linkCaption(links[0]!)).toBe(captions.yandex_maps);
+		expect(linkCaption(links[1]!)).toBe('Мы в 2ГИС');
+		expect(linkCaption(links[2]!)).toBe('Мы в Telegram');
+		expect(linkCaption(links[3]!)).toBe('Мы в MAX');
+		expect(linkCaption(link('google_maps', 'Google Карты'))).toBe('Мы на Google Картах');
+	});
+
+	it('is the name of an own link', () => {
+		expect(linkCaption(links[4]!)).toBe('Сайт');
 	});
 });
 
-describe('choosePreset', () => {
-	it('a preset sets its link and its caption over an empty one', () => {
-		expect(choosePreset(body('https://x', ''), 'google_maps')).toEqual(
-			body('{фирма.гугл_карты}', 'Мы на Google Картах')
+describe('chooseLink', () => {
+	it('sets the substitution and a caption over an empty one', () => {
+		expect(chooseLink(body('https://x', ''), '2gis', links)).toEqual(
+			body('{ссылка.2gis}', 'Мы в 2ГИС')
 		);
 	});
 
-	it('a preset replaces the caption of another preset', () => {
-		expect(choosePreset(body('{фирма.телеграм}', 'Мы в Telegram'), 'yandex_maps')).toEqual(
-			body('{фирма.яндекс_карты}', 'Мы на Яндекс Картах')
+	it('replaces the caption of another link, old ones included', () => {
+		expect(chooseLink(body('{ссылка.telegram}', 'Мы в Telegram'), 'max', links)).toEqual(
+			body('{ссылка.max}', 'Мы в MAX')
+		);
+		expect(chooseLink(body('{фирма.гугл_карты}', 'Мы на Google Картах'), 'max', links)).toEqual(
+			body('{ссылка.max}', 'Мы в MAX')
+		);
+		expect(chooseLink(body('{ссылка.link_site}', 'Сайт'), 'telegram', links)).toEqual(
+			body('{ссылка.telegram}', 'Мы в Telegram')
 		);
 	});
 
-	it('a preset keeps a caption written by hand', () => {
-		expect(choosePreset(body('{фирма.телеграм}', 'Пишите нам'), 'yandex_maps')).toEqual(
-			body('{фирма.яндекс_карты}', 'Пишите нам')
+	it('keeps a caption written by hand', () => {
+		expect(chooseLink(body('{ссылка.telegram}', 'Пишите нам'), 'max', links)).toEqual(
+			body('{ссылка.max}', 'Пишите нам')
 		);
 	});
 
-	it('«своя ссылка» starts from https:// after a preset and keeps the caption', () => {
-		expect(choosePreset(body('{фирма.телеграм}', 'Мы в Telegram'), 'custom')).toEqual(
+	it('«своя ссылка» starts from https:// after a link of the list and keeps the caption', () => {
+		expect(chooseLink(body('{ссылка.telegram}', 'Мы в Telegram'), 'custom', links)).toEqual(
 			body('https://', 'Мы в Telegram')
 		);
 	});
 
 	it('«своя ссылка» leaves a link of its own as it is', () => {
 		const b = body('https://a.b/c', 'x');
-		expect(choosePreset(b, 'custom')).toBe(b);
+		expect(chooseLink(b, 'custom', links)).toBe(b);
 	});
 });

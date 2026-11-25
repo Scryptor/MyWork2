@@ -2,12 +2,25 @@
 
 use std::fmt::Write;
 
-use crate::fields::{FieldDef, field_by_placeholder};
+use crate::fields::{FieldDef, field_by_placeholder, link_by_placeholder};
 
 pub(super) enum Piece {
     Text(String),
     Field(&'static FieldDef),
+    /// A firm link by its key `link.<id>`: a value like a field's, empty when the link is off or missing.
+    Link(String),
     Break,
+}
+
+impl Piece {
+    /// The key of the value a substitution takes; `None` for text and breaks.
+    pub(super) fn key(&self) -> Option<&str> {
+        match self {
+            Piece::Field(field) => Some(field.key),
+            Piece::Link(key) => Some(key),
+            Piece::Text(_) | Piece::Break => None,
+        }
+    }
 }
 
 /// Splits template text into literal text, line breaks and (with `substitutions`) known `{placeholders}`.
@@ -20,14 +33,20 @@ pub(super) fn pieces(text: &str, substitutions: bool) -> Vec<Piece> {
         match c {
             '{' if substitutions => {
                 // A name runs to the next brace; a `{` there means this one is literal text.
-                let field = rest[1..]
+                let found = rest[1..]
                     .find(['{', '}'])
                     .filter(|&end| rest[1 + end..].starts_with('}'))
-                    .and_then(|end| field_by_placeholder(&rest[1..=end]).map(|f| (f, end + 2)));
-                match field {
-                    Some((field, consumed)) => {
+                    .and_then(|end| {
+                        let name = &rest[1..=end];
+                        let piece = field_by_placeholder(name)
+                            .map(Piece::Field)
+                            .or_else(|| link_by_placeholder(name).map(Piece::Link));
+                        piece.map(|piece| (piece, end + 2))
+                    });
+                match found {
+                    Some((piece, consumed)) => {
                         flush(&mut pieces, &mut literal);
-                        pieces.push(Piece::Field(field));
+                        pieces.push(piece);
                         len = consumed;
                     }
                     None => literal.push(c),
@@ -80,13 +99,16 @@ fn pieces_expr(pieces: &[Piece], mode: TextMode) -> String {
         .iter()
         .map(|p| match (p, mode) {
             (Piece::Text(text), _) => typst_str(text),
-            (Piece::Field(field), TextMode::Wrap) => format!("v({})", typst_str(field.key)),
-            (Piece::Field(field), TextMode::ShortLine) => {
-                format!("v({}, line: short-line)", typst_str(field.key))
-            }
-            (Piece::Field(field), TextMode::OneLine) => format!("v1({})", typst_str(field.key)),
             (Piece::Break, TextMode::OneLine) => "\" \"".to_owned(),
             (Piece::Break, _) => "linebreak()".to_owned(),
+            (Piece::Field(_) | Piece::Link(_), mode) => {
+                let key = typst_str(p.key().unwrap_or_default());
+                match mode {
+                    TextMode::Wrap => format!("v({key})"),
+                    TextMode::ShortLine => format!("v({key}, line: short-line)"),
+                    TextMode::OneLine => format!("v1({key})"),
+                }
+            }
         })
         .collect();
     join_parts(parts)
@@ -142,6 +164,13 @@ mod tests {
             r#"("№ ", v("order.number"), "{нет}", linebreak(), "{", v("client.name")).join()"#
         );
         assert_eq!(literal_expr("{заказ.номер}"), r#""{заказ.номер}""#);
+        assert_eq!(
+            text_expr(
+                "{ссылка.telegram} {Фирма.Телеграм} {ссылка.Bad-Id}",
+                TextMode::OneLine
+            ),
+            r#"(v1("link.telegram"), " ", v1("link.telegram"), " {ссылка.Bad-Id}").join()"#
+        );
         assert_eq!(text_expr("", TextMode::Wrap), r#""""#);
     }
 }

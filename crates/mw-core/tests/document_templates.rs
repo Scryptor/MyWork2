@@ -470,7 +470,7 @@ async fn import_replaces_kind() -> Result<(), CoreError> {
 async fn fields_are_listed() {
     for t in cores().await {
         let fields = t.core.document_fields();
-        assert_eq!(fields.len(), 38, "{}", t.label);
+        assert_eq!(fields.len(), 35 + 4, "{}", t.label);
         assert_eq!(fields[0].placeholder, "заказ.номер");
         assert_eq!(fields[0].key, "order.number");
         assert_eq!(fields[0].label, "Номер заказа");
@@ -617,4 +617,66 @@ async fn block_code_of_a_text_inside_columns() -> Result<(), CoreError> {
         assert!(code.contains("v(\""), "{}: {code}", t.label);
     }
     Ok(())
+}
+
+/// После статических полей идут ссылки из настроек по порядку; выключенная помечена.
+#[tokio::test]
+async fn document_fields_list_the_links() {
+    use mw_domain::links::{FirmLink, default_links};
+    for t in cores().await {
+        let tail = |t: &TestCore| {
+            let fields = t.core.document_fields();
+            fields[35..].to_vec()
+        };
+        let got = tail(&t);
+        assert_eq!(got.len(), 4, "{}", t.label);
+        assert_eq!(
+            got[0],
+            mw_core::DocumentField {
+                key: "link.yandex_maps".into(),
+                placeholder: "ссылка.yandex_maps".into(),
+                label: "Ссылка: Яндекс Карты".into(),
+            },
+            "{}",
+            t.label
+        );
+        let mut list = default_links();
+        list[2].enabled = false;
+        list.push(FirmLink {
+            id: "site".into(),
+            name: "Сайт".into(),
+            url: "https://example.com".into(),
+            enabled: true,
+        });
+        t.core
+            .update_settings(
+                &admin(),
+                mw_core::SettingsPatch {
+                    firm_links: Some(list),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        let labels: Vec<String> = tail(&t).into_iter().map(|f| f.label).collect();
+        assert_eq!(
+            labels,
+            [
+                "Ссылка: Яндекс Карты",
+                "Ссылка: 2ГИС",
+                "Ссылка: Telegram (выключена)",
+                "Ссылка: MAX",
+                "Ссылка: Сайт"
+            ],
+            "{}",
+            t.label
+        );
+        let all = t.core.document_fields();
+        assert!(
+            all.iter().all(|f| !f.key.starts_with("firm.telegram")),
+            "{}",
+            t.label
+        );
+        assert_eq!(all.last().unwrap().key, "link.site", "{}", t.label);
+    }
 }

@@ -197,7 +197,8 @@ fn has_logo_block(blocks: &[Block]) -> bool {
 /// wrapping; a string that is too long is cut to the longest start (by grapheme clusters, found by
 /// bisection) that fits together with «…» (U+2026); other content is cut off at the right edge (the
 /// outset keeps accents and descenders inside the clip). `qr-image(name, width)`: the QR code named
-/// `name` (see [`qr::qr_name`]) `width` wide; nothing when the document has none.
+/// `name` (see [`qr::qr_name`]; the old `firm.telegram`, `firm.google_maps`, `firm.yandex_maps` are
+/// `link.telegram`, …) `width` wide; nothing when the document has none.
 const PRELUDE: &str = r#"#set par(leading: 0.5em, spacing: 0.8em)
 #set block(spacing: 0.8em)
 #let vspace = v
@@ -228,7 +229,11 @@ const PRELUDE: &str = r#"#set par(leading: 0.5em, spacing: 0.8em)
     line(align(where, clusters.slice(0, fit).join(default: "").trim(at: end) + "…"))
   } else { line(box(width: width + 1pt, body)) }
 })
-#let qr-image(name, width) = if name in data.qr { image("qr-" + name + ".svg", width: width) }
+#let qr-aliases = ("firm.telegram": "link.telegram", "firm.google_maps": "link.google_maps", "firm.yandex_maps": "link.yandex_maps")
+#let qr-image(name, width) = {
+  let name = qr-aliases.at(name, default: name)
+  if name in data.qr { image("qr-" + name + ".svg", width: width) }
+}
 "#;
 
 /// Typst source of `template`. It never contains document data, so it is the same for every order of

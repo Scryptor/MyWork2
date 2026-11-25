@@ -234,7 +234,7 @@ async fn fields_listed() {
         let token = t.admin_token().await;
         let r = t.get("/api/v1/document-fields", Some(&token)).await;
         assert_eq!(r.status, 200, "{}: {}", t.label, r.body);
-        assert_eq!(r.body.as_array().unwrap().len(), 38, "{}", t.label);
+        assert_eq!(r.body.as_array().unwrap().len(), 35 + 4, "{}", t.label);
     }
 }
 
