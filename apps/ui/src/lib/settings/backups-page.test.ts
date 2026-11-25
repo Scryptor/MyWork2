@@ -438,9 +438,63 @@ describe('the settings of the copies', () => {
 		render(Page);
 		const field = await screen.findByRole('textbox', { name: 'Папка копий' });
 		await user.clear(field);
-		await user.type(field, '/nowhere');
+		await user.type(field, '/nowhere{Enter}');
 		expect(await screen.findByText('Папки нет на этом компьютере')).toBeInTheDocument();
 	});
+
+	it('saves the folder on Enter, not while it is typed', async () => {
+		vi.useFakeTimers({ shouldAdvanceTime: true });
+		const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+		api.updateBackupSettings.mockResolvedValue({ ...settings, folder: 'D:\\Backup' });
+		render(Page);
+		const field = await screen.findByRole('textbox', { name: 'Папка копий' });
+		await user.clear(field);
+		await user.type(field, 'D:\\');
+		await vi.advanceTimersByTimeAsync(2000);
+		await user.type(field, 'Backup');
+		await vi.advanceTimersByTimeAsync(2000);
+		expect(api.updateBackupSettings).not.toHaveBeenCalled();
+		await user.keyboard('{Enter}');
+		await waitFor(() =>
+			expect(api.updateBackupSettings).toHaveBeenCalledWith({ folder: 'D:\\Backup' })
+		);
+		expect(api.updateBackupSettings).toHaveBeenCalledOnce();
+	});
+
+	it('saves the folder when the field is left', async () => {
+		const user = userEvent.setup();
+		api.updateBackupSettings.mockResolvedValue({ ...settings, folder: '/mine' });
+		render(Page);
+		const field = await screen.findByRole('textbox', { name: 'Папка копий' });
+		await user.clear(field);
+		await user.type(field, ' /mine ');
+		expect(api.updateBackupSettings).not.toHaveBeenCalled();
+		await user.tab();
+		await waitFor(() => expect(api.updateBackupSettings).toHaveBeenCalledWith({ folder: '/mine' }));
+	});
+
+	it('leaving the folder as it was saves nothing', async () => {
+		const user = userEvent.setup();
+		render(Page);
+		const field = await screen.findByRole('textbox', { name: 'Папка копий' });
+		await user.clear(field);
+		await user.tab();
+		await user.click(field);
+		await user.tab();
+		expect(api.updateBackupSettings).not.toHaveBeenCalled();
+	});
+
+	for (const inProgram of [false, true])
+		it(`explains the manual restore ${inProgram ? 'in the program' : 'in a browser'}`, async () => {
+			const user = userEvent.setup();
+			if (inProgram) fakeDesktop();
+			render(Page);
+			await user.click(await screen.findByRole('button', { name: 'Что такое «Папка копий»' }));
+			const dialog = await screen.findByRole('dialog', { name: 'Папка копий' });
+			expect(dialog).toHaveTextContent(
+				'удалите из папки данных файлы mywork.db-wal и mywork.db-shm'
+			);
+		});
 
 	it('returns the folder to the default', async () => {
 		const user = userEvent.setup();

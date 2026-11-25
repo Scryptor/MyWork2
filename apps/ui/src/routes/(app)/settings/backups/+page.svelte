@@ -19,6 +19,7 @@
 	import Callout from '#lib/ui/Callout.svelte';
 	import Card from '#lib/ui/Card.svelte';
 	import ConfirmDialog from '#lib/ui/ConfirmDialog.svelte';
+	import HelpHint from '#lib/ui/HelpHint.svelte';
 	import Skeleton from '#lib/ui/Skeleton.svelte';
 	import Switch from '#lib/ui/Switch.svelte';
 	import TextInput from '#lib/ui/TextInput.svelte';
@@ -143,7 +144,10 @@
 				/>
 				{#if inProgram}
 					<div class="folder">
-						<span class="label">{t.folder}</span>
+						<div class="head">
+							<span class="label">{t.folder}</span>
+							<HelpHint title={t.folder} text={ru.help.backups.folder} />
+						</div>
 						<span class="path">{o.folder}</span>
 						{#if screen.fieldError('folder')}
 							<span class="error" role="alert">{screen.fieldError('folder')}</span>
@@ -156,6 +160,7 @@
 						error={screen.fieldError('folder')}
 						bind:value={() => screen.folderText(), (v) => screen.typeFolder(v)}
 						onblur={() => screen.leave('folder')}
+						onenter={() => screen.leave('folder')}
 					/>
 				{/if}
 				{#if o.folder_problem}<Callout tone="warning">{o.folder_problem}</Callout>{/if}
@@ -270,6 +275,11 @@
 	.folder {
 		display: flex;
 		flex-direction: column;
+		gap: var(--space-1);
+	}
+	.head {
+		display: flex;
+		align-items: center;
 		gap: var(--space-1);
 	}
 	.label {

@@ -1,5 +1,6 @@
 // The state of «Настройки → Резервные копии»: the overview read from the server, the progress of a copy
-// (read again every second while it runs), the actions, and the settings saved as they are edited.
+// (read again every second while it runs), the actions, and the settings saved as they are edited (the
+// path of the folder only when its field is left or Enter is pressed).
 import { untrack } from 'svelte';
 import type { BackupOverview } from '$api/BackupOverview';
 import type { BackupSettings } from '$api/BackupSettings';
@@ -49,8 +50,9 @@ export interface BackupsScreen {
 	fieldError(field: Field): string | undefined;
 	setAuto(on: boolean): void;
 	typeKeep(raw: string): void;
+	/** Only kept as typed: a half-typed path («D:\» of «D:\Backup») is not saved. */
 	typeFolder(raw: string): void;
-	/** The field is left: what was typed goes, the server's value is shown again. */
+	/** The field is left (or Enter in the folder): what was typed goes, the server's value is shown again. */
 	leave(field: 'keep' | 'folder'): void;
 	/** A folder chosen in a dialog or «По умолчанию» (`null`): saved at once. */
 	setFolder(folder: string | null): void;
@@ -223,14 +225,19 @@ export function createBackupsScreen(opts: {
 		typeFolder(raw) {
 			drafts = { ...drafts, folder: raw };
 			setError('folder', undefined);
-			// An empty path is the default folder.
-			inner.edit('folder', raw.trim() === '' ? null : raw.trim());
 		},
 		leave(field) {
-			if (field in drafts) {
+			const draft = drafts[field];
+			if (draft !== undefined) {
 				const next = { ...drafts };
 				delete next[field];
 				drafts = next;
+			}
+			if (field === 'folder' && draft !== undefined) {
+				// An empty path is the default folder; the same path as now is no change.
+				const folder = draft.trim() === '' ? null : draft.trim();
+				if (folder !== (inner.value('folder', overview?.settings.folder ?? null) ?? null))
+					inner.commit('folder', folder);
 			}
 			void inner.flush().catch(() => {});
 			// A mistake of what was typed is gone with the draft; the server's own stays under the field.

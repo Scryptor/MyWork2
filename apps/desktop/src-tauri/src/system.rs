@@ -20,15 +20,14 @@ pub fn open_folder(path: String) -> Result<(), String> {
     open::that_detached(folder).map_err(|e| format!("Не удалось открыть папку: {e}"))
 }
 
-/// Полный путь к существующей папке, иначе «Папки нет: <путь>» (путь как передан).
+/// Путь как передан, если это полный путь к существующей папке, иначе «Папки нет: <путь>». Без
+/// `canonicalize`: на Windows он даёт `\\?\C:\…`, а такой путь Проводник не открывает.
 pub(crate) fn existing_folder(path: &str) -> Result<PathBuf, String> {
     let folder = std::path::Path::new(path);
-    if !folder.is_absolute() {
-        return Err(format!("Папки нет: {path}"));
-    }
-    match std::fs::canonicalize(folder) {
-        Ok(full) if full.is_dir() => Ok(full),
-        _ => Err(format!("Папки нет: {path}")),
+    if folder.is_absolute() && folder.is_dir() {
+        Ok(folder.to_path_buf())
+    } else {
+        Err(format!("Папки нет: {path}"))
     }
 }
 
@@ -39,8 +38,13 @@ mod tests {
     #[test]
     fn existing_folder_accepts_only_a_folder() {
         let dir = tempfile::tempdir().unwrap();
+        // Путь открывается как передан: канонический путь Windows (`\\?\C:\…`) Проводник не принимает.
         let ok = existing_folder(dir.path().to_str().unwrap()).unwrap();
-        assert!(ok.is_absolute() && ok.is_dir());
+        assert_eq!(ok, dir.path());
+        let inner = dir.path().join("inner");
+        std::fs::create_dir(&inner).unwrap();
+        let dotted = dir.path().join("inner").join("..").join("inner");
+        assert_eq!(existing_folder(dotted.to_str().unwrap()).unwrap(), dotted);
 
         let file = dir.path().join("a.txt");
         std::fs::write(&file, b"x").unwrap();

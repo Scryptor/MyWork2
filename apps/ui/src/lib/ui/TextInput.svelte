@@ -24,6 +24,7 @@
 		name,
 		oninput,
 		onblur,
+		onenter,
 		label,
 		hint,
 		help,
@@ -51,6 +52,8 @@
 		name?: string;
 		oninput?: (v: string) => void;
 		onblur?: () => void;
+		/** Enter in the field (not while a word is being composed). */
+		onenter?: () => void;
 		label?: string;
 		hint?: string;
 		/** «Что это?»: an icon right of the label with an explanation. */
@@ -92,6 +95,9 @@
 				aria-required={required ? 'true' : undefined}
 				oninput={() => oninput?.(value)}
 				{onblur}
+				onkeydown={(e) => {
+					if (e.key === 'Enter' && !e.isComposing) onenter?.();
+				}}
 			/>
 			{#if type === 'password' && revealable}
 				<button
