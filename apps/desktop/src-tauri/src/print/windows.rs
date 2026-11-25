@@ -1,8 +1,13 @@
 //! Печать в Windows через GDI: страницы PNG от сервера (растр в разрешении принтера) — в физический размер листа.
 //!
-//! Чистые расчёты (место страницы на листе, границы, строки DIB) — здесь и под тестами на всех системах; вызовы
-//! winspool и GDI — в модуле `gdi`, только в Windows. Каждый блок `unsafe` там — с обоснованием `SAFETY:`, каждый
-//! дескриптор (контекст принтера, задание) освобождает страж при `drop`, и при ошибке тоже.
+//! Контекст принтера открывается с его настройками по умолчанию — обычно книжный лист. Альбомная страница (акты «два
+//! рядом» на A4) на книжном листе, как и книжная на альбомном, поворачивается на 90° против часовой стрелки: иначе
+//! правая половина ушла бы за край. Поворот — только когда страница не ложится на лист как есть: наклейка на рулоне
+//! печатается без него.
+//!
+//! Чистые расчёты (поворот и место страницы на листе, границы, строки DIB) — здесь и под тестами на всех системах;
+//! вызовы winspool и GDI — в модуле `gdi`, только в Windows. Каждый блок `unsafe` там — с обоснованием `SAFETY:`,
+//! каждый дескриптор (контекст принтера, задание) освобождает страж при `drop`, и при ошибке тоже.
 
 use super::{MAX_DOCUMENT_BYTES, decode_base64};
 use std::ops::RangeInclusive;
@@ -16,7 +21,59 @@ const DPI: RangeInclusive<u32> = 72..=600;
 const SHEET_MM: RangeInclusive<f32> = 15.0..=500.0;
 /// Запас на округление размера страницы при растре, точек.
 const SLACK_PX: u32 = 2;
+/// Запас на округление физического размера листа у драйвера, мм: страница ложится на лист как есть.
+const FIT_SLACK_MM: f64 = 1.0;
 const MM_PER_INCH: f64 = 25.4;
+
+/// Лист в контексте принтера по `GetDeviceCaps`, в точках: разрешение (`LOGPIXELSX/Y`), поля области печати
+/// (`PHYSICALOFFSETX/Y`) и физический размер (`PHYSICALWIDTH/HEIGHT`).
+#[derive(Debug, Clone, Copy)]
+pub(super) struct Sheet {
+    pub(super) dpi_x: i32,
+    pub(super) dpi_y: i32,
+    pub(super) offset_x: i32,
+    pub(super) offset_y: i32,
+    pub(super) width: i32,
+    pub(super) height: i32,
+}
+
+/// Поворачивать ли страницу `width_mm` × `height_mm` на листе `sheet`: да, если она не ложится на него как есть
+/// (с запасом [`FIT_SLACK_MM`]), а ориентации у них разные — альбомная на книжном или книжная на альбомном. Лист
+/// сравнивается в мм: разрешение по осям бывает разным. Принтер не сообщил лист или разрешение — без поворота.
+pub(super) fn needs_rotation(width_mm: f32, height_mm: f32, sheet: &Sheet) -> bool {
+    if sheet.dpi_x <= 0 || sheet.dpi_y <= 0 || sheet.width <= 0 || sheet.height <= 0 {
+        return false;
+    }
+    let mm = |dots: i32, dpi: i32| f64::from(dots) * MM_PER_INCH / f64::from(dpi);
+    let (sheet_w, sheet_h) = (mm(sheet.width, sheet.dpi_x), mm(sheet.height, sheet.dpi_y));
+    let (w, h) = (f64::from(width_mm), f64::from(height_mm));
+    let fits = w <= sheet_w + FIT_SLACK_MM && h <= sheet_h + FIT_SLACK_MM;
+    !fits && ((w > h && sheet_w < sheet_h) || (w < h && sheet_w > sheet_h))
+}
+
+/// Как страница ложится на лист: повёрнута ли она ([`needs_rotation`]) и куда рисуется ([`target_rect`]); у
+/// повёрнутой ширина и высота меняются местами.
+pub(super) fn placement(
+    width_mm: f32,
+    height_mm: f32,
+    sheet: &Sheet,
+) -> (bool, (i32, i32, i32, i32)) {
+    let turned = needs_rotation(width_mm, height_mm, sheet);
+    let (across, down) = if turned {
+        (height_mm, width_mm)
+    } else {
+        (width_mm, height_mm)
+    };
+    let rect = target_rect(
+        across,
+        down,
+        sheet.dpi_x,
+        sheet.dpi_y,
+        sheet.offset_x,
+        sheet.offset_y,
+    );
+    (turned, rect)
+}
 
 /// Где на листе рисуется страница, в точках принтера: `(x, y, ширина, высота)`. Начало координат контекста
 /// принтера — угол области печати, а она отстоит от края листа на `PHYSICALOFFSETX/Y` (`offset_x/y`): страница
@@ -95,18 +152,41 @@ pub(super) fn dib_rows(rgba: &[u8], width: usize) -> Vec<u8> {
     let stride = (width * 3).next_multiple_of(4);
     let rows = rgba.len() / (width * 4);
     let mut out = Vec::with_capacity(stride * rows);
-    let on_white = |channel: u8, alpha: u8| {
-        let (channel, alpha) = (u32::from(channel), u32::from(alpha));
-        ((channel * alpha + 255 * (255 - alpha) + 127) / 255) as u8
-    };
     for row in rgba.chunks_exact(width * 4) {
         for pixel in row.chunks_exact(4) {
-            let alpha = pixel[3];
-            out.extend([pixel[2], pixel[1], pixel[0]].map(|channel| on_white(channel, alpha)));
+            out.extend(bgr_on_white(pixel));
         }
         out.resize(out.len() + stride - width * 3, 0);
     }
     out
+}
+
+/// Строки DIB той же картинки, повёрнутой на 90° против часовой стрелки (верх страницы — у левого края листа):
+/// строк столько, сколько точек в строке картинки, а в строке — столько точек, сколько у неё строк. Первая строка —
+/// правый столбец картинки сверху вниз, последняя — левый.
+pub(super) fn dib_rows_turned(rgba: &[u8], width: usize) -> Vec<u8> {
+    if width == 0 {
+        return Vec::new();
+    }
+    let height = rgba.len() / (width * 4);
+    let stride = (height * 3).next_multiple_of(4);
+    let mut out = Vec::with_capacity(stride * width);
+    for column in (0..width).rev() {
+        for row in 0..height {
+            let at = (row * width + column) * 4;
+            out.extend(bgr_on_white(&rgba[at..at + 4]));
+        }
+        out.resize(out.len() + stride - height * 3, 0);
+    }
+    out
+}
+
+/// Точка RGBA как синий, зелёный, красный на белом листе.
+fn bgr_on_white(pixel: &[u8]) -> [u8; 3] {
+    let alpha = u32::from(pixel[3]);
+    let on_white =
+        |channel: u8| ((u32::from(channel) * alpha + 255 * (255 - alpha) + 127) / 255) as u8;
+    [on_white(pixel[2]), on_white(pixel[1]), on_white(pixel[0])]
 }
 
 #[cfg(windows)]
@@ -117,12 +197,15 @@ pub(super) fn dib_rows(rgba: &[u8], width: usize) -> Vec<u8> {
 #[deny(clippy::undocumented_unsafe_blocks)]
 mod gdi {
     use super::super::{PrinterInfo, check_copies, known_printer};
-    use super::{decode_pages, dib_rows, page_limits, target_rect, with_windows_text};
+    use super::{
+        Sheet, decode_pages, dib_rows, dib_rows_turned, page_limits, placement, with_windows_text,
+    };
     use ::windows::Win32::Foundation::{ERROR_INSUFFICIENT_BUFFER, SetLastError, WIN32_ERROR};
     use ::windows::Win32::Graphics::Gdi::{
         BI_RGB, BITMAPINFO, BITMAPINFOHEADER, COLORONCOLOR, CreateDCW, DIB_RGB_COLORS, DeleteDC,
         GDI_ERROR, GET_DEVICE_CAPS_INDEX, GetDeviceCaps, HDC, LOGPIXELSX, LOGPIXELSY,
-        PHYSICALOFFSETX, PHYSICALOFFSETY, SRCCOPY, SetStretchBltMode, StretchDIBits,
+        PHYSICALHEIGHT, PHYSICALOFFSETX, PHYSICALOFFSETY, PHYSICALWIDTH, SRCCOPY,
+        SetStretchBltMode, StretchDIBits,
     };
     use ::windows::Win32::Graphics::Printing::{
         EnumPrintersW, GetDefaultPrinterW, PRINTER_ENUM_CONNECTIONS, PRINTER_ENUM_LOCAL,
@@ -179,19 +262,20 @@ mod gdi {
         if dpi_x <= 0 || dpi_y <= 0 {
             return Err("Ошибка печати: принтер не сообщил своё разрешение".to_string());
         }
-        let rect = target_rect(
-            width_mm,
-            height_mm,
+        let sheet = Sheet {
             dpi_x,
             dpi_y,
-            dc.caps(PHYSICALOFFSETX),
-            dc.caps(PHYSICALOFFSETY),
-        );
+            offset_x: dc.caps(PHYSICALOFFSETX),
+            offset_y: dc.caps(PHYSICALOFFSETY),
+            width: dc.caps(PHYSICALWIDTH),
+            height: dc.caps(PHYSICALHEIGHT),
+        };
+        let (turned, rect) = placement(width_mm, height_mm, &sheet);
         dc.sharp_stretching();
         // Задание — после контекста: при выходе (и при ошибке) сначала `AbortDoc`, потом `DeleteDC`.
         let job = PrintJob::start(&dc)?;
         for page in &pages {
-            let dib = Dib::decode(page, max)?;
+            let dib = Dib::decode(page, max, turned)?;
             for _ in 0..copies {
                 job.page(&dib, rect)?;
             }
@@ -375,7 +459,7 @@ mod gdi {
             Ok(Self { dc, open: true })
         }
 
-        /// Одна страница листа: `dib` растягивается в `rect` (см. [`target_rect`]).
+        /// Одна страница листа: `dib` растягивается в `rect` (см. [`placement`]).
         fn page(
             &self,
             dib: &Dib,
@@ -439,7 +523,7 @@ mod gdi {
         }
     }
 
-    /// Раскрытая страница: 24-битный DIB сверху вниз.
+    /// Раскрытая страница: 24-битный DIB сверху вниз (повёрнутая — уже повёрнутой, см. [`dib_rows_turned`]).
     struct Dib {
         info: BITMAPINFO,
         bits: Vec<u8>,
@@ -448,12 +532,21 @@ mod gdi {
     }
 
     impl Dib {
-        fn decode(png: &[u8], max: (u32, u32)) -> Result<Self, String> {
+        fn decode(png: &[u8], max: (u32, u32), turned: bool) -> Result<Self, String> {
             let image = png_reader(png, max)
                 .decode()
                 .map_err(page_error)?
                 .into_rgba8();
             let (width, height) = image.dimensions();
+            let (bits, width, height) = if turned {
+                (
+                    dib_rows_turned(image.as_raw(), width as usize),
+                    height,
+                    width,
+                )
+            } else {
+                (dib_rows(image.as_raw(), width as usize), width, height)
+            };
             // Размеры не больше `max` (`page_limits`: тысячи точек) — в i32 помещаются.
             let (width, height) = (width as i32, height as i32);
             let info = BITMAPINFO {
@@ -471,7 +564,7 @@ mod gdi {
             };
             Ok(Self {
                 info,
-                bits: dib_rows(image.as_raw(), width as usize),
+                bits,
                 width,
                 height,
             })
@@ -588,5 +681,104 @@ mod tests {
         // Четыре точки — 12 байт, выравнивание не нужно.
         assert_eq!(dib_rows(&[0; 16], 4).len(), 12);
         assert!(dib_rows(&[], 0).is_empty());
+    }
+
+    /// Лист в `dpi` точек на дюйм по обеим осям: `width_mm` × `height_mm`, поля области печати — 100 точек.
+    fn sheet(width_mm: f64, height_mm: f64, dpi: i32) -> Sheet {
+        let dots = |mm: f64| (mm * f64::from(dpi) / MM_PER_INCH).round() as i32;
+        Sheet {
+            dpi_x: dpi,
+            dpi_y: dpi,
+            offset_x: 100,
+            offset_y: 100,
+            width: dots(width_mm),
+            height: dots(height_mm),
+        }
+    }
+
+    /// Альбомная страница на книжном листе (и книжная на альбомном) поворачивается; страница, что ложится на лист
+    /// как есть, — нет: наклейка 58×40 на рулоне шириной 58 мм печатается без поворота.
+    #[test]
+    fn a_page_turns_only_when_it_does_not_fit_the_sheet_as_it_is() {
+        let a4_portrait = sheet(210.0, 297.0, 600);
+        let a4_landscape = sheet(297.0, 210.0, 600);
+        assert!(needs_rotation(297.0, 210.0, &a4_portrait));
+        assert!(needs_rotation(210.0, 297.0, &a4_landscape));
+        assert!(!needs_rotation(210.0, 297.0, &a4_portrait));
+        assert!(!needs_rotation(297.0, 210.0, &a4_landscape));
+        // A5 альбомная на A4 книжном ложится как есть.
+        assert!(!needs_rotation(210.0, 148.0, &a4_portrait));
+        // Наклейка: на рулоне — как есть, на этикетке 40×58 — повёрнутой.
+        assert!(!needs_rotation(58.0, 40.0, &sheet(58.0, 3276.0, 203)));
+        assert!(!needs_rotation(58.0, 40.0, &sheet(58.0, 40.0, 203)));
+        assert!(needs_rotation(58.0, 40.0, &sheet(40.0, 58.0, 203)));
+        // Квадрат поворот не спасает.
+        assert!(!needs_rotation(100.0, 100.0, &sheet(80.0, 120.0, 203)));
+        // Разное разрешение по осям: A4 книжный в 600 × 300 dpi — 4961 × 3508 точек, но книжный.
+        let anisotropic = Sheet {
+            dpi_y: 300,
+            height: 3508,
+            ..a4_portrait
+        };
+        assert!(needs_rotation(297.0, 210.0, &anisotropic));
+        assert!(!needs_rotation(210.0, 297.0, &anisotropic));
+        // Принтер не сообщил размер листа или разрешение — как есть.
+        for unknown in [
+            Sheet {
+                width: 0,
+                ..a4_portrait
+            },
+            Sheet {
+                dpi_y: 0,
+                ..a4_portrait
+            },
+        ] {
+            assert!(!needs_rotation(297.0, 210.0, &unknown));
+        }
+    }
+
+    /// Повёрнутая страница рисуется в прямоугольник листа с переставленными сторонами: альбомный A4 на книжном
+    /// листе в 600 dpi — 4961 × 7016 точек, от края листа.
+    #[test]
+    fn a_turned_page_fills_the_sheet_with_its_sides_swapped() {
+        assert_eq!(
+            placement(297.0, 210.0, &sheet(210.0, 297.0, 600)),
+            (true, (-100, -100, 4961, 7016))
+        );
+        assert_eq!(
+            placement(297.0, 210.0, &sheet(297.0, 210.0, 600)),
+            (false, (-100, -100, 7016, 4961))
+        );
+        assert_eq!(
+            placement(210.0, 297.0, &sheet(210.0, 297.0, 600)),
+            (false, (-100, -100, 4961, 7016))
+        );
+    }
+
+    /// Поворот на 90° против часовой стрелки: верх страницы — у левого края листа. Картинка 2 × 3 становится 3 × 2;
+    /// каждая точка — на своём месте.
+    #[test]
+    fn rgba_turns_into_dib_rows_counterclockwise() {
+        let px = |n: u8| [n, n + 1, n + 2, 255];
+        // Строки картинки сверху вниз: (a b) (c d) (e f).
+        let (a, b, c, d, e, f) = (px(10), px(20), px(30), px(40), px(50), px(60));
+        let rgba: Vec<u8> = [a, b, c, d, e, f].concat();
+        let bgr = |p: [u8; 4]| [p[2], p[1], p[0]];
+        // Повёрнутая: (b d f) (a c e); строка — 9 байт + 3 выравнивания.
+        let want: Vec<u8> = [
+            bgr(b).as_slice(),
+            &bgr(d),
+            &bgr(f),
+            &[0, 0, 0],
+            &bgr(a),
+            &bgr(c),
+            &bgr(e),
+            &[0, 0, 0],
+        ]
+        .concat();
+        assert_eq!(dib_rows_turned(&rgba, 2), want);
+        // Прозрачное — на белом, как и без поворота.
+        assert_eq!(dib_rows_turned(&[0, 0, 255, 0], 1), [255, 255, 255, 0]);
+        assert!(dib_rows_turned(&[], 0).is_empty());
     }
 }
