@@ -16,6 +16,7 @@
 	import QuantityInput from '#lib/ui/QuantityInput.svelte';
 	import Spinner from '#lib/ui/Spinner.svelte';
 	import TextInput from '#lib/ui/TextInput.svelte';
+	import { placeCodes } from './places.js';
 	import { createStockList } from './list.svelte.js';
 
 	let { open = $bindable(false), parts }: { open: boolean; parts: OrderPartsState } = $props();
@@ -175,6 +176,8 @@
 							<span class="num">{ru.stock.pieces(item.quantity)}</span>
 							<span class="num price">{formatMoney(item.price)}</span>
 							{#if item.quantity === 0}<span class="muted">{t.outOfStock}</span>{/if}
+							{#if item.places.length > 0}<span class="muted places">{placeCodes(item.places)}</span
+								>{/if}
 						</button>
 					</li>
 				{/each}
@@ -259,6 +262,10 @@
 	}
 	.price {
 		margin-inline-start: auto;
+	}
+	/* The codes of the cells go on a line of their own. */
+	.places {
+		flex-basis: 100%;
 	}
 	.muted {
 		margin: 0;

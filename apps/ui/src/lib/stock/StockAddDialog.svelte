@@ -8,7 +8,7 @@
 	import type { StockItem } from '$api/StockItem';
 	import { listDictionary } from '#lib/api/catalogs.js';
 	import { errorMessage } from '#lib/api/client.js';
-	import { createStockItem } from '#lib/api/stock.js';
+	import { createStockItem, listStockRacks } from '#lib/api/stock.js';
 	import { submitShortcut } from '#lib/design/hotkeys.svelte.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import Button from '#lib/ui/Button.svelte';
@@ -20,6 +20,7 @@
 	import Textarea from '#lib/ui/Textarea.svelte';
 	import TextInput from '#lib/ui/TextInput.svelte';
 	import { toast } from '#lib/ui/toast/toast.svelte.js';
+	import { cellOptions } from './places.js';
 	import { MAX_STOCK_QUANTITY, STOCK_FIELDS, stockFieldErrors } from './fields.js';
 	import { stockCount } from './summary.svelte.js';
 
@@ -53,6 +54,9 @@
 		color: [] as string[]
 	});
 	const KINDS = ['part_type', 'device_type', 'brand', 'color'] as const;
+	/** The cells to put the whole quantity into; none without racks: then there is no field. */
+	let cells = $state.raw<ReturnType<typeof cellOptions>>([]);
+	let cellText = $state('');
 	const items = (values: string[]) => values.map((value) => ({ value }));
 
 	// Every opening starts from an empty form and fresh dictionaries (the settings may have changed).
@@ -62,6 +66,8 @@
 			form = empty();
 			errors = {};
 			priceInvalid = false;
+			cellText = '';
+			cells = [];
 			let current = true;
 			void Promise.all(KINDS.map((k) => listDictionary(k).catch(() => []))).then((lists) => {
 				// Without them the fields still take any text.
@@ -70,6 +76,12 @@
 					KINDS.map((k, i) => [k, (lists[i] ?? []).map((d) => d.value)])
 				) as typeof dictionaries;
 			});
+			// Without the racks (or without their list) the position is made with no cell.
+			void listStockRacks({})
+				.then((racks) => {
+					if (current) cells = cellOptions(racks);
+				})
+				.catch(() => {});
 			stopLoading = () => (current = false);
 		});
 		return () => stopLoading();
@@ -105,7 +117,7 @@
 				quantity: form.quantity,
 				price: form.price,
 				restock_threshold: form.restock_threshold,
-				place: null
+				place: cells.find((c) => c.value === cellText)?.ref ?? null
 			};
 			const item = await createStockItem(body);
 			stockCount.refresh();
@@ -196,6 +208,17 @@
 				bind:value={form.restock_threshold}
 			/>
 		</div>
+		{#if cells.length > 0}
+			<Combobox
+				label={t.places.cell}
+				placeholder={t.places.cellPlaceholder}
+				items={cells}
+				allowCustom={false}
+				hint={t.places.addHint}
+				error={errors.place}
+				bind:value={cellText}
+			/>
+		{/if}
 		<Textarea
 			label={STOCK_FIELDS.note}
 			maxlength={2000}

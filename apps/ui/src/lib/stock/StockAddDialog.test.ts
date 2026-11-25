@@ -3,28 +3,42 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '#lib/api/client.js';
 
-const api = vi.hoisted(() => ({ createStockItem: vi.fn(), stockSummary: vi.fn() }));
+const api = vi.hoisted(() => ({
+	createStockItem: vi.fn(),
+	stockSummary: vi.fn(),
+	listStockRacks: vi.fn()
+}));
 vi.mock('#lib/api/stock.js', () => api);
 const dict = vi.hoisted(() => ({ listDictionary: vi.fn() }));
 vi.mock('#lib/api/catalogs.js', () => dict);
 
+import { rack } from './places.test-helper.js';
 import Harness from './StockAddDialogHarness.test-helper.svelte';
 
-const validation = (field: string, code: string) =>
+const validation = (field: string, code: string, message = 'x') =>
 	new ApiError(422, 'validation', 'Неверно', {
 		code: 'validation',
 		message: 'Неверно',
-		fields: [{ field, code, message: 'x' }],
+		fields: [{ field, code, message }],
 		current_version: null,
 		permission: null,
 		retry_after_secs: null,
 		diagnostics: []
 	});
 
+/** The one option the typed code leaves in the open list (the popup is not in the accessibility tree of jsdom). */
+const option = () =>
+	waitFor(() => {
+		const el = document.querySelector('[data-combobox-item]');
+		if (!el) throw new Error('no option');
+		return el;
+	});
+
 beforeEach(() => {
 	vi.clearAllMocks();
 	dict.listDictionary.mockResolvedValue([]);
 	api.stockSummary.mockResolvedValue({ restock: 0 });
+	api.listStockRacks.mockResolvedValue([]);
 });
 
 describe('StockAddDialog', () => {
@@ -66,5 +80,50 @@ describe('StockAddDialog', () => {
 		answer({ id: 5 });
 		await waitFor(() => expect(screen.getByTestId('created')).toHaveTextContent('5'));
 		expect(api.createStockItem).toHaveBeenCalledTimes(1);
+	});
+
+	describe('the cell', () => {
+		it('sends the chosen cell', async () => {
+			const ui = userEvent.setup();
+			api.listStockRacks.mockResolvedValue([rack(1, 'A', 1, 2), rack(2, 'B', 2, 4)]);
+			api.createStockItem.mockResolvedValue({ id: 5 });
+			render(Harness);
+			await ui.type(screen.getByRole('textbox', { name: 'Модель' }), 'M-1');
+			await ui.type(await screen.findByRole('combobox', { name: 'Ячейка' }), 'B-2-4');
+			await ui.click(await option());
+			await ui.click(screen.getByRole('button', { name: /^Добавить$/ }));
+			await waitFor(() => expect(api.createStockItem).toHaveBeenCalled());
+			expect(api.createStockItem.mock.calls[0]![0].place).toEqual({
+				rack_id: 2,
+				shelf: 2,
+				cell: 4
+			});
+		});
+
+		it('has no field and no cell without racks', async () => {
+			const ui = userEvent.setup();
+			api.createStockItem.mockResolvedValue({ id: 5 });
+			render(Harness);
+			await ui.type(screen.getByRole('textbox', { name: 'Модель' }), 'M-1');
+			await waitFor(() => expect(api.listStockRacks).toHaveBeenCalled());
+			expect(screen.queryByRole('combobox', { name: 'Ячейка' })).not.toBeInTheDocument();
+			await ui.click(screen.getByRole('button', { name: /^Добавить$/ }));
+			await waitFor(() => expect(api.createStockItem).toHaveBeenCalled());
+			expect(api.createStockItem.mock.calls[0]![0].place).toBeNull();
+		});
+
+		it('tells no_such_place under the field', async () => {
+			const ui = userEvent.setup();
+			api.listStockRacks.mockResolvedValue([rack(1, 'A', 1, 2)]);
+			api.createStockItem.mockRejectedValue(
+				validation('place', 'no_such_place', 'Такого места на складе нет')
+			);
+			render(Harness);
+			await ui.type(screen.getByRole('textbox', { name: 'Модель' }), 'M-1');
+			await ui.type(await screen.findByRole('combobox', { name: 'Ячейка' }), 'A-1');
+			await ui.click(await option());
+			await ui.click(screen.getByRole('button', { name: /^Добавить$/ }));
+			expect(await screen.findByText('Такого места на складе нет')).toBeInTheDocument();
+		});
 	});
 });

@@ -11,7 +11,12 @@ import {
 } from './view.js';
 
 const fromSearch = (s: string) => stockViewFromSearch(new URLSearchParams(s));
-const plain: StockView = { query: '', sort: { ...DEFAULT_STOCK_SORT }, restock: false };
+const plain: StockView = {
+	query: '',
+	sort: { ...DEFAULT_STOCK_SORT },
+	restock: false,
+	asText: false
+};
 
 describe('stock view in the address', () => {
 	it('the default view is an empty address: by name, A to Z, everything', () => {
@@ -22,20 +27,23 @@ describe('stock view in the address', () => {
 
 	it('goes there and back: restock, q, sort, desc', () => {
 		const views: StockView[] = [
-			{ query: 'дисплей', sort: { columnId: 'price', descending: true }, restock: true },
-			{ query: '', sort: { columnId: 'quantity', descending: false }, restock: false },
-			{ query: 'a,b', sort: { columnId: 'name', descending: true }, restock: false },
-			{ query: '', sort: { columnId: 'id', descending: false }, restock: true }
+			{ ...plain, query: 'дисплей', sort: { columnId: 'price', descending: true }, restock: true },
+			{ ...plain, sort: { columnId: 'quantity', descending: false } },
+			{ ...plain, query: 'a,b', sort: { columnId: 'name', descending: true } },
+			{ ...plain, sort: { columnId: 'id', descending: false }, restock: true },
+			{ ...plain, query: 'b-2', asText: true }
 		];
 		for (const v of views) expect(fromSearch(stockViewToSearch(v))).toEqual(v);
 		expect(
 			stockViewToSearch({
+				...plain,
 				query: 'дисплей',
 				sort: { columnId: 'price', descending: true },
 				restock: true
 			})
 		).toBe('q=%D0%B4%D0%B8%D1%81%D0%BF%D0%BB%D0%B5%D0%B9&sort=price&desc=1&restock=1');
 		expect(fromSearch('restock=1&q=дисплей&sort=price&desc=1')).toEqual({
+			asText: false,
 			query: 'дисплей',
 			sort: { columnId: 'price', descending: true },
 			restock: true
@@ -62,6 +70,16 @@ describe('stock view in the address', () => {
 		expect(stockItemHref(12)).toBe('stock?item=12');
 	});
 
+	it('text=1 turns the place code off: it goes there and back and asks the server as text', () => {
+		const v = { ...plain, query: 'b-2', asText: true };
+		expect(stockViewToSearch(v)).toBe('q=b-2&text=1');
+		expect(fromSearch('q=b-2&text=1').asText).toBe(true);
+		expect(fromSearch('q=b-2').asText).toBe(false);
+		expect(stockViewToSearch(plain)).not.toContain('text');
+		expect(stockViewToQuery(v)).toMatchObject({ query: 'b-2', as_text: true });
+		expect(stockViewToQuery(plain)).not.toHaveProperty('as_text', true);
+	});
+
 	it('asks the server: trimmed text, the sort field, «Докупить»', () => {
 		expect(stockViewToQuery(plain)).toEqual({
 			query: undefined,
@@ -76,6 +94,7 @@ describe('stock view in the address', () => {
 		});
 		expect(
 			stockViewToQuery({
+				asText: false,
 				query: '  экран ',
 				sort: { columnId: 'quantity', descending: true },
 				restock: false

@@ -83,6 +83,7 @@
 					<p class="meta">
 						{meta(p)}{#if !p.item_exists}<span class="num"> · {t.noItem}</span>{/if}
 					</p>
+					{#if p.places.length > 0}<p class="meta">{p.places.join(', ')}</p>{/if}
 				</li>
 			{/each}
 		</ul>

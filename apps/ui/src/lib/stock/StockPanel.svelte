@@ -6,9 +6,10 @@
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import { untrack } from 'svelte';
 	import type { StockItem } from '$api/StockItem';
+	import type { StockRack } from '$api/StockRack';
 	import { listDictionary } from '#lib/api/catalogs.js';
 	import { ApiError, errorMessage } from '#lib/api/client.js';
-	import { deleteStockItem, getStockItem } from '#lib/api/stock.js';
+	import { deleteStockItem, getStockItem, listStockRacks } from '#lib/api/stock.js';
 	import { app } from '#lib/app/context.svelte.js';
 	import { ru } from '#lib/i18n/ru.js';
 	import { leaveGuard } from '#lib/navigation/leave-guard.svelte.js';
@@ -32,6 +33,7 @@
 	} from './editor.svelte.js';
 	import { MAX_STOCK_PHOTOS, stockFieldErrors } from './fields.js';
 	import StockFields from './StockFields.svelte';
+	import StockPlaces from './StockPlaces.svelte';
 	import StockHistory from './StockHistory.svelte';
 	import { stockCount } from './summary.svelte.js';
 	import { openStockItemId } from './view.js';
@@ -67,6 +69,8 @@
 		color: [] as string[]
 	});
 	let confirming = $state(false);
+	/** The racks to put into; null until they are known (or when they could not be asked). */
+	let racks = $state.raw<StockRack[] | null>(null);
 
 	const item = $derived(editor?.item ?? null);
 	const canEdit = $derived(app.can('stock_edit'));
@@ -87,6 +91,22 @@
 				KINDS.map((k, i) => [k, (lists[i] ?? []).map((d) => d.value)])
 			) as typeof dictionaries;
 		});
+		return () => {
+			current = false;
+		};
+	});
+
+	// The racks are asked again at every opening: they may have been changed on the map.
+	$effect(() => {
+		if (!isOpen) return;
+		let current = true;
+		void listStockRacks({})
+			.then((list) => {
+				if (current) racks = list;
+			})
+			.catch(() => {
+				if (current) racks = null;
+			});
 		return () => {
 			current = false;
 		};
@@ -246,6 +266,7 @@
 					ontake={(f) => ed.take(f)}
 					onflashend={(f) => ed.endFlash(f)}
 				/>
+				<StockPlaces editor={ed} {racks} {canEdit} />
 				{#if media}
 					<Section title={ru.media.photoSection}>
 						<OrderPhotos {media} max={MAX_STOCK_PHOTOS} readonly={!canEdit} />

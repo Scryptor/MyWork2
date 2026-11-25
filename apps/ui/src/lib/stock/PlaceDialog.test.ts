@@ -1,0 +1,41 @@
+import { render, screen, waitFor } from '@testing-library/svelte';
+import userEvent from '@testing-library/user-event';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { stockItem } from './places.test-helper.js';
+
+const api = vi.hoisted(() => ({ listStock: vi.fn() }));
+vi.mock('#lib/api/stock.js', () => api);
+
+import Harness from './PlaceDialogHarness.test-helper.svelte';
+
+beforeEach(() => vi.clearAllMocks());
+
+describe('PlaceDialog of a cell', () => {
+	it('finds a position with something unplaced and lays it into the given cell', async () => {
+		const ui = userEvent.setup();
+		api.listStock.mockResolvedValue({
+			items: [stockItem({ id: 9, unplaced: 4 }), stockItem({ id: 10, unplaced: 0 })],
+			total: 2,
+			place: null
+		});
+		const onsubmit = vi.fn().mockResolvedValue(undefined);
+		render(Harness, { onsubmit, reload: vi.fn() });
+		expect(screen.getByRole('dialog', { name: 'Положить в ячейку B-2-4' })).toBeInTheDocument();
+		await ui.type(screen.getByRole('combobox', { name: 'Позиция' }), 'диспл');
+		await waitFor(() =>
+			expect(api.listStock).toHaveBeenCalledWith({ query: 'диспл', limit: 20, sort: 'name' })
+		);
+		await ui.click(
+			await waitFor(() => {
+				const el = document.querySelector('[data-combobox-item]');
+				if (!el) throw new Error('no option');
+				return el;
+			})
+		);
+		expect(document.body).toHaveTextContent('Дисплей iPhone');
+		await ui.click(screen.getByRole('button', { name: 'Положить' }));
+		await waitFor(() =>
+			expect(onsubmit).toHaveBeenCalledWith(9, { rack_id: 2, shelf: 2, cell: 4 }, 4)
+		);
+	});
+});

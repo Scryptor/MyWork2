@@ -9,13 +9,15 @@ export interface StockView {
 	sort: SortState;
 	/** «Докупить»: only the positions whose quantity is below their threshold. */
 	restock: boolean;
+	/** `text=1`: the text is only text — a code of a rack or a cell in it is not taken as a place. */
+	asText: boolean;
 }
 
 /** By name, A to Z. */
 export const DEFAULT_STOCK_SORT: SortState = { columnId: 'name', descending: false };
 
 export function defaultStockView(): StockView {
-	return { query: '', sort: { ...DEFAULT_STOCK_SORT }, restock: false };
+	return { query: '', sort: { ...DEFAULT_STOCK_SORT }, restock: false, asText: false };
 }
 
 const sortable = (columnId: string) => Object.hasOwn(STOCK_SORT_FIELD, columnId);
@@ -30,6 +32,7 @@ export function stockViewFromSearch(p: Pick<URLSearchParams, 'get'>): StockView 
 	const desc = p.get('desc');
 	if (desc === '1' || desc === '0') v.sort.descending = desc === '1';
 	v.restock = p.get('restock') === '1';
+	v.asText = p.get('text') === '1';
 	return v;
 }
 
@@ -45,6 +48,7 @@ export function stockViewToSearch(v: StockView): string {
 		out.push(['sort', s.columnId], ['desc', s.descending ? '1' : '0']);
 	}
 	if (v.restock) out.push(['restock', '1']);
+	if (v.asText) out.push(['text', '1']);
 	return out.map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join('&');
 }
 
@@ -70,6 +74,7 @@ export function stockViewToQuery(v: StockView): StockListQuery {
 	return {
 		query: v.query.trim() || undefined,
 		restock: v.restock ? true : undefined,
+		as_text: v.asText ? true : undefined,
 		sort: sortable(v.sort.columnId) ? STOCK_SORT_FIELD[v.sort.columnId] : 'name',
 		descending: v.sort.descending
 	};

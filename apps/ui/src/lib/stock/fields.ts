@@ -45,6 +45,8 @@ export function stockFieldMessage(field: string, code: string): string {
 				: t.quantityRange(label(field));
 		case 'deleted':
 			return t.deleted;
+		case 'no_such_place':
+			return ru.stock.places.noSuchPlace;
 		default:
 			return t.invalid(label(field));
 	}

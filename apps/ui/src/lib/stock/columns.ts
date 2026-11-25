@@ -9,6 +9,7 @@ export const STOCK_COLUMN_IDS = [
 	'id',
 	'name',
 	'quantity',
+	'place',
 	'price',
 	'restock',
 	'part_type',
@@ -35,6 +36,8 @@ const SPECS: Record<StockColumnId, Spec> = {
 	// Text columns share the spare width down to their minimum.
 	name: { id: 'name', header: 'Наименование', width: 320, minWidth: 160, flex: true },
 	quantity: { id: 'quantity', header: 'Кол-во', width: 130, align: 'end' },
+	// The codes of the cells it lies in; the server does not sort by them.
+	place: { id: 'place', header: 'Место', width: 140 },
 	price: { id: 'price', header: 'Цена', width: 120, align: 'end' },
 	restock: { id: 'restock', header: 'Докупить при', width: 130, align: 'end' },
 	part_type: {

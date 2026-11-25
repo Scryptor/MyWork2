@@ -12,6 +12,7 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import type { StockItem } from '$api/StockItem';
+	import { listStock } from '#lib/api/stock.js';
 	import { app } from '#lib/app/context.svelte.js';
 	import { createListFilter } from '#lib/app/list-filter.svelte.js';
 	import { countLabel, formatMoney } from '#lib/format/index.js';
@@ -20,6 +21,7 @@
 	import { createLegacyStock } from '#lib/stock/legacy.svelte.js';
 	import LegacyStockNotice from '#lib/stock/LegacyStockNotice.svelte';
 	import { createStockList } from '#lib/stock/list.svelte.js';
+	import { placeCodes } from '#lib/stock/places.js';
 	import StockAddDialog from '#lib/stock/StockAddDialog.svelte';
 	import StockPanel from '#lib/stock/StockPanel.svelte';
 	import {
@@ -72,7 +74,13 @@
 	}
 
 	// The rows: a new view loads anew. Without the right to see the stock nothing is asked.
-	const list = createStockList();
+	// The code of a rack or a cell the server took the text for («Место B-2-4»); `null`: it is only text.
+	let recognised = $state<string | null>(null);
+	const list = createStockList(async (q, signal) => {
+		const page = await listStock(q, signal);
+		if (!signal?.aborted) recognised = page.place;
+		return page;
+	});
 	const query = $derived(stockViewToQuery(view));
 	const queryKey = $derived(JSON.stringify(query));
 	$effect(() => {
@@ -126,6 +134,7 @@
 				id: idCell,
 				name: nameCell,
 				quantity: quantityCell,
+				place: placeCell,
 				price: priceCell,
 				restock: restockCell,
 				part_type: partTypeCell,
@@ -147,6 +156,7 @@
 		{#if s.needs_restock}<Badge tone="warning">{t.restockBadge}</Badge>{/if}
 	</span>
 {/snippet}
+{#snippet placeCell(s: StockItem)}<span class="num">{dash(placeCodes(s.places))}</span>{/snippet}
 {#snippet priceCell(s: StockItem)}<span class="num">{formatMoney(s.price)}</span>{/snippet}
 {#snippet restockCell(s: StockItem)}
 	<span class="num">{s.restock_threshold > 0 ? s.restock_threshold : '—'}</span>
@@ -244,6 +254,14 @@
 				{@render addButton()}
 			</div>
 		{/if}
+		{#if recognised !== null && !view.asText}
+			<p class="recognised">
+				<span>{t.places.placeLine(recognised)}</span>
+				<Button size="sm" variant="ghost" onclick={() => change((v) => ({ ...v, asText: true }))}
+					>{t.places.textSearch}</Button
+				>
+			</p>
+		{/if}
 		{#if legacy.pending}<LegacyStockNotice {canMigrate} />{/if}
 
 		{#if display.phone}
@@ -259,6 +277,7 @@
 						number={s.display_name}
 						title={t.pieces(s.quantity)}
 						subtitle={formatMoney(s.price)}
+						meta={placeCodes(s.places) || undefined}
 						status={s.needs_restock ? { name: t.restockBadge, color: 'orange' } : undefined}
 						active={openId === s.id}
 						onclick={() => openItem(s.id)}
@@ -352,6 +371,14 @@
 		border: 1px solid var(--border);
 		border-radius: var(--radius-lg);
 		overflow: hidden;
+	}
+	.recognised {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+		margin: 0;
+		color: var(--text-3);
+		font-size: var(--text-sm);
 	}
 	.strong {
 		font-weight: 500;

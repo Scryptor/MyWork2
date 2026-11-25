@@ -16,6 +16,7 @@ describe('stockColumns', () => {
 			'id',
 			'name',
 			'quantity',
+			'place',
 			'price',
 			'restock',
 			'part_type',
@@ -28,6 +29,7 @@ describe('stockColumns', () => {
 			'Арт.',
 			'Наименование',
 			'Кол-во',
+			'Место',
 			'Цена',
 			'Докупить при',
 			'Тип запчасти',
@@ -39,12 +41,13 @@ describe('stockColumns', () => {
 		for (const c of columns) expect(c.cell).toBe(cell);
 	});
 
-	it('shows five columns by default, the other five are for the columns menu', () => {
+	it('shows six columns by default, the other five are for the columns menu', () => {
 		const columns = stockColumns({ cells });
 		expect(columns.filter((c) => !c.hiddenByDefault).map((c) => c.id)).toEqual([
 			'id',
 			'name',
 			'quantity',
+			'place',
 			'price',
 			'restock'
 		]);
@@ -58,6 +61,10 @@ describe('stockColumns', () => {
 			price: 'price'
 		});
 		const sortable = stockColumns({ cells }).filter((c) => c.sortable);
+		expect(stockColumns({ cells }).find((c) => c.id === 'place')).toMatchObject({
+			width: 140,
+			sortable: false
+		});
 		expect(sortable.map((c) => c.id)).toEqual(['id', 'name', 'quantity', 'price']);
 	});
 });
