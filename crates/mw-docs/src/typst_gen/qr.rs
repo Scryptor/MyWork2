@@ -3,7 +3,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::fields::LINK_KEY_PREFIX;
+use crate::fields::{LEGACY_LINKS, LINK_KEY_PREFIX};
 use crate::model::{Block, BlockBody, Template};
 use crate::qr::qr_svg;
 
@@ -76,8 +76,9 @@ pub(super) fn qr_files(
             files.push((name, svg));
         }
     }
-    // The author's code reads the firm's links by their keys, whatever blocks there are. The old
-    // names `firm.*` are the code's `qr-image` business: it turns them into `link.*`.
+    // The author's code reads the firm's links by their keys, whatever blocks there are. Code made
+    // before the list of links asks `data.qr` for the old names `firm.*` too: the three old links
+    // get their file under both names.
     if template.has_code() {
         for (key, value) in values {
             let value = value.trim();
@@ -86,6 +87,16 @@ pub(super) fn qr_files(
             }
             if let Some(svg) = qr_svg(value) {
                 files.push((key.clone(), svg));
+            }
+        }
+        for legacy in LEGACY_LINKS {
+            let link_key = format!("{LINK_KEY_PREFIX}{}", legacy.id);
+            let svg = files
+                .iter()
+                .find(|(name, _)| *name == link_key)
+                .map(|(_, svg)| svg.clone());
+            if let Some(svg) = svg.filter(|_| !names.contains(legacy.key)) {
+                files.push((legacy.key.to_owned(), svg));
             }
         }
     }

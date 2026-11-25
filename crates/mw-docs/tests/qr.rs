@@ -467,3 +467,21 @@ fn disabled_or_missing_link_prints_nothing() {
     assert!(out.contains("Мы:"), "{out:?}");
     assert!(!out.contains("link_gone") && !out.contains("{"), "{out:?}");
 }
+
+/// Code made before 8.3 from a QR block asks `data.qr` for the old name `firm.telegram`.
+#[test]
+fn old_code_asking_data_qr_for_a_legacy_name_still_prints() {
+    let code = Block {
+        copies: CopyFilter::Both,
+        body: BlockBody::TypstCode {
+            code: "#{ if \"firm.telegram\" in data.qr { image(\"qr-firm.telegram.svg\", width: 20mm) } }"
+                .to_owned(),
+        },
+    };
+    let t = small_page(DocumentKind::IntakeAct, vec![code]);
+    let opts = RenderOptions::default();
+    let data = with_value(DocumentKind::IntakeAct, "link.telegram", TELEGRAM);
+    assert_eq!(decode_all(&pages(&t, &data, &opts, 300)[0]), [TELEGRAM]);
+    let data = with_value(DocumentKind::IntakeAct, "link.telegram", "");
+    assert!(decode_all(&pages(&t, &data, &opts, 300)[0]).is_empty());
+}

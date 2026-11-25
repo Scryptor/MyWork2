@@ -1520,6 +1520,31 @@ async fn blocks_png(
     png_pages(t, req).await.unwrap()
 }
 
+/// Сохраняет акт приёма из `blocks` (`version` — прежняя правка) и печатает лист заказа без черновика:
+/// шаблон берётся как для настоящей печати (`template_for_print`). Возвращает листы и новую правку.
+async fn saved_blocks_png(
+    t: &TestCore,
+    order_id: i64,
+    blocks: Vec<mw_domain::document_template::Block>,
+    version: i64,
+) -> (Vec<Vec<u8>>, i64) {
+    let mut template = mw_docs::standard_template(DocumentKind::IntakeAct);
+    template.blocks = blocks;
+    let saved = t
+        .core
+        .save_document_template(
+            &admin(),
+            DocumentKind::IntakeAct,
+            mw_core::TemplateSave { template, version },
+        )
+        .await
+        .unwrap();
+    let pages = png_pages(t, request(DocumentKind::IntakeAct, Some(order_id)))
+        .await
+        .unwrap();
+    (pages, saved.version)
+}
+
 /// Шаблон, написанный до списка ссылок, печатает те же адреса: QR и текст по старым именам и
 /// `firm.*` в своём коде.
 #[tokio::test]
@@ -1537,23 +1562,13 @@ async fn legacy_link_substitutions_print_as_before() -> Result<(), CoreError> {
         t.core.update_settings(&admin(), links_patch(list)).await?;
         let order = t.core.create_order(&admin(), sample_new_order()).await?;
         let qr = || link_qr("{фирма.телеграм}");
-        let text = || link_text("{фирма.яндекс_карты}");
+        let note = || link_text("{фирма.яндекс_карты}");
         let code = |qr_call: &str| code_block(&format!("#v(\"firm.google_maps\") {qr_call}"));
         let call = "#qr-image(\"firm.telegram\", 20mm)";
-        let full = vec![qr(), text(), code(call)];
-        let doc = t
-            .core
-            .render_document(&admin(), {
-                let mut template = mw_docs::standard_template(DocumentKind::IntakeAct);
-                template.blocks = full.clone();
-                DocumentRequest {
-                    sample: false,
-                    order_id: Some(order.id),
-                    ..draft_request(template)
-                }
-            })
-            .await?;
-        let out = doc.text();
+        let full = vec![qr(), note(), code(call)];
+        let (all, version) = saved_blocks_png(&t, order.id, full, 0).await;
+        // Печатается сохранённый шаблон, без черновика.
+        let out = text(&t, request(DocumentKind::IntakeAct, Some(order.id))).await;
         assert!(
             out.contains("https://yandex.ru/maps/?text=example"),
             "{}: {out:?}",
@@ -1564,9 +1579,10 @@ async fn legacy_link_substitutions_print_as_before() -> Result<(), CoreError> {
             "{}: {out:?}",
             t.label
         );
-        let all = blocks_png(&t, order.id, full).await;
-        let no_block = blocks_png(&t, order.id, vec![text(), code(call)]).await;
-        let no_call = blocks_png(&t, order.id, vec![qr(), text(), code("")]).await;
+        let (no_block, version) =
+            saved_blocks_png(&t, order.id, vec![note(), code(call)], version).await;
+        let (no_call, _) =
+            saved_blocks_png(&t, order.id, vec![qr(), note(), code("")], version).await;
         assert_ne!(all, no_block, "{}: нет QR-блока", t.label);
         assert_ne!(all, no_call, "{}: нет qr-image", t.label);
     }
