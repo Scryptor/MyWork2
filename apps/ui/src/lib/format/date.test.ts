@@ -3,7 +3,9 @@ import {
 	dayNumber,
 	formatDate,
 	formatDay,
+	formatDayMonth,
 	formatFull,
+	formatMonthYear,
 	formatRelative,
 	parseLocalDateTime
 } from './date.js';
@@ -90,5 +92,18 @@ describe('local days', () => {
 			'2026-03-07'
 		);
 		expect(startOfDay('2026-03-07')).toBe('2026-03-07T00:00:00');
+	});
+});
+
+describe('chart labels', () => {
+	it('a day is «25.11», a month is «ноя 2026»', () => {
+		expect(formatDayMonth('2026-11-25')).toBe('25.11');
+		expect(formatMonthYear('2026-11-01')).toBe('ноя 2026');
+		expect(formatMonthYear('2027-01-01')).toBe('янв 2027');
+	});
+
+	it('what is not a date stays as it is', () => {
+		expect(formatDayMonth('вчера')).toBe('вчера');
+		expect(formatMonthYear('вчера')).toBe('вчера');
 	});
 });

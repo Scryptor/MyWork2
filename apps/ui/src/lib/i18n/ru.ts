@@ -478,6 +478,7 @@ export const ru = {
 		orders: 'Заказы',
 		clients: 'Клиенты',
 		stock: 'Склад',
+		reports: 'Отчёты',
 		intake: 'Принять',
 		intakeDevice: 'Принять устройство',
 		point: 'Точка обслуживания',
@@ -1080,6 +1081,55 @@ export const ru = {
 		sizeDown: 'Мельче',
 		sizeAuto: 'Размер по экрану'
 	},
+	reports: {
+		title: 'Отчёты',
+		noAccess: 'Отчёты может смотреть пользователь с правом «Отчёты»',
+		tabs: 'Отчёты',
+		orders: 'Заказы',
+		filters: 'Фильтры отчёта',
+		master: 'Мастер',
+		anyMaster: 'Любой',
+		point: 'Точка',
+		anyPoint: 'Все точки',
+		deviceType: 'Тип устройства',
+		brand: 'Бренд',
+		source: 'Источник',
+		anySource: 'Любой',
+		groupBy: 'Группировать',
+		groupByMaster: 'По мастерам',
+		groupByPoint: 'По точкам',
+		groupByType: 'По типам',
+		groupByBrand: 'По брендам',
+		groupBySource: 'По источникам',
+		toExcel: 'В Excel',
+		exporting: 'Готовим файл…',
+		exportFailed: 'Не удалось выгрузить отчёт',
+		loadFailed: 'Не удалось построить отчёт',
+		empty: 'За этот период выданных заказов нет',
+		tiles: 'Итоги',
+		ordersTile: 'Заказов',
+		withoutRepair: (n: number) => `без ремонта: ${n}`,
+		ordersHint:
+			'Считаются заказы, выданные в этот период. Без ремонта — у кого в «Выполненных работах» стоит «Без ремонта»',
+		revenue: 'Выручка',
+		discounts: (money: string) => `скидки: ${money}`,
+		costs: 'Затраты',
+		costsHint: 'расходы и запчасти',
+		profit: 'Прибыль',
+		profitAverage: (money: string) => `в среднем ${money} с заказа`,
+		masterPay: 'Оплата мастерам',
+		masterPayHint: (percent: number) => `${percent} % прибыли`,
+		timeline: 'По времени',
+		others: 'Остальные',
+		total: 'Итого',
+		columnOrders: 'Заказов',
+		columnWithoutRepair: 'Без ремонта',
+		columnRevenue: 'Выручка',
+		columnCosts: 'Затраты',
+		columnProfit: 'Прибыль',
+		columnMasterPay: 'Мастеру',
+		groupsTable: 'Итоги по группам'
+	},
 	/** «Что это?» (HelpHint): the texts of the hints, plain words for the owner; every sentence is true to the code. */
 	help: {
 		open: (title: string) => `Что такое «${title}»`,
@@ -1103,7 +1153,7 @@ export const ru = {
 			],
 			masterPercent: [
 				'Сколько процентов от работы причитается мастеру, от 0 до 100.',
-				'Пока число только хранится и переносится из MyWork 2: в расчётах программы оно ещё не участвует.'
+				'Оплата мастеру в «Отчётах» — этот процент от прибыли заказа: итог − скидка − затраты.'
 			]
 		},
 		appearance: {

@@ -107,3 +107,15 @@ export function isoDay(t: LocalDateTime): string {
 
 /** The first moment of a day «2026-03-07», as the server takes a local time. */
 export const startOfDay = (day: string): string => `${day}T00:00:00`;
+
+/** «25.11» of a day «2026-11-25»: a label of a chart by days. */
+export function formatDayMonth(value: string): string {
+	const t = parseLocalDateTime(value);
+	return t ? `${p2(t.day)}.${p2(t.month)}` : value;
+}
+
+/** «ноя 2026» of any day of the month: a label of a chart by months. */
+export function formatMonthYear(value: string): string {
+	const t = parseLocalDateTime(value);
+	return t ? `${SHORT_MONTHS[t.month - 1]} ${t.year}` : value;
+}

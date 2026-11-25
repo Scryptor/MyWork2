@@ -1,5 +1,5 @@
-<!-- Sidebar of the program (spec 5.1, 6.1): «Заказы», «Клиенты», «Склад», «Требуют внимания», «Мои виды». Sections
-     that have no screen yet (Отчёты) come with their plans. -->
+<!-- Sidebar of the program (spec 5.1, 6.1): «Заказы», «Клиенты», «Склад», «Отчёты», «Требуют внимания», «Мои виды». Sections
+     that have no screen yet come with their plans. -->
 <script lang="ts" module>
 	import CalendarClock from '@lucide/svelte/icons/calendar-clock';
 	import Clock from '@lucide/svelte/icons/clock';
@@ -19,6 +19,7 @@
 
 <script lang="ts">
 	import Bookmark from '@lucide/svelte/icons/bookmark';
+	import ChartColumn from '@lucide/svelte/icons/chart-column';
 	import CircleCheck from '@lucide/svelte/icons/circle-check';
 	import Settings from '@lucide/svelte/icons/settings';
 	import Users from '@lucide/svelte/icons/users';
@@ -38,6 +39,7 @@
 	const ORDERS = resolve('orders');
 	const CLIENTS = resolve('clients');
 	const STOCK = resolve('stock');
+	const REPORTS = resolve('reports');
 	const SETTINGS = resolve('settings');
 
 	// «Мои виды»: views of the orders list saved on this device (the «Фильтры ▾» menu saves them).
@@ -78,6 +80,9 @@
 	const canSeeStock = $derived(app.can('stock_view'));
 	const restockCount = $derived(stockCount.restock);
 
+	// «Отчёты» needs the right of the reports.
+	const canSeeReports = $derived(app.can('reports_view'));
+
 	const sections = $derived<NavSection[]>([
 		{
 			items: [
@@ -101,6 +106,9 @@
 								count: restockCount !== null && restockCount > 0 ? restockCount : undefined
 							}
 						]
+					: []),
+				...(canSeeReports
+					? [{ id: 'reports', label: ru.app.reports, icon: ChartColumn, href: REPORTS }]
 					: [])
 			]
 		},
@@ -125,6 +133,7 @@
 	const active = $derived.by(() => {
 		if (page.url.pathname === CLIENTS) return 'clients';
 		if (page.url.pathname === STOCK) return 'stock';
+		if (page.url.pathname === REPORTS) return 'reports';
 		// The template editor is opened from «Документы и реквизиты»: it belongs to «Настройки» too.
 		if (page.url.pathname.startsWith(SETTINGS) || page.route.id?.startsWith('/(app)/templates/'))
 			return 'settings';

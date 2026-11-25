@@ -42,7 +42,9 @@ export function ownOrigin(kind: OwnKind, browserName: string): string {
 // has every spec that signs in; a spec that makes wrong attempts on purpose has a server of its own.
 export const ADMIN_PORTS = {
 	/** `login.spec.ts`: wrong passwords, repeated sign-ins of the same account. */
-	login: { chromium: 4183, webkit: 4184 }
+	login: { chromium: 4183, webkit: 4184 },
+	/** `reports.spec.ts`: the «Отчёты» count every issued order of the base; the spec relaxes «Обязательно при выдаче» for its own orders. */
+	reports: { chromium: 4185, webkit: 4186 }
 } as const;
 
 export type AdminKind = keyof typeof ADMIN_PORTS;
