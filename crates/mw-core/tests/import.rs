@@ -644,18 +644,38 @@ async fn replace_wipes_the_stock_written_after_the_previous_import() {
     core.import_bundle(&admin(), sample_bundle(), ImportMode::IntoEmpty)
         .await
         .unwrap();
+    let point = common::service_point_id_by_name(&core, "Ленина, 1").await;
+    let rack = core
+        .create_stock_rack(
+            &admin(),
+            mw_core::NewStockRack {
+                code: "B".into(),
+                label: String::new(),
+                shelves: 1,
+                cells_per_shelf: 1,
+                service_point_id: Some(point),
+            },
+        )
+        .await
+        .unwrap();
     let item = core
         .create_stock_item(
             &admin(),
             NewStockItem {
                 name: "Шлейф".into(),
                 quantity: 5,
+                place: Some(mw_core::StockCellRef {
+                    rack_id: rack.id,
+                    shelf: 1,
+                    cell: 1,
+                }),
                 ..Default::default()
             },
         )
         .await
         .unwrap();
     assert_eq!(item.id, 8);
+    assert_eq!(item.places.len(), 1);
     core.add_order_part(
         &admin(),
         10,
@@ -663,19 +683,6 @@ async fn replace_wipes_the_stock_written_after_the_previous_import() {
             stock_item_id: item.id,
             quantity: 1,
             request_key: "r1".into(),
-        },
-    )
-    .await
-    .unwrap();
-    let point = common::service_point_id_by_name(&core, "Ленина, 1").await;
-    core.create_stock_rack(
-        &admin(),
-        mw_core::NewStockRack {
-            code: "B".into(),
-            label: String::new(),
-            shelves: 1,
-            cells_per_shelf: 1,
-            service_point_id: Some(point),
         },
     )
     .await
@@ -695,6 +702,13 @@ async fn replace_wipes_the_stock_written_after_the_previous_import() {
             .await
             .unwrap()
             .is_empty()
+    );
+    assert_eq!(
+        mw_db::entity::stock_place::Entity::find()
+            .count(core.db())
+            .await
+            .unwrap(),
+        0
     );
     assert_eq!((s.stock_items, s.order_parts), (1, 2));
     assert_eq!(core.import_target_state().await.unwrap().stock_items, 1);

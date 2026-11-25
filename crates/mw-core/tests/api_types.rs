@@ -9,7 +9,7 @@ use mw_core::{
     DictionaryRename, IssuedFilter, MasterUser, NewClient, NewOrder, NewRole, NewStatus,
     NewStockRack, NewUser, Order, OrderListItem, OrderPatch, OrderSortField, ReportFilter,
     ReportGroupBy, RewriteResult, Role, RolePatch, ServicePoint, ServicePointPatch, SettingsPatch,
-    Status, StatusPatch, StockRackPatch, User, UserPatch,
+    Status, StatusPatch, StockCellRef, StockMove, StockPut, StockRackPatch, User, UserPatch,
 };
 use mw_domain::dictionary::DictionaryKind;
 use mw_domain::money::Money;
@@ -326,6 +326,13 @@ fn request_bodies_require_every_field() {
     check_new::<NewStockRack>(
         json!({ "code": "B", "label": "", "shelves": 3, "cells_per_shelf": 5, "service_point_id": null }),
     );
+    check_new::<StockCellRef>(json!({ "rack_id": 1, "shelf": 1, "cell": 1 }));
+    check_new::<StockPut>(
+        json!({ "place": { "rack_id": 1, "shelf": 1, "cell": 1 }, "quantity": 1 }),
+    );
+    check_new::<StockMove>(json!({
+        "from": { "rack_id": 1, "shelf": 1, "cell": 1 },
+        "to": { "rack_id": 1, "shelf": 1, "cell": 2 }, "quantity": 1 }));
     check_new::<NewOrder>(json!({
         "client": { "existing": 1 }, "service_point_id": null, "status_id": null,
         "device_type": "", "brand": "", "model": "", "serial": "", "color": "",

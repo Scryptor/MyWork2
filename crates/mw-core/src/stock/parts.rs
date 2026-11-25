@@ -22,6 +22,7 @@ use sea_orm::{
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+use super::places::{load_places, reduce_places, reduced_json, reduced_tail};
 use super::{ENTITY, deleted_error, display_name};
 use crate::attachments::valid_key;
 use crate::money_text::MoneyText;
@@ -56,6 +57,8 @@ pub struct OrderPart {
     pub added_at: NaiveDateTime,
     /// Перенесена из MyWork 2.
     pub legacy: bool,
+    /// Коды ячеек, где сейчас лежит живая позиция; пусто без права `stock_view` или без позиции.
+    pub places: Vec<String>,
 }
 
 /// Запчасти заказа по времени списания и сумма всех строк.
@@ -115,7 +118,11 @@ async fn live_order(conn: &impl ConnectionTrait, id: i64) -> Result<order::Model
 }
 
 /// Запчасти заказа по времени списания и номеру, с признаком «позиция есть на складе» и суммой.
-async fn order_parts(conn: &impl ConnectionTrait, order_id: i64) -> Result<OrderParts, CoreError> {
+async fn order_parts(
+    conn: &impl ConnectionTrait,
+    order_id: i64,
+    show_places: bool,
+) -> Result<OrderParts, CoreError> {
     let rows = order_part::Entity::find()
         .filter(order_part::Column::OrderId.eq(order_id))
         .order_by_asc(order_part::Column::AddedAt)
@@ -135,6 +142,12 @@ async fn order_parts(conn: &impl ConnectionTrait, order_id: i64) -> Result<Order
             .map(|m| m.id)
             .collect()
     };
+    let live_ids: Vec<i64> = live.iter().copied().collect();
+    let places = if show_places {
+        load_places(conn, &live_ids).await?
+    } else {
+        Default::default()
+    };
     let mut total: i64 = 0;
     let mut parts = Vec::with_capacity(rows.len());
     for r in rows {
@@ -152,6 +165,11 @@ async fn order_parts(conn: &impl ConnectionTrait, order_id: i64) -> Result<Order
             added_by_name: r.added_by_name,
             added_at: r.added_at,
             legacy: r.legacy,
+            places: r
+                .stock_item_id
+                .and_then(|id| places.get(&id))
+                .map(|list| list.iter().map(|p| p.code.clone()).collect())
+                .unwrap_or_default(),
         });
     }
     Ok(OrderParts {
@@ -164,11 +182,12 @@ impl Core {
     /// Запчасти заказа. Права — как у самого заказа (достаточно войти); удалённый заказ читается.
     pub async fn list_order_parts(
         &self,
-        _actor: &Actor,
+        actor: &Actor,
         order_id: i64,
     ) -> Result<OrderParts, CoreError> {
         load_order(&self.db, order_id).await?;
-        order_parts(&self.db, order_id).await
+        let show_places = actor.require(Permission::StockView).is_ok();
+        order_parts(&self.db, order_id, show_places).await
     }
 
     /// Списание позиции склада в заказ (права `orders_edit` и `stock_view`): остаток позиции
@@ -208,7 +227,7 @@ impl Core {
             {
                 return Err(validation("request_key", "duplicate"));
             }
-            let parts = order_parts(&tx, order_id).await?;
+            let parts = order_parts(&tx, order_id, true).await?;
             tx.commit().await?;
             return Ok(parts);
         }
@@ -244,6 +263,7 @@ impl Core {
             return Err(validation("quantity", "not_enough_stock"));
         }
 
+        let reduced = reduce_places(&tx, item.id, item.quantity - new.quantity).await?;
         let name = display_name(&item);
         let sum = part_sum(Money::from_kopecks(item.price), new.quantity).ok_or_else(overflow)?;
         let row = order_part::ActiveModel {
@@ -261,6 +281,20 @@ impl Core {
         }
         .insert(&tx)
         .await?;
+        let mut summary = format!(
+            "Списано со склада: {name} × {} — {}",
+            new.quantity,
+            self.money_text(sum, MoneyText::Short)
+        );
+        let mut details = json!({
+            "part_id": row.id,
+            "quantity": new.quantity,
+            "price": item.price,
+        });
+        if !reduced.is_empty() {
+            summary.push_str(&reduced_tail(&reduced));
+            details["places_reduced"] = reduced_json(&reduced);
+        }
         write_audit(
             &tx,
             now,
@@ -270,20 +304,12 @@ impl Core {
                 order_id: Some(order_id),
                 client_id: Some(order.client_id),
                 stock_item_id: Some(item.id),
-                summary: format!(
-                    "Списано со склада: {name} × {} — {}",
-                    new.quantity,
-                    self.money_text(sum, MoneyText::Short)
-                ),
-                details: Some(json!({
-                    "part_id": row.id,
-                    "quantity": new.quantity,
-                    "price": item.price,
-                })),
+                summary,
+                details: Some(details),
             },
         )
         .await?;
-        let parts = order_parts(&tx, order_id).await?;
+        let parts = order_parts(&tx, order_id, true).await?;
         tx.commit().await?;
         Ok(parts)
     }
@@ -365,7 +391,7 @@ impl Core {
             },
         )
         .await?;
-        let parts = order_parts(&tx, order_id).await?;
+        let parts = order_parts(&tx, order_id, true).await?;
         tx.commit().await?;
         Ok(parts)
     }

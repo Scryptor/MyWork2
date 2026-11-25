@@ -20,7 +20,9 @@ const item = (id: number): StockItem => ({
 	needs_restock: true,
 	created_at: '2026-11-24T10:00:00',
 	updated_at: '2026-11-24T10:00:00',
-	version: 1
+	version: 1,
+	places: [],
+	unplaced: 3
 });
 const flush = () => new Promise((r) => setTimeout(r, 0));
 

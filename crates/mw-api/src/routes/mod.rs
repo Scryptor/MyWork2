@@ -152,7 +152,7 @@ fn stock_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(stock::list_stock_photos))
 }
 
-/// Карта склада: шкафы.
+/// Карта склада: шкафы и места позиций.
 #[inline(never)]
 fn stock_map_routes() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
@@ -165,6 +165,9 @@ fn stock_map_routes() -> OpenApiRouter<AppState> {
             stock_map::update_stock_rack,
             stock_map::delete_stock_rack
         ))
+        .routes(routes!(stock_map::put_stock))
+        .routes(routes!(stock_map::move_stock))
+        .routes(routes!(stock_map::unplace_stock))
 }
 
 /// Заказы, их журнал, комментарии и запчасти.

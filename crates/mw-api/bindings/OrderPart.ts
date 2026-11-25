@@ -44,4 +44,8 @@ added_at: string,
 /**
  * Перенесена из MyWork 2.
  */
-legacy: boolean, };
+legacy: boolean, 
+/**
+ * Коды ячеек, где сейчас лежит живая позиция; пусто без права `stock_view` или без позиции.
+ */
+places: Array<string>, };

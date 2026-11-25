@@ -824,7 +824,7 @@ async fn order_parts_write_off_and_return() {
             r.body,
             json!({
                 "parts": [{
-                    "id": part_id, "stock_item_id": item_id, "item_exists": true,
+                    "id": part_id, "stock_item_id": item_id, "item_exists": true, "places": [],
                     "name": "Дисплей", "price": 250_000, "quantity": 2, "sum": 500_000,
                     "added_by_name": "master", "added_at": order["received_at"], "legacy": false
                 }],

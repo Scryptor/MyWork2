@@ -77,6 +77,10 @@ pub fn export_typescript(dir: &Path) -> Result<(), ts_rs::ExportError> {
     StockRackQuery::export_all(&cfg)?;
     mw_core::StockRack::export_all(&cfg)?;
     mw_core::StockCell::export_all(&cfg)?;
+    mw_core::StockPlace::export_all(&cfg)?;
+    mw_core::StockCellRef::export_all(&cfg)?;
+    mw_core::StockPut::export_all(&cfg)?;
+    mw_core::StockMove::export_all(&cfg)?;
     mw_core::NewStockRack::export_all(&cfg)?;
     mw_core::StockRackPatch::export_all(&cfg)?;
     mw_core::NewOrderPart::export_all(&cfg)?;

@@ -104,7 +104,8 @@
 				note: text(form.note),
 				quantity: form.quantity,
 				price: form.price,
-				restock_threshold: form.restock_threshold
+				restock_threshold: form.restock_threshold,
+				place: null
 			};
 			const item = await createStockItem(body);
 			stockCount.refresh();

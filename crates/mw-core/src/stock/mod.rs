@@ -4,6 +4,7 @@
 mod items;
 mod parts;
 mod photos;
+mod places;
 mod racks;
 
 pub use parts::{NewOrderPart, OrderPart, OrderParts};
@@ -62,28 +63,89 @@ pub struct StockItem {
     pub updated_at: NaiveDateTime,
     /// Версия записи для проверки конфликтов правок.
     pub version: i64,
+    /// Где лежит: ячейки по порядку кодов.
+    pub places: Vec<StockPlace>,
+    /// Сколько штук не разложено по ячейкам: остаток минус сумма мест.
+    pub unplaced: i64,
 }
 
-impl From<stock_item::Model> for StockItem {
-    fn from(m: stock_item::Model) -> Self {
-        Self {
-            display_name: display_name(&m),
-            needs_restock: needs_restock(m.quantity, m.restock_threshold),
-            id: m.id,
-            name: m.name,
-            device_type: m.device_type,
-            part_type: m.part_type,
-            brand: m.brand,
-            model: m.model,
-            color: m.color,
-            note: m.note,
-            quantity: m.quantity,
-            price: Money::from_kopecks(m.price),
-            restock_threshold: m.restock_threshold,
-            created_at: m.created_at,
-            updated_at: m.updated_at,
-            version: m.version,
-        }
+/// Место позиции: сколько штук лежит в ячейке шкафа.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
+pub struct StockPlace {
+    /// Номер шкафа.
+    pub rack_id: i64,
+    /// Номер полки, с 1.
+    pub shelf: i32,
+    /// Номер ячейки на полке, с 1.
+    pub cell: i32,
+    /// Код ячейки, например `B-2-4`.
+    pub code: String,
+    /// Сколько штук лежит в ячейке.
+    pub quantity: i64,
+}
+
+/// Ячейка шкафа.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema,
+)]
+#[serde(deny_unknown_fields)]
+pub struct StockCellRef {
+    /// Номер шкафа.
+    pub rack_id: i64,
+    /// Номер полки, с 1.
+    pub shelf: i32,
+    /// Номер ячейки на полке, с 1.
+    pub cell: i32,
+}
+
+/// Положить штуки из «Не разложено» в ячейку.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema,
+)]
+#[serde(deny_unknown_fields)]
+pub struct StockPut {
+    /// Ячейка.
+    pub place: StockCellRef,
+    /// Сколько штук положить: не больше, чем «Не разложено».
+    pub quantity: i64,
+}
+
+/// Переложить штуки из одной ячейки в другую.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema,
+)]
+#[serde(deny_unknown_fields)]
+pub struct StockMove {
+    /// Откуда.
+    pub from: StockCellRef,
+    /// Куда.
+    pub to: StockCellRef,
+    /// Сколько штук переложить: не больше, чем лежит в `from`.
+    pub quantity: i64,
+}
+
+/// Позиция из строки БД и её мест (уже по порядку кодов).
+pub(crate) fn stock_item(m: stock_item::Model, places: Vec<StockPlace>) -> StockItem {
+    let placed: i64 = places.iter().map(|p| p.quantity).sum();
+    StockItem {
+        display_name: display_name(&m),
+        needs_restock: needs_restock(m.quantity, m.restock_threshold),
+        unplaced: (m.quantity - placed).max(0),
+        places,
+        id: m.id,
+        name: m.name,
+        device_type: m.device_type,
+        part_type: m.part_type,
+        brand: m.brand,
+        model: m.model,
+        color: m.color,
+        note: m.note,
+        quantity: m.quantity,
+        price: Money::from_kopecks(m.price),
+        restock_threshold: m.restock_threshold,
+        created_at: m.created_at,
+        updated_at: m.updated_at,
+        version: m.version,
     }
 }
 
@@ -113,6 +175,8 @@ pub struct NewStockItem {
     pub price: Money,
     /// «Докупить при»: 0…1 000 000; 0 — не напоминать.
     pub restock_threshold: i64,
+    /// Ячейка, куда сразу лечь всему остатку; при остатке 0 игнорируется.
+    pub place: Option<StockCellRef>,
 }
 
 /// Частичная правка позиции склада; отсутствующее поле не меняется.

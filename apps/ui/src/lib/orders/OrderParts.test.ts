@@ -22,7 +22,8 @@ const part: OrderPart = {
 	sum: 200_000,
 	added_by_name: 'Админ',
 	added_at: '2026-11-24T10:00:00',
-	legacy: false
+	legacy: false,
+	places: []
 };
 
 beforeEach(() => vi.clearAllMocks());

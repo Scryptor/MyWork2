@@ -6839,6 +6839,200 @@
         ]
       }
     },
+    "/api/v1/stock/{id}/places": {
+      "post": {
+        "tags": [
+          "Склад"
+        ],
+        "summary": "Положить штуки из «Не разложено» в ячейку (право `stock_edit`); больше, чем не разложено, — 422.",
+        "operationId": "put_stock",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер позиции",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StockPut"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Позиция после раскладки",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StockItem"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/stock/{id}/places/move": {
+      "post": {
+        "tags": [
+          "Склад"
+        ],
+        "summary": "Переложить штуки из одной ячейки в другую (право `stock_edit`).",
+        "operationId": "move_stock",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер позиции",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StockMove"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Позиция после перекладки",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StockItem"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/stock/{id}/places/{rack_id}/{shelf}/{cell}": {
+      "delete": {
+        "tags": [
+          "Склад"
+        ],
+        "summary": "Убрать всё из ячейки в «Не разложено» (право `stock_edit`).",
+        "operationId": "unplace_stock",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Номер позиции",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "rack_id",
+            "in": "path",
+            "description": "Номер шкафа",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "shelf",
+            "in": "path",
+            "description": "Номер полки",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "cell",
+            "in": "path",
+            "description": "Номер ячейки на полке",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Позиция после снятия с ячейки",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StockItem"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Ошибка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/users": {
       "get": {
         "tags": [
@@ -10091,6 +10285,18 @@
             "description": "Тип запчасти.",
             "default": ""
           },
+          "place": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/StockCellRef",
+                "description": "Ячейка, куда сразу лечь всему остатку; при остатке 0 игнорируется."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
           "price": {
             "$ref": "#/components/schemas/Money",
             "description": "Цена за штуку, в копейках: 0…10 000 000 ₽.",
@@ -10734,7 +10940,8 @@
           "sum",
           "added_by_name",
           "added_at",
-          "legacy"
+          "legacy",
+          "places"
         ],
         "properties": {
           "added_at": {
@@ -10762,6 +10969,13 @@
           "name": {
             "type": "string",
             "description": "Наименование позиции на момент списания."
+          },
+          "places": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Коды ячеек, где сейчас лежит живая позиция; пусто без права `stock_view` или без позиции."
           },
           "price": {
             "$ref": "#/components/schemas/Money",
@@ -11823,6 +12037,33 @@
           }
         }
       },
+      "StockCellRef": {
+        "type": "object",
+        "description": "Ячейка шкафа.",
+        "required": [
+          "rack_id",
+          "shelf",
+          "cell"
+        ],
+        "properties": {
+          "cell": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Номер ячейки на полке, с 1."
+          },
+          "rack_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Номер шкафа."
+          },
+          "shelf": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Номер полки, с 1."
+          }
+        },
+        "additionalProperties": false
+      },
       "StockImportSummary": {
         "type": "object",
         "description": "Итог переноса склада из прошлого импорта.",
@@ -11877,7 +12118,9 @@
           "needs_restock",
           "created_at",
           "updated_at",
-          "version"
+          "version",
+          "places",
+          "unplaced"
         ],
         "properties": {
           "brand": {
@@ -11926,6 +12169,13 @@
             "type": "string",
             "description": "Тип запчасти."
           },
+          "places": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StockPlace"
+            },
+            "description": "Где лежит: ячейки по порядку кодов."
+          },
           "price": {
             "$ref": "#/components/schemas/Money",
             "description": "Цена за штуку («сколько стоит вам»), в копейках."
@@ -11939,6 +12189,11 @@
             "type": "integer",
             "format": "int64",
             "description": "«Докупить при»: порог остатка; 0 — не напоминать."
+          },
+          "unplaced": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Сколько штук не разложено по ячейкам: остаток минус сумма мест."
           },
           "updated_at": {
             "type": "string",
@@ -12001,6 +12256,31 @@
         },
         "additionalProperties": false
       },
+      "StockMove": {
+        "type": "object",
+        "description": "Переложить штуки из одной ячейки в другую.",
+        "required": [
+          "from",
+          "to",
+          "quantity"
+        ],
+        "properties": {
+          "from": {
+            "$ref": "#/components/schemas/StockCellRef",
+            "description": "Откуда."
+          },
+          "quantity": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Сколько штук переложить: не больше, чем лежит в `from`."
+          },
+          "to": {
+            "$ref": "#/components/schemas/StockCellRef",
+            "description": "Куда."
+          }
+        },
+        "additionalProperties": false
+      },
       "StockPage": {
         "type": "object",
         "description": "Страница склада.",
@@ -12023,6 +12303,63 @@
             "minimum": 0
           }
         }
+      },
+      "StockPlace": {
+        "type": "object",
+        "description": "Место позиции: сколько штук лежит в ячейке шкафа.",
+        "required": [
+          "rack_id",
+          "shelf",
+          "cell",
+          "code",
+          "quantity"
+        ],
+        "properties": {
+          "cell": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Номер ячейки на полке, с 1."
+          },
+          "code": {
+            "type": "string",
+            "description": "Код ячейки, например `B-2-4`."
+          },
+          "quantity": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Сколько штук лежит в ячейке."
+          },
+          "rack_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Номер шкафа."
+          },
+          "shelf": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Номер полки, с 1."
+          }
+        }
+      },
+      "StockPut": {
+        "type": "object",
+        "description": "Положить штуки из «Не разложено» в ячейку.",
+        "required": [
+          "place",
+          "quantity"
+        ],
+        "properties": {
+          "place": {
+            "$ref": "#/components/schemas/StockCellRef",
+            "description": "Ячейка."
+          },
+          "quantity": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Сколько штук положить: не больше, чем «Не разложено»."
+          }
+        },
+        "additionalProperties": false
       },
       "StockRack": {
         "type": "object",

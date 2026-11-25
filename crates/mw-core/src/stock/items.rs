@@ -3,6 +3,7 @@
 use mw_db::entity::stock_item;
 use mw_domain::permission::Permission;
 use mw_domain::search::{like_contains, search_tokens};
+use mw_domain::validation::FieldError;
 use sea_orm::sea_query::{Condition, Expr, ExprTrait, LikeExpr, Order};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseTransaction, EntityTrait, NotSet,
@@ -10,9 +11,13 @@ use sea_orm::{
 };
 use serde_json::{Map, Value, json};
 
+use super::places::{
+    add_to_cell, item_with_places, load_places, reduce_places, reduced_json, reduced_tail,
+    resolve_cell,
+};
 use super::{
     ENTITY, NewStockItem, StockFilter, StockItem, StockItemPatch, StockSortField, StockSummary,
-    deleted_error, display_name, validate,
+    deleted_error, display_name, stock_item as to_item, validate,
 };
 use crate::page::validate_page;
 use crate::search_index::set_stock_keys;
@@ -131,15 +136,21 @@ impl Core {
             StockSortField::Quantity => select.order_by(stock_item::Column::Quantity, dir),
             StockSortField::Price => select.order_by(stock_item::Column::Price, dir),
         };
-        let items = select
+        let rows = select
             .order_by_asc(name_key())
             .order_by_asc(stock_item::Column::Id)
             .limit(limit)
             .offset(offset)
             .all(&self.db)
-            .await?
+            .await?;
+        let ids: Vec<i64> = rows.iter().map(|m| m.id).collect();
+        let mut places = load_places(&self.db, &ids).await?;
+        let items = rows
             .into_iter()
-            .map(StockItem::from)
+            .map(|m| {
+                let own = places.remove(&m.id).unwrap_or_default();
+                to_item(m, own)
+            })
             .collect();
         Ok(Page { items, total })
     }
@@ -154,12 +165,16 @@ impl Core {
     /// Позиция склада (право `stock_view`); удалённой — «не найдена».
     pub async fn get_stock_item(&self, actor: &Actor, id: i64) -> Result<StockItem, CoreError> {
         actor.require(Permission::StockView)?;
-        live()
+        let model = live()
             .filter(stock_item::Column::Id.eq(id))
             .one(&self.db)
             .await?
-            .map(StockItem::from)
-            .ok_or(CoreError::NotFound { entity: ENTITY, id })
+            .ok_or(CoreError::NotFound { entity: ENTITY, id })?;
+        let places = load_places(&self.db, &[id])
+            .await?
+            .remove(&id)
+            .unwrap_or_default();
+        Ok(to_item(model, places))
     }
 
     /// Новая позиция склада (право `stock_create`).
@@ -190,9 +205,19 @@ impl Core {
             version: 1,
         };
         validate(&m, |_| true)?;
+        let place = new.place.filter(|_| m.quantity > 0);
         // Наименование проверено непустым: выводимое не зависит от номера, которого ещё нет.
         set_stock_keys(&mut m);
         let tx = self.begin_write().await?;
+        let placed = match place {
+            Some(at) => {
+                let code = resolve_cell(&tx, at).await?.ok_or_else(|| {
+                    CoreError::Validation(vec![FieldError::new("place", "no_such_place")])
+                })?;
+                Some((at, code))
+            }
+            None => None,
+        };
         let model = stock_item::ActiveModel {
             id: NotSet,
             name: Set(m.name),
@@ -214,7 +239,15 @@ impl Core {
         }
         .insert(&tx)
         .await?;
-        let item = StockItem::from(model);
+        let item_id = model.id;
+        let details = match &placed {
+            Some((at, code)) => {
+                add_to_cell(&tx, item_id, *at, model.quantity).await?;
+                json!({ "id": item_id, "placed": { "code": code, "quantity": model.quantity } })
+            }
+            None => json!({ "id": item_id }),
+        };
+        let item = item_with_places(&tx, item_id).await?;
         write_audit(
             &tx,
             now,
@@ -225,7 +258,7 @@ impl Core {
                 client_id: None,
                 stock_item_id: Some(item.id),
                 summary: format!("Добавлена позиция склада «{}»", item.display_name),
-                details: Some(json!({ "id": item.id })),
+                details: Some(details),
             },
         )
         .await?;
@@ -292,7 +325,11 @@ impl Core {
         );
 
         if d.changes.is_empty() {
-            return Ok((current.into(), false));
+            let places = load_places(tx, &[id])
+                .await?
+                .remove(&id)
+                .unwrap_or_default();
+            return Ok((to_item(current, places), false));
         }
         if current.version != expected_version {
             return Err(CoreError::Conflict {
@@ -342,11 +379,21 @@ impl Core {
             .exec(tx)
             .await?;
         check_affected(tx, res.rows_affected, id).await?;
+        let reduced = if d.changes.contains_key("quantity") {
+            reduce_places(tx, id, m.quantity).await?
+        } else {
+            Vec::new()
+        };
 
         let mut summary = format!("Изменено: {}", d.labels.join(", "));
         // Пометка «из справочника» — только в тексте записи, не среди полей правки.
         if let Some(via) = via {
             summary.push_str(via.suffix_ru());
+        }
+        let mut details = json!({ "changes": d.changes });
+        if !reduced.is_empty() {
+            summary.push_str(&reduced_tail(&reduced));
+            details["places_reduced"] = reduced_json(&reduced);
         }
         write_audit(
             tx,
@@ -358,11 +405,11 @@ impl Core {
                 client_id: None,
                 stock_item_id: Some(id),
                 summary,
-                details: Some(json!({ "changes": d.changes })),
+                details: Some(details),
             },
         )
         .await?;
-        Ok((load(tx, id).await?.into(), true))
+        Ok((item_with_places(tx, id).await?, true))
     }
 
     /// Мягкое удаление позиции (право `stock_delete`).
@@ -399,6 +446,10 @@ impl Core {
             .exec(&tx)
             .await?;
         check_affected(&tx, res.rows_affected, id).await?;
+        // Удалённая позиция не занимает ячейки: места снимаются все, в журнале остаётся, где лежала.
+        let freed = reduce_places(&tx, id, 0).await?;
+        let details =
+            (!freed.is_empty()).then(|| json!({ "places_reduced": reduced_json(&freed) }));
         write_audit(
             &tx,
             now,
@@ -409,7 +460,7 @@ impl Core {
                 client_id: None,
                 stock_item_id: Some(id),
                 summary: format!("Удалена позиция склада «{}»", display_name(&current)),
-                details: None,
+                details,
             },
         )
         .await?;

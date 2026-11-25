@@ -137,3 +137,138 @@ async fn rack_errors() {
         assert_eq!(r.status, 403, "{}: {}", t.label, r.body);
     }
 }
+
+const ALL: [Permission; 3] = [
+    Permission::StockView,
+    Permission::StockEdit,
+    Permission::StockCreate,
+];
+
+/// Шкаф `B` 3×5 и позиция с остатком 10: номера шкафа и позиции.
+async fn rack_and_item(t: &common::TestApi, token: &str) -> (i64, i64) {
+    let r = t
+        .send(
+            Method::POST,
+            "/api/v1/stock/racks",
+            Some(token),
+            Some(body("B")),
+        )
+        .await;
+    let rack = r.body["id"].as_i64().unwrap();
+    let r = t
+        .send(
+            Method::POST,
+            "/api/v1/stock",
+            Some(token),
+            Some(json!({ "name": "Дисплей", "quantity": 10 })),
+        )
+        .await;
+    assert_eq!(r.status, 201, "{}: {}", t.label, r.body);
+    (rack, r.body["id"].as_i64().unwrap())
+}
+
+#[tokio::test]
+async fn places_round_trip() {
+    for t in apis(Listen::Network).await {
+        let token = t.token_with("sklad", &ALL).await;
+        let (rack, item) = rack_and_item(&t, &token).await;
+        let r = t
+            .send(
+                Method::POST,
+                &format!("/api/v1/stock/{item}/places"),
+                Some(&token),
+                Some(json!({ "place": { "rack_id": rack, "shelf": 2, "cell": 4 }, "quantity": 6 })),
+            )
+            .await;
+        assert_eq!(r.status, 200, "{}: {}", t.label, r.body);
+        assert_eq!(r.body["places"][0]["code"], json!("B-2-4"));
+        assert_eq!(r.body["unplaced"], json!(4));
+        let r = t
+            .send(
+                Method::POST,
+                &format!("/api/v1/stock/{item}/places/move"),
+                Some(&token),
+                Some(json!({
+                    "from": { "rack_id": rack, "shelf": 2, "cell": 4 },
+                    "to": { "rack_id": rack, "shelf": 1, "cell": 1 },
+                    "quantity": 2
+                })),
+            )
+            .await;
+        assert_eq!(r.status, 200, "{}: {}", t.label, r.body);
+        assert_eq!(r.body["places"].as_array().unwrap().len(), 2);
+        let r = t
+            .send(
+                Method::DELETE,
+                &format!("/api/v1/stock/{item}/places/{rack}/2/4"),
+                Some(&token),
+                None,
+            )
+            .await;
+        assert_eq!(r.status, 200, "{}: {}", t.label, r.body);
+        assert_eq!(r.body["unplaced"], json!(8));
+        assert_eq!(r.body["places"].as_array().unwrap().len(), 1);
+    }
+}
+
+#[tokio::test]
+async fn an_occupied_rack_answers_409_with_its_cells() {
+    for t in apis(Listen::Network).await {
+        let token = t.token_with("sklad", &ALL).await;
+        let (rack, item) = rack_and_item(&t, &token).await;
+        let r = t
+            .send(
+                Method::POST,
+                &format!("/api/v1/stock/{item}/places"),
+                Some(&token),
+                Some(json!({ "place": { "rack_id": rack, "shelf": 3, "cell": 2 }, "quantity": 1 })),
+            )
+            .await;
+        assert_eq!(r.status, 200, "{}: {}", t.label, r.body);
+        let r = t
+            .send(
+                Method::PATCH,
+                &format!("/api/v1/stock/racks/{rack}"),
+                Some(&token),
+                Some(json!({ "shelves": 2 })),
+            )
+            .await;
+        assert_eq!(r.status, 409, "{}: {}", t.label, r.body);
+        assert!(
+            r.body
+                .to_string()
+                .contains("В ячейке B-3-2 лежат запчасти — переложите их"),
+            "{}",
+            r.body
+        );
+        let r = t
+            .send(
+                Method::DELETE,
+                &format!("/api/v1/stock/racks/{rack}"),
+                Some(&token),
+                None,
+            )
+            .await;
+        assert_eq!(r.status, 409, "{}: {}", t.label, r.body);
+    }
+}
+
+#[tokio::test]
+async fn places_exceed_is_422() {
+    for t in apis(Listen::Network).await {
+        let token = t.token_with("sklad", &ALL).await;
+        let (rack, item) = rack_and_item(&t, &token).await;
+        let r = t
+            .send(
+                Method::POST,
+                &format!("/api/v1/stock/{item}/places"),
+                Some(&token),
+                Some(
+                    json!({ "place": { "rack_id": rack, "shelf": 1, "cell": 1 }, "quantity": 11 }),
+                ),
+            )
+            .await;
+        assert_eq!(r.status, 422, "{}: {}", t.label, r.body);
+        assert!(r.body.to_string().contains("places_exceed"), "{}", r.body);
+    }
+}

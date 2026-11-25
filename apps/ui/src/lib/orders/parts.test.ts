@@ -23,7 +23,8 @@ const part = (id: number, quantity = 2, price = 100_000) => ({
 	sum: price * quantity,
 	added_by_name: 'Админ',
 	added_at: '2026-11-24T10:00:00',
-	legacy: false
+	legacy: false,
+	places: [] as string[]
 });
 const parts = (...ids: number[]): OrderParts => ({
 	parts: ids.map((id) => part(id)),

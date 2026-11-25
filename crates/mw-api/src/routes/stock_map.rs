@@ -1,8 +1,10 @@
-//! Карта склада: шкафы.
+//! Карта склада: шкафы и где лежат позиции.
 
 use axum::extract::State;
 use axum::http::StatusCode;
-use mw_core::{NewStockRack, StockRack, StockRackPatch};
+use mw_core::{
+    NewStockRack, StockCellRef, StockItem, StockMove, StockPut, StockRack, StockRackPatch,
+};
 
 use crate::auth::CurrentActor;
 use crate::dto::{ReorderRequest, StockRackQuery};
@@ -105,4 +107,69 @@ pub(super) async fn delete_stock_rack(
 ) -> Result<StatusCode, ApiError> {
     state.core.delete_stock_rack(&actor, id).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Положить штуки из «Не разложено» в ячейку (право `stock_edit`); больше, чем не разложено, — 422.
+#[utoipa::path(
+    post,
+    path = "/api/v1/stock/{id}/places",
+    tag = "Склад",
+    security(("bearer" = [])),
+    params(("id" = i64, Path, description = "Номер позиции")),
+    request_body = StockPut,
+    responses((status = 200, description = "Позиция после раскладки", body = StockItem))
+)]
+pub(super) async fn put_stock(
+    State(state): State<AppState>,
+    CurrentActor(actor): CurrentActor,
+    Path(id): Path<i64>,
+    Json(put): Json<StockPut>,
+) -> Result<Json<StockItem>, ApiError> {
+    Ok(Json(state.core.put_stock(&actor, id, put).await?))
+}
+
+/// Переложить штуки из одной ячейки в другую (право `stock_edit`).
+#[utoipa::path(
+    post,
+    path = "/api/v1/stock/{id}/places/move",
+    tag = "Склад",
+    security(("bearer" = [])),
+    params(("id" = i64, Path, description = "Номер позиции")),
+    request_body = StockMove,
+    responses((status = 200, description = "Позиция после перекладки", body = StockItem))
+)]
+pub(super) async fn move_stock(
+    State(state): State<AppState>,
+    CurrentActor(actor): CurrentActor,
+    Path(id): Path<i64>,
+    Json(mv): Json<StockMove>,
+) -> Result<Json<StockItem>, ApiError> {
+    Ok(Json(state.core.move_stock(&actor, id, mv).await?))
+}
+
+/// Убрать всё из ячейки в «Не разложено» (право `stock_edit`).
+#[utoipa::path(
+    delete,
+    path = "/api/v1/stock/{id}/places/{rack_id}/{shelf}/{cell}",
+    tag = "Склад",
+    security(("bearer" = [])),
+    params(
+        ("id" = i64, Path, description = "Номер позиции"),
+        ("rack_id" = i64, Path, description = "Номер шкафа"),
+        ("shelf" = i32, Path, description = "Номер полки"),
+        ("cell" = i32, Path, description = "Номер ячейки на полке"),
+    ),
+    responses((status = 200, description = "Позиция после снятия с ячейки", body = StockItem))
+)]
+pub(super) async fn unplace_stock(
+    State(state): State<AppState>,
+    CurrentActor(actor): CurrentActor,
+    Path((id, rack_id, shelf, cell)): Path<(i64, i64, i32, i32)>,
+) -> Result<Json<StockItem>, ApiError> {
+    let at = StockCellRef {
+        rack_id,
+        shelf,
+        cell,
+    };
+    Ok(Json(state.core.unplace_stock(&actor, id, at).await?))
 }

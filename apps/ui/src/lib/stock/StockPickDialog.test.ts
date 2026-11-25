@@ -27,6 +27,8 @@ const item = (over: Partial<StockItem> = {}): StockItem => ({
 	created_at: '2026-11-24T10:00:00',
 	updated_at: '2026-11-24T10:00:00',
 	version: 1,
+	places: [],
+	unplaced: 3,
 	...over
 });
 
