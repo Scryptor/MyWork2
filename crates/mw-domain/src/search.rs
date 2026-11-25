@@ -17,6 +17,29 @@ pub fn normalize_search(input: &str) -> String {
     lowered.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+/// Буквы русской раскладки ЙЦУКЕН, переведённые в латинские по положению клавиш
+/// (регистр сохраняется; остальные знаки не меняются).
+pub fn qwerty_from_jcuken(s: &str) -> String {
+    const RU: &str = "йцукенгшщзфывапролдячсмить";
+    const EN: &str = "qwertyuiopasdfghjklzxcvbnm";
+    s.chars()
+        .map(|c| {
+            let lower = c.to_lowercase().next().unwrap_or(c);
+            match RU.chars().position(|r| r == lower) {
+                Some(i) => {
+                    let latin = EN.chars().nth(i).unwrap_or(c);
+                    if c.is_uppercase() {
+                        latin.to_ascii_uppercase()
+                    } else {
+                        latin
+                    }
+                }
+                None => c,
+            }
+        })
+        .collect()
+}
+
 /// Нормализованные слова запроса без повторов, в порядке появления.
 ///
 /// Правила для цифр:
@@ -148,6 +171,16 @@ fn shorten_number(token: String) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn jcuken_maps_by_key_position() {
+        assert_eq!(
+            qwerty_from_jcuken("йцукенгшщзфывапролдячсмить"),
+            "qwertyuiopasdfghjklzxcvbnm"
+        );
+        assert_eq!(qwerty_from_jcuken("ЙЦУ-2"), "QWE-2");
+        assert_eq!(qwerty_from_jcuken("хъ"), "хъ");
+    }
 
     #[test]
     fn normalize_search_composes_unicode_first() {

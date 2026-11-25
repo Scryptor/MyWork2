@@ -249,6 +249,10 @@ fn field_error_messages_are_russian() {
         "backup_damaged",
         "backup_too_new",
         "backup_pending",
+        "rack_code",
+        "rack_too_big",
+        "places_exceed",
+        "no_such_place",
     ] {
         assert!(
             FieldError::new("x", code)
