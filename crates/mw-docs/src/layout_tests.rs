@@ -182,7 +182,7 @@ fn every_standard_barcode_crop_is_covered_and_the_image_is_never_taller_than_the
                 let crops = crops(&doc);
                 let expected = match (data.barcode.is_some(), template.layout) {
                     (false, _) => 0,
-                    (true, Layout::TwoPerA4 | Layout::SheetPerCopy) => 2,
+                    (true, Layout::TwoPerA4 | Layout::SheetPerCopy | Layout::TwoAcross) => 2,
                     (true, Layout::OnePerPage) => 1,
                 };
                 assert_eq!(crops.len(), expected, "{what}: {crops:?}");
@@ -381,6 +381,8 @@ fn plain_text(text: &str) -> Block {
         bold: false,
         align: Align::Left,
         one_line: false,
+        frame: false,
+        numbered: false,
     })
 }
 
@@ -389,7 +391,7 @@ fn rows_template(rows: Vec<FieldRow>) -> Template {
         DocumentKind::IntakeAct,
         page_of(PageSize::A5, 10.0),
         Layout::OnePerPage,
-        vec![block(BlockBody::Fields { rows })],
+        vec![block(BlockBody::Fields { rows, grid: false })],
     )
 }
 
@@ -540,6 +542,8 @@ fn one_line_ends_with_ellipsis() {
             bold: false,
             align: Align::Left,
             one_line: true,
+            frame: false,
+            numbered: false,
         })],
     );
     let device = format!("Начало {}КОНЕЦ", "я".repeat(193));
@@ -570,7 +574,7 @@ fn issue_act_to_pay_is_bold() {
             .blocks
             .iter()
             .filter_map(|b| match &b.body {
-                BlockBody::Fields { rows } => Some(rows.clone()),
+                BlockBody::Fields { rows, .. } => Some(rows.clone()),
                 _ => None,
             })
             .flatten()
@@ -867,4 +871,187 @@ fn stretched_barcode_digits_are_at_most_14_pt() {
     let sizes = sizes_of_text(&doc, BARCODE);
     assert!(!sizes.is_empty(), "the digits are printed");
     assert!(sizes.iter().all(|s| *s <= 14.0 + 1e-6), "{sizes:?}");
+}
+
+fn landscape_a4() -> PageSetup {
+    PageSetup {
+        landscape: true,
+        ..page_of(PageSize::A4, 10.0)
+    }
+}
+
+/// The page and the x (mm) of the first glyph of every text item that contains `needle`.
+fn text_x(doc: &Rendered, needle: &str) -> Vec<(usize, f64)> {
+    fn find(frame: &Frame, offset: Point, needle: &str, out: &mut Vec<f64>) {
+        for (pos, item) in frame.items() {
+            match item {
+                FrameItem::Text(text) if text.text.contains(needle) => {
+                    out.push((offset + *pos).x.to_mm());
+                }
+                FrameItem::Group(group) => find(&group.frame, offset + *pos, needle, out),
+                _ => {}
+            }
+        }
+    }
+    let mut found = Vec::new();
+    for (i, page) in doc.document().pages().iter().enumerate() {
+        let mut xs = Vec::new();
+        find(&page.frame, Point::zero(), needle, &mut xs);
+        found.extend(xs.into_iter().map(|x| (i, x)));
+    }
+    found
+}
+
+#[test]
+fn two_across_puts_the_copies_side_by_side() {
+    let t = template_of(
+        DocumentKind::IntakeAct,
+        landscape_a4(),
+        Layout::TwoAcross,
+        vec![
+            block(BlockBody::CopyLabel { align: Align::Left }),
+            plain_text("Короткий текст"),
+        ],
+    );
+    let doc = render(&t, &DocumentData::default(), &sticker_options(None, None)).expect("renders");
+    assert_eq!(doc.page_count(), 1);
+    let size = doc.document().pages()[0].frame.size();
+    assert!((size.x.to_mm() - 297.0).abs() < 0.01, "{size:?}");
+    let service = text_x(&doc, "сервиса");
+    let client = text_x(&doc, "клиента");
+    assert_eq!(
+        (service.len(), client.len()),
+        (1, 1),
+        "{service:?} {client:?}"
+    );
+    assert!(service[0].1 < 148.5, "{service:?}");
+    assert!(client[0].1 > 148.5, "{client:?}");
+}
+
+#[test]
+fn two_across_overflow_puts_each_copy_on_its_sheet() {
+    let long = "слово ".repeat(1000);
+    let t = template_of(
+        DocumentKind::IntakeAct,
+        landscape_a4(),
+        Layout::TwoAcross,
+        vec![
+            block(BlockBody::CopyLabel {
+                align: Align::Right,
+            }),
+            plain_text(long.trim_end()),
+        ],
+    );
+    let doc = render(&t, &DocumentData::default(), &sticker_options(None, None)).expect("renders");
+    // A copy that does not fit the height of the sheet takes more than one sheet at the width of a
+    // half, so the copies are told apart by the label on their first sheet.
+    let pages = page_texts(&doc);
+    assert!(pages.len() >= 2, "{}", pages.len());
+    assert!(
+        pages[0].contains("Экземпляр сервиса") && !pages[0].contains("клиента"),
+        "{pages:?}"
+    );
+    let first_client = pages
+        .iter()
+        .position(|p| p.contains("Экземпляр клиента"))
+        .expect("a client sheet");
+    assert!(first_client > 0, "{pages:?}");
+    for (i, page) in pages.iter().enumerate() {
+        assert!(
+            !(page.contains("сервиса") && page.contains("клиента")),
+            "sheet {i} has both copies"
+        );
+        assert_eq!(page.contains("Экземпляр сервиса"), i == 0, "sheet {i}");
+    }
+    // Nothing of the service copy after the first client sheet: the text of each copy is whole.
+    let words = |range: &[String]| {
+        range
+            .iter()
+            .map(|p| p.matches("слово").count())
+            .sum::<usize>()
+    };
+    assert_eq!(words(&pages[..first_client]), 1000, "{pages:?}");
+    assert_eq!(words(&pages[first_client..]), 1000, "{pages:?}");
+}
+
+fn count_shapes(doc: &Rendered) -> usize {
+    fn count(frame: &Frame) -> usize {
+        frame
+            .items()
+            .map(|(_, item)| match item {
+                FrameItem::Shape(..) => 1,
+                FrameItem::Group(group) => count(&group.frame),
+                _ => 0,
+            })
+            .sum()
+    }
+    doc.document().pages().iter().map(|p| count(&p.frame)).sum()
+}
+
+fn text_with(text: &str, frame: bool, numbered: bool, one_line: bool) -> Template {
+    template_of(
+        DocumentKind::IntakeAct,
+        page_of(PageSize::A5, 10.0),
+        Layout::OnePerPage,
+        vec![block(BlockBody::Text {
+            text: text.to_owned(),
+            size_pt: None,
+            bold: false,
+            align: Align::Left,
+            one_line,
+            frame,
+            numbered,
+        })],
+    )
+}
+
+#[test]
+fn framed_text_draws_a_frame() {
+    let opts = sticker_options(None, None);
+    let shapes = |frame| {
+        let t = text_with("Текст в рамке", frame, false, false);
+        count_shapes(&render(&t, &DocumentData::default(), &opts).expect("renders"))
+    };
+    assert_eq!(shapes(false), 0);
+    assert!(shapes(true) >= 1);
+}
+
+#[test]
+fn numbered_text_strips_typed_numbers_and_blank_lines() {
+    let data = DocumentData {
+        values: [(
+            "firm.intake_terms".to_owned(),
+            "1. Первое\r\n\r\n2) Второе\n  \n12. Третье".to_owned(),
+        )]
+        .into(),
+        ..DocumentData::default()
+    };
+    let opts = sticker_options(None, None);
+    let page = |numbered, one_line| {
+        let t = text_with("{фирма.договор_приёма}", false, numbered, one_line);
+        page_texts(&render(&t, &data, &opts).expect("renders")).remove(0)
+    };
+    assert_eq!(page(true, false), "1.Первое2.Второе3.Третье");
+    let plain = page(false, true);
+    assert!(!plain.contains("1.1") && !plain.contains("3."), "{plain}");
+    let one = page(true, true);
+    assert_eq!(one, plain);
+}
+
+#[test]
+fn grid_fields_draw_every_border() {
+    let opts = sticker_options(None, None);
+    let shapes = |grid, blank| {
+        let mut t = rows_template(vec![row("Первая", false), row("Вторая", false)]);
+        if let BlockBody::Fields { grid: g, .. } = &mut t.blocks[0].body {
+            *g = grid;
+        }
+        let data = DocumentData {
+            blank,
+            ..DocumentData::default()
+        };
+        count_shapes(&render(&t, &data, &opts).expect("renders"))
+    };
+    assert!(shapes(true, false) > shapes(false, false));
+    assert!(shapes(true, true) > shapes(false, true));
 }

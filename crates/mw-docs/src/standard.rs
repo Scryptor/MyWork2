@@ -122,6 +122,8 @@ fn text(text: &str, size_pt: Option<f32>, bold: bool, align: Align) -> Block {
         bold,
         align,
         one_line: false,
+        frame: false,
+        numbered: false,
     })
 }
 
@@ -186,7 +188,7 @@ fn act(
             }),
             both(BlockBody::Separator {}),
             text(title, Some(TITLE_PT), true, Align::Center),
-            both(BlockBody::Fields { rows }),
+            both(BlockBody::Fields { rows, grid: false }),
             text(terms, Some(TERMS_PT), false, Align::Left),
             // Room to sign above the lines.
             both(BlockBody::Spacer { mm: 7.0 }),
@@ -253,6 +255,8 @@ fn sticker() -> Template {
             bold: true,
             align: Align::Left,
             one_line: true,
+            frame: false,
+            numbered: false,
         })
     };
     Template {

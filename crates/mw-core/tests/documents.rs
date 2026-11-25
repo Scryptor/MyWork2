@@ -428,6 +428,8 @@ async fn standard_acts_do_not_print_password_or_pattern() -> Result<(), CoreErro
                 bold: false,
                 align: Align::Left,
                 one_line: false,
+                frame: false,
+                numbered: false,
             },
         });
         t.core
@@ -1146,6 +1148,8 @@ fn three_page_sticker() -> mw_domain::document_template::Template {
             bold: false,
             align: Align::Left,
             one_line: false,
+            frame: false,
+            numbered: false,
         },
     }];
     template
@@ -1443,6 +1447,8 @@ async fn firm_links_print_as_text() -> Result<(), CoreError> {
                 bold: false,
                 align: Align::Left,
                 one_line: false,
+                frame: false,
+                numbered: false,
             },
         }];
         let order = t.core.create_order(&admin(), sample_new_order()).await?;
@@ -1471,6 +1477,8 @@ fn link_text(text: &str) -> mw_domain::document_template::Block {
             bold: false,
             align: Align::Left,
             one_line: false,
+            frame: false,
+            numbered: false,
         },
     }
 }

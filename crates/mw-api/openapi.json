@@ -6197,6 +6197,14 @@
               "bold": {
                 "type": "boolean"
               },
+              "frame": {
+                "type": "boolean",
+                "description": "A frame (0.6 pt) around the text over the whole width of the column."
+              },
+              "numbered": {
+                "type": "boolean",
+                "description": "After the substitutions every non-empty line becomes an item of a list «1.», «2.», …; a number\ntyped at the start of a line is dropped. `one_line` wins: with it there is no numbering."
+              },
               "one_line": {
                 "type": "boolean",
                 "description": "One line that never wraps: line breaks become spaces and what does not fit is cut off with\n«…» at the right edge (stickers)."
@@ -6228,6 +6236,10 @@
               "type"
             ],
             "properties": {
+              "grid": {
+                "type": "boolean",
+                "description": "Full grid (0.4 pt), also in a blank form."
+              },
               "rows": {
                 "type": "array",
                 "items": {
@@ -7682,7 +7694,8 @@
         "enum": [
           "one_per_page",
           "two_per_a4",
-          "sheet_per_copy"
+          "sheet_per_copy",
+          "two_across"
         ]
       },
       "LegacyImportCheck": {

@@ -39,6 +39,8 @@ fn with_text(kind: DocumentKind, text: &str) -> Template {
         bold: false,
         align: Align::Left,
         one_line: false,
+        frame: false,
+        numbered: false,
     };
     template
 }

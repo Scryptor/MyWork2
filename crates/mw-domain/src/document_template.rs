@@ -70,6 +70,10 @@ pub enum Layout {
     /// Every copy on its own sheet of the template's page size: the service copy on the first, the
     /// client copy on the next. Not for stickers and calibration.
     SheetPerCopy,
+    /// A4 landscape: the service copy on the left half, the client copy on the right, a vertical dashed
+    /// cut line between them. When a copy does not fit into its half, each copy gets its own sheet
+    /// (in the width of a half).
+    TwoAcross,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, ToSchema)]
@@ -116,9 +120,21 @@ pub enum BlockBody {
         /// «…» at the right edge (stickers).
         #[serde(default)]
         one_line: bool,
+        /// A frame (0.6 pt) around the text over the whole width of the column.
+        #[serde(default)]
+        frame: bool,
+        /// After the substitutions every non-empty line becomes an item of a list «1.», «2.», …; a number
+        /// typed at the start of a line is dropped. `one_line` wins: with it there is no numbering.
+        #[serde(default)]
+        numbered: bool,
     },
     /// A table «label — value».
-    Fields { rows: Vec<FieldRow> },
+    Fields {
+        rows: Vec<FieldRow>,
+        /// Full grid (0.4 pt), also in a blank form.
+        #[serde(default)]
+        grid: bool,
+    },
     /// The order's UPC-A barcode; nothing when the document has no valid code. The module is 0.33 mm
     /// (with printer DPI, a whole number of dots) and shrinks when the code does not fit the width of
     /// the column: down to 2 dots, without DPI down to 0.25 mm.
@@ -216,7 +232,7 @@ pub struct FieldRow {
 }
 
 pub const TEMPLATE_FILE_FORMAT: &str = "mwtemplate";
-pub const TEMPLATE_FILE_VERSION: u32 = 4;
+pub const TEMPLATE_FILE_VERSION: u32 = 5;
 pub const TEMPLATE_FILE_MAX_BYTES: usize = 1_048_576;
 
 const MAX_BLOCKS: usize = 200;
@@ -271,7 +287,7 @@ fn text_chars(blocks: &[Block]) -> usize {
         .iter()
         .map(|b| match &b.body {
             BlockBody::Text { text, .. } => n(text),
-            BlockBody::Fields { rows } => rows.iter().map(|r| n(&r.label) + n(&r.value)).sum(),
+            BlockBody::Fields { rows, .. } => rows.iter().map(|r| n(&r.label) + n(&r.value)).sum(),
             BlockBody::Signatures { left, right } => n(left) + n(right),
             BlockBody::Qr { caption, .. } => n(caption),
             BlockBody::Columns { columns, .. } => columns.iter().map(|c| text_chars(c)).sum(),
@@ -320,6 +336,14 @@ impl Template {
                 }
             }
             Layout::SheetPerCopy => {
+                if matches!(self.kind, DocumentKind::Sticker | DocumentKind::Calibration) {
+                    errors.push(FieldError::new("layout", "not_allowed"));
+                }
+            }
+            Layout::TwoAcross => {
+                if self.page.size != PageSize::A4 || !self.page.landscape {
+                    errors.push(FieldError::new("layout", "requires_a4_landscape"));
+                }
                 if matches!(self.kind, DocumentKind::Sticker | DocumentKind::Calibration) {
                     errors.push(FieldError::new("layout", "not_allowed"));
                 }
@@ -404,7 +428,7 @@ impl Template {
                         check_range(errors, format!("{at}.size_pt"), *size, 5.0, 72.0);
                     }
                 }
-                BlockBody::Fields { rows } => {
+                BlockBody::Fields { rows, .. } => {
                     if rows.len() > MAX_ROWS {
                         errors.push(FieldError::new(format!("{at}.rows"), "too_many"));
                     }
@@ -592,6 +616,8 @@ mod tests {
                 bold: false,
                 align: Align::Left,
                 one_line: false,
+                frame: false,
+                numbered: false,
             },
         }
     }
@@ -755,7 +781,7 @@ mod tests {
             pair("format_version", "unsupported")
         );
         assert_eq!(
-            code(&file("mwtemplate", 5, &t)),
+            code(&file("mwtemplate", 6, &t)),
             pair("format_version", "unsupported")
         );
         assert_eq!(code("{"), pair("file", "invalid"));
@@ -873,6 +899,7 @@ mod tests {
                         };
                         4
                     ],
+                    grid: false,
                 },
             },
             Block {
@@ -922,7 +949,7 @@ mod tests {
         v["format_version"] = "1".into();
         assert_eq!(code(v), pair("format", "invalid"));
         let mut v = ok;
-        v["format_version"] = 5.into();
+        v["format_version"] = 6.into();
         assert_eq!(code(v), pair("format_version", "unsupported"));
     }
 
@@ -1016,24 +1043,24 @@ mod tests {
     }
 
     #[test]
-    fn file_version_4() {
+    fn file_versions_1_to_5_read() {
         let mut t = base(DocumentKind::IntakeAct);
         t.blocks = vec![
             code_block(5),
             qr(20.0, "{фирма.телеграм}".into(), String::new()),
         ];
-        for v in [1, 2, 3, 4] {
+        for v in [1, 2, 3, 4, 5] {
             assert!(
                 TemplateFile::parse(&file("mwtemplate", v, &t), DocumentKind::IntakeAct).is_ok()
             );
         }
         let e =
-            TemplateFile::parse(&file("mwtemplate", 5, &t), DocumentKind::IntakeAct).unwrap_err();
+            TemplateFile::parse(&file("mwtemplate", 6, &t), DocumentKind::IntakeAct).unwrap_err();
         assert_eq!(
             (e[0].field.as_str(), e[0].code.as_str()),
             ("format_version", "unsupported")
         );
-        assert_eq!(TemplateFile::new(t).format_version, 4);
+        assert_eq!(TemplateFile::new(t).format_version, 5);
     }
 
     #[test]
@@ -1052,7 +1079,59 @@ mod tests {
         let parsed =
             TemplateFile::parse(&file("mwtemplate", 1, &t), DocumentKind::IntakeAct).unwrap();
         assert_eq!(parsed.blocks, t.blocks);
-        assert_eq!(TEMPLATE_FILE_VERSION, 4);
+    }
+
+    #[test]
+    fn version_5_is_current() {
+        assert_eq!(TEMPLATE_FILE_VERSION, 5);
+    }
+
+    #[test]
+    fn two_across_requires_a4_landscape() {
+        let mut t = base(DocumentKind::IntakeAct);
+        t.layout = Layout::TwoAcross;
+        assert_eq!(errs(&t), [pair("layout", "requires_a4_landscape")]);
+        t.page.landscape = true;
+        t.page.size = PageSize::A5;
+        assert_eq!(errs(&t), [pair("layout", "requires_a4_landscape")]);
+        t.page.size = PageSize::A4;
+        assert!(t.validate().is_ok());
+        t.kind = DocumentKind::Sticker;
+        assert_eq!(errs(&t), [pair("layout", "not_allowed")]);
+    }
+
+    #[test]
+    fn version_4_files_read_with_new_fields_off() {
+        let text: BlockBody = serde_json::from_value(serde_json::json!({
+            "type":"text","text":"a","size_pt":null,"bold":false,"align":"left"
+        }))
+        .unwrap();
+        assert!(matches!(
+            text,
+            BlockBody::Text {
+                frame: false,
+                numbered: false,
+                ..
+            }
+        ));
+        let fields: BlockBody =
+            serde_json::from_value(serde_json::json!({"type":"fields","rows":[]})).unwrap();
+        assert_eq!(
+            fields,
+            BlockBody::Fields {
+                rows: vec![],
+                grid: false
+            }
+        );
+        let mut t = base(DocumentKind::IntakeAct);
+        t.blocks = vec![text_block_for_v4()];
+        let parsed =
+            TemplateFile::parse(&file("mwtemplate", 4, &t), DocumentKind::IntakeAct).unwrap();
+        assert_eq!(parsed.blocks, t.blocks);
+    }
+
+    fn text_block_for_v4() -> Block {
+        text("a".into(), None)
     }
 
     #[test]

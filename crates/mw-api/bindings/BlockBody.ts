@@ -16,7 +16,20 @@ size_pt: number | null, bold: boolean, align: Align,
  * One line that never wraps: line breaks become spaces and what does not fit is cut off with
  * «…» at the right edge (stickers).
  */
-one_line: boolean, } | { "type": "fields", rows: Array<FieldRow>, } | { "type": "barcode", 
+one_line: boolean, 
+/**
+ * A frame (0.6 pt) around the text over the whole width of the column.
+ */
+frame: boolean, 
+/**
+ * After the substitutions every non-empty line becomes an item of a list «1.», «2.», …; a number
+ * typed at the start of a line is dropped. `one_line` wins: with it there is no numbering.
+ */
+numbered: boolean, } | { "type": "fields", rows: Array<FieldRow>, 
+/**
+ * Full grid (0.4 pt), also in a blank form.
+ */
+grid: boolean, } | { "type": "barcode", 
 /**
  * Height of the regular bars; the guard bars are 5 modules longer.
  */

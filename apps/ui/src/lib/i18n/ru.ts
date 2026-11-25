@@ -2188,7 +2188,8 @@ export const ru = {
 		layouts: {
 			one_per_page: 'Один экземпляр',
 			sheet_per_copy: '1 на лист',
-			two_per_a4: '2 на лист A4'
+			two_per_a4: '2 на лист A4',
+			two_across: '2 рядом на листе A4'
 		} satisfies Record<Layout, string>,
 		twoPerA4Page: 'Лист A4 в книжной ориентации: так печатается «2 на лист A4»',
 		/** A sticker: the page is the label of «Настройки → Печать» on this computer. */

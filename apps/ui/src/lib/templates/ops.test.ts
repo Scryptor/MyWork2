@@ -21,7 +21,16 @@ import {
 
 const text = (s: string): Block => ({
 	copies: 'both',
-	body: { type: 'text', text: s, size_pt: null, bold: false, align: 'left', one_line: false }
+	body: {
+		type: 'text',
+		text: s,
+		size_pt: null,
+		bold: false,
+		align: 'left',
+		one_line: false,
+		frame: false,
+		numbered: false
+	}
 });
 const columns = (a: Block[], b: Block[]): Block => ({
 	copies: 'both',
@@ -294,7 +303,9 @@ describe('intoColumnTargets', () => {
 				size_pt: null,
 				bold: false,
 				align: 'left',
-				one_line: false
+				one_line: false,
+				frame: false,
+				numbered: false
 			}
 		});
 	});

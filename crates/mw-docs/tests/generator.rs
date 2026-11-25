@@ -35,6 +35,8 @@ fn text(text: &str) -> Block {
             bold: false,
             align: Align::Left,
             one_line: false,
+            frame: false,
+            numbered: false,
         },
     )
 }
@@ -49,7 +51,7 @@ fn row(label: &str, value: &str, hide_if_empty: bool) -> FieldRow {
 }
 
 fn fields(rows: Vec<FieldRow>) -> Block {
-    block(CopyFilter::Both, BlockBody::Fields { rows })
+    block(CopyFilter::Both, BlockBody::Fields { rows, grid: false })
 }
 
 fn template(layout: Layout, blocks: Vec<Block>) -> Template {
@@ -200,6 +202,8 @@ fn act_with_copies() -> Template {
                     bold: true,
                     align: Align::Right,
                     one_line: false,
+                    frame: false,
+                    numbered: false,
                 },
             ),
             block(
@@ -210,6 +214,8 @@ fn act_with_copies() -> Template {
                     bold: false,
                     align: Align::Center,
                     one_line: false,
+                    frame: false,
+                    numbered: false,
                 },
             ),
             fields(vec![row("Неисправность", "{заказ.неисправность}", false)]),
@@ -464,6 +470,8 @@ fn one_line(text: &str) -> Block {
             bold: true,
             align: Align::Left,
             one_line: true,
+            frame: false,
+            numbered: false,
         },
     )
 }
@@ -581,6 +589,8 @@ fn model_additions_have_defaults() {
                 bold: false,
                 align: Align::Left,
                 one_line: false,
+                frame: false,
+                numbered: false,
             },
             BlockBody::Barcode {
                 height_mm: 10.0,

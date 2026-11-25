@@ -85,12 +85,36 @@ pub(super) fn body(
             out.push('\n');
         }
         Layout::SheetPerCopy => {
-            copies(generator, template, out, code);
+            copies(generator, template, out, code, width, false);
             out.push_str("#copy-service\n#pagebreak()\n#copy-client\n");
+        }
+        Layout::TwoAcross => {
+            let half = (width - CUT_GAP_MM) / 2.0;
+            copies(generator, template, out, code, half, true);
+            let _ = writeln!(
+                out,
+                "#context {{
+  let fits(c) = measure(c).height <= {height}
+  if fits(copy-service) and fits(copy-client) {{
+    place(top + left, copy-service)
+    place(top + left, dx: {cut}, dy: {top}, line(angle: 90deg, length: {page_height}, stroke: (thickness: 0.4pt, dash: \"dashed\")))
+    place(top + left, dx: {client}, copy-client)
+  }} else {{
+    copy-service
+    pagebreak()
+    copy-client
+  }}
+}}",
+                height = mm(generator.area_mm.1),
+                cut = mm(half + CUT_GAP_MM / 2.0),
+                top = mm(-page.top),
+                page_height = mm(page.height),
+                client = mm(half + CUT_GAP_MM),
+            );
         }
         Layout::TwoPerA4 => {
             let half = (generator.area_mm.1 - CUT_GAP_MM) / 2.0;
-            copies(generator, template, out, code);
+            copies(generator, template, out, code, width, false);
             let _ = writeln!(
                 out,
                 "#context {{
@@ -116,18 +140,26 @@ pub(super) fn body(
     }
 }
 
-/// Defines `copy-service` and `copy-client`: the blocks of the template for each copy.
-fn copies(generator: &Generator, template: &Template, out: &mut String, code: &mut CodeBlocks) {
-    let width = generator.area_mm.0;
+/// Defines `copy-service` and `copy-client`: the blocks of the template for each copy, laid out for a
+/// column `width` mm wide (`boxed`: in a box of exactly that width, so that it can be placed).
+fn copies(
+    generator: &Generator,
+    template: &Template,
+    out: &mut String,
+    code: &mut CodeBlocks,
+    width: f64,
+    boxed: bool,
+) {
     for (name, role) in [
         ("copy-service", CopyRole::Service),
         ("copy-client", CopyRole::Client),
     ] {
-        let _ = writeln!(
-            out,
-            "#let {name} = {}",
-            generator.flow(&template.blocks, &[], role, width, code)
-        );
+        let flow = generator.flow(&template.blocks, &[], role, width, code);
+        if boxed {
+            let _ = writeln!(out, "#let {name} = block(width: {}, {flow})", mm(width));
+        } else {
+            let _ = writeln!(out, "#let {name} = {flow}");
+        }
     }
 }
 

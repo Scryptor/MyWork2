@@ -460,6 +460,8 @@ fn disabled_or_missing_link_prints_nothing() {
             bold: false,
             align: Align::Left,
             one_line: false,
+            frame: false,
+            numbered: false,
         },
     };
     let t = small_page(kind, vec![text]);

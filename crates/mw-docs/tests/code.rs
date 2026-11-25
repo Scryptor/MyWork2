@@ -27,6 +27,8 @@ fn text(text: &str) -> Block {
         bold: false,
         align: Align::Left,
         one_line: false,
+        frame: false,
+        numbered: false,
     })
 }
 

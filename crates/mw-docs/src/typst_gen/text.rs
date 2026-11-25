@@ -114,6 +114,29 @@ fn pieces_expr(pieces: &[Piece], mode: TextMode) -> String {
     join_parts(parts)
 }
 
+/// A Typst code expression for a list: `text` with its substitutions taken as raw values, every
+/// non-empty line (a typed number «1.», «2)» at its start dropped) is an item of a numbered list.
+pub(super) fn numbered_expr(text: &str) -> String {
+    let parts: Vec<String> = pieces(text, true)
+        .iter()
+        .map(|p| match p {
+            Piece::Text(text) => typst_str(text),
+            Piece::Break => "\"\\n\"".to_owned(),
+            Piece::Field(_) | Piece::Link(_) => {
+                format!("raw-value({})", typst_str(p.key().unwrap_or_default()))
+            }
+        })
+        .collect();
+    let source = if parts.is_empty() {
+        "\"\"".to_owned()
+    } else {
+        parts.join(" + ")
+    };
+    format!(
+        r#"{{ let items = ({source}).replace("\r\n", "\n").replace("\r", "\n").split("\n").map(l => l.trim().replace(regex("^\\d{{1,3}}[.)]\\s*"), "").trim()).filter(l => l != ""); if items.len() > 0 {{ enum(..items) }} }}"#
+    )
+}
+
 fn join_parts(parts: Vec<String>) -> String {
     match parts.as_slice() {
         [] => "\"\"".to_owned(),

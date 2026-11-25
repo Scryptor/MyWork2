@@ -3,4 +3,4 @@
 /**
  * How the copies of a document are laid out.
  */
-export type Layout = "one_per_page" | "two_per_a4" | "sheet_per_copy";
+export type Layout = "one_per_page" | "two_per_a4" | "sheet_per_copy" | "two_across";

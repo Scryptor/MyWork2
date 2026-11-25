@@ -19,7 +19,10 @@ const row = (label: string, value = ''): FieldRow => ({
 	hide_if_empty: false,
 	bold: false
 });
-const fields = (rows: FieldRow[]): Block => ({ copies: 'both', body: { type: 'fields', rows } });
+const fields = (rows: FieldRow[]): Block => ({
+	copies: 'both',
+	body: { type: 'fields', rows, grid: false }
+});
 
 function setup(rows: FieldRow[]) {
 	const editor = editorOf(templateOf('intake_act', [fields(rows)]));

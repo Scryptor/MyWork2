@@ -28,11 +28,21 @@ function body(type: (typeof BLOCK_TYPES)[number]): BlockBody {
 	const d = ru.templates.defaults;
 	switch (type) {
 		case 'text':
-			return { type, text: d.text, size_pt: null, bold: false, align: 'left', one_line: false };
+			return {
+				type,
+				text: d.text,
+				size_pt: null,
+				bold: false,
+				align: 'left',
+				one_line: false,
+				frame: false,
+				numbered: false
+			};
 		case 'fields':
 			return {
 				type,
-				rows: [{ label: d.fieldLabel, value: '', hide_if_empty: false, bold: false }]
+				rows: [{ label: d.fieldLabel, value: '', hide_if_empty: false, bold: false }],
+				grid: false
 			};
 		case 'barcode':
 			return { type, height_mm: 12, digits: true, align: 'center', fill: false, stretch: false };

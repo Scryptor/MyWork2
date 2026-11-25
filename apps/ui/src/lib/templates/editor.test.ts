@@ -14,7 +14,16 @@ import { insertBlock, insertTextBlock, replaceBlock } from './ops.js';
 
 const text = (s: string): Block => ({
 	copies: 'both',
-	body: { type: 'text', text: s, size_pt: null, bold: false, align: 'left', one_line: false }
+	body: {
+		type: 'text',
+		text: s,
+		size_pt: null,
+		bold: false,
+		align: 'left',
+		one_line: false,
+		frame: false,
+		numbered: false
+	}
 });
 
 const STANDARD: Template = {

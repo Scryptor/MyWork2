@@ -27,11 +27,14 @@ describe('newBlock', () => {
 				size_pt: null,
 				bold: false,
 				align: 'left',
-				one_line: false
+				one_line: false,
+				frame: false,
+				numbered: false
 			},
 			fields: {
 				type: 'fields',
-				rows: [{ label: 'Название', value: '', hide_if_empty: false, bold: false }]
+				rows: [{ label: 'Название', value: '', hide_if_empty: false, bold: false }],
+				grid: false
 			},
 			barcode: {
 				type: 'barcode',

@@ -9,7 +9,7 @@ use super::RenderOptions;
 use super::code::CodeBlocks;
 use super::page::{CopyRole, Page, decimal, mm, pt};
 use super::qr::qr_name;
-use super::text::{Piece, TextMode, literal_expr, pieces, text_expr, typst_str};
+use super::text::{Piece, TextMode, literal_expr, numbered_expr, pieces, text_expr, typst_str};
 
 /// Size of the barcode digits per millimetre of module width (0.33 mm → 7.9 pt), within
 /// [`DIGITS_MIN_PT`] and [`DIGITS_MAX_PT`].
@@ -163,6 +163,8 @@ impl Generator {
                 bold,
                 align,
                 one_line,
+                frame,
+                numbered,
             } => {
                 let mut style = String::new();
                 if let Some(size) = size_pt {
@@ -171,14 +173,22 @@ impl Generator {
                 if *bold {
                     style.push_str("weight: \"bold\", ");
                 }
+                let mut body = String::new();
                 if *one_line {
                     // The text style is set around the block, so that the em of its spacing and of the
                     // clip outset is this text's. One-line blocks stack like the lines of a paragraph.
                     let _ = write!(
-                        out,
+                        body,
                         "{{ set text({style}); set block(spacing: 0.5em); one-line({}, {}) }}",
                         align_name(*align),
                         text_expr(text, TextMode::OneLine)
+                    );
+                } else if *numbered {
+                    // The list is always left-aligned.
+                    let _ = write!(
+                        body,
+                        "block(width: 100%, align(left, text({style}{})))",
+                        numbered_expr(text)
                     );
                 } else {
                     // A line to write on runs to the end of left-aligned text; elsewhere it would push
@@ -190,22 +200,36 @@ impl Generator {
                     };
                     let value = text_expr(text, mode);
                     let _ = write!(
-                        out,
+                        body,
                         "block(width: 100%, align({}, text({style}{value})))",
                         align_name(*align),
                     );
                 }
+                if *frame {
+                    let _ = write!(
+                        out,
+                        "block(width: 100%, stroke: 0.6pt, inset: (x: 2mm, y: 1.5mm), {body})"
+                    );
+                } else {
+                    out.push_str(&body);
+                }
             }
-            BlockBody::Fields { rows } => {
+            BlockBody::Fields { rows, grid } => {
                 out.push_str("{\nlet cells = ()\n");
                 for row in rows {
                     field_row(out, row);
                 }
                 // A blank form gets room to write and only its lines to write on.
-                out.push_str(
-                    "if cells.len() > 0 { table(columns: (auto, 1fr), \
-                     stroke: if data.blank { none } else { (x: none, y: 0.3pt + luma(170)) }, \
-                     inset: (x: 1mm, y: if data.blank { 2mm } else { 1.2mm }), ..cells) }\n}",
+                let stroke = if *grid {
+                    "0.4pt".to_owned()
+                } else {
+                    "if data.blank { none } else { (x: none, y: 0.3pt + luma(170)) }".to_owned()
+                };
+                let _ = write!(
+                    out,
+                    "if cells.len() > 0 {{ table(columns: (auto, 1fr), \
+                     stroke: {stroke}, \
+                     inset: (x: 1mm, y: if data.blank {{ 2mm }} else {{ 1.2mm }}), ..cells) }}\n}}",
                 );
             }
             BlockBody::Barcode {
