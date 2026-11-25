@@ -23,6 +23,9 @@ use crate::{Actor, Core, CoreError};
 /// Самый длинный период, который рисуется по дням; дальше — по месяцам.
 const MAX_DAY_STEPS: i64 = 62;
 
+/// Сколько точек шкалы отдаётся самое большее (при шаге «месяц»).
+const MAX_TIMELINE_POINTS: u32 = 600;
+
 /// Подпись группы без значения в разрезе (кроме мастера и точки).
 const UNSPECIFIED: &str = "Не указан";
 
@@ -77,7 +80,8 @@ pub struct ReportFilter {
     pub brand: Option<String>,
     /// Источник клиента; сравнение без учёта регистра.
     pub source: Option<String>,
-    /// Разрез: по чему делить итоги на группы.
+    /// Разрез: по чему делить итоги на группы; по умолчанию — по мастерам.
+    #[serde(default)]
     pub group_by: ReportGroupBy,
 }
 
@@ -245,7 +249,13 @@ fn base_condition(filter: &ReportFilter) -> Condition {
     if let Some(from) = filter.from {
         cond = cond.add(o(order::Column::IssuedAt).gte(from.and_time(chrono::NaiveTime::MIN)));
     }
-    if let Some(next) = filter.to.and_then(|to| to.succ_opt()) {
+    // Год 10000 в SQLite записывается пятью цифрами и сравнивается как текст неверно: после
+    // 9999-12-31 верхней границы нет.
+    if let Some(next) = filter
+        .to
+        .and_then(|to| to.succ_opt())
+        .filter(|next| next.year() <= 9999)
+    {
         cond = cond.add(o(order::Column::IssuedAt).lt(next.and_time(chrono::NaiveTime::MIN)));
     }
     if let Some(id) = filter.service_point_id {
@@ -588,7 +598,7 @@ fn timeline(
     let first = rows.first().map(|r| r.issued_at.date());
     let last = rows.last().map(|r| r.issued_at.date());
     let all_time = filter.from.is_none() && filter.to.is_none();
-    let (Some(start), Some(end)) = (filter.from.or(first), filter.to.or(last)) else {
+    let (Some(mut start), Some(mut end)) = (filter.from.or(first), filter.to.or(last)) else {
         return Ok((ReportStep::Month, Vec::new()));
     };
     let step = if !all_time && (end - start).num_days() < MAX_DAY_STEPS {
@@ -596,6 +606,26 @@ fn timeline(
     } else {
         ReportStep::Month
     };
+
+    if step == ReportStep::Month {
+        // Слишком длинный период: сначала только месяцы с выдачами, потом последние месяцы.
+        let months = |a: NaiveDate, b: NaiveDate| {
+            (b.year() - a.year()) * 12 + b.month() as i32 - a.month() as i32 + 1
+        };
+        let limit = MAX_TIMELINE_POINTS as i32;
+        if months(start, end) > limit
+            && let (Some(first), Some(last)) = (first, last)
+        {
+            start = Ord::max(start, first);
+            end = Ord::min(end, last);
+        }
+        if months(start, end) > limit
+            && let Some(clipped) =
+                month_start(end).checked_sub_months(chrono::Months::new(MAX_TIMELINE_POINTS - 1))
+        {
+            start = clipped;
+        }
+    }
 
     let mut points: Vec<ReportPoint> = Vec::new();
     let mut cursor = match step {

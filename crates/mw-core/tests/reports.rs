@@ -624,3 +624,98 @@ async fn report_needs_reports_view() -> Result<(), CoreError> {
     }
     Ok(())
 }
+
+#[test]
+fn group_by_defaults_to_master_when_absent() {
+    let f: ReportFilter = serde_json::from_str(r#"{"brand":"x"}"#).unwrap();
+    assert_eq!(f.group_by, ReportGroupBy::Master);
+    assert_eq!(f.brand.as_deref(), Some("x"));
+}
+
+#[tokio::test]
+async fn timeline_is_capped_at_600_points() -> Result<(), CoreError> {
+    for t in cores().await {
+        relax_issue(&t).await;
+        let brand = "Предел-Бренд";
+        for when in [
+            at(1968, 1, 15, 10, 0),
+            at(2026, 3, 10, 10, 0),
+            at(2026, 4, 10, 10, 0),
+        ] {
+            make(
+                &t,
+                Spec {
+                    brand,
+                    price: 100,
+                    issued_at: Some(when),
+                    ..Default::default()
+                },
+            )
+            .await;
+        }
+        let report = |from, to| {
+            let core = t.core.clone();
+            async move {
+                core.order_report(
+                    &admin(),
+                    &ReportFilter {
+                        from: Some(from),
+                        to: Some(to),
+                        ..brand_filter(brand)
+                    },
+                )
+                .await
+                .unwrap()
+            }
+        };
+
+        // 700 месяцев, выдачи по всему периоду: последние 600, последний — апрель 2026.
+        let long = report(day(1968, 1, 1), day(2026, 4, 30)).await;
+        assert_eq!(long.step, ReportStep::Month, "{}", t.label);
+        assert_eq!(long.timeline.len(), 600);
+        assert_eq!(long.timeline[0].start, day(1976, 5, 1));
+        assert_eq!(long.timeline[599].start, day(2026, 4, 1));
+        assert_eq!(long.timeline[599].totals.orders, 1);
+        // Итоги отчёта — по всем заказам периода, а не только по видимым точкам.
+        assert_eq!(long.totals.orders, 3);
+
+        // Годы 1–9999: сужение до месяцев с выдачами не помогает (1968–2026), берутся последние 600.
+        let huge = report(day(1, 1, 1), day(9999, 12, 31)).await;
+        assert_eq!(huge.totals.orders, 3, "{}", t.label);
+        assert_eq!(huge.step, ReportStep::Month);
+        assert_eq!(huge.timeline.len(), 600);
+        assert_eq!(huge.timeline[599].start, day(2026, 4, 1));
+
+        // Выдачи только в двух месяцах 2026: шкала сужается до них.
+        let two = "Два-Месяца-Бренд";
+        for when in [at(2026, 3, 10, 10, 0), at(2026, 4, 10, 10, 0)] {
+            make(
+                &t,
+                Spec {
+                    brand: two,
+                    price: 100,
+                    issued_at: Some(when),
+                    ..Default::default()
+                },
+            )
+            .await;
+        }
+        let narrow = t
+            .core
+            .order_report(
+                &admin(),
+                &ReportFilter {
+                    from: Some(day(1, 1, 1)),
+                    to: Some(day(9999, 12, 31)),
+                    ..brand_filter(two)
+                },
+            )
+            .await?;
+        assert_eq!(narrow.step, ReportStep::Month);
+        assert_eq!(
+            narrow.timeline.iter().map(|p| p.start).collect::<Vec<_>>(),
+            [day(2026, 3, 1), day(2026, 4, 1)]
+        );
+    }
+    Ok(())
+}
