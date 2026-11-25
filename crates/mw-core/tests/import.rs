@@ -15,7 +15,7 @@ use mw_domain::permission::Permission;
 use mw_domain::permission::PermissionSet;
 use mw_domain::stock::{MAX_STOCK_PRICE, MAX_STOCK_QUANTITY};
 use mw_domain::warranty::WarrantyTerm;
-use sea_orm::{EntityTrait, PaginatorTrait};
+use sea_orm::{ActiveModelTrait, EntityTrait, PaginatorTrait};
 
 #[tokio::test]
 async fn import_into_empty_database_keeps_numbers_and_continues_them() {
@@ -687,6 +687,23 @@ async fn replace_wipes_the_stock_written_after_the_previous_import() {
     )
     .await
     .unwrap();
+    let day = chrono::NaiveDate::from_ymd_opt(2026, 11, 20).unwrap();
+    mw_db::entity::order_payment::ActiveModel {
+        order_id: sea_orm::Set(10),
+        day: sea_orm::Set(day),
+        amount: sea_orm::Set(10_000),
+        received_by: sea_orm::Set(String::new()),
+        stage: sea_orm::Set("before_issue".to_owned()),
+        added_by_id: sea_orm::Set(None),
+        added_by_name: sea_orm::Set(String::new()),
+        added_at: sea_orm::Set(day.and_hms_opt(10, 0, 0).unwrap()),
+        legacy: sea_orm::Set(false),
+        request_key: sea_orm::Set(None),
+        ..Default::default()
+    }
+    .insert(core.db())
+    .await
+    .unwrap();
     let s = core
         .import_bundle(
             &admin(),
@@ -705,6 +722,13 @@ async fn replace_wipes_the_stock_written_after_the_previous_import() {
     );
     assert_eq!(
         mw_db::entity::stock_place::Entity::find()
+            .count(core.db())
+            .await
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        mw_db::entity::order_payment::Entity::find()
             .count(core.db())
             .await
             .unwrap(),

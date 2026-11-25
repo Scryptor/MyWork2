@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 /// `requires_a4_landscape`, `not_allowed`, `nested_columns`, `fill_in_columns`, `unsupported`,
 /// `mismatch`, `not_editable`, `not_enough_stock`, `builtin_missing`, `not_a_link`, `period_reversed`,
 /// `too_many_rows`, `nothing_to_export`, `folder_relative`, `folder_missing`, `folder_inside_data`,
-/// `folder_read_only`, `backup_missing`, `backup_damaged`, `backup_too_new`, `backup_pending`, `rack_code`, `rack_too_big`, `places_exceed`, `no_such_place`).
+/// `folder_read_only`, `backup_missing`, `backup_damaged`, `backup_too_new`, `backup_pending`, `rack_code`, `rack_too_big`, `places_exceed`, `no_such_place`, `payment_day`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
 pub struct FieldError {
     /// Имя поля запроса.
@@ -129,6 +129,7 @@ impl FieldError {
             "rack_too_big" => "В шкафу не больше 100 ячеек",
             "places_exceed" => "Столько нет — больше, чем не разложено или лежит в ячейке",
             "no_such_place" => "Такого места на складе нет",
+            "payment_day" => "День оплаты — не раньше приёма заказа и не позже сегодня",
             _ => "Недопустимое значение",
         }
     }

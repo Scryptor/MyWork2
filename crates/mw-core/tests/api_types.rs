@@ -255,6 +255,7 @@ fn field_error_messages_are_russian() {
         "rack_too_big",
         "places_exceed",
         "no_such_place",
+        "payment_day",
     ] {
         assert!(
             FieldError::new("x", code)
@@ -266,6 +267,10 @@ fn field_error_messages_are_russian() {
     assert_eq!(
         FieldError::new("x", "last_admin").message_ru(),
         "Нельзя оставить программу без администратора"
+    );
+    assert_eq!(
+        FieldError::new("day", "payment_day").message_ru(),
+        "День оплаты — не раньше приёма заказа и не позже сегодня"
     );
     assert_eq!(
         FieldError::new("x", "что-то новое").message_ru(),

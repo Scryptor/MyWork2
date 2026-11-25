@@ -4,8 +4,8 @@ use std::collections::{HashMap, HashSet};
 
 use mw_db::entity::{
     attachment, audit_log, client, client_phone, dictionary_item, legacy_import, legacy_row, order,
-    order_comment, order_part, order_tracking, role, service_point, session, setting, status,
-    stock_item, stock_place, stock_rack, user,
+    order_comment, order_part, order_payment, order_tracking, role, service_point, session,
+    setting, status, stock_item, stock_place, stock_rack, user,
 };
 use mw_db::ids::{IdTable, set_next_id};
 use mw_domain::dictionary::{DEFAULT_DICTIONARY, DictionaryKind};
@@ -302,8 +302,9 @@ async fn wipe(conn: &impl ConnectionTrait) -> Result<(), CoreError> {
     order_tracking::Entity::delete_many().exec(conn).await?;
     audit_log::Entity::delete_many().exec(conn).await?;
     order_comment::Entity::delete_many().exec(conn).await?;
-    // Запчасти держат заказы и позиции внешними ключами: они стираются раньше.
+    // Запчасти и платежи держат заказы (запчасти — и позиции) внешними ключами: они стираются раньше.
     order_part::Entity::delete_many().exec(conn).await?;
+    order_payment::Entity::delete_many().exec(conn).await?;
     stock_place::Entity::delete_many().exec(conn).await?;
     order::Entity::delete_many().exec(conn).await?;
     stock_item::Entity::delete_many().exec(conn).await?;

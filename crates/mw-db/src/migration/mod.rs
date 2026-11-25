@@ -24,6 +24,8 @@ mod m20261125_000001_firm_links;
 mod m20261125_000002_orders_issued_at_index;
 mod m20261125_000003_data_export_permission;
 mod m20261125_000004_stock_places;
+mod m20261126_000001_order_payments;
+mod m20261126_000002_order_payments_from_prepayment;
 
 pub struct Migrator;
 
@@ -51,6 +53,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20261125_000002_orders_issued_at_index::Migration),
             Box::new(m20261125_000003_data_export_permission::Migration),
             Box::new(m20261125_000004_stock_places::Migration),
+            Box::new(m20261126_000001_order_payments::Migration),
+            Box::new(m20261126_000002_order_payments_from_prepayment::Migration),
         ]
     }
 }

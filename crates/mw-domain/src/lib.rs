@@ -60,6 +60,7 @@ pub mod links;
 pub mod money;
 pub mod pages;
 pub mod pattern;
+pub mod payment;
 pub mod permission;
 pub mod phone;
 pub mod report;

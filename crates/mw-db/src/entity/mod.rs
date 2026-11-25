@@ -11,6 +11,7 @@ pub mod legacy_row;
 pub mod order;
 pub mod order_comment;
 pub mod order_part;
+pub mod order_payment;
 pub mod order_tracking;
 pub mod role;
 pub mod service_point;
