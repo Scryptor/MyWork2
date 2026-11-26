@@ -28,6 +28,7 @@ export function item(id: number, over: Partial<OrderListItem> = {}): OrderListIt
 		estimate_from: null,
 		estimate_to: null,
 		prepayment: 0,
+		paid: 0,
 		final_price: null,
 		discount: 0,
 		need_call: false,

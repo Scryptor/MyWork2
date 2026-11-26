@@ -80,7 +80,7 @@ pub const LINK_SAMPLES: [(&str, &str); 5] = [
     ("google_maps", "https://maps.google.com/?q=example"),
 ];
 
-static FIELDS: [FieldDef; 39] = [
+static FIELDS: [FieldDef; 41] = [
     field("order.number", "заказ.номер", "Номер заказа", "1234", ""),
     field(
         "order.barcode",
@@ -194,6 +194,14 @@ static FIELDS: [FieldDef; 39] = [
         "",
     ),
     field("order.due", "заказ.к_оплате", "К оплате", "1 300 руб.", ""),
+    field("order.paid", "заказ.оплачено", "Оплачено", "500 руб.", ""),
+    field(
+        "order.remaining",
+        "заказ.остаток",
+        "Остаток",
+        "1 300 руб.",
+        "",
+    ),
     field(
         "order.warranty",
         "заказ.гарантия",
@@ -368,7 +376,9 @@ mod tests {
 
     #[test]
     fn link_fields_are_not_static() {
-        assert_eq!(FIELDS.len(), 39);
+        assert_eq!(FIELDS.len(), 41);
+        let issue: Vec<_> = fields_for(DocumentKind::IssueAct).map(|f| f.key).collect();
+        assert!(issue.contains(&"order.paid") && issue.contains(&"order.remaining"));
         for key in ["firm.telegram", "firm.google_maps", "firm.yandex_maps"] {
             assert!(FIELDS.iter().all(|f| f.key != key), "{key}");
         }

@@ -483,6 +483,7 @@ export function makeOrders(count: number, seed = 1): OrderListItem[] {
 			estimate_from: estimateFrom,
 			estimate_to: estimateTo,
 			prepayment,
+			paid: prepayment,
 			final_price: finalPrice,
 			// No discount: another draw would change every fictional order after it.
 			discount: 0,

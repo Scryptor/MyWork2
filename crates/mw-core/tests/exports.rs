@@ -7,8 +7,7 @@ use std::io::Cursor;
 use calamine::{Data, Reader, Xlsx, open_workbook_from_rs};
 use common::*;
 use mw_core::{
-    ClientFilter, ContactsFormat, CoreError, NewClient, NewOrder, OrderFilter, OrderPatch,
-    OrderSort,
+    ClientFilter, ContactsFormat, CoreError, NewClient, OrderFilter, OrderPatch, OrderSort,
 };
 use mw_domain::money::Money;
 use mw_domain::permission::Permission;
@@ -36,7 +35,7 @@ fn sheet(bytes: Vec<u8>, name: &str) -> Vec<Vec<String>> {
         .collect()
 }
 
-const ORDER_COLUMNS: [&str; 24] = [
+const ORDER_COLUMNS: [&str; 26] = [
     "№ заказа",
     "Принят",
     "Статус",
@@ -59,6 +58,8 @@ const ORDER_COLUMNS: [&str; 24] = [
     "Расходы",
     "Запчасти",
     "К оплате",
+    "Оплачено",
+    "Остаток",
     "Гарантия",
     "Штрихкод",
 ];
@@ -69,21 +70,15 @@ async fn orders_export_follows_the_list_filter() -> Result<(), CoreError> {
         let brand = "Выгрузка-Бренд";
         let mut made = Vec::new();
         for i in 0..3 {
-            let o = t
-                .core
-                .create_order(
-                    &admin(),
-                    NewOrder {
-                        brand: brand.into(),
-                        ..sample_new_order()
-                    },
-                )
-                .await?;
+            let o = create_order_with(&t, |n| {
+                n.brand = brand.into();
+                n.prepayment = if i != 2 { rub(300) } else { Money::ZERO };
+            })
+            .await;
             let patch = OrderPatch {
                 device_password: (i == 0).then(|| "1234".to_owned()),
                 device_pattern: (i == 0).then(|| "1235".to_owned()),
                 final_price: (i != 2).then_some(Some(rub(1000))),
-                prepayment: (i != 2).then_some(rub(300)),
                 discount: (i != 2).then_some(rub(100)),
                 serial: Some(format!("SN-{i}")),
                 ..Default::default()
@@ -124,11 +119,15 @@ async fn orders_export_follows_the_list_filter() -> Result<(), CoreError> {
             assert_eq!(col("Гарантия"), "30 дней");
             if id == made[2].id {
                 assert_eq!(col("К оплате"), "", "без итога — пусто");
+                assert_eq!(col("Остаток"), "", "без итога — пусто");
+                assert_eq!(col("Оплачено"), "0");
                 assert_eq!(col("Итог"), "");
             } else {
                 assert_eq!(col("Итог"), "1000");
                 assert_eq!(col("Предоплата"), "300");
                 assert_eq!(col("К оплате"), "600", "итог − предоплата − скидка");
+                assert_eq!(col("Оплачено"), "300");
+                assert_eq!(col("Остаток"), "600", "итог − скидка − оплачено");
             }
         }
         assert!(

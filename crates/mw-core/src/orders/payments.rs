@@ -103,9 +103,7 @@ pub(crate) fn sum_kopecks(amounts: impl IntoIterator<Item = i64>) -> Result<Mone
     Ok(Money::from_kopecks(total))
 }
 
-/// Сколько уплачено по каждому заказу из списка; заказа без платежей в карте нет. Список и
-/// документы возьмут её в задаче 5.
-#[allow(dead_code)]
+/// Сколько уплачено по каждому заказу из списка; заказа без платежей в карте нет.
 pub(crate) async fn paid_by_order(
     conn: &impl ConnectionTrait,
     ids: &[i64],

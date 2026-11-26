@@ -22,7 +22,7 @@ struct OrderExtras {
 
 const ASCII_NAME: &str = "orders.xlsx";
 
-const COLUMNS: [&str; 24] = [
+const COLUMNS: [&str; 26] = [
     "№ заказа",
     "Принят",
     "Статус",
@@ -45,6 +45,8 @@ const COLUMNS: [&str; 24] = [
     "Расходы",
     "Запчасти",
     "К оплате",
+    "Оплачено",
+    "Остаток",
     "Гарантия",
     "Штрихкод",
 ];
@@ -187,6 +189,16 @@ fn order_row(
         )?),
         None => Cell::Empty,
     };
+    // Остаток: итог − скидка − оплачено; без итоговой цены — пусто.
+    let remaining = match item.final_price {
+        Some(price) => Cell::Money(checked(
+            price
+                .kopecks()
+                .checked_sub(item.discount.kopecks())
+                .and_then(|v| v.checked_sub(item.paid.kopecks())),
+        )?),
+        None => Cell::Empty,
+    };
     Ok(vec![
         Cell::Int(item.id),
         Cell::Time(item.received_at),
@@ -214,6 +226,8 @@ fn order_row(
         Cell::Money(Money::from_kopecks(m.extra_costs)),
         Cell::Money(parts_cost),
         to_pay,
+        Cell::Money(item.paid),
+        remaining,
         text(&m.warranty_text),
         text(&item.barcode),
     ])

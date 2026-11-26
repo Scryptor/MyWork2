@@ -17,6 +17,7 @@ use sea_orm::{ConnectionTrait, FromQueryResult, StatementBuilder};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+use super::paid_by_order;
 use crate::page::validate_page;
 use crate::sql::text_sort;
 use crate::{Actor, Core, CoreError, NewAuditEntry, Page, write_audit};
@@ -168,6 +169,8 @@ pub struct OrderListItem {
     pub estimate_to: Option<Money>,
     /// Предоплата, в копейках.
     pub prepayment: Money,
+    /// Оплачено: все платежи заказа, в копейках.
+    pub paid: Money,
     /// Итоговая цена, в копейках.
     #[schema(required = true)]
     pub final_price: Option<Money>,
@@ -238,6 +241,8 @@ impl From<Row> for OrderListItem {
             estimate_from: r.estimate_from.map(Money::from_kopecks),
             estimate_to: r.estimate_to.map(Money::from_kopecks),
             prepayment: Money::from_kopecks(r.prepayment),
+            // Суммы платежей дописывает `select_items`.
+            paid: Money::ZERO,
             final_price: r.final_price.map(Money::from_kopecks),
             discount: Money::from_kopecks(r.discount),
             need_call: r.need_call,
@@ -365,12 +370,18 @@ impl Core {
             .expr_as(o(order::Column::DeletedAt), "deleted_at")
             .expr_as(o(order::Column::Version), "version");
         let stmt = StatementBuilder::build(&q, &backend);
-        Ok(Row::find_by_statement(stmt)
+        let mut items: Vec<OrderListItem> = Row::find_by_statement(stmt)
             .all(&self.db)
             .await?
             .into_iter()
             .map(OrderListItem::from)
-            .collect())
+            .collect();
+        let ids: Vec<i64> = items.iter().map(|i| i.id).collect();
+        let mut paid = paid_by_order(&self.db, &ids).await?;
+        for item in &mut items {
+            item.paid = paid.remove(&item.id).unwrap_or(Money::ZERO);
+        }
+        Ok(items)
     }
 
     /// Условия списка заказов; общие для списка и выгрузки. `include_deleted` требует

@@ -2,7 +2,10 @@ mod common;
 
 use chrono::NaiveDateTime;
 use common::*;
-use mw_core::{CoreError, IssuedFilter, OrderFilter, OrderSort, OrderSortField, Page};
+use mw_core::{
+    CoreError, IssuedFilter, NewOrderPayment, OrderFilter, OrderSort, OrderSortField, Page,
+};
+use mw_domain::money::Money;
 use mw_domain::permission::Permission;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
@@ -423,6 +426,44 @@ async fn list_items_carry_the_discount() -> Result<(), CoreError> {
             .items;
         let item = items.iter().find(|i| i.id == o.id).unwrap();
         assert_eq!(item.discount, Money::from_kopecks(20_000), "{}", t.label);
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn list_rows_carry_the_paid_sum() -> Result<(), CoreError> {
+    for t in cores().await {
+        let a = create_order_with(&t, |n| n.prepayment = Money::from_rubles(500)).await;
+        let b = create_order_with(&t, |_| {}).await;
+        t.core
+            .add_order_payment(
+                &admin(),
+                a.id,
+                NewOrderPayment {
+                    day: t.core.now().date(),
+                    amount: Money::from_rubles(700),
+                    received_by: String::new(),
+                    request_key: "paid-sum".into(),
+                },
+            )
+            .await?;
+        let listed = t
+            .core
+            .list_orders(
+                &admin(),
+                &OrderFilter::default(),
+                OrderSort::default(),
+                50,
+                0,
+            )
+            .await?;
+        let of = |id: i64| listed.items.iter().find(|i| i.id == id).unwrap();
+        assert_eq!(of(a.id).paid, Money::from_rubles(1200), "{}", t.label);
+        assert_eq!(of(a.id).prepayment, Money::from_rubles(1200), "{}", t.label);
+        assert_eq!(of(b.id).paid, Money::ZERO, "{}", t.label);
+        let found = t.core.find_orders_by_barcode(&admin(), &a.barcode).await?;
+        assert_eq!(found.len(), 1, "{}", t.label);
+        assert_eq!(found[0].paid, Money::from_rubles(1200), "{}", t.label);
     }
     Ok(())
 }

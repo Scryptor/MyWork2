@@ -473,7 +473,7 @@ async fn import_replaces_kind() -> Result<(), CoreError> {
 async fn fields_are_listed() {
     for t in cores().await {
         let fields = t.core.document_fields(None);
-        assert_eq!(fields.len(), 35 + 4, "{}", t.label);
+        assert_eq!(fields.len(), 37 + 4, "{}", t.label);
         assert_eq!(fields[0].placeholder, "заказ.номер");
         assert_eq!(fields[0].key, "order.number");
         assert_eq!(fields[0].label, "Номер заказа");
@@ -629,7 +629,7 @@ async fn document_fields_list_the_links() {
     for t in cores().await {
         let tail = |t: &TestCore| {
             let fields = t.core.document_fields(None);
-            fields[35..].to_vec()
+            fields[37..].to_vec()
         };
         let got = tail(&t);
         assert_eq!(got.len(), 4, "{}", t.label);

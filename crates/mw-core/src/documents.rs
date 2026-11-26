@@ -28,6 +28,7 @@ use sea_orm::EntityTrait;
 
 use crate::core::CodeRenderer;
 use crate::money_text::currency_symbol;
+use crate::orders::paid_by_order;
 use crate::{Actor, AppSettings, Client, Core, CoreError, Order};
 
 /// Сколько документов строится одновременно; остальные ждут своей очереди.
@@ -819,7 +820,11 @@ impl Core {
                     let order = self.get_order(actor, id).await?;
                     let client = self.get_client(actor, order.client_id).await?;
                     let point = self.point_name(order.service_point_id).await?;
-                    Ok(order_data(&order, &client, &point, &settings, today))
+                    let paid = paid_by_order(&self.db, &[id])
+                        .await?
+                        .remove(&id)
+                        .unwrap_or(Money::ZERO);
+                    Ok(order_data(&order, paid, &client, &point, &settings, today))
                 }
                 // Образец — на своих реквизитах: фирма и точка из настроек, где они заданы.
                 (None, true) => self.sample_values(req.kind, &settings).await,
@@ -918,6 +923,7 @@ fn own_values(settings: &AppSettings, point: &str, today: NaiveDate) -> BTreeMap
 /// предоплаты, скидки, итога) — пустое значение: строку скрывает шаблон.
 fn order_data(
     order: &Order,
+    paid: Money,
     client: &Client,
     point: &str,
     settings: &AppSettings,
@@ -980,6 +986,13 @@ fn order_data(
             (
                 "order.due",
                 amount_due(order.final_price, order.prepayment, order.discount)
+                    .map(money)
+                    .unwrap_or_default(),
+            ),
+            ("order.paid", positive(paid)),
+            (
+                "order.remaining",
+                amount_remaining(order.final_price, order.discount, paid)
                     .map(money)
                     .unwrap_or_default(),
             ),
@@ -1056,6 +1069,18 @@ fn amount_due(final_price: Option<Money>, prepayment: Money, discount: Money) ->
                 .kopecks()
                 .saturating_sub(prepayment.kopecks())
                 .saturating_sub(discount.kopecks()),
+        )
+    })
+}
+
+/// «Остаток» = итог − скидка − всё оплаченное; без итога — нет суммы.
+fn amount_remaining(final_price: Option<Money>, discount: Money, paid: Money) -> Option<Money> {
+    final_price.map(|price| {
+        Money::from_kopecks(
+            price
+                .kopecks()
+                .saturating_sub(discount.kopecks())
+                .saturating_sub(paid.kopecks()),
         )
     })
 }
@@ -1519,6 +1544,8 @@ mod tests {
                 ("order.discount", "200\u{a0}руб.".into()),
                 ("order.price", "2\u{202f}000\u{a0}руб.".into()),
                 ("order.due", "1\u{202f}300\u{a0}руб.".into()),
+                ("order.paid", "500\u{a0}руб.".into()),
+                ("order.remaining", "1\u{202f}300\u{a0}руб.".into()),
                 ("client.phone", "+7 900 000-00-00".into()),
                 ("client.phones", "+7 900 000-00-00, 20-00-00".into()),
                 ("firm.legal", "ИНН 000000000000".into()),
@@ -1887,5 +1914,19 @@ mod tests {
             Some(Money::ZERO)
         );
         assert_eq!(amount_due(None, rub(500), rub(200)), None);
+    }
+
+    #[test]
+    fn amount_remaining_is_the_final_price_less_discount_and_payments() {
+        let rub = Money::from_rubles;
+        assert_eq!(
+            amount_remaining(Some(rub(2000)), rub(200), rub(500)),
+            Some(rub(1300))
+        );
+        assert_eq!(amount_remaining(None, rub(200), rub(500)), None);
+        assert_eq!(
+            amount_remaining(Some(rub(1000)), Money::ZERO, rub(1300)),
+            Some(Money::from_kopecks(-30_000))
+        );
     }
 }

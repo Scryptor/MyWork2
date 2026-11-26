@@ -11300,6 +11300,7 @@
           "estimate_from",
           "estimate_to",
           "prepayment",
+          "paid",
           "final_price",
           "discount",
           "need_call",
@@ -11423,6 +11424,10 @@
           "need_parts": {
             "type": "boolean",
             "description": "Нужны запчасти."
+          },
+          "paid": {
+            "$ref": "#/components/schemas/Money",
+            "description": "Оплачено: все платежи заказа, в копейках."
           },
           "prepayment": {
             "$ref": "#/components/schemas/Money",

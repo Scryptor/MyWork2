@@ -82,6 +82,10 @@ estimate_to: Money | null,
  */
 prepayment: Money, 
 /**
+ * Оплачено: все платежи заказа, в копейках.
+ */
+paid: Money, 
+/**
  * Итоговая цена, в копейках.
  */
 final_price: Money | null, 
