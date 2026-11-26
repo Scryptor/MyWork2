@@ -6,8 +6,8 @@ use std::fmt::Debug;
 
 use mw_core::{
     AppSettings, AuditEntry, Client, ClientPatch, ClientRef, DictionaryItem, DictionaryMerge,
-    DictionaryRename, IssuedFilter, MasterUser, NewClient, NewOrder, NewOrderPayment, NewRole,
-    NewStatus, NewStockRack, NewUser, Order, OrderListItem, OrderPatch, OrderSortField,
+    DictionaryRename, IssueRequest, IssuedFilter, MasterUser, NewClient, NewOrder, NewOrderPayment,
+    NewRole, NewStatus, NewStockRack, NewUser, Order, OrderListItem, OrderPatch, OrderSortField,
     ReportFilter, ReportGroupBy, RewriteResult, Role, RolePatch, ServicePoint, ServicePointPatch,
     SettingsPatch, Status, StatusPatch, StockCellRef, StockMove, StockPut, StockRackPatch, User,
     UserPatch,
@@ -104,6 +104,7 @@ where
 #[test]
 fn patches_agree_on_absent_null_and_unknown_fields() {
     check_patch::<SettingsPatch>();
+    check_patch::<IssueRequest>();
     check_patch::<StatusPatch>();
     check_patch::<ServicePointPatch>();
     check_patch::<ClientPatch>();

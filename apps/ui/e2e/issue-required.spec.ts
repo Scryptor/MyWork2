@@ -133,7 +133,8 @@ test('the set of the settings is what the server checks and «Выдать» ask
 
 		// The server refuses exactly what the set lists, with a code per field.
 		const refused = await api.post(`/api/v1/orders/${o.id}/issue?version=${filled.version}`, {
-			headers: { 'Content-Type': 'application/json' }
+			headers: { 'Content-Type': 'application/json' },
+			data: {}
 		});
 		expect(refused.status()).toBe(422);
 		const body = (await refused.json()) as { fields: { field: string; code: string }[] };

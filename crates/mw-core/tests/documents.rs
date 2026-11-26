@@ -1787,3 +1787,56 @@ async fn pages_beyond_the_document_are_refused() -> Result<(), CoreError> {
     }
     Ok(())
 }
+
+#[tokio::test]
+async fn issue_act_due_ignores_the_payment_at_issue() -> Result<(), CoreError> {
+    for t in cores().await {
+        let order = t
+            .core
+            .create_order(
+                &admin(),
+                NewOrder {
+                    prepayment: Money::from_rubles(1500),
+                    ..sample_new_order()
+                },
+            )
+            .await?;
+        let master = make_master(&t.core, "Мастер Иванов").await;
+        let order = t
+            .core
+            .update_order(
+                &admin(),
+                order.id,
+                order.version,
+                OrderPatch {
+                    final_price: Some(Some(Money::from_rubles(5000))),
+                    discount: Some(Money::from_rubles(500)),
+                    work_done: Some("Замена экрана".into()),
+                    master_user_id: Some(Some(master)),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        t.core
+            .issue_order_with(
+                &admin(),
+                order.id,
+                order.version,
+                mw_core::IssueRequest {
+                    payment: Some(Money::from_rubles(3000)),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        let out = text(&t, request(DocumentKind::IssueAct, Some(order.id))).await;
+        assert_twice(
+            t.label,
+            &out,
+            &[
+                format!("Предоплата{}", sum("1 500_руб.")),
+                format!("К оплате{}", sum("3 000_руб.")),
+            ],
+        );
+    }
+    Ok(())
+}

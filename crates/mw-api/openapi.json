@@ -4456,7 +4456,7 @@
         "tags": [
           "Заказы"
         ],
-        "summary": "Выдача заказа клиенту по версии записи; тело пустое.",
+        "summary": "Выдача заказа клиенту по версии записи. Тело обязательно: `{}` — выдача без оплаты; `payment`\n— принятая при выдаче сумма, `status_id` — выдающий статус.",
         "operationId": "issue_order",
         "parameters": [
           {
@@ -4480,6 +4480,16 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IssueRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "Заказ после выдачи",
@@ -9978,6 +9988,22 @@
           "placing",
           "done"
         ]
+      },
+      "IssueRequest": {
+        "type": "object",
+        "description": "Выдача заказа: необязательный выдающий статус и оплата в той же транзакции.",
+        "properties": {
+          "payment": {
+            "$ref": "#/components/schemas/Money",
+            "description": "Принятая при выдаче сумма, в копейках: 1…99 999 999 999."
+          },
+          "status_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Статус вида «выдан»; не передан — первый неархивный такой."
+          }
+        },
+        "additionalProperties": false
       },
       "IssueRequirement": {
         "type": "string",

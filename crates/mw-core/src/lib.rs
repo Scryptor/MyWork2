@@ -70,9 +70,9 @@ pub use import::{
 };
 pub use legacy_templates::LegacyTemplate;
 pub use orders::{
-    ClientRef, IssuedFilter, NewOrder, NewOrderComment, NewOrderPayment, NewWarrantyCase, Order,
-    OrderComment, OrderFilter, OrderListItem, OrderPatch, OrderPayment, OrderPayments, OrderSort,
-    OrderSortField, OrderSummary, OrderValueField, StatusCount,
+    ClientRef, IssueRequest, IssuedFilter, NewOrder, NewOrderComment, NewOrderPayment,
+    NewWarrantyCase, Order, OrderComment, OrderFilter, OrderListItem, OrderPatch, OrderPayment,
+    OrderPayments, OrderSort, OrderSortField, OrderSummary, OrderValueField, StatusCount,
 };
 pub use page::{Page, PageRequest};
 pub use reports::{

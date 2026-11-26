@@ -1,4 +1,5 @@
 import type { AuditPage } from '$api/AuditPage';
+import type { IssueRequest } from '$api/IssueRequest';
 import type { NewOrderComment } from '$api/NewOrderComment';
 import type { OrderComment } from '$api/OrderComment';
 import type { OrderCommentPage } from '$api/OrderCommentPage';
@@ -27,8 +28,8 @@ export const updateOrder = (id: number, version: number, patch: OrderPatch) =>
 export const changeStatus = (id: number, version: number, change: StatusChange) =>
 	request<Order>('POST', `/orders/${id}/status`, { query: { version }, body: change });
 
-export const issueOrder = (id: number, version: number) =>
-	request<Order>('POST', `/orders/${id}/issue`, { query: { version } });
+export const issueOrder = (id: number, version: number, req: IssueRequest = {}) =>
+	request<Order>('POST', `/orders/${id}/issue`, { query: { version }, body: req });
 
 /** `replayed`: the server answered an attempt that had already made this order (`X-MW-Replayed: 1`). */
 export async function createOrder(

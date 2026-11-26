@@ -94,7 +94,8 @@ test('warranty case on an issued order', async ({ page, request }) => {
 	const issuedResponse = await request.post(
 		`/api/v1/orders/${o.id}/issue?version=${filled.version}`,
 		{
-			headers: { 'Content-Type': 'application/json' }
+			headers: { 'Content-Type': 'application/json' },
+			data: {}
 		}
 	);
 	expect(issuedResponse.ok(), await issuedResponse.text()).toBe(true);

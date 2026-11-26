@@ -38,7 +38,8 @@ async function signIn(page: Page) {
 
 async function issue(api: APIRequestContext, id: number, version: number) {
 	const issued = await api.post(`/api/v1/orders/${id}/issue?version=${version}`, {
-		headers: { 'Content-Type': 'application/json' }
+		headers: { 'Content-Type': 'application/json' },
+		data: {}
 	});
 	expect(issued.ok(), await issued.text()).toBe(true);
 }

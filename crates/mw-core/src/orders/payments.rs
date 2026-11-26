@@ -183,6 +183,25 @@ pub(crate) async fn recount_prepayment(
     Ok(sum)
 }
 
+/// Возвращает все платежи заказа на этап «до выдачи» и пересчитывает предоплату: заказ вышел из
+/// вида «выдан» или вернулся в него. Версию не трогает.
+pub(crate) async fn restage_payments(
+    tx: &DatabaseTransaction,
+    order_id: i64,
+) -> Result<(), CoreError> {
+    order_payment::Entity::update_many()
+        .col_expr(
+            order_payment::Column::Stage,
+            Expr::value(PaymentStage::BeforeIssue.as_str()),
+        )
+        .filter(order_payment::Column::OrderId.eq(order_id))
+        .filter(order_payment::Column::Stage.ne(PaymentStage::BeforeIssue.as_str()))
+        .exec(tx)
+        .await?;
+    recount_prepayment(tx, order_id).await?;
+    Ok(())
+}
+
 /// Подробности записи журнала о платеже.
 pub(crate) fn payment_details(m: &order_payment::Model) -> serde_json::Value {
     json!({

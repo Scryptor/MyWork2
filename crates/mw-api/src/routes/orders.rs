@@ -3,8 +3,8 @@
 use axum::extract::State;
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use mw_core::{
-    NewOrder, NewOrderComment, NewOrderPart, NewWarrantyCase, Order, OrderComment, OrderListItem,
-    OrderParts, OrderPatch, OrderSummary, PageRequest,
+    IssueRequest, NewOrder, NewOrderComment, NewOrderPart, NewWarrantyCase, Order, OrderComment,
+    OrderListItem, OrderParts, OrderPatch, OrderSummary, PageRequest,
 };
 
 use crate::DEFAULT_PAGE_LIMIT;
@@ -237,13 +237,15 @@ pub(super) async fn change_order_status(
     ))
 }
 
-/// Выдача заказа клиенту по версии записи; тело пустое.
+/// Выдача заказа клиенту по версии записи. Тело обязательно: `{}` — выдача без оплаты; `payment`
+/// — принятая при выдаче сумма, `status_id` — выдающий статус.
 #[utoipa::path(
     post,
     path = "/api/v1/orders/{id}/issue",
     tag = "Заказы",
     security(("bearer" = [])),
     params(("id" = i64, Path, description = "Номер заказа"), VersionParam),
+    request_body = IssueRequest,
     responses((status = 200, description = "Заказ после выдачи", body = Order))
 )]
 pub(super) async fn issue_order(
@@ -251,8 +253,14 @@ pub(super) async fn issue_order(
     CurrentActor(actor): CurrentActor,
     Path(id): Path<i64>,
     Query(v): Query<VersionParam>,
+    Json(body): Json<IssueRequest>,
 ) -> Result<Json<Order>, ApiError> {
-    Ok(Json(state.core.issue_order(&actor, id, v.version).await?))
+    Ok(Json(
+        state
+            .core
+            .issue_order_with(&actor, id, v.version, body)
+            .await?,
+    ))
 }
 
 /// История заказа: записи журнала, новые сверху. Права на журнал не нужно, достаточно войти.

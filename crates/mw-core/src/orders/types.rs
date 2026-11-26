@@ -33,6 +33,21 @@ pub struct NewWarrantyCase {
     pub at: Option<NaiveDateTime>,
 }
 
+/// Выдача заказа: необязательный выдающий статус и оплата в той же транзакции.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize, ts_rs::TS, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+#[ts(optional_fields)]
+pub struct IssueRequest {
+    /// Статус вида «выдан»; не передан — первый неархивный такой.
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
+    pub status_id: Option<i64>,
+    /// Принятая при выдаче сумма, в копейках: 1…99 999 999 999.
+    #[serde(default, deserialize_with = "crate::patch::present")]
+    #[schema(nullable = false)]
+    pub payment: Option<Money>,
+}
+
 /// Данные приёма устройства.
 #[derive(Clone, Default, PartialEq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]

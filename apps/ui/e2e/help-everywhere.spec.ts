@@ -75,7 +75,8 @@ test('the card of an issued order explains its warranty cases and the complaint'
 	});
 	const filled = await patchOrder(request, o.id, { work_done: 'Чистка', final_price: 100000 });
 	const issued = await request.post(`/api/v1/orders/${o.id}/issue?version=${filled.version}`, {
-		headers: { 'Content-Type': 'application/json' }
+		headers: { 'Content-Type': 'application/json' },
+		data: {}
 	});
 	expect(issued.ok(), await issued.text()).toBe(true);
 	expect((await fetchOrder(request, o.id)).issued_at).not.toBeNull();

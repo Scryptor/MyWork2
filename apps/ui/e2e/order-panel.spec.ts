@@ -541,7 +541,7 @@ test('an issued order goes back to work with the status it had before', async ({
 	const filled = await patchOrder(request, o.id, { work_done: 'Чистка', final_price: 100000 });
 	const issuedResponse = await request.post(
 		`/api/v1/orders/${o.id}/issue?version=${filled.version}`,
-		{ headers: { 'Content-Type': 'application/json' } }
+		{ headers: { 'Content-Type': 'application/json' }, data: {} }
 	);
 	expect(issuedResponse.ok(), await issuedResponse.text()).toBe(true);
 
@@ -673,7 +673,7 @@ test.describe('on a phone', () => {
 		const filled = await patchOrder(request, o.id, { work_done: 'Чистка', final_price: 100000 });
 		const issuedResponse = await request.post(
 			`/api/v1/orders/${o.id}/issue?version=${filled.version}`,
-			{ headers: { 'Content-Type': 'application/json' } }
+			{ headers: { 'Content-Type': 'application/json' }, data: {} }
 		);
 		expect(issuedResponse.ok(), await issuedResponse.text()).toBe(true);
 		const diag = await statusId(request, 'Диагностика');

@@ -1,7 +1,9 @@
 use chrono::{NaiveDateTime, SubsecRound};
 use mw_db::entity::{order, service_point, status};
 use mw_domain::issue::IssueRequirement;
+use mw_domain::money::Money;
 use mw_domain::pattern::validate_pattern;
+use mw_domain::payment::{PaymentStage, amount_in_range};
 use mw_domain::permission::Permission;
 use mw_domain::status::StatusKind;
 use mw_domain::validation::FieldError;
@@ -13,8 +15,12 @@ use sea_orm::{
 use serde_json::{Map, Value, json};
 
 use super::master::{available_master, master_unavailable};
-use super::types::{NewWarrantyCase, OrderPatch, warranty_columns};
+use super::payments::{
+    PaymentRow, insert_payment, payment_details, received_by_of, restage_payments,
+};
+use super::types::{IssueRequest, NewWarrantyCase, OrderPatch, warranty_columns};
 use crate::clients::find_live;
+use crate::money_text::MoneyText;
 use crate::search_index::{order_search_text, set_order_keys};
 use crate::{Actor, Core, CoreError, EditVia, NewAuditEntry, Order, write_audit};
 use mw_domain::search::normalize_search;
@@ -523,6 +529,7 @@ impl Core {
                 expected_version,
                 Some(status_id),
                 stamp_issued_at,
+                None,
             )
             .await?;
         tx.commit().await?;
@@ -597,7 +604,15 @@ impl Core {
                 )])
             })?;
         let updated = self
-            .change_status_in(&tx, actor, id, expected_version, Some(warranty.id), true)
+            .change_status_in(
+                &tx,
+                actor,
+                id,
+                expected_version,
+                Some(warranty.id),
+                true,
+                None,
+            )
             .await?;
         write_audit(
             &tx,
@@ -617,17 +632,56 @@ impl Core {
         Ok(updated)
     }
 
-    /// Выдача клиенту: переход в первый неархивный статус вида «выдан».
+    /// Выдача клиенту: переход в первый неархивный статус вида «выдан», без оплаты.
     pub async fn issue_order(
         &self,
         actor: &Actor,
         id: i64,
         expected_version: i64,
     ) -> Result<Order, CoreError> {
+        self.issue_order_with(actor, id, expected_version, IssueRequest::default())
+            .await
+    }
+
+    /// Выдача клиенту с оплатой: статус вида «выдан» (по умолчанию первый неархивный) и платёж
+    /// «при выдаче» в одной транзакции.
+    pub async fn issue_order_with(
+        &self,
+        actor: &Actor,
+        id: i64,
+        expected_version: i64,
+        req: IssueRequest,
+    ) -> Result<Order, CoreError> {
         actor.require(Permission::OrdersEdit)?;
+        if req.payment.is_some_and(|p| !amount_in_range(p)) {
+            return Err(CoreError::Validation(vec![FieldError::new(
+                "payment",
+                "out_of_range",
+            )]));
+        }
         let tx = self.begin_write().await?;
+        if let Some(sid) = req.status_id {
+            let ok = status::Entity::find_by_id(sid)
+                .one(&tx)
+                .await?
+                .is_some_and(|s| !s.archived && s.kind == StatusKind::Issued.as_str());
+            if !ok {
+                return Err(CoreError::Validation(vec![FieldError::new(
+                    "status_id",
+                    "invalid",
+                )]));
+            }
+        }
         let updated = self
-            .change_status_in(&tx, actor, id, expected_version, None, true)
+            .change_status_in(
+                &tx,
+                actor,
+                id,
+                expected_version,
+                req.status_id,
+                true,
+                req.payment,
+            )
             .await?;
         tx.commit().await?;
         Ok(updated)
@@ -685,7 +739,10 @@ impl Core {
         Ok(())
     }
 
-    /// `target = None` — первый неархивный статус вида «выдан».
+    /// `target = None` — первый неархивный статус вида «выдан». `payment` принимается при переходе
+    /// в вид «выдан» как платёж «при выдаче»; переход между видом «выдан» и другим переводит
+    /// этапы платежей заказа.
+    #[allow(clippy::too_many_arguments)]
     async fn change_status_in(
         &self,
         tx: &DatabaseTransaction,
@@ -694,6 +751,7 @@ impl Core {
         expected_version: i64,
         target: Option<i64>,
         stamp_issued_at: bool,
+        payment: Option<Money>,
     ) -> Result<Order, CoreError> {
         let current = load(tx, id).await?;
         if current.deleted_at.is_some() {
@@ -757,6 +815,9 @@ impl Core {
                 return Err(CoreError::Validation(errors));
             }
         }
+        let from_issued = old_status
+            .as_ref()
+            .is_some_and(|s| s.kind == StatusKind::Issued.as_str());
         let old_name = old_status.map_or_else(|| current.status_id.to_string(), |s| s.name);
 
         let now = self.now();
@@ -780,6 +841,33 @@ impl Core {
             .exec(tx)
             .await?;
         check_affected(tx, res.rows_affected, id).await?;
+        if from_issued != to_issued {
+            restage_payments(tx, id).await?;
+        }
+        let mut summary = format!("Статус: «{old_name}» → «{}»", new_status.name);
+        let mut details = json!({ "from": current.status_id, "to": new_status.id });
+        if let Some(amount) = payment.filter(|_| to_issued) {
+            let row = insert_payment(
+                tx,
+                now,
+                actor,
+                id,
+                PaymentRow {
+                    day: now.date(),
+                    amount,
+                    received_by: received_by_of(actor),
+                    stage: PaymentStage::AtIssue,
+                    legacy: false,
+                    request_key: None,
+                },
+            )
+            .await?;
+            summary.push_str(&format!(
+                "; принята оплата {}",
+                self.money_text(amount, MoneyText::Short)
+            ));
+            details["payment"] = payment_details(&row);
+        }
         write_audit(
             tx,
             now,
@@ -789,8 +877,8 @@ impl Core {
                 order_id: Some(id),
                 client_id: Some(current.client_id),
                 stock_item_id: None,
-                summary: format!("Статус: «{old_name}» → «{}»", new_status.name),
-                details: Some(json!({ "from": current.status_id, "to": new_status.id })),
+                summary,
+                details: Some(details),
             },
         )
         .await?;

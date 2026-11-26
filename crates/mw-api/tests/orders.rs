@@ -186,7 +186,7 @@ async fn edits_status_issue_delete_with_versions() {
                 Method::POST,
                 &format!("/api/v1/orders/{id}/issue?version=3"),
                 Some(&token),
-                None,
+                Some(json!({})),
             )
             .await;
         assert_eq!(
@@ -214,7 +214,7 @@ async fn edits_status_issue_delete_with_versions() {
                 Method::POST,
                 &format!("/api/v1/orders/{id}/issue?version=4"),
                 Some(&token),
-                None,
+                Some(json!({})),
             )
             .await;
         assert_eq!(
@@ -369,6 +369,38 @@ async fn order_ready_to_issue(t: &common::TestApi, token: &str) -> (i64, i64) {
         .await;
     assert_eq!(r.status, 200, "{}: {}", t.label, r.body);
     (id, r.body["version"].as_i64().unwrap())
+}
+
+#[tokio::test]
+async fn issue_with_payment() {
+    for t in apis(Listen::Network).await {
+        let token = t.admin_token().await;
+        let (id, version) = order_ready_to_issue(&t, &token).await;
+        let url = format!("/api/v1/orders/{id}/issue?version={version}");
+        let post = |body: Option<serde_json::Value>| t.send(Method::POST, &url, Some(&token), body);
+        let r = post(Some(json!({ "payment": 0 }))).await;
+        assert_eq!(r.status, 422, "{}: {}", t.label, r.body);
+        assert_eq!(
+            r.body["fields"],
+            json!([{ "field": "payment", "code": "out_of_range", "message": r.body["fields"][0]["message"] }])
+        );
+        assert_eq!(
+            post(Some(json!({ "bogus": 1 }))).await.status,
+            400,
+            "{}",
+            t.label
+        );
+        assert_eq!(post(None).await.status, 400, "{}", t.label);
+        let r = post(Some(json!({ "payment": 300_000 }))).await;
+        assert_eq!(r.status, 200, "{}: {}", t.label, r.body);
+        let pays = t
+            .get(&format!("/api/v1/orders/{id}/payments"), Some(&token))
+            .await;
+        assert_eq!(pays.status, 200);
+        assert_eq!(pays.body["payments"].as_array().unwrap().len(), 1);
+        assert_eq!(pays.body["payments"][0]["stage"], json!("at_issue"));
+        assert_eq!(pays.body["payments"][0]["amount"], json!(300_000));
+    }
 }
 
 #[tokio::test]

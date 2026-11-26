@@ -55,6 +55,7 @@ pub fn export_typescript(dir: &Path) -> Result<(), ts_rs::ExportError> {
     PageQuery::export_all(&cfg)?;
     HistoryQuery::export_all(&cfg)?;
     mw_core::NewWarrantyCase::export_all(&cfg)?;
+    mw_core::IssueRequest::export_all(&cfg)?;
     NextOrderNumber::export_all(&cfg)?;
     OrderPage::export_all(&cfg)?;
     OrderSummaryQuery::export_all(&cfg)?;

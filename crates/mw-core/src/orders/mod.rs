@@ -22,4 +22,4 @@ pub(crate) use payments::{
 };
 pub use summary::{OrderSummary, OrderValueField, StatusCount};
 pub(crate) use types::warranty_columns;
-pub use types::{ClientRef, NewOrder, NewWarrantyCase, Order, OrderPatch};
+pub use types::{ClientRef, IssueRequest, NewOrder, NewWarrantyCase, Order, OrderPatch};
